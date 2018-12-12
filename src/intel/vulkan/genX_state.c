@@ -93,6 +93,12 @@ genX(init_device_state)(struct anv_device *device)
 {
    GENX(MEMORY_OBJECT_CONTROL_STATE_pack)(NULL, &device->default_mocs,
                                           &GENX(MOCS));
+#if GEN_GEN >= 8
+   GENX(MEMORY_OBJECT_CONTROL_STATE_pack)(NULL, &device->external_mocs,
+                                          &GENX(EXTERNAL_MOCS));
+#else
+   device->external_mocs = device->default_mocs;
+#endif
 
    struct anv_batch batch;
 
@@ -189,10 +195,8 @@ genX(init_device_state)(struct anv_device *device)
    anv_batch_emit(&batch, GENX(PIPE_CONTROL), pipe) {
       pipe.PipeControlFlushEnable = true;
    }
-
    /* enable object level preemption */
    uint32_t csc1;
-
    anv_pack_struct(&csc1, GENX(CS_CHICKEN1),
                    .ReplayMode = ObjectLevelPreemption,
                    .ReplayModeMask = 1);
