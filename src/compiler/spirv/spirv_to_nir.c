@@ -495,15 +495,19 @@ vtn_handle_decoration(struct vtn_builder *b, SpvOp opcode,
 
    case SpvOpDecorate:
    case SpvOpMemberDecorate:
+   case SpvOpDecorateStringGOOGLE:
+   case SpvOpMemberDecorateStringGOOGLE:
    case SpvOpExecutionMode: {
       struct vtn_value *val = vtn_untyped_value(b, target);
 
       struct vtn_decoration *dec = rzalloc(b, struct vtn_decoration);
       switch (opcode) {
       case SpvOpDecorate:
+      case SpvOpDecorateStringGOOGLE:
          dec->scope = VTN_DEC_DECORATION;
          break;
       case SpvOpMemberDecorate:
+      case SpvOpMemberDecorateStringGOOGLE:
          dec->scope = VTN_DEC_STRUCT_MEMBER0 + *(w++);
          vtn_fail_if(dec->scope < VTN_DEC_STRUCT_MEMBER0, /* overflow */
                      "Member argument of OpMemberDecorate too large");
@@ -669,6 +673,16 @@ mutable_matrix_member(struct vtn_builder *b, struct vtn_type *type, int member)
 }
 
 static void
+vtn_handle_access_qualifier(struct vtn_builder *b, struct vtn_type *type,
+                            int member, enum gl_access_qualifier access)
+{
+   type->members[member] = vtn_type_copy(b, type->members[member]);
+   type = type->members[member];
+
+   type->access |= access;
+}
+
+static void
 struct_member_decoration_cb(struct vtn_builder *b,
                             struct vtn_value *val, int member,
                             const struct vtn_decoration *dec, void *void_ctx)
@@ -681,13 +695,21 @@ struct_member_decoration_cb(struct vtn_builder *b,
    assert(member < ctx->num_fields);
 
    switch (dec->decoration) {
-   case SpvDecorationNonWritable:
-   case SpvDecorationNonReadable:
    case SpvDecorationRelaxedPrecision:
-   case SpvDecorationVolatile:
-   case SpvDecorationCoherent:
    case SpvDecorationUniform:
       break; /* FIXME: Do nothing with this for now. */
+   case SpvDecorationNonWritable:
+      vtn_handle_access_qualifier(b, ctx->type, member, ACCESS_NON_WRITEABLE);
+      break;
+   case SpvDecorationNonReadable:
+      vtn_handle_access_qualifier(b, ctx->type, member, ACCESS_NON_READABLE);
+      break;
+   case SpvDecorationVolatile:
+      vtn_handle_access_qualifier(b, ctx->type, member, ACCESS_VOLATILE);
+      break;
+   case SpvDecorationCoherent:
+      vtn_handle_access_qualifier(b, ctx->type, member, ACCESS_COHERENT);
+      break;
    case SpvDecorationNoPerspective:
       ctx->fields[member].interpolation = INTERP_MODE_NOPERSPECTIVE;
       break;
@@ -763,6 +785,10 @@ struct_member_decoration_cb(struct vtn_builder *b,
    case SpvDecorationAlignment:
       vtn_warn("Decoration only allowed for CL-style kernels: %s",
                spirv_decoration_to_string(dec->decoration));
+      break;
+
+   case SpvDecorationHlslSemanticGOOGLE:
+      /* HLSL semantic decorations can safely be ignored by the driver. */
       break;
 
    default:
@@ -852,6 +878,7 @@ type_decoration_cb(struct vtn_builder *b,
    case SpvDecorationOffset:
    case SpvDecorationXfbBuffer:
    case SpvDecorationXfbStride:
+   case SpvDecorationHlslSemanticGOOGLE:
       vtn_warn("Decoration only allowed for struct members: %s",
                spirv_decoration_to_string(dec->decoration));
       break;
@@ -1828,69 +1855,6 @@ vtn_handle_constant(struct vtn_builder *b, SpvOp opcode,
    vtn_foreach_decoration(b, val, handle_workgroup_size_decoration_cb, NULL);
 }
 
-static void
-vtn_handle_function_call(struct vtn_builder *b, SpvOp opcode,
-                         const uint32_t *w, unsigned count)
-{
-   struct vtn_type *res_type = vtn_value(b, w[1], vtn_value_type_type)->type;
-   struct vtn_function *vtn_callee =
-      vtn_value(b, w[3], vtn_value_type_function)->func;
-   struct nir_function *callee = vtn_callee->impl->function;
-
-   vtn_callee->referenced = true;
-
-   nir_call_instr *call = nir_call_instr_create(b->nb.shader, callee);
-
-   unsigned param_idx = 0;
-
-   nir_deref_instr *ret_deref = NULL;
-   struct vtn_type *ret_type = vtn_callee->type->return_type;
-   if (ret_type->base_type != vtn_base_type_void) {
-      nir_variable *ret_tmp =
-         nir_local_variable_create(b->nb.impl, ret_type->type, "return_tmp");
-      ret_deref = nir_build_deref_var(&b->nb, ret_tmp);
-      call->params[param_idx++] = nir_src_for_ssa(&ret_deref->dest.ssa);
-   }
-
-   for (unsigned i = 0; i < vtn_callee->type->length; i++) {
-      struct vtn_type *arg_type = vtn_callee->type->params[i];
-      unsigned arg_id = w[4 + i];
-
-      if (arg_type->base_type == vtn_base_type_sampled_image) {
-         struct vtn_sampled_image *sampled_image =
-            vtn_value(b, arg_id, vtn_value_type_sampled_image)->sampled_image;
-
-         call->params[param_idx++] =
-            nir_src_for_ssa(&sampled_image->image->deref->dest.ssa);
-         call->params[param_idx++] =
-            nir_src_for_ssa(&sampled_image->sampler->deref->dest.ssa);
-      } else if (arg_type->base_type == vtn_base_type_pointer ||
-                 arg_type->base_type == vtn_base_type_image ||
-                 arg_type->base_type == vtn_base_type_sampler) {
-         struct vtn_pointer *pointer =
-            vtn_value(b, arg_id, vtn_value_type_pointer)->pointer;
-         call->params[param_idx++] =
-            nir_src_for_ssa(vtn_pointer_to_ssa(b, pointer));
-      } else {
-         /* This is a regular SSA value and we need a temporary */
-         nir_variable *tmp =
-            nir_local_variable_create(b->nb.impl, arg_type->type, "arg_tmp");
-         nir_deref_instr *tmp_deref = nir_build_deref_var(&b->nb, tmp);
-         vtn_local_store(b, vtn_ssa_value(b, arg_id), tmp_deref);
-         call->params[param_idx++] = nir_src_for_ssa(&tmp_deref->dest.ssa);
-      }
-   }
-   assert(param_idx == call->num_params);
-
-   nir_builder_instr_insert(&b->nb, &call->instr);
-
-   if (ret_type->base_type == vtn_base_type_void) {
-      vtn_push_value(b, w[2], vtn_value_type_undef);
-   } else {
-      vtn_push_ssa(b, w[2], res_type, vtn_local_load(b, ret_deref));
-   }
-}
-
 struct vtn_ssa_value *
 vtn_create_ssa_value(struct vtn_builder *b, const struct glsl_type *type)
 {
@@ -2493,6 +2457,8 @@ vtn_handle_image(struct vtn_builder *b, SpvOp opcode,
       const uint32_t value_id = opcode == SpvOpAtomicStore ? w[4] : w[3];
       nir_ssa_def *value = vtn_ssa_value(b, value_id)->def;
       /* nir_intrinsic_image_deref_store always takes a vec4 value */
+      assert(op == nir_intrinsic_image_deref_store);
+      intrin->num_components = 4;
       intrin->src[3] = nir_src_for_ssa(expand_to_vec4(&b->nb, value));
       break;
    }
@@ -2928,13 +2894,19 @@ vtn_vector_insert(struct vtn_builder *b, nir_ssa_def *src, nir_ssa_def *insert,
    return &vec->dest.dest.ssa;
 }
 
+static nir_ssa_def *
+nir_ieq_imm(nir_builder *b, nir_ssa_def *x, uint64_t i)
+{
+   return nir_ieq(b, x, nir_imm_intN_t(b, i, x->bit_size));
+}
+
 nir_ssa_def *
 vtn_vector_extract_dynamic(struct vtn_builder *b, nir_ssa_def *src,
                            nir_ssa_def *index)
 {
    nir_ssa_def *dest = vtn_vector_extract(b, src, 0);
    for (unsigned i = 1; i < src->num_components; i++)
-      dest = nir_bcsel(&b->nb, nir_ieq(&b->nb, index, nir_imm_int(&b->nb, i)),
+      dest = nir_bcsel(&b->nb, nir_ieq_imm(&b->nb, index, i),
                        vtn_vector_extract(b, src, i), dest);
 
    return dest;
@@ -2946,7 +2918,7 @@ vtn_vector_insert_dynamic(struct vtn_builder *b, nir_ssa_def *src,
 {
    nir_ssa_def *dest = vtn_vector_insert(b, src, insert, 0);
    for (unsigned i = 1; i < src->num_components; i++)
-      dest = nir_bcsel(&b->nb, nir_ieq(&b->nb, index, nir_imm_int(&b->nb, i)),
+      dest = nir_bcsel(&b->nb, nir_ieq_imm(&b->nb, index, i),
                        vtn_vector_insert(b, src, insert, i), dest);
 
    return dest;
@@ -3627,6 +3599,8 @@ vtn_handle_preamble_instruction(struct vtn_builder *b, SpvOp opcode,
    case SpvOpMemberDecorate:
    case SpvOpGroupDecorate:
    case SpvOpGroupMemberDecorate:
+   case SpvOpDecorateStringGOOGLE:
+   case SpvOpMemberDecorateStringGOOGLE:
       vtn_handle_decoration(b, opcode, w, count);
       break;
 
@@ -3716,6 +3690,8 @@ vtn_handle_execution_mode(struct vtn_builder *b, struct vtn_value *entry_point,
          vtn_assert(b->shader->info.stage == MESA_SHADER_GEOMETRY);
          b->shader->info.gs.vertices_in =
             vertices_in_from_spv_execution_mode(b, mode->exec_mode);
+         b->shader->info.gs.input_primitive =
+            gl_primitive_from_spv_execution_mode(b, mode->exec_mode);
       }
       break;
 
@@ -3803,6 +3779,8 @@ vtn_handle_variable_or_type_instruction(struct vtn_builder *b, SpvOp opcode,
    case SpvOpMemberDecorate:
    case SpvOpGroupDecorate:
    case SpvOpGroupMemberDecorate:
+   case SpvOpDecorateStringGOOGLE:
+   case SpvOpMemberDecorateStringGOOGLE:
       vtn_fail("Invalid opcode types and variables section");
       break;
 

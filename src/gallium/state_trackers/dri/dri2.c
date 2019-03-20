@@ -29,7 +29,6 @@
  */
 
 #include <xf86drm.h>
-#include <fcntl.h>
 #include "GL/mesa_glinterop.h"
 #include "util/u_memory.h"
 #include "util/u_inlines.h"
@@ -45,14 +44,27 @@
 #include "main/bufferobj.h"
 #include "main/texobj.h"
 
+#include "dri_util.h"
+
 #include "dri_helpers.h"
 #include "dri_drawable.h"
 #include "dri_query_renderer.h"
-#include "dri2_buffer.h"
 
 #ifndef DRM_FORMAT_MOD_INVALID
 #define DRM_FORMAT_MOD_INVALID ((1ULL<<56) - 1)
 #endif
+
+struct dri2_buffer
+{
+   __DRIbuffer base;
+   struct pipe_resource *resource;
+};
+
+static inline struct dri2_buffer *
+dri2_buffer(__DRIbuffer * driBufferPriv)
+{
+   return (struct dri2_buffer *) driBufferPriv;
+}
 
 static const int fourcc_formats[] = {
    __DRI_IMAGE_FOURCC_ARGB2101010,
@@ -89,6 +101,10 @@ static int convert_fourcc(int format, int *dri_components_p)
 {
    int dri_components;
    switch(format) {
+   case __DRI_IMAGE_FOURCC_ARGB1555:
+      format = __DRI_IMAGE_FORMAT_ARGB1555;
+      dri_components = __DRI_IMAGE_COMPONENTS_RGBA;
+      break;
    case __DRI_IMAGE_FOURCC_RGB565:
       format = __DRI_IMAGE_FORMAT_RGB565;
       dri_components = __DRI_IMAGE_COMPONENTS_RGB;
@@ -181,6 +197,9 @@ static int convert_fourcc(int format, int *dri_components_p)
 static int convert_to_fourcc(int format)
 {
    switch(format) {
+   case __DRI_IMAGE_FORMAT_ARGB1555:
+      format = __DRI_IMAGE_FOURCC_ARGB1555;
+      break;
    case __DRI_IMAGE_FORMAT_RGB565:
       format = __DRI_IMAGE_FOURCC_RGB565;
       break;
@@ -225,6 +244,9 @@ static enum pipe_format dri2_format_to_pipe_format (int format)
    enum pipe_format pf;
 
    switch (format) {
+   case __DRI_IMAGE_FORMAT_ARGB1555:
+      pf = PIPE_FORMAT_B5G5R5A1_UNORM;
+      break;
    case __DRI_IMAGE_FORMAT_RGB565:
       pf = PIPE_FORMAT_B5G6R5_UNORM;
       break;
@@ -517,6 +539,9 @@ dri_image_drawable_get_buffers(struct dri_drawable *drawable,
       }
 
       switch (pf) {
+      case PIPE_FORMAT_B5G5R5A1_UNORM:
+         image_format = __DRI_IMAGE_FORMAT_ARGB1555;
+         break;
       case PIPE_FORMAT_B5G6R5_UNORM:
          image_format = __DRI_IMAGE_FORMAT_RGB565;
          break;
@@ -632,7 +657,7 @@ dri2_allocate_buffer(__DRIscreen *sPriv,
 
    screen->base.screen->resource_get_handle(screen->base.screen, NULL,
          buffer->resource, &whandle,
-         PIPE_HANDLE_USAGE_EXPLICIT_FLUSH | PIPE_HANDLE_USAGE_READ);
+         PIPE_HANDLE_USAGE_EXPLICIT_FLUSH);
 
    buffer->base.attachment = attachment;
    buffer->base.name = whandle.handle;
@@ -820,7 +845,7 @@ dri2_allocate_textures(struct dri_context *ctx,
          drawable->textures[statt] =
             screen->base.screen->resource_from_handle(screen->base.screen,
                   &templ, &whandle,
-                  PIPE_HANDLE_USAGE_EXPLICIT_FLUSH | PIPE_HANDLE_USAGE_READ);
+                  PIPE_HANDLE_USAGE_EXPLICIT_FLUSH);
          assert(drawable->textures[statt]);
       }
    }
@@ -1048,7 +1073,7 @@ dri2_create_image_from_winsys(__DRIscreen *_screen,
       }
 
       tex = pscreen->resource_from_handle(pscreen,
-            &templ, &whandle[i], PIPE_HANDLE_USAGE_READ_WRITE);
+            &templ, &whandle[i], PIPE_HANDLE_USAGE_FRAMEBUFFER_WRITE);
       if (!tex) {
          pipe_resource_reference(&img->texture, NULL);
          FREE(img);
@@ -1268,9 +1293,9 @@ dri2_query_image(__DRIimage *image, int attrib, int *value)
    unsigned usage;
 
    if (image->use & __DRI_IMAGE_USE_BACKBUFFER)
-      usage = PIPE_HANDLE_USAGE_EXPLICIT_FLUSH | PIPE_HANDLE_USAGE_READ;
+      usage = PIPE_HANDLE_USAGE_EXPLICIT_FLUSH;
    else
-      usage = PIPE_HANDLE_USAGE_READ_WRITE;
+      usage = PIPE_HANDLE_USAGE_FRAMEBUFFER_WRITE;
 
    memset(&whandle, 0, sizeof(whandle));
 
@@ -1947,14 +1972,12 @@ dri2_interop_export_object(__DRIcontext *_ctx,
 
    /* Get the handle. */
    switch (in->access) {
-   case MESA_GLINTEROP_ACCESS_READ_WRITE:
-      usage = PIPE_HANDLE_USAGE_READ_WRITE;
-      break;
    case MESA_GLINTEROP_ACCESS_READ_ONLY:
-      usage = PIPE_HANDLE_USAGE_READ;
+      usage = 0;
       break;
+   case MESA_GLINTEROP_ACCESS_READ_WRITE:
    case MESA_GLINTEROP_ACCESS_WRITE_ONLY:
-      usage = PIPE_HANDLE_USAGE_WRITE;
+      usage = PIPE_HANDLE_USAGE_SHADER_WRITE;
       break;
    default:
       usage = 0;
@@ -2096,7 +2119,6 @@ dri2_init_screen(__DRIscreen * sPriv)
    struct pipe_screen *pscreen = NULL;
    const struct drm_conf_ret *throttle_ret;
    const struct drm_conf_ret *dmabuf_ret;
-   int fd;
 
    screen = CALLOC_STRUCT(dri_screen);
    if (!screen)
@@ -2108,11 +2130,7 @@ dri2_init_screen(__DRIscreen * sPriv)
 
    sPriv->driverPrivate = (void *)screen;
 
-   if (screen->fd < 0 || (fd = fcntl(screen->fd, F_DUPFD_CLOEXEC, 3)) < 0)
-      goto free_screen;
-
-
-   if (pipe_loader_drm_probe_fd(&screen->dev, fd)) {
+   if (pipe_loader_drm_probe_fd(&screen->dev, screen->fd)) {
       dri_init_options(screen);
 
       pscreen = pipe_loader_create_screen(screen->dev);
@@ -2173,10 +2191,7 @@ destroy_screen:
 release_pipe:
    if (screen->dev)
       pipe_loader_release(&screen->dev, 1);
-   else
-      close(fd);
 
-free_screen:
    FREE(screen);
    return NULL;
 }
@@ -2194,7 +2209,6 @@ dri_kms_init_screen(__DRIscreen * sPriv)
    struct dri_screen *screen;
    struct pipe_screen *pscreen = NULL;
    uint64_t cap;
-   int fd;
 
    screen = CALLOC_STRUCT(dri_screen);
    if (!screen)
@@ -2205,10 +2219,7 @@ dri_kms_init_screen(__DRIscreen * sPriv)
 
    sPriv->driverPrivate = (void *)screen;
 
-   if (screen->fd < 0 || (fd = fcntl(screen->fd, F_DUPFD_CLOEXEC, 3)) < 0)
-      goto free_screen;
-
-   if (pipe_loader_sw_probe_kms(&screen->dev, fd)) {
+   if (pipe_loader_sw_probe_kms(&screen->dev, screen->fd)) {
       dri_init_options(screen);
       pscreen = pipe_loader_create_screen(screen->dev);
    }
@@ -2250,10 +2261,7 @@ destroy_screen:
 release_pipe:
    if (screen->dev)
       pipe_loader_release(&screen->dev, 1);
-   else
-      close(fd);
 
-free_screen:
    FREE(screen);
 #endif // GALLIUM_SOFTPIPE
    return NULL;

@@ -67,6 +67,7 @@
 #include "util/ralloc.h"
 #include "util/hash_table.h"
 #include "util/list.h"
+#include "util/u_math.h"
 
 #include "brw_context.h"
 #include "brw_defines.h"
@@ -1901,7 +1902,6 @@ static bool
 kernel_has_dynamic_config_support(struct brw_context *brw)
 {
    __DRIscreen *screen = brw->screen->driScrnPriv;
-   struct hash_entry *entry;
 
    hash_table_foreach(brw->perfquery.oa_metrics_table, entry) {
       struct brw_perf_query_info *query = entry->data;
@@ -1925,7 +1925,6 @@ static void
 init_oa_configs(struct brw_context *brw)
 {
    __DRIscreen *screen = brw->screen->driScrnPriv;
-   struct hash_entry *entry;
 
    hash_table_foreach(brw->perfquery.oa_metrics_table, entry) {
       const struct brw_perf_query_info *query = entry->data;
@@ -2039,11 +2038,11 @@ compute_topology_builtins(struct brw_context *brw)
 
    for (int i = 0; i < sizeof(devinfo->subslice_masks[i]); i++) {
       brw->perfquery.sys_vars.n_eu_sub_slices +=
-         _mesa_bitcount(devinfo->subslice_masks[i]);
+         util_bitcount(devinfo->subslice_masks[i]);
    }
 
    for (int i = 0; i < sizeof(devinfo->eu_masks); i++)
-      brw->perfquery.sys_vars.n_eus += _mesa_bitcount(devinfo->eu_masks[i]);
+      brw->perfquery.sys_vars.n_eus += util_bitcount(devinfo->eu_masks[i]);
 
    brw->perfquery.sys_vars.eu_threads_count =
       brw->perfquery.sys_vars.n_eus * devinfo->num_thread_per_eu;

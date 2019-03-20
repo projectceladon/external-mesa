@@ -290,6 +290,7 @@ intel_alloc_private_renderbuffer_storage(struct gl_context * ctx, struct gl_rend
    assert(rb->Format != MESA_FORMAT_NONE);
 
    rb->NumSamples = intel_quantize_num_samples(screen, rb->NumSamples);
+   rb->NumStorageSamples = rb->NumSamples;
    rb->Width = width;
    rb->Height = height;
    rb->_BaseFormat = _mesa_get_format_base_format(rb->Format);
@@ -464,6 +465,7 @@ intel_create_winsys_renderbuffer(struct intel_screen *screen,
    _mesa_init_renderbuffer(rb, 0);
    rb->ClassID = INTEL_RB_CLASS;
    rb->NumSamples = num_samples;
+   rb->NumStorageSamples = num_samples;
 
    rb->Format = fallback_rgbx_to_rgba(screen, rb, format);
 
@@ -977,11 +979,9 @@ intel_renderbuffer_move_to_temp(struct brw_context *brw,
 void
 brw_cache_sets_clear(struct brw_context *brw)
 {
-   struct hash_entry *render_entry;
    hash_table_foreach(brw->render_cache, render_entry)
       _mesa_hash_table_remove(brw->render_cache, render_entry);
 
-   struct set_entry *depth_entry;
    set_foreach(brw->depth_cache, depth_entry)
       _mesa_set_remove(brw->depth_cache, depth_entry);
 }

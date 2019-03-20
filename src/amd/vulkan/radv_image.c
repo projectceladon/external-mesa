@@ -72,11 +72,8 @@ radv_use_tc_compat_htile_for_image(struct radv_device *device,
 	if (device->physical_device->rad_info.chip_class < VI)
 		return false;
 
-	if (pCreateInfo->usage & VK_IMAGE_USAGE_STORAGE_BIT)
-		return false;
-
-	if (pCreateInfo->flags & (VK_IMAGE_CREATE_MUTABLE_FORMAT_BIT |
-				  VK_IMAGE_CREATE_EXTENDED_USAGE_BIT_KHR))
+	if ((pCreateInfo->usage & VK_IMAGE_USAGE_STORAGE_BIT) ||
+	    (pCreateInfo->flags & VK_IMAGE_CREATE_EXTENDED_USAGE_BIT_KHR))
 		return false;
 
 	if (pCreateInfo->tiling == VK_IMAGE_TILING_LINEAR)
@@ -99,6 +96,26 @@ radv_use_tc_compat_htile_for_image(struct radv_device *device,
 	    pCreateInfo->format != VK_FORMAT_D32_SFLOAT &&
 	    pCreateInfo->format != VK_FORMAT_D16_UNORM)
 		return false;
+
+	if (pCreateInfo->flags & VK_IMAGE_CREATE_MUTABLE_FORMAT_BIT) {
+		const struct VkImageFormatListCreateInfoKHR *format_list =
+			(const struct  VkImageFormatListCreateInfoKHR *)
+				vk_find_struct_const(pCreateInfo->pNext,
+						     IMAGE_FORMAT_LIST_CREATE_INFO_KHR);
+
+		/* We have to ignore the existence of the list if viewFormatCount = 0 */
+		if (format_list && format_list->viewFormatCount) {
+			/* compatibility is transitive, so we only need to check
+			 * one format with everything else.
+			 */
+			for (unsigned i = 0; i < format_list->viewFormatCount; ++i) {
+				if (pCreateInfo->format != format_list->pViewFormats[i])
+					return false;
+			}
+		} else {
+			return false;
+		}
+	}
 
 	return true;
 }
@@ -853,6 +870,14 @@ radv_image_alloc_htile(struct radv_image *image)
 	/* + 8 for storing the clear values */
 	image->clear_value_offset = image->htile_offset + image->surface.htile_size;
 	image->size = image->clear_value_offset + 8;
+	if (radv_image_is_tc_compat_htile(image)) {
+		/* Metadata for the TC-compatible HTILE hardware bug which
+		 * have to be fixed by updating ZRANGE_PRECISION when doing
+		 * fast depth clears to 0.0f.
+		 */
+		image->tc_compat_zrange_offset = image->clear_value_offset + 8;
+		image->size = image->clear_value_offset + 16;
+	}
 	image->alignment = align64(image->alignment, image->surface.htile_alignment);
 }
 
@@ -906,7 +931,9 @@ radv_image_can_enable_fmask(struct radv_image *image)
 static inline bool
 radv_image_can_enable_htile(struct radv_image *image)
 {
-	return image->info.levels == 1 && vk_format_is_depth(image->vk_format);
+	return image->info.levels == 1 &&
+	       vk_format_is_depth(image->vk_format) &&
+	       image->info.width * image->info.height >= 8 * 8;
 }
 
 VkResult
@@ -958,7 +985,7 @@ radv_image_create(VkDevice _device,
 
 	image->shareable = vk_find_struct_const(pCreateInfo->pNext,
 	                                        EXTERNAL_MEMORY_IMAGE_CREATE_INFO_KHR) != NULL;
-	if (!vk_format_is_depth(pCreateInfo->format) && !create_info->scanout && !image->shareable) {
+	if (!vk_format_is_depth_or_stencil(pCreateInfo->format) && !create_info->scanout && !image->shareable) {
 		image->info.surf_index = &device->image_mrt_offset_counter;
 	}
 
@@ -995,8 +1022,8 @@ radv_image_create(VkDevice _device,
 			/* Otherwise, try to enable HTILE for depth surfaces. */
 			if (radv_image_can_enable_htile(image) &&
 			    !(device->instance->debug_flags & RADV_DEBUG_NO_HIZ)) {
-				radv_image_alloc_htile(image);
 				image->tc_compatible_htile = image->surface.flags & RADEON_SURF_TC_COMPATIBLE_HTILE;
+				radv_image_alloc_htile(image);
 			} else {
 				image->surface.htile_size = 0;
 			}
@@ -1156,8 +1183,6 @@ radv_image_view_init(struct radv_image_view *iview,
 		 if (device->physical_device->rad_info.chip_class >= GFX9 &&
 		     vk_format_is_compressed(image->vk_format) &&
 		     !vk_format_is_compressed(iview->vk_format)) {
-			 unsigned rounded_img_w = util_next_power_of_two(iview->extent.width);
-			 unsigned rounded_img_h = util_next_power_of_two(iview->extent.height);
 			 unsigned lvl_width  = radv_minify(image->info.width , range->baseMipLevel);
 			 unsigned lvl_height = radv_minify(image->info.height, range->baseMipLevel);
 
@@ -1167,8 +1192,8 @@ radv_image_view_init(struct radv_image_view *iview,
 			 lvl_width <<= range->baseMipLevel;
 			 lvl_height <<= range->baseMipLevel;
 
-			 iview->extent.width = CLAMP(lvl_width, iview->extent.width, rounded_img_w);
-			 iview->extent.height = CLAMP(lvl_height, iview->extent.height, rounded_img_h);
+			 iview->extent.width = CLAMP(lvl_width, iview->extent.width, iview->image->surface.u.gfx9.surf_pitch);
+			 iview->extent.height = CLAMP(lvl_height, iview->extent.height, iview->image->surface.u.gfx9.surf_height);
 		 }
 	}
 

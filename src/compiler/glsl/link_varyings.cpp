@@ -38,6 +38,7 @@
 #include "link_varyings.h"
 #include "main/macros.h"
 #include "util/hash_table.h"
+#include "util/u_math.h"
 #include "program.h"
 
 
@@ -480,9 +481,10 @@ check_location_aliasing(struct explicit_location_info explicit_locations[][4],
             /* Component aliasing is not alloed */
             if (comp >= component && comp < last_comp) {
                linker_error(prog,
-                            "%s shader has multiple outputs explicitly "
+                            "%s shader has multiple %sputs explicitly "
                             "assigned to location %d and component %d\n",
                             _mesa_shader_stage_to_string(stage),
+                            var->data.mode == ir_var_shader_in ? "in" : "out",
                             location, comp);
                return false;
             } else {
@@ -501,10 +503,12 @@ check_location_aliasing(struct explicit_location_info explicit_locations[][4],
 
                if (info->interpolation != interpolation) {
                   linker_error(prog,
-                               "%s shader has multiple outputs at explicit "
+                               "%s shader has multiple %sputs at explicit "
                                "location %u with different interpolation "
                                "settings\n",
-                               _mesa_shader_stage_to_string(stage), location);
+                               _mesa_shader_stage_to_string(stage),
+                               var->data.mode == ir_var_shader_in ?
+                               "in" : "out", location);
                   return false;
                }
 
@@ -512,9 +516,11 @@ check_location_aliasing(struct explicit_location_info explicit_locations[][4],
                    info->sample != sample ||
                    info->patch != patch) {
                   linker_error(prog,
-                               "%s shader has multiple outputs at explicit "
+                               "%s shader has multiple %sputs at explicit "
                                "location %u with different aux storage\n",
-                               _mesa_shader_stage_to_string(stage), location);
+                               _mesa_shader_stage_to_string(stage),
+                               var->data.mode == ir_var_shader_in ?
+                               "in" : "out", location);
                   return false;
                }
             }
@@ -2879,13 +2885,13 @@ link_varyings(struct gl_shader_program *prog, unsigned first, unsigned last,
 
             /* This must be done after all dead varyings are eliminated. */
             if (sh_i != NULL) {
-               unsigned slots_used = _mesa_bitcount_64(reserved_out_slots);
+               unsigned slots_used = util_bitcount64(reserved_out_slots);
                if (!check_against_output_limit(ctx, prog, sh_i, slots_used)) {
                   return false;
                }
             }
 
-            unsigned slots_used = _mesa_bitcount_64(reserved_in_slots);
+            unsigned slots_used = util_bitcount64(reserved_in_slots);
             if (!check_against_input_limit(ctx, prog, sh_next, slots_used))
                return false;
 

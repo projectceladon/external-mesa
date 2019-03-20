@@ -47,6 +47,12 @@
 #include "virgl_resource.h"
 #include "virgl_screen.h"
 
+struct virgl_vertex_elements_state {
+   uint32_t handle;
+   uint8_t binding_map[PIPE_MAX_ATTRIBS];
+   uint8_t num_bindings;
+};
+
 static uint32_t next_handle;
 uint32_t virgl_object_assign_handle(void)
 {
@@ -196,6 +202,19 @@ static void virgl_attach_res_shader_images(struct virgl_context *vctx,
    }
 }
 
+static void virgl_attach_res_atomic_buffers(struct virgl_context *vctx)
+{
+   struct virgl_winsys *vws = virgl_screen(vctx->base.screen)->vws;
+   struct virgl_resource *res;
+   unsigned i;
+   for (i = 0; i < PIPE_MAX_HW_ATOMIC_BUFFERS; i++) {
+      res = virgl_resource(vctx->atomic_buffers[i]);
+      if (res) {
+         vws->emit_res(vws, vctx->cbuf, res->hw_res, FALSE);
+      }
+   }
+}
+
 /*
  * after flushing, the hw context still has a bunch of
  * resources bound, so we need to rebind those here.
@@ -214,6 +233,7 @@ static void virgl_reemit_res(struct virgl_context *vctx)
       virgl_attach_res_shader_buffers(vctx, shader_type);
       virgl_attach_res_shader_images(vctx, shader_type);
    }
+   virgl_attach_res_atomic_buffers(vctx);
    virgl_attach_res_vertex_buffers(vctx);
    virgl_attach_res_so_targets(vctx);
 }
@@ -371,29 +391,54 @@ static void *virgl_create_vertex_elements_state(struct pipe_context *ctx,
                                                         unsigned num_elements,
                                                         const struct pipe_vertex_element *elements)
 {
+   struct pipe_vertex_element new_elements[PIPE_MAX_ATTRIBS];
    struct virgl_context *vctx = virgl_context(ctx);
-   uint32_t handle = virgl_object_assign_handle();
-   virgl_encoder_create_vertex_elements(vctx, handle,
-                                       num_elements, elements);
-   return (void*)(unsigned long)handle;
+   struct virgl_vertex_elements_state *state =
+      CALLOC_STRUCT(virgl_vertex_elements_state);
 
+   for (int i = 0; i < num_elements; ++i) {
+      if (elements[i].instance_divisor) {
+	 /* Virglrenderer doesn't deal with instance_divisor correctly if
+	  * there isn't a 1:1 relationship between elements and bindings.
+	  * So let's make sure there is, by duplicating bindings.
+	  */
+	 for (int j = 0; j < num_elements; ++j) {
+            new_elements[j] = elements[j];
+            new_elements[j].vertex_buffer_index = j;
+            state->binding_map[j] = elements[j].vertex_buffer_index;
+	 }
+	 elements = new_elements;
+	 state->num_bindings = num_elements;
+	 break;
+      }
+   }
+
+   state->handle = virgl_object_assign_handle();
+   virgl_encoder_create_vertex_elements(vctx, state->handle,
+                                       num_elements, elements);
+   return state;
 }
 
 static void virgl_delete_vertex_elements_state(struct pipe_context *ctx,
                                               void *ve)
 {
    struct virgl_context *vctx = virgl_context(ctx);
-   uint32_t handle = (unsigned long)ve;
-
-   virgl_encode_delete_object(vctx, handle, VIRGL_OBJECT_VERTEX_ELEMENTS);
+   struct virgl_vertex_elements_state *state =
+      (struct virgl_vertex_elements_state *)ve;
+   virgl_encode_delete_object(vctx, state->handle, VIRGL_OBJECT_VERTEX_ELEMENTS);
+   FREE(state);
 }
 
 static void virgl_bind_vertex_elements_state(struct pipe_context *ctx,
                                                      void *ve)
 {
    struct virgl_context *vctx = virgl_context(ctx);
-   uint32_t handle = (unsigned long)ve;
-   virgl_encode_bind_object(vctx, handle, VIRGL_OBJECT_VERTEX_ELEMENTS);
+   struct virgl_vertex_elements_state *state =
+      (struct virgl_vertex_elements_state *)ve;
+   vctx->vertex_elements = state;
+   virgl_encode_bind_object(vctx, state ? state->handle : 0,
+                            VIRGL_OBJECT_VERTEX_ELEMENTS);
+   vctx->vertex_array_dirty = TRUE;
 }
 
 static void virgl_set_vertex_buffers(struct pipe_context *ctx,
@@ -415,7 +460,17 @@ static void virgl_hw_set_vertex_buffers(struct pipe_context *ctx)
    struct virgl_context *vctx = virgl_context(ctx);
 
    if (vctx->vertex_array_dirty) {
-      virgl_encoder_set_vertex_buffers(vctx, vctx->num_vertex_buffers, vctx->vertex_buffer);
+      struct virgl_vertex_elements_state *ve = vctx->vertex_elements;
+
+      if (ve->num_bindings) {
+         struct pipe_vertex_buffer vertex_buffers[PIPE_MAX_ATTRIBS];
+         for (int i = 0; i < ve->num_bindings; ++i)
+            vertex_buffers[i] = vctx->vertex_buffer[ve->binding_map[i]];
+
+         virgl_encoder_set_vertex_buffers(vctx, ve->num_bindings, vertex_buffers);
+      } else
+         virgl_encoder_set_vertex_buffers(vctx, vctx->num_vertex_buffers, vctx->vertex_buffer);
+
       virgl_attach_res_vertex_buffers(vctx);
    }
 }
@@ -805,9 +860,14 @@ static void virgl_set_sampler_views(struct pipe_context *ctx,
 }
 
 static void
-virgl_texture_barrier(struct pipe_context *pctx, unsigned flags)
+virgl_texture_barrier(struct pipe_context *ctx, unsigned flags)
 {
-   /* stub */
+   struct virgl_context *vctx = virgl_context(ctx);
+   struct virgl_screen *rs = virgl_screen(ctx->screen);
+
+   if (!(rs->caps.caps.v2.capability_bits & VIRGL_CAP_TEXTURE_BARRIER))
+      return;
+   virgl_encode_texture_barrier(vctx, flags);
 }
 
 static void virgl_destroy_sampler_view(struct pipe_context *ctx,
@@ -945,6 +1005,28 @@ static void virgl_blit(struct pipe_context *ctx,
    dres->clean = FALSE;
    virgl_encode_blit(vctx, dres, sres,
                     blit);
+}
+
+static void virgl_set_hw_atomic_buffers(struct pipe_context *ctx,
+                                        unsigned start_slot,
+                                        unsigned count,
+                                        const struct pipe_shader_buffer *buffers)
+{
+   struct virgl_context *vctx = virgl_context(ctx);
+
+   for (unsigned i = 0; i < count; i++) {
+      unsigned idx = start_slot + i;
+
+      if (buffers) {
+         if (buffers[i].buffer) {
+            pipe_resource_reference(&vctx->atomic_buffers[idx],
+                                    buffers[i].buffer);
+            continue;
+         }
+      }
+      pipe_resource_reference(&vctx->atomic_buffers[idx], NULL);
+   }
+   virgl_encode_set_hw_atomic_buffers(vctx, start_slot, count, buffers);
 }
 
 static void virgl_set_shader_buffers(struct pipe_context *ctx,
@@ -1100,18 +1182,20 @@ static void virgl_get_sample_position(struct pipe_context *ctx,
       out_value[0] = out_value[1] = 0.5f;
       return;
    } else if (sample_count == 2) {
-      bits = vs->caps.caps.v2.msaa_sample_positions[0] >> (8 * index);
+      bits = vs->caps.caps.v2.sample_locations[0] >> (8 * index);
    } else if (sample_count <= 4) {
-      bits = vs->caps.caps.v2.msaa_sample_positions[1] >> (8 * index);
+      bits = vs->caps.caps.v2.sample_locations[1] >> (8 * index);
    } else if (sample_count <= 8) {
-      bits = vs->caps.caps.v2.msaa_sample_positions[2 + (index >> 2)] >> (8 * (index & 3));
+      bits = vs->caps.caps.v2.sample_locations[2 + (index >> 2)] >> (8 * (index & 3));
    } else if (sample_count <= 16) {
-      bits = vs->caps.caps.v2.msaa_sample_positions[4 + (index >> 2)] >> (8 * (index & 3));
+      bits = vs->caps.caps.v2.sample_locations[4 + (index >> 2)] >> (8 * (index & 3));
    }
    out_value[0] = ((bits >> 4) & 0xf) / 16.0f;
    out_value[1] = (bits & 0xf) / 16.0f;
-   debug_printf("VIRGL: sample postion [%2d/%2d] = (%f, %f)\n",
-		index, sample_count, out_value[0], out_value[1]);
+
+   if (virgl_debug & VIRGL_DEBUG_VERBOSE)
+      debug_printf("VIRGL: sample postion [%2d/%2d] = (%f, %f)\n",
+                   index, sample_count, out_value[0], out_value[1]);
 }
 
 struct pipe_context *virgl_context_create(struct pipe_screen *pscreen,
@@ -1202,6 +1286,7 @@ struct pipe_context *virgl_context_create(struct pipe_screen *pscreen,
    vctx->base.blit =  virgl_blit;
 
    vctx->base.set_shader_buffers = virgl_set_shader_buffers;
+   vctx->base.set_hw_atomic_buffers = virgl_set_hw_atomic_buffers;
    vctx->base.set_shader_images = virgl_set_shader_images;
    vctx->base.memory_barrier = virgl_memory_barrier;
 

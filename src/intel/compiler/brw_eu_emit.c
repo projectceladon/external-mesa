@@ -371,7 +371,7 @@ brw_set_desc_ex(struct brw_codegen *p, brw_inst *inst,
    assert(brw_inst_opcode(devinfo, inst) == BRW_OPCODE_SEND ||
           brw_inst_opcode(devinfo, inst) == BRW_OPCODE_SENDC);
    brw_inst_set_src1_file_type(devinfo, inst,
-                               BRW_IMMEDIATE_VALUE, BRW_REGISTER_TYPE_D);
+                               BRW_IMMEDIATE_VALUE, BRW_REGISTER_TYPE_UD);
    brw_inst_set_send_desc(devinfo, inst, desc);
    if (devinfo->gen >= 9)
       brw_inst_set_send_ex_desc(devinfo, inst, ex_desc);
@@ -925,8 +925,8 @@ brw_MOV(struct brw_codegen *p, struct brw_reg dest, struct brw_reg src0)
    const struct gen_device_info *devinfo = p->devinfo;
 
    /* When converting F->DF on IVB/BYT, every odd source channel is ignored.
-    * To avoid the problems that causes, we use a <1,2,0> source region to read
-    * each element twice.
+    * To avoid the problems that causes, we use an <X,2,0> source region to
+    * read each element twice.
     */
    if (devinfo->gen == 7 && !devinfo->is_haswell &&
        brw_get_default_access_mode(p) == BRW_ALIGN_1 &&
@@ -935,11 +935,8 @@ brw_MOV(struct brw_codegen *p, struct brw_reg dest, struct brw_reg src0)
         src0.type == BRW_REGISTER_TYPE_D ||
         src0.type == BRW_REGISTER_TYPE_UD) &&
        !has_scalar_region(src0)) {
-      assert(src0.vstride == BRW_VERTICAL_STRIDE_4 &&
-             src0.width == BRW_WIDTH_4 &&
-             src0.hstride == BRW_HORIZONTAL_STRIDE_1);
-
-      src0.vstride = BRW_VERTICAL_STRIDE_1;
+      assert(src0.vstride == src0.width + src0.hstride);
+      src0.vstride = src0.hstride;
       src0.width = BRW_WIDTH_2;
       src0.hstride = BRW_HORIZONTAL_STRIDE_0;
    }
@@ -2797,6 +2794,53 @@ brw_untyped_atomic(struct brw_codegen *p,
    const unsigned mask = align1 ? WRITEMASK_XYZW : WRITEMASK_X;
 
    brw_send_indirect_surface_message(p, sfid, brw_writemask(dst, mask),
+                                     payload, surface, desc);
+}
+
+static uint32_t
+brw_dp_untyped_atomic_float_desc(struct brw_codegen *p,
+                                 unsigned atomic_op,
+                                 bool response_expected)
+{
+   const struct gen_device_info *devinfo = p->devinfo;
+   const unsigned msg_type = GEN9_DATAPORT_DC_PORT1_UNTYPED_ATOMIC_FLOAT_OP;
+   unsigned msg_control =
+      atomic_op | /* Atomic Operation Type: BRW_AOP_F* */
+      (response_expected ? 1 << 5 : 0); /* Return data expected */
+
+   assert(devinfo->gen >= 9);
+   assert(brw_get_default_access_mode(p) == BRW_ALIGN_1);
+
+   if (brw_get_default_exec_size(p) != BRW_EXECUTE_16)
+      msg_control |= 1 << 4; /* SIMD8 mode */
+
+   return brw_dp_surface_desc(devinfo, msg_type, msg_control);
+}
+
+void
+brw_untyped_atomic_float(struct brw_codegen *p,
+                         struct brw_reg dst,
+                         struct brw_reg payload,
+                         struct brw_reg surface,
+                         unsigned atomic_op,
+                         unsigned msg_length,
+                         bool response_expected,
+                         bool header_present)
+{
+   const struct gen_device_info *devinfo = p->devinfo;
+
+   assert(devinfo->gen >= 9);
+   assert(brw_get_default_access_mode(p) == BRW_ALIGN_1);
+
+   const unsigned sfid = HSW_SFID_DATAPORT_DATA_CACHE_1;
+   const unsigned response_length = brw_surface_payload_size(
+      p, response_expected, true, true);
+   const unsigned desc =
+      brw_message_desc(devinfo, msg_length, response_length, header_present) |
+      brw_dp_untyped_atomic_float_desc(p, atomic_op, response_expected);
+
+   brw_send_indirect_surface_message(p, sfid,
+                                     brw_writemask(dst, WRITEMASK_XYZW),
                                      payload, surface, desc);
 }
 

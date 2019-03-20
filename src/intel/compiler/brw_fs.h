@@ -216,14 +216,20 @@ public:
                               nir_intrinsic_instr *instr);
    void nir_emit_cs_intrinsic(const brw::fs_builder &bld,
                               nir_intrinsic_instr *instr);
+   fs_reg get_nir_image_intrinsic_image(const brw::fs_builder &bld,
+                                        nir_intrinsic_instr *instr);
    void nir_emit_intrinsic(const brw::fs_builder &bld,
                            nir_intrinsic_instr *instr);
    void nir_emit_tes_intrinsic(const brw::fs_builder &bld,
                                nir_intrinsic_instr *instr);
    void nir_emit_ssbo_atomic(const brw::fs_builder &bld,
                              int op, nir_intrinsic_instr *instr);
+   void nir_emit_ssbo_atomic_float(const brw::fs_builder &bld,
+                                   int op, nir_intrinsic_instr *instr);
    void nir_emit_shared_atomic(const brw::fs_builder &bld,
                                int op, nir_intrinsic_instr *instr);
+   void nir_emit_shared_atomic_float(const brw::fs_builder &bld,
+                                     int op, nir_intrinsic_instr *instr);
    void nir_emit_texture(const brw::fs_builder &bld,
                          nir_tex_instr *instr);
    void nir_emit_jump(const brw::fs_builder &bld,
@@ -231,7 +237,6 @@ public:
    fs_reg get_nir_src(const nir_src &src);
    fs_reg get_nir_src_imm(const nir_src &src);
    fs_reg get_nir_dest(const nir_dest &dest);
-   fs_reg get_nir_image_deref(nir_deref_instr *deref);
    fs_reg get_indirect_offset(nir_intrinsic_instr *instr);
    void emit_percomp(const brw::fs_builder &bld, const fs_inst &inst,
                      unsigned wr_mask);
@@ -476,6 +481,10 @@ private:
                          struct brw_reg src,
                          struct brw_reg idx);
 
+   void generate_quad_swizzle(const fs_inst *inst,
+                              struct brw_reg dst, struct brw_reg src,
+                              unsigned swiz);
+
    bool patch_discard_jumps_to_fb_writes();
 
    const struct brw_compiler *compiler;
@@ -527,6 +536,25 @@ namespace brw {
       } else {
          return fs_reg(retype(brw_vec8_grf(regs[0], 0), type));
       }
+   }
+
+   /**
+    * Remove any modifiers from the \p i-th source region of the instruction,
+    * including negate, abs and any implicit type conversion to the execution
+    * type.  Instead any source modifiers will be implemented as a separate
+    * MOV instruction prior to the original instruction.
+    */
+   inline bool
+   lower_src_modifiers(fs_visitor *v, bblock_t *block, fs_inst *inst, unsigned i)
+   {
+      assert(inst->components_read(i) == 1);
+      const fs_builder ibld(v, block, inst);
+      const fs_reg tmp = ibld.vgrf(get_exec_type(inst));
+
+      ibld.MOV(tmp, inst->src[i]);
+      inst->src[i] = tmp;
+
+      return true;
    }
 }
 

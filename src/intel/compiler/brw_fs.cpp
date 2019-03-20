@@ -39,6 +39,7 @@
 #include "compiler/glsl_types.h"
 #include "compiler/nir/nir_builder.h"
 #include "program/prog_parameter.h"
+#include "util/u_math.h"
 
 using namespace brw;
 
@@ -242,6 +243,7 @@ fs_inst::is_send_from_grf() const
    case FS_OPCODE_INTERPOLATE_AT_SHARED_OFFSET:
    case FS_OPCODE_INTERPOLATE_AT_PER_SLOT_OFFSET:
    case SHADER_OPCODE_UNTYPED_ATOMIC:
+   case SHADER_OPCODE_UNTYPED_ATOMIC_FLOAT:
    case SHADER_OPCODE_UNTYPED_SURFACE_READ:
    case SHADER_OPCODE_UNTYPED_SURFACE_WRITE:
    case SHADER_OPCODE_BYTE_SCATTERED_WRITE:
@@ -313,6 +315,24 @@ fs_inst::has_source_and_destination_hazard() const
        * may stomp all over it.
        */
       return true;
+   case SHADER_OPCODE_QUAD_SWIZZLE:
+      switch (src[1].ud) {
+      case BRW_SWIZZLE_XXXX:
+      case BRW_SWIZZLE_YYYY:
+      case BRW_SWIZZLE_ZZZZ:
+      case BRW_SWIZZLE_WWWW:
+      case BRW_SWIZZLE_XXZZ:
+      case BRW_SWIZZLE_YYWW:
+      case BRW_SWIZZLE_XYXY:
+      case BRW_SWIZZLE_ZWZW:
+         /* These can be implemented as a single Align1 region on all
+          * platforms, so there's never a hazard between source and
+          * destination.  C.f. fs_generator::generate_quad_swizzle().
+          */
+         return false;
+      default:
+         return !is_uniform(src[0]);
+      }
    default:
       /* The SIMD16 compressed instruction
        *
@@ -512,16 +532,14 @@ type_size_scalar(const struct glsl_type *type)
       }
       return size;
    case GLSL_TYPE_SAMPLER:
-      /* Samplers take up no register space, since they're baked in at
-       * link time.
-       */
-      return 0;
    case GLSL_TYPE_ATOMIC_UINT:
+   case GLSL_TYPE_IMAGE:
+      /* Samplers, atomics, and images take up no register space, since
+       * they're baked in at link time.
+       */
       return 0;
    case GLSL_TYPE_SUBROUTINE:
       return 1;
-   case GLSL_TYPE_IMAGE:
-      return BRW_IMAGE_PARAM_SIZE;
    case GLSL_TYPE_VOID:
    case GLSL_TYPE_ERROR:
    case GLSL_TYPE_INTERFACE:
@@ -827,6 +845,20 @@ fs_inst::components_read(unsigned i) const
    case FS_OPCODE_INTERPOLATE_AT_PER_SLOT_OFFSET:
       return (i == 0 ? 2 : 1);
 
+   case SHADER_OPCODE_UNTYPED_ATOMIC_FLOAT_LOGICAL: {
+      assert(src[3].file == IMM &&
+             src[4].file == IMM);
+      const unsigned op = src[4].ud;
+      /* Surface coordinates. */
+      if (i == 0)
+         return src[3].ud;
+      /* Surface operation source. */
+      else if (i == 1 && op == BRW_AOP_FCMPWR)
+         return 2;
+      else
+         return 1;
+   }
+
    default:
       return 1;
    }
@@ -854,6 +886,7 @@ fs_inst::size_read(int arg) const
    case SHADER_OPCODE_URB_READ_SIMD8:
    case SHADER_OPCODE_URB_READ_SIMD8_PER_SLOT:
    case SHADER_OPCODE_UNTYPED_ATOMIC:
+   case SHADER_OPCODE_UNTYPED_ATOMIC_FLOAT:
    case SHADER_OPCODE_UNTYPED_SURFACE_READ:
    case SHADER_OPCODE_UNTYPED_SURFACE_WRITE:
    case SHADER_OPCODE_TYPED_ATOMIC:
@@ -1539,7 +1572,7 @@ fs_visitor::calculate_urb_setup()
    int urb_next = 0;
    /* Figure out where each of the incoming setup attributes lands. */
    if (devinfo->gen >= 6) {
-      if (_mesa_bitcount_64(nir->info.inputs_read &
+      if (util_bitcount64(nir->info.inputs_read &
                             BRW_FS_VARYING_INPUT_MASK) <= 16) {
          /* The SF/SBE pipeline stage can do arbitrary rearrangement of the
           * first 16 varying inputs, so we can put them wherever we want.
@@ -3838,6 +3871,9 @@ fs_visitor::lower_integer_multiplication()
             high.offset = inst->dst.offset % REG_SIZE;
 
             if (devinfo->gen >= 7) {
+               if (inst->src[1].abs)
+                  lower_src_modifiers(this, block, inst, 1);
+
                if (inst->src[1].file == IMM) {
                   ibld.MUL(low, inst->src[0],
                            brw_imm_uw(inst->src[1].ud & 0xffff));
@@ -3850,6 +3886,9 @@ fs_visitor::lower_integer_multiplication()
                            subscript(inst->src[1], BRW_REGISTER_TYPE_UW, 1));
                }
             } else {
+               if (inst->src[0].abs)
+                  lower_src_modifiers(this, block, inst, 0);
+
                ibld.MUL(low, subscript(inst->src[0], BRW_REGISTER_TYPE_UW, 0),
                         inst->src[1]);
                ibld.MUL(high, subscript(inst->src[0], BRW_REGISTER_TYPE_UW, 1),
@@ -3867,6 +3906,18 @@ fs_visitor::lower_integer_multiplication()
          }
 
       } else if (inst->opcode == SHADER_OPCODE_MULH) {
+         /* According to the BDW+ BSpec page for the "Multiply Accumulate
+          * High" instruction:
+          *
+          *  "An added preliminary mov is required for source modification on
+          *   src1:
+          *      mov (8) r3.0<1>:d -r3<8;8,1>:d
+          *      mul (8) acc0:d r2.0<8;8,1>:d r3.0<16;8,2>:uw
+          *      mach (8) r5.0<1>:d r2.0<8;8,1>:d r3.0<8;8,1>:d"
+          */
+         if (devinfo->gen >= 8 && (inst->src[1].negate || inst->src[1].abs))
+            lower_src_modifiers(this, block, inst, 1);
+
          /* Should have been lowered to 8-wide. */
          assert(inst->exec_size <= get_lowered_simd_width(devinfo, inst));
          const fs_reg acc = retype(brw_acc_reg(inst->exec_size),
@@ -3882,8 +3933,6 @@ fs_visitor::lower_integer_multiplication()
              * On Gen8, the multiply instruction does a full 32x32-bit
              * multiply, but in order to do a 64-bit multiply we can simulate
              * the previous behavior and then use a MACH instruction.
-             *
-             * FINISHME: Don't use source modifiers on src1.
              */
             assert(mul->src[1].type == BRW_REGISTER_TYPE_D ||
                    mul->src[1].type == BRW_REGISTER_TYPE_UD);
@@ -4995,6 +5044,12 @@ fs_visitor::lower_logical_sends()
                                     ibld.sample_mask_reg());
          break;
 
+      case SHADER_OPCODE_UNTYPED_ATOMIC_FLOAT_LOGICAL:
+         lower_surface_logical_send(ibld, inst,
+                                    SHADER_OPCODE_UNTYPED_ATOMIC_FLOAT,
+                                    ibld.sample_mask_reg());
+         break;
+
       case SHADER_OPCODE_TYPED_SURFACE_READ_LOGICAL:
          lower_surface_logical_send(ibld, inst,
                                     SHADER_OPCODE_TYPED_SURFACE_READ,
@@ -5498,6 +5553,7 @@ get_lowered_simd_width(const struct gen_device_info *devinfo,
       return 8;
 
    case SHADER_OPCODE_UNTYPED_ATOMIC_LOGICAL:
+   case SHADER_OPCODE_UNTYPED_ATOMIC_FLOAT_LOGICAL:
    case SHADER_OPCODE_UNTYPED_SURFACE_READ_LOGICAL:
    case SHADER_OPCODE_UNTYPED_SURFACE_WRITE_LOGICAL:
    case SHADER_OPCODE_BYTE_SCATTERED_WRITE_LOGICAL:
@@ -5512,9 +5568,14 @@ get_lowered_simd_width(const struct gen_device_info *devinfo,
    case SHADER_OPCODE_URB_WRITE_SIMD8_MASKED_PER_SLOT:
       return MIN2(8, inst->exec_size);
 
-   case SHADER_OPCODE_QUAD_SWIZZLE:
-      return 8;
-
+   case SHADER_OPCODE_QUAD_SWIZZLE: {
+      const unsigned swiz = inst->src[1].ud;
+      return (is_uniform(inst->src[0]) ?
+                 get_fpu_lowered_simd_width(devinfo, inst) :
+              devinfo->gen < 11 && type_sz(inst->src[0].type) == 4 ? 8 :
+              swiz == BRW_SWIZZLE_XYXY || swiz == BRW_SWIZZLE_ZWZW ? 4 :
+              get_fpu_lowered_simd_width(devinfo, inst));
+   }
    case SHADER_OPCODE_MOV_INDIRECT: {
       /* From IVB and HSW PRMs:
        *
@@ -5579,8 +5640,10 @@ needs_src_copy(const fs_builder &lbld, const fs_inst *inst, unsigned i)
 static fs_reg
 emit_unzip(const fs_builder &lbld, fs_inst *inst, unsigned i)
 {
+   assert(lbld.group() >= inst->group);
+
    /* Specified channel group from the source region. */
-   const fs_reg src = horiz_offset(inst->src[i], lbld.group());
+   const fs_reg src = horiz_offset(inst->src[i], lbld.group() - inst->group);
 
    if (needs_src_copy(lbld, inst, i)) {
       /* Builder of the right width to perform the copy avoiding uninitialized
@@ -5669,9 +5732,10 @@ emit_zip(const fs_builder &lbld_before, const fs_builder &lbld_after,
 {
    assert(lbld_before.dispatch_width() == lbld_after.dispatch_width());
    assert(lbld_before.group() == lbld_after.group());
+   assert(lbld_after.group() >= inst->group);
 
    /* Specified channel group from the destination region. */
-   const fs_reg dst = horiz_offset(inst->dst, lbld_after.group());
+   const fs_reg dst = horiz_offset(inst->dst, lbld_after.group() - inst->group);
    const unsigned dst_size = inst->size_written /
       inst->dst.component_size(inst->exec_size);
 
@@ -6000,6 +6064,12 @@ fs_visitor::dump_instruction(backend_instruction *be_inst, FILE *file)
          case BRW_REGISTER_TYPE_UW:
          case BRW_REGISTER_TYPE_UD:
             fprintf(file, "%uu", inst->src[i].ud);
+            break;
+         case BRW_REGISTER_TYPE_Q:
+            fprintf(file, "%" PRId64 "q", inst->src[i].d64);
+            break;
+         case BRW_REGISTER_TYPE_UQ:
+            fprintf(file, "%" PRIu64 "uq", inst->src[i].u64);
             break;
          case BRW_REGISTER_TYPE_VF:
             fprintf(file, "[%-gF, %-gF, %-gF, %-gF]",
@@ -6571,14 +6641,18 @@ fs_visitor::run_tcs_single_patch()
    if (tcs_prog_data->instances == 1) {
       invocation_id = channels_ud;
    } else {
+      const unsigned invocation_id_mask = devinfo->gen >= 11 ?
+         INTEL_MASK(22, 16) : INTEL_MASK(23, 17);
+      const unsigned invocation_id_shift = devinfo->gen >= 11 ? 16 : 17;
+
       invocation_id = bld.vgrf(BRW_REGISTER_TYPE_UD);
 
       /* Get instance number from g0.2 bits 23:17, and multiply it by 8. */
       fs_reg t = bld.vgrf(BRW_REGISTER_TYPE_UD);
       fs_reg instance_times_8 = bld.vgrf(BRW_REGISTER_TYPE_UD);
       bld.AND(t, fs_reg(retype(brw_vec1_grf(0, 2), BRW_REGISTER_TYPE_UD)),
-              brw_imm_ud(INTEL_MASK(23, 17)));
-      bld.SHR(instance_times_8, t, brw_imm_ud(17 - 3));
+              brw_imm_ud(invocation_id_mask));
+      bld.SHR(instance_times_8, t, brw_imm_ud(invocation_id_shift - 3));
 
       bld.ADD(invocation_id, instance_times_8, channels_ud);
    }
@@ -6779,9 +6853,6 @@ fs_visitor::run_fs(bool allow_spilling, bool do_rep_send)
                  retype(dispatch_mask, BRW_REGISTER_TYPE_UW));
       }
 
-      /* Generate FS IR for main().  (the visitor only descends into
-       * functions called "main").
-       */
       emit_nir_code();
 
       if (failed)

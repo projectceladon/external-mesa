@@ -42,7 +42,7 @@ libglsl_util = static_library(
 sha1_h = custom_target(
   'git_sha1.h',
   output : 'git_sha1.h',
-  command : [prog_python2, git_sha1_gen_py, '--output', '@OUTPUT@'],
+  command : [prog_python, git_sha1_gen_py, '--output', '@OUTPUT@'],
   build_always : true, # commit sha1 can change without having touched these files
 )
 
@@ -71,7 +71,7 @@ subdir('loader')
 if with_platform_haiku
   subdir('hgl')
 endif
-if with_glx != 'disabled'
+if with_glx == 'dri'
   subdir('glx')
 endif
 if with_gbm
@@ -86,7 +86,7 @@ if with_gallium
   subdir('gallium')
   # This has to be here since it requires libgallium, and subdir cannot
   # contain ..
-  if with_tests
+  if with_tests and with_shared_glapi
     subdir('mesa/state_tracker/tests')
   endif
 endif

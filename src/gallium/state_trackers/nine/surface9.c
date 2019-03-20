@@ -111,6 +111,8 @@ NineSurface9_ctor( struct NineSurface9 *This,
     if (pDesc->Usage & D3DUSAGE_RENDERTARGET) {
         This->base.info.bind |= PIPE_BIND_RENDER_TARGET;
     } else if (pDesc->Usage & D3DUSAGE_DEPTHSTENCIL) {
+        if (!depth_stencil_format(pDesc->Format))
+            return D3DERR_INVALIDCALL;
         This->base.info.bind = d3d9_get_pipe_depth_format_bindings(pDesc->Format);
         if (TextureType)
             This->base.info.bind |= PIPE_BIND_SAMPLER_VIEW;
@@ -658,7 +660,7 @@ NineSurface9_CopyMemToDefault( struct NineSurface9 *This,
 
     nine_context_box_upload(This->base.base.device,
                             &From->pending_uploads_counter,
-                            (struct NineUnknown *)This,
+                            (struct NineUnknown *)From,
                             r_dst,
                             This->level,
                             &dst_box,

@@ -583,6 +583,72 @@ fs_generator::generate_shuffle(fs_inst *inst,
 }
 
 void
+fs_generator::generate_quad_swizzle(const fs_inst *inst,
+                                    struct brw_reg dst, struct brw_reg src,
+                                    unsigned swiz)
+{
+   /* Requires a quad. */
+   assert(inst->exec_size >= 4);
+
+   if (src.file == BRW_IMMEDIATE_VALUE ||
+       has_scalar_region(src)) {
+      /* The value is uniform across all channels */
+      brw_MOV(p, dst, src);
+
+   } else if (devinfo->gen < 11 && type_sz(src.type) == 4) {
+      /* This only works on 8-wide 32-bit values */
+      assert(inst->exec_size == 8);
+      assert(src.hstride == BRW_HORIZONTAL_STRIDE_1);
+      assert(src.vstride == src.width + 1);
+      brw_set_default_access_mode(p, BRW_ALIGN_16);
+      struct brw_reg swiz_src = stride(src, 4, 4, 1);
+      swiz_src.swizzle = swiz;
+      brw_MOV(p, dst, swiz_src);
+
+   } else {
+      assert(src.hstride == BRW_HORIZONTAL_STRIDE_1);
+      assert(src.vstride == src.width + 1);
+      const struct brw_reg src_0 = suboffset(src, BRW_GET_SWZ(swiz, 0));
+
+      switch (swiz) {
+      case BRW_SWIZZLE_XXXX:
+      case BRW_SWIZZLE_YYYY:
+      case BRW_SWIZZLE_ZZZZ:
+      case BRW_SWIZZLE_WWWW:
+         brw_MOV(p, dst, stride(src_0, 4, 4, 0));
+         break;
+
+      case BRW_SWIZZLE_XXZZ:
+      case BRW_SWIZZLE_YYWW:
+         brw_MOV(p, dst, stride(src_0, 2, 2, 0));
+         break;
+
+      case BRW_SWIZZLE_XYXY:
+      case BRW_SWIZZLE_ZWZW:
+         assert(inst->exec_size == 4);
+         brw_MOV(p, dst, stride(src_0, 0, 2, 1));
+         break;
+
+      default:
+         assert(inst->force_writemask_all);
+         brw_set_default_exec_size(p, cvt(inst->exec_size / 4) - 1);
+
+         for (unsigned c = 0; c < 4; c++) {
+            brw_inst *insn = brw_MOV(
+               p, stride(suboffset(dst, c),
+                         4 * inst->dst.stride, 1, 4 * inst->dst.stride),
+               stride(suboffset(src, BRW_GET_SWZ(swiz, c)), 4, 1, 0));
+
+            brw_inst_set_no_dd_clear(devinfo, insn, c < 3);
+            brw_inst_set_no_dd_check(devinfo, insn, c > 0);
+         }
+
+         break;
+      }
+   }
+}
+
+void
 fs_generator::generate_urb_read(fs_inst *inst,
                                 struct brw_reg dst,
                                 struct brw_reg header)
@@ -630,7 +696,7 @@ fs_generator::generate_urb_write(fs_inst *inst, struct brw_reg payload)
 
    brw_set_dest(p, insn, brw_null_reg());
    brw_set_src0(p, insn, payload);
-   brw_set_src1(p, insn, brw_imm_d(0));
+   brw_set_src1(p, insn, brw_imm_ud(0u));
 
    brw_inst_set_sfid(p->devinfo, insn, BRW_SFID_URB);
    brw_inst_set_urb_opcode(p->devinfo, insn, GEN8_URB_OPCODE_SIMD8_WRITE);
@@ -659,7 +725,7 @@ fs_generator::generate_cs_terminate(fs_inst *inst, struct brw_reg payload)
 
    brw_set_dest(p, insn, retype(brw_null_reg(), BRW_REGISTER_TYPE_UW));
    brw_set_src0(p, insn, retype(payload, BRW_REGISTER_TYPE_UW));
-   brw_set_src1(p, insn, brw_imm_d(0));
+   brw_set_src1(p, insn, brw_imm_ud(0u));
 
    /* Terminate a compute shader by sending a message to the thread spawner.
     */
@@ -958,6 +1024,7 @@ fs_generator::generate_tex(fs_inst *inst, struct brw_reg dst, struct brw_reg src
          }
          break;
       case SHADER_OPCODE_TXS:
+      case SHADER_OPCODE_IMAGE_SIZE:
 	 msg_type = GEN5_SAMPLER_MESSAGE_SAMPLE_RESINFO;
 	 break;
       case SHADER_OPCODE_TXD:
@@ -1126,10 +1193,19 @@ fs_generator::generate_tex(fs_inst *inst, struct brw_reg dst, struct brw_reg src
       }
    }
 
-   uint32_t base_binding_table_index = (inst->opcode == SHADER_OPCODE_TG4 ||
-         inst->opcode == SHADER_OPCODE_TG4_OFFSET)
-         ? prog_data->binding_table.gather_texture_start
-         : prog_data->binding_table.texture_start;
+   uint32_t base_binding_table_index;
+   switch (inst->opcode) {
+   case SHADER_OPCODE_TG4:
+   case SHADER_OPCODE_TG4_OFFSET:
+      base_binding_table_index = prog_data->binding_table.gather_texture_start;
+      break;
+   case SHADER_OPCODE_IMAGE_SIZE:
+      base_binding_table_index = prog_data->binding_table.image_start;
+      break;
+   default:
+      base_binding_table_index = prog_data->binding_table.texture_start;
+      break;
+   }
 
    if (surface_index.file == BRW_IMMEDIATE_VALUE &&
        sampler_index.file == BRW_IMMEDIATE_VALUE) {
@@ -2114,6 +2190,11 @@ fs_generator::generate_code(const cfg_t *cfg, int dispatch_width)
       case SHADER_OPCODE_SAMPLEINFO:
 	 generate_tex(inst, dst, src[0], src[1], src[2]);
 	 break;
+
+      case SHADER_OPCODE_IMAGE_SIZE:
+         generate_tex(inst, dst, src[0], src[1], brw_imm_ud(0));
+         break;
+
       case FS_OPCODE_DDX_COARSE:
       case FS_OPCODE_DDX_FINE:
          generate_ddx(inst, dst, src[0]);
@@ -2194,6 +2275,13 @@ fs_generator::generate_code(const cfg_t *cfg, int dispatch_width)
          brw_untyped_atomic(p, dst, src[0], src[1], src[2].ud,
                             inst->mlen, !inst->dst.is_null(),
                             inst->header_size);
+         break;
+
+      case SHADER_OPCODE_UNTYPED_ATOMIC_FLOAT:
+         assert(src[2].file == BRW_IMMEDIATE_VALUE);
+         brw_untyped_atomic_float(p, dst, src[0], src[1], src[2].ud,
+                                  inst->mlen, !inst->dst.is_null(),
+                                  inst->header_size);
          break;
 
       case SHADER_OPCODE_UNTYPED_SURFACE_READ:
@@ -2281,23 +2369,9 @@ fs_generator::generate_code(const cfg_t *cfg, int dispatch_width)
          break;
 
       case SHADER_OPCODE_QUAD_SWIZZLE:
-         /* This only works on 8-wide 32-bit values */
-         assert(inst->exec_size == 8);
-         assert(type_sz(src[0].type) == 4);
-         assert(inst->force_writemask_all);
          assert(src[1].file == BRW_IMMEDIATE_VALUE);
          assert(src[1].type == BRW_REGISTER_TYPE_UD);
-
-         if (src[0].file == BRW_IMMEDIATE_VALUE ||
-             (src[0].vstride == 0 && src[0].hstride == 0)) {
-            /* The value is uniform across all channels */
-            brw_MOV(p, dst, src[0]);
-         } else {
-            brw_set_default_access_mode(p, BRW_ALIGN_16);
-            struct brw_reg swiz_src = stride(src[0], 4, 4, 1);
-            swiz_src.swizzle = inst->src[1].ud;
-            brw_MOV(p, dst, swiz_src);
-         }
+         generate_quad_swizzle(inst, dst, src[0], src[1].ud);
          break;
 
       case SHADER_OPCODE_CLUSTER_BROADCAST: {
