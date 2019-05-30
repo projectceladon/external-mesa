@@ -1038,10 +1038,7 @@ struct anv_device {
     pthread_mutex_t                             mutex;
     pthread_cond_t                              queue_submit;
     bool                                        _lost;
-    bool                                        needwait;
 };
-#define WAIT_DETECT_MAX_LEN 100
-
 
 static inline struct anv_state_pool *
 anv_binding_table_pool(struct anv_device *device)
@@ -1082,8 +1079,6 @@ anv_state_flush(struct anv_device *device, struct anv_state state)
       return;
 
    gen_flush_range(state.map, state.alloc_size);
-   if(device->needwait)
-      usleep(8000);
 }
 
 void anv_device_init_blorp(struct anv_device *device);
