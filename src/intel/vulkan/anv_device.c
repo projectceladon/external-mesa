@@ -980,8 +980,11 @@ void anv_GetPhysicalDeviceProperties(
    const uint32_t max_samplers = (devinfo->gen >= 8 || devinfo->is_haswell) ?
                                  128 : 16;
 
+   const uint32_t max_images = devinfo->gen < 9 ? MAX_GEN8_IMAGES : MAX_IMAGES;
+
    VkSampleCountFlags sample_counts =
       isl_device_get_sample_counts(&pdevice->isl_dev);
+
 
    VkPhysicalDeviceLimits limits = {
       .maxImageDimension1D                      = (1 << 14),
@@ -1002,7 +1005,7 @@ void anv_GetPhysicalDeviceProperties(
       .maxPerStageDescriptorUniformBuffers      = 64,
       .maxPerStageDescriptorStorageBuffers      = 64,
       .maxPerStageDescriptorSampledImages       = max_samplers,
-      .maxPerStageDescriptorStorageImages       = 64,
+      .maxPerStageDescriptorStorageImages       = max_images,
       .maxPerStageDescriptorInputAttachments    = 64,
       .maxPerStageResources                     = 250,
       .maxDescriptorSetSamplers                 = 6 * max_samplers, /* number of stages * maxPerStageDescriptorSamplers */
@@ -1011,7 +1014,7 @@ void anv_GetPhysicalDeviceProperties(
       .maxDescriptorSetStorageBuffers           = 6 * 64,           /* number of stages * maxPerStageDescriptorStorageBuffers */
       .maxDescriptorSetStorageBuffersDynamic    = MAX_DYNAMIC_BUFFERS / 2,
       .maxDescriptorSetSampledImages            = 6 * max_samplers, /* number of stages * maxPerStageDescriptorSampledImages */
-      .maxDescriptorSetStorageImages            = 6 * 64,           /* number of stages * maxPerStageDescriptorStorageImages */
+      .maxDescriptorSetStorageImages            = 6 * max_images,   /* number of stages * maxPerStageDescriptorStorageImages */
       .maxDescriptorSetInputAttachments         = 256,
       .maxVertexInputAttributes                 = MAX_VBS,
       .maxVertexInputBindings                   = MAX_VBS,
@@ -1043,7 +1046,7 @@ void anv_GetPhysicalDeviceProperties(
          16 * devinfo->max_cs_threads,
          16 * devinfo->max_cs_threads,
       },
-      .subPixelPrecisionBits                    = 4 /* FIXME */,
+      .subPixelPrecisionBits                    = 8,
       .subTexelPrecisionBits                    = 4 /* FIXME */,
       .mipmapPrecisionBits                      = 4 /* FIXME */,
       .maxDrawIndexedIndexValue                 = UINT32_MAX,
@@ -1649,11 +1652,6 @@ VkResult anv_CreateDevice(
    ANV_FROM_HANDLE(anv_physical_device, physical_device, physicalDevice);
    VkResult result;
    struct anv_device *device;
-   FILE *fp = NULL;
-   char procPath[WAIT_DETECT_MAX_LEN]={0};
-   char procName[WAIT_DETECT_MAX_LEN]={0};
-   int count = 0;
-   int need = 0;
 
    assert(pCreateInfo->sType == VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO);
 
@@ -1717,18 +1715,6 @@ VkResult anv_CreateDevice(
    device->chipset_id = physical_device->chipset_id;
    device->no_hw = physical_device->no_hw;
    device->_lost = false;
-   device->needwait = false;
-   sprintf(procPath,"/proc/%d/comm",getpid());
-   fp = fopen(procPath, "r");
-   if(fp != NULL) {
-      count = fread(procName, 1, sizeof(procName)-1, fp);
-      if(count > 0) {
-         procName[count-1] = '\0';
-         if(strcmp(procName, "org.skia.skqp") == 0 && !device->info.has_llc)
-            device->needwait= true;
-         }
-      fclose(fp);
-   }
 
    if (pAllocator)
       device->alloc = *pAllocator;

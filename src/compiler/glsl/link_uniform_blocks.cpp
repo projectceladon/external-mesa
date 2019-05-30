@@ -241,20 +241,24 @@ process_block_array(struct uniform_block_array_elements *ub_array, char **name,
                     struct gl_context *ctx, struct gl_shader_program *prog,
                     unsigned first_index)
 {
-   for (unsigned j = 0; j < ub_array->first_unused_array_element; j++) {
+   for (unsigned j = 0; j < ub_array->num_array_elements; j++) {
       size_t new_length = name_length;
 
+      unsigned int element_idx = ub_array->array_elements[j];
       /* Append the subscript to the current variable name */
-      ralloc_asprintf_rewrite_tail(name, &new_length, "[%u]", j);
+      ralloc_asprintf_rewrite_tail(name, &new_length, "[%u]", element_idx);
 
       if (ub_array->array) {
+         unsigned boffset = (*binding_offset) + (element_idx *
+                             ub_array->original_dim_size);
          process_block_array(ub_array->array, name, new_length, blocks,
                              parcel, variables, b, block_index,
-                             binding_offset, ctx, prog, first_index);
+                             &boffset, ctx, prog, first_index);
       } else {
+         unsigned boffset = (*binding_offset) + element_idx;
          process_block_array_leaf(*name, blocks,
                                   parcel, variables, b, block_index,
-                                  binding_offset, *block_index - first_index,
+                                  &boffset, *block_index - first_index,
                                   ctx, prog);
       }
    }
@@ -306,7 +310,6 @@ process_block_array_leaf(const char *name,
       (unsigned)(ptrdiff_t)(&variables[parcel->index] - blocks[i].Uniforms);
 
    *block_index = *block_index + 1;
-   *binding_offset = *binding_offset + 1;
 }
 
 /* This function resizes the array types of the block so that later we can use
@@ -324,7 +327,7 @@ resize_block_array(const glsl_type *type,
 
       const glsl_type *new_type =
          glsl_type::get_array_instance(new_child_type,
-                                       ub_array->first_unused_array_element);
+                                       ub_array->num_array_elements);
       ub_array->ir->array->type = new_type;
       return new_type;
    } else {
@@ -439,6 +442,7 @@ link_uniform_blocks(void *mem_ctx,
            GLSL_INTERFACE_PACKING_PACKED)) {
          b->type = resize_block_array(b->type, b->array);
          b->var->type = b->type;
+         b->var->data.max_array_access = b->type->length - 1;
       }
 
       block_size.num_active_uniforms = 0;
