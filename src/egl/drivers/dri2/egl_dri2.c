@@ -230,8 +230,10 @@ dri2_add_config(_EGLDisplay *disp, const __DRIconfig *dri_config, int id,
    bind_to_texture_rgb = 0;
    bind_to_texture_rgba = 0;
 
-   for (int i = 0; dri2_dpy->core->indexConfigAttrib(dri_config, i, &attrib,
-                                                     &value); ++i) {
+   for (int i = 0; i < __DRI_ATTRIB_MAX; ++i) {
+      if (!dri2_dpy->core->indexConfigAttrib(dri_config, i, &attrib, &value))
+         break;
+
       switch (attrib) {
       case __DRI_ATTRIB_RENDER_TYPE:
          if (value & __DRI_ATTRIB_RGBA_BIT)
@@ -2852,7 +2854,8 @@ dri2_bind_wayland_display_wl(_EGLDriver *drv, _EGLDisplay *disp,
    const struct wayland_drm_callbacks wl_drm_callbacks = {
       .authenticate = (int(*)(void *, uint32_t)) dri2_dpy->vtbl->authenticate,
       .reference_buffer = dri2_wl_reference_buffer,
-      .release_buffer = dri2_wl_release_buffer
+      .release_buffer = dri2_wl_release_buffer,
+      .is_format_supported = dri2_wl_is_format_supported
    };
    int flags = 0;
    uint64_t cap;

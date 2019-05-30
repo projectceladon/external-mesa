@@ -524,6 +524,14 @@ radv_pipeline_compute_spi_color_formats(struct radv_pipeline *pipeline,
 		col_format |= cf << (4 * i);
 	}
 
+	if (!col_format && blend->need_src_alpha & (1 << 0)) {
+		/* When a subpass doesn't have any color attachments, write the
+		 * alpha channel of MRT0 when alpha coverage is enabled because
+		 * the depth attachment needs it.
+		 */
+		col_format |= V_028714_SPI_SHADER_32_ABGR;
+	}
+
 	/* If the i-th target format is set, all previous target formats must
 	 * be non-zero to avoid hangs.
 	 */
@@ -688,6 +696,7 @@ radv_pipeline_init_blend_state(struct radv_pipeline *pipeline,
 
 	if (vkms && vkms->alphaToCoverageEnable) {
 		blend.db_alpha_to_mask |= S_028B70_ALPHA_TO_MASK_ENABLE(1);
+		blend.need_src_alpha |= 0x1;
 	}
 
 	blend.cb_target_mask = 0;
@@ -3066,13 +3075,17 @@ radv_pipeline_generate_geometry_shader(struct radeon_cmdbuf *cs,
 	radv_pipeline_generate_hw_vs(cs, pipeline, pipeline->gs_copy_shader);
 }
 
-static uint32_t offset_to_ps_input(uint32_t offset, bool flat_shade)
+static uint32_t offset_to_ps_input(uint32_t offset, bool flat_shade, bool float16)
 {
 	uint32_t ps_input_cntl;
 	if (offset <= AC_EXP_PARAM_OFFSET_31) {
 		ps_input_cntl = S_028644_OFFSET(offset);
 		if (flat_shade)
 			ps_input_cntl |= S_028644_FLAT_SHADE(1);
+		if (float16) {
+			ps_input_cntl |= S_028644_FP16_INTERP_MODE(1) |
+			                 S_028644_ATTR0_VALID(1);
+		}
 	} else {
 		/* The input is a DEFAULT_VAL constant. */
 		assert(offset >= AC_EXP_PARAM_DEFAULT_VAL_0000 &&
@@ -3097,7 +3110,7 @@ radv_pipeline_generate_ps_inputs(struct radeon_cmdbuf *cs,
 	if (ps->info.info.ps.prim_id_input) {
 		unsigned vs_offset = outinfo->vs_output_param_offset[VARYING_SLOT_PRIMITIVE_ID];
 		if (vs_offset != AC_EXP_PARAM_UNDEFINED) {
-			ps_input_cntl[ps_offset] = offset_to_ps_input(vs_offset, true);
+			ps_input_cntl[ps_offset] = offset_to_ps_input(vs_offset, true, false);
 			++ps_offset;
 		}
 	}
@@ -3107,9 +3120,9 @@ radv_pipeline_generate_ps_inputs(struct radeon_cmdbuf *cs,
 	    ps->info.info.needs_multiview_view_index) {
 		unsigned vs_offset = outinfo->vs_output_param_offset[VARYING_SLOT_LAYER];
 		if (vs_offset != AC_EXP_PARAM_UNDEFINED)
-			ps_input_cntl[ps_offset] = offset_to_ps_input(vs_offset, true);
+			ps_input_cntl[ps_offset] = offset_to_ps_input(vs_offset, true, false);
 		else
-			ps_input_cntl[ps_offset] = offset_to_ps_input(AC_EXP_PARAM_DEFAULT_VAL_0000, true);
+			ps_input_cntl[ps_offset] = offset_to_ps_input(AC_EXP_PARAM_DEFAULT_VAL_0000, true, false);
 		++ps_offset;
 	}
 
@@ -3125,14 +3138,14 @@ radv_pipeline_generate_ps_inputs(struct radeon_cmdbuf *cs,
 
 		vs_offset = outinfo->vs_output_param_offset[VARYING_SLOT_CLIP_DIST0];
 		if (vs_offset != AC_EXP_PARAM_UNDEFINED) {
-			ps_input_cntl[ps_offset] = offset_to_ps_input(vs_offset, false);
+			ps_input_cntl[ps_offset] = offset_to_ps_input(vs_offset, false, false);
 			++ps_offset;
 		}
 
 		vs_offset = outinfo->vs_output_param_offset[VARYING_SLOT_CLIP_DIST1];
 		if (vs_offset != AC_EXP_PARAM_UNDEFINED &&
 		    ps->info.info.ps.num_input_clips_culls > 4) {
-			ps_input_cntl[ps_offset] = offset_to_ps_input(vs_offset, false);
+			ps_input_cntl[ps_offset] = offset_to_ps_input(vs_offset, false, false);
 			++ps_offset;
 		}
 	}
@@ -3140,6 +3153,7 @@ radv_pipeline_generate_ps_inputs(struct radeon_cmdbuf *cs,
 	for (unsigned i = 0; i < 32 && (1u << i) <= ps->info.fs.input_mask; ++i) {
 		unsigned vs_offset;
 		bool flat_shade;
+		bool float16;
 		if (!(ps->info.fs.input_mask & (1u << i)))
 			continue;
 
@@ -3151,8 +3165,9 @@ radv_pipeline_generate_ps_inputs(struct radeon_cmdbuf *cs,
 		}
 
 		flat_shade = !!(ps->info.fs.flat_shaded_mask & (1u << ps_offset));
+		float16 = !!(ps->info.fs.float16_shaded_mask & (1u << ps_offset));
 
-		ps_input_cntl[ps_offset] = offset_to_ps_input(vs_offset, flat_shade);
+		ps_input_cntl[ps_offset] = offset_to_ps_input(vs_offset, flat_shade, float16);
 		++ps_offset;
 	}
 
@@ -3179,11 +3194,11 @@ radv_compute_db_shader_control(const struct radv_device *device,
 	bool disable_rbplus = device->physical_device->has_rbplus &&
 	                      !device->physical_device->rbplus_allowed;
 
-	/* Do not enable the gl_SampleMask fragment shader output if MSAA is
-	 * disabled.
+	/* It shouldn't be needed to export gl_SampleMask when MSAA is disabled
+	 * but this appears to break Project Cars (DXVK). See
+	 * https://bugs.freedesktop.org/show_bug.cgi?id=109401
 	 */
-	bool mask_export_enable = ms->num_samples > 1 &&
-				  ps->info.info.ps.writes_sample_mask;
+	bool mask_export_enable = ps->info.info.ps.writes_sample_mask;
 
 	return  S_02880C_Z_EXPORT_ENABLE(ps->info.info.ps.writes_z) |
 		S_02880C_STENCIL_TEST_VAL_EXPORT_ENABLE(ps->info.info.ps.writes_stencil) |
@@ -3371,14 +3386,8 @@ radv_compute_ia_multi_vgt_param_helpers(struct radv_pipeline *pipeline,
 	else
 		ia_multi_vgt_param.primgroup_size = 128; /* recommended without a GS */
 
-	ia_multi_vgt_param.partial_es_wave = false;
-	if (pipeline->device->has_distributed_tess) {
-		if (radv_pipeline_has_gs(pipeline)) {
-			if (device->physical_device->rad_info.chip_class <= VI)
-				ia_multi_vgt_param.partial_es_wave = true;
-		}
-	}
 	/* GS requirement. */
+	ia_multi_vgt_param.partial_es_wave = false;
 	if (radv_pipeline_has_gs(pipeline) && device->physical_device->rad_info.chip_class <= VI)
 		if (SI_GS_PER_ES / ia_multi_vgt_param.primgroup_size >= pipeline->device->gs_table_depth - 3)
 			ia_multi_vgt_param.partial_es_wave = true;
@@ -3424,13 +3433,8 @@ radv_compute_ia_multi_vgt_param_helpers(struct radv_pipeline *pipeline,
 		/* Needed for 028B6C_DISTRIBUTION_MODE != 0 */
 		if (device->has_distributed_tess) {
 			if (radv_pipeline_has_gs(pipeline)) {
-				if (device->physical_device->rad_info.family == CHIP_TONGA ||
-				    device->physical_device->rad_info.family == CHIP_FIJI ||
-				    device->physical_device->rad_info.family == CHIP_POLARIS10 ||
-				    device->physical_device->rad_info.family == CHIP_POLARIS11 ||
-				    device->physical_device->rad_info.family == CHIP_POLARIS12 ||
-				    device->physical_device->rad_info.family == CHIP_VEGAM)
-					ia_multi_vgt_param.partial_vs_wave = true;
+				if (device->physical_device->rad_info.chip_class <= VI)
+					ia_multi_vgt_param.partial_es_wave = true;
 			} else {
 				ia_multi_vgt_param.partial_vs_wave = true;
 			}
@@ -3446,6 +3450,26 @@ radv_compute_ia_multi_vgt_param_helpers(struct radv_pipeline *pipeline,
 	     prim == V_008958_DI_PT_LINESTRIP_ADJ ||
 	     prim == V_008958_DI_PT_TRISTRIP_ADJ)) {
 		ia_multi_vgt_param.partial_vs_wave = true;
+	}
+
+	if (radv_pipeline_has_gs(pipeline)) {
+		/* On these chips there is the possibility of a hang if the
+		 * pipeline uses a GS and partial_vs_wave is not set.
+		 *
+		 * This mostly does not hit 4-SE chips, as those typically set
+		 * ia_switch_on_eoi and then partial_vs_wave is set for pipelines
+		 * with GS due to another workaround.
+		 *
+		 * Reproducer: https://bugs.freedesktop.org/show_bug.cgi?id=109242
+		 */
+		if (device->physical_device->rad_info.family == CHIP_TONGA ||
+		    device->physical_device->rad_info.family == CHIP_FIJI ||
+		    device->physical_device->rad_info.family == CHIP_POLARIS10 ||
+		    device->physical_device->rad_info.family == CHIP_POLARIS11 ||
+		    device->physical_device->rad_info.family == CHIP_POLARIS12 ||
+	            device->physical_device->rad_info.family == CHIP_VEGAM) {
+			ia_multi_vgt_param.partial_vs_wave = true;
+		}
 	}
 
 	ia_multi_vgt_param.base =

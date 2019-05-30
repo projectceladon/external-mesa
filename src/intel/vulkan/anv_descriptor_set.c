@@ -58,6 +58,9 @@ void anv_GetDescriptorSetLayoutSupport(
                anv_foreach_stage(s, binding->stageFlags)
                   surface_count[s] += sampler->n_planes;
             }
+         } else {
+            anv_foreach_stage(s, binding->stageFlags)
+               surface_count[s] += binding->descriptorCount;
          }
          break;
 
@@ -94,7 +97,22 @@ VkResult anv_CreateDescriptorSetLayout(
    uint32_t immutable_sampler_count = 0;
    for (uint32_t j = 0; j < pCreateInfo->bindingCount; j++) {
       max_binding = MAX2(max_binding, pCreateInfo->pBindings[j].binding);
-      if (pCreateInfo->pBindings[j].pImmutableSamplers)
+
+      /* From the Vulkan 1.1.97 spec for VkDescriptorSetLayoutBinding:
+       *
+       *    "If descriptorType specifies a VK_DESCRIPTOR_TYPE_SAMPLER or
+       *    VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER type descriptor, then
+       *    pImmutableSamplers can be used to initialize a set of immutable
+       *    samplers. [...]  If descriptorType is not one of these descriptor
+       *    types, then pImmutableSamplers is ignored.
+       *
+       * We need to be careful here and only parse pImmutableSamplers if we
+       * have one of the right descriptor types.
+       */
+      VkDescriptorType desc_type = pCreateInfo->pBindings[j].descriptorType;
+      if ((desc_type == VK_DESCRIPTOR_TYPE_SAMPLER ||
+           desc_type == VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER) &&
+          pCreateInfo->pBindings[j].pImmutableSamplers)
          immutable_sampler_count += pCreateInfo->pBindings[j].descriptorCount;
    }
 
@@ -153,6 +171,12 @@ VkResult anv_CreateDescriptorSetLayout(
       if (binding == NULL)
          continue;
 
+      /* We temporarily stashed the pointer to the binding in the
+       * immutable_samplers pointer.  Now that we've pulled it back out
+       * again, we reset immutable_samplers to NULL.
+       */
+      set_layout->binding[b].immutable_samplers = NULL;
+
       if (binding->descriptorCount == 0)
          continue;
 
@@ -169,6 +193,15 @@ VkResult anv_CreateDescriptorSetLayout(
          anv_foreach_stage(s, binding->stageFlags) {
             set_layout->binding[b].stage[s].sampler_index = sampler_count[s];
             sampler_count[s] += binding->descriptorCount;
+         }
+
+         if (binding->pImmutableSamplers) {
+            set_layout->binding[b].immutable_samplers = samplers;
+            samplers += binding->descriptorCount;
+
+            for (uint32_t i = 0; i < binding->descriptorCount; i++)
+               set_layout->binding[b].immutable_samplers[i] =
+                  anv_sampler_from_handle(binding->pImmutableSamplers[i]);
          }
          break;
       default:
@@ -219,17 +252,6 @@ VkResult anv_CreateDescriptorSetLayout(
          break;
       default:
          break;
-      }
-
-      if (binding->pImmutableSamplers) {
-         set_layout->binding[b].immutable_samplers = samplers;
-         samplers += binding->descriptorCount;
-
-         for (uint32_t i = 0; i < binding->descriptorCount; i++)
-            set_layout->binding[b].immutable_samplers[i] =
-               anv_sampler_from_handle(binding->pImmutableSamplers[i]);
-      } else {
-         set_layout->binding[b].immutable_samplers = NULL;
       }
 
       set_layout->shader_stages |= binding->stageFlags;
@@ -439,6 +461,8 @@ VkResult anv_CreateDescriptorPool(
                          &device->surface_state_pool, 4096);
    pool->surface_state_free_list = NULL;
 
+   list_inithead(&pool->desc_sets);
+
    *pDescriptorPool = anv_descriptor_pool_to_handle(pool);
 
    return VK_SUCCESS;
@@ -456,6 +480,12 @@ void anv_DestroyDescriptorPool(
       return;
 
    anv_state_stream_finish(&pool->surface_state_stream);
+
+   list_for_each_entry_safe(struct anv_descriptor_set, set,
+                            &pool->desc_sets, pool_link) {
+      anv_descriptor_set_destroy(device, pool, set);
+   }
+
    vk_free2(&device->alloc, pAllocator, pool);
 }
 
@@ -466,6 +496,11 @@ VkResult anv_ResetDescriptorPool(
 {
    ANV_FROM_HANDLE(anv_device, device, _device);
    ANV_FROM_HANDLE(anv_descriptor_pool, pool, descriptorPool);
+
+   list_for_each_entry_safe(struct anv_descriptor_set, set,
+                            &pool->desc_sets, pool_link) {
+      anv_descriptor_set_destroy(device, pool, set);
+   }
 
    pool->next = 0;
    pool->free_list = EMPTY;
@@ -611,6 +646,8 @@ anv_descriptor_set_destroy(struct anv_device *device,
       entry->size = set->size;
       pool->free_list = (char *) entry - pool->data;
    }
+
+   list_del(&set->pool_link);
 }
 
 VkResult anv_AllocateDescriptorSets(
@@ -632,6 +669,8 @@ VkResult anv_AllocateDescriptorSets(
       result = anv_descriptor_set_create(device, pool, layout, &set);
       if (result != VK_SUCCESS)
          break;
+
+      list_addtail(&set->pool_link, &pool->desc_sets);
 
       pDescriptorSets[i] = anv_descriptor_set_to_handle(set);
    }

@@ -2,3 +2,53 @@
 c02390f8fcd367c7350db568feabb2f062efca14 egl/wayland: rather obvious build fix
 # fixes: The commit addresses b4476138d5ad3f8d30c14ee61f2f375edfdbab2a
 ff6f1dd0d3c6b4c15ca51b478b2884d14f6a1e06 meson: libfreedreno depends upon libdrm (for fence support)
+
+# fixes: This commit requires commits aeaf8dbd097 and 7484bc894b9 which did not
+#        land in branch.
+f67dea5e19ef14187be0e8d0f61b1f764c7ccb4f radv: Fix multiview depth clears
+
+# stable The commits aren't suitable in their present form.
+bfe31c5e461a1330d6f606bf5310685eff1198dd nir/builder: Add nir_i2i and nir_u2u helpers which take a bit size
+abfe674c54bee6f8fdcae411b07db89c10b9d530 spirv: Handle arbitrary bit sizes for deref array indices
+
+# warn   The commits refer stale sha, yet don't fix anything in particular.
+98984b7cdd79c15cc7331c791f8be61e873b8bbd Revert "mapi/new: sort by slot number"
+9f86f1da7c68b5b900cd6f60925610ff1225a72d egl: add glvnd entrypoints for EGL_MESA_query_driver
+
+# stable Explicit 19.0 only nomination.
+38f542783faa360020b77fdd76b97f207a9e0068 v50,nvc0: add explicit settings for recent caps
+
+# stable Explicit 19.0 only nominations.
+399215eb7a0517463e5757c598d6cff6ae2301d0 nvc0: add support for handling indirect draws with attrib conversion
+4443b6ddf2e08d06f3d0457cf20a2e04244cde37 nvc0/ir: always use CG mode for loads from atomic-only buffers
+5de5beedf21306b01730085f8e03d8f424729016 nvc0/ir: fix second tex argument after levelZero optimization
+162352e6711b3ceab114686f7a3248074339e7f7 nvc0: fix 3d images on kepler
+e00799d3dc0595dc3998dbf199ceec8b1eece966 nv50,nvc0: use condition for occlusion queries when already complete
+6adb9b38bfb1f6ee4c94596bf0744225aa8e967a nvc0: stick zero values for the compute invocation counts
+04593d9a73ea257a36cc3b9fb5cd41427beaaea5 gk110/ir: Add rcp f64 implementation
+7937408052a1896f0b08b0110bb8a1790eeee351 gk110/ir: Add rsq f64 implementation
+656ad060518d067a3b311db8c2de2a396fb41898 gk110/ir: Use the new rcp/rsq in library
+12669d29705a26478aa691cb454149628be65f17 gk104/ir: Use the new rcp/rsq in library
+815a8e59c6d462a7008653ea9e3010d40b6ba589 gm107/ir: add fp64 rcp
+cce495572136a606dd2a35e79f45080c3796e2cc gm107/ir: add fp64 rsq
+6010d7b8e8bee1bcea2b329cf6d3b44c5fc3ca66 gallium: add PIPE_CAP_MAX_VARYINGS
+cbd1ad6165f0aea7fb7c6fd1b36ad5317dd65cb7 st/mesa: require RGBA2, RGB4, and RGBA4 to be renderable
+
+# stable The commit addresses functionality not present in branch
+1b8983c25be19073c02fe9630e949be55f8280fa radv: fix using LOAD_CONTEXT_REG with old GFX ME firmwares on GFX8
+
+# stable Explicit 19.0 only nominations, require work which did not land in branch
+8ab95b849e66f3221d80a67eef2ec6e3730901a8 anv: Refactor descriptor pushing a bit
+5c30fffeec1732c21d600c036f95f8cdb1bb5487 anv: Take references to push descriptor set layouts
+
+# sha    Commit references invalid sha - a offender did not land in branch.
+85ee157283c667372baf7c03259cba08853f0067 gitlab-ci: autotools needs to be told which llvm version to use
+
+# revert The commit was reverted shortly after it was applied on master
+47fc359822494935852de1e70e4d840b2fe6a25c anv: release memory allocated by glsl types during spirv_to_nir
+
+# stable Explicitly 19.0 nomination, seemingly a performance patch
+5ef2b8f1f2ebcdb4ffe5c98b3f4f48e584cb4b22 nir: Add a pass for lowering IO back to vector when possible
+
+# fixes Temporary block perf. fix depending on previous opt. pass
+6d5d89d25a0a4299dbfcbfeca71b6c7e65ef3d45 intel/nir: Vectorize all IO

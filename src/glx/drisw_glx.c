@@ -147,6 +147,9 @@ XDestroyDrawable(struct drisw_drawable * pdp, Display * dpy, XID drawable)
    if (pdp->ximage)
       XDestroyImage(pdp->ximage);
 
+   if (pdp->shminfo.shmid > 0)
+      XShmDetach(dpy, &pdp->shminfo);
+
    free(pdp->visinfo);
 
    XFreeGC(dpy, pdp->gc);
@@ -201,7 +204,8 @@ bytes_per_line(unsigned pitch_bits, unsigned mul)
 
 static void
 swrastXPutImage(__DRIdrawable * draw, int op,
-                int x, int y, int w, int h, int stride,
+                int srcx, int srcy, int x, int y,
+                int w, int h, int stride,
                 int shmid, char *data, void *loaderPrivate)
 {
    struct drisw_drawable *pdp = loaderPrivate;
@@ -235,12 +239,12 @@ swrastXPutImage(__DRIdrawable * draw, int op,
    if (pdp->shminfo.shmid >= 0) {
       ximage->width = ximage->bytes_per_line / ((ximage->bits_per_pixel + 7)/ 8);
       ximage->height = h;
-      XShmPutImage(dpy, drawable, gc, ximage, 0, 0, x, y, w, h, False);
+      XShmPutImage(dpy, drawable, gc, ximage, srcx, srcy, x, y, w, h, False);
       XSync(dpy, False);
    } else {
       ximage->width = w;
       ximage->height = h;
-      XPutImage(dpy, drawable, gc, ximage, 0, 0, x, y, w, h);
+      XPutImage(dpy, drawable, gc, ximage, srcx, srcy, x, y, w, h);
    }
    ximage->data = NULL;
 }
@@ -254,7 +258,21 @@ swrastPutImageShm(__DRIdrawable * draw, int op,
    struct drisw_drawable *pdp = loaderPrivate;
 
    pdp->shminfo.shmaddr = shmaddr;
-   swrastXPutImage(draw, op, x, y, w, h, stride, shmid,
+   swrastXPutImage(draw, op, 0, 0, x, y, w, h, stride, shmid,
+                   shmaddr + offset, loaderPrivate);
+}
+
+static void
+swrastPutImageShm2(__DRIdrawable * draw, int op,
+                   int x, int y,
+                   int w, int h, int stride,
+		   int shmid, char *shmaddr, unsigned offset,
+		   void *loaderPrivate)
+{
+   struct drisw_drawable *pdp = loaderPrivate;
+
+   pdp->shminfo.shmaddr = shmaddr;
+   swrastXPutImage(draw, op, x, 0, x, y, w, h, stride, shmid,
                    shmaddr + offset, loaderPrivate);
 }
 
@@ -263,7 +281,7 @@ swrastPutImage2(__DRIdrawable * draw, int op,
                 int x, int y, int w, int h, int stride,
                 char *data, void *loaderPrivate)
 {
-   swrastXPutImage(draw, op, x, y, w, h, stride, -1,
+   swrastXPutImage(draw, op, 0, 0, x, y, w, h, stride, -1,
                    data, loaderPrivate);
 }
 
@@ -272,7 +290,7 @@ swrastPutImage(__DRIdrawable * draw, int op,
                int x, int y, int w, int h,
                char *data, void *loaderPrivate)
 {
-   swrastXPutImage(draw, op, x, y, w, h, 0, -1,
+   swrastXPutImage(draw, op, 0, 0, x, y, w, h, 0, -1,
                    data, loaderPrivate);
 }
 
@@ -340,7 +358,7 @@ swrastGetImageShm(__DRIdrawable * read,
 }
 
 static const __DRIswrastLoaderExtension swrastLoaderExtension_shm = {
-   .base = {__DRI_SWRAST_LOADER, 4 },
+   .base = {__DRI_SWRAST_LOADER, 5 },
 
    .getDrawableInfo     = swrastGetDrawableInfo,
    .putImage            = swrastPutImage,
@@ -349,6 +367,7 @@ static const __DRIswrastLoaderExtension swrastLoaderExtension_shm = {
    .getImage2           = swrastGetImage2,
    .putImageShm         = swrastPutImageShm,
    .getImageShm         = swrastGetImageShm,
+   .putImageShm2        = swrastPutImageShm2,
 };
 
 static const __DRIextension *loader_extensions_shm[] = {
