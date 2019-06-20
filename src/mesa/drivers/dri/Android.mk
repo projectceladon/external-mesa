@@ -61,6 +61,7 @@ else
 MESA_DRI_SHARED_LIBRARIES += \
 	libexpat
 endif
+
 #-----------------------------------------------
 # Build drivers and libmesa_dri_common
 

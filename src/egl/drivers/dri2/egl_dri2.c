@@ -58,6 +58,7 @@
 #include "X11/Xlibint.h"
 #endif
 
+#include "egldefines.h"
 #include "egl_dri2.h"
 #include "GL/mesa_glinterop.h"
 #include "loader/loader.h"
@@ -65,36 +66,18 @@
 #include "util/u_vector.h"
 #include "mapi/glapi/glapi.h"
 
-/* The kernel header drm_fourcc.h defines the DRM formats below.  We duplicate
- * some of the definitions here so that building Mesa won't bleeding-edge
- * kernel headers.
+/* Additional definitions not yet in the drm_fourcc.h.
  */
-#ifndef DRM_FORMAT_R8
-#define DRM_FORMAT_R8            fourcc_code('R', '8', ' ', ' ') /* [7:0] R */
-#endif
-
-#ifndef DRM_FORMAT_RG88
-#define DRM_FORMAT_RG88          fourcc_code('R', 'G', '8', '8') /* [15:0] R:G 8:8 little endian */
-#endif
-
-#ifndef DRM_FORMAT_GR88
-#define DRM_FORMAT_GR88          fourcc_code('G', 'R', '8', '8') /* [15:0] G:R 8:8 little endian */
-#endif
-
-#ifndef DRM_FORMAT_R16
-#define DRM_FORMAT_R16           fourcc_code('R', '1', '6', ' ') /* [15:0] R 16 little endian */
-#endif
-
-#ifndef DRM_FORMAT_GR1616
-#define DRM_FORMAT_GR1616        fourcc_code('G', 'R', '3', '2') /* [31:0] R:G 16:16 little endian */
-#endif
-
 #ifndef DRM_FORMAT_P010
 #define DRM_FORMAT_P010 	 fourcc_code('P', '0', '1', '0') /* 2x2 subsampled Cb:Cr plane 10 bits per channel */
 #endif
 
-#ifndef DRM_FORMAT_MOD_INVALID
-#define DRM_FORMAT_MOD_INVALID ((1ULL<<56) - 1)
+#ifndef DRM_FORMAT_P012
+#define DRM_FORMAT_P012 	 fourcc_code('P', '0', '1', '2') /* 2x2 subsampled Cb:Cr plane 12 bits per channel */
+#endif
+
+#ifndef DRM_FORMAT_P016
+#define DRM_FORMAT_P016 	 fourcc_code('P', '0', '1', '6') /* 2x2 subsampled Cb:Cr plane 16 bits per channel */
 #endif
 
 #define NUM_ATTRIBS 12
@@ -459,6 +442,11 @@ static const struct dri2_extension_match swrast_core_extensions[] = {
    { NULL, 0, 0 }
 };
 
+static const struct dri2_extension_match optional_driver_extensions[] = {
+   { __DRI_CONFIG_OPTIONS, 1, offsetof(struct dri2_egl_display, configOptions) },
+   { NULL, 0, 0 }
+};
+
 static const struct dri2_extension_match optional_core_extensions[] = {
    { __DRI2_ROBUSTNESS, 1, offsetof(struct dri2_egl_display, robustness) },
    { __DRI2_NO_ERROR, 1, offsetof(struct dri2_egl_display, no_error) },
@@ -517,75 +505,14 @@ static const __DRIextension **
 dri2_open_driver(_EGLDisplay *disp)
 {
    struct dri2_egl_display *dri2_dpy = dri2_egl_display(disp);
-   const __DRIextension **extensions = NULL;
-   char path[PATH_MAX], *search_paths, *next, *end;
-   char *get_extensions_name;
-   const __DRIextension **(*get_extensions)(void);
+   static const char *search_path_vars[] = {
+      "LIBGL_DRIVERS_PATH",
+      NULL,
+   };
 
-   search_paths = NULL;
-   if (geteuid() == getuid()) {
-      /* don't allow setuid apps to use LIBGL_DRIVERS_PATH */
-      search_paths = getenv("LIBGL_DRIVERS_PATH");
-   }
-   if (search_paths == NULL)
-      search_paths = DEFAULT_DRIVER_DIR;
-
-   dri2_dpy->driver = NULL;
-   end = search_paths + strlen(search_paths);
-   for (char *p = search_paths; p < end; p = next + 1) {
-      int len;
-      next = strchr(p, ':');
-      if (next == NULL)
-         next = end;
-
-      len = next - p;
-#if GLX_USE_TLS
-      snprintf(path, sizeof path,
-               "%.*s/tls/%s_dri.so", len, p, dri2_dpy->driver_name);
-      dri2_dpy->driver = dlopen(path, RTLD_NOW | RTLD_GLOBAL);
-#endif
-      if (dri2_dpy->driver == NULL) {
-         snprintf(path, sizeof path,
-                  "%.*s/%s_dri.so", len, p, dri2_dpy->driver_name);
-         dri2_dpy->driver = dlopen(path, RTLD_NOW | RTLD_GLOBAL);
-         if (dri2_dpy->driver == NULL)
-            _eglLog(_EGL_DEBUG, "failed to open %s: %s\n", path, dlerror());
-      }
-      /* not need continue to loop all paths once the driver is found */
-      if (dri2_dpy->driver != NULL)
-         break;
-   }
-
-   if (dri2_dpy->driver == NULL) {
-      _eglLog(_EGL_WARNING,
-              "DRI2: failed to open %s (search paths %s)",
-              dri2_dpy->driver_name, search_paths);
-      return NULL;
-   }
-
-   _eglLog(_EGL_DEBUG, "DRI2: dlopen(%s)", path);
-
-   get_extensions_name = loader_get_extensions_name(dri2_dpy->driver_name);
-   if (get_extensions_name) {
-      get_extensions = dlsym(dri2_dpy->driver, get_extensions_name);
-      if (get_extensions) {
-         extensions = get_extensions();
-      } else {
-         _eglLog(_EGL_DEBUG, "driver does not expose %s(): %s\n",
-                 get_extensions_name, dlerror());
-      }
-      free(get_extensions_name);
-   }
-
-   if (!extensions)
-      extensions = dlsym(dri2_dpy->driver, __DRI_DRIVER_EXTENSIONS);
-   if (extensions == NULL) {
-      _eglLog(_EGL_WARNING,
-              "DRI2: driver exports no extensions (%s)", dlerror());
-      dlclose(dri2_dpy->driver);
-   }
-
-   return extensions;
+   return loader_open_driver(dri2_dpy->driver_name,
+                             &dri2_dpy->driver,
+                             search_path_vars);
 }
 
 EGLBoolean
@@ -603,6 +530,8 @@ dri2_load_driver_dri3(_EGLDisplay *disp)
       return EGL_FALSE;
    }
    dri2_dpy->driver_extensions = extensions;
+
+   dri2_bind_extensions(dri2_dpy, optional_driver_extensions, extensions, true);
 
    return EGL_TRUE;
 }
@@ -623,6 +552,8 @@ dri2_load_driver(_EGLDisplay *disp)
    }
    dri2_dpy->driver_extensions = extensions;
 
+   dri2_bind_extensions(dri2_dpy, optional_driver_extensions, extensions, true);
+
    return EGL_TRUE;
 }
 
@@ -642,6 +573,8 @@ dri2_load_driver_swrast(_EGLDisplay *disp)
    }
    dri2_dpy->driver_extensions = extensions;
 
+   dri2_bind_extensions(dri2_dpy, optional_driver_extensions, extensions, true);
+
    return EGL_TRUE;
 }
 
@@ -657,6 +590,26 @@ dri2_renderer_query_integer(struct dri2_egl_display *dri2_dpy, int param)
 
    return value;
 }
+
+static const char *
+dri2_query_driver_name(_EGLDisplay *disp)
+{
+    struct dri2_egl_display *dri2_dpy = dri2_egl_display(disp);
+    return dri2_dpy->driver_name;
+}
+
+static char *
+dri2_query_driver_config(_EGLDisplay *disp)
+{
+    struct dri2_egl_display *dri2_dpy = dri2_egl_display(disp);
+    const __DRIconfigOptionsExtension *ext = dri2_dpy->configOptions;
+
+    if (ext->base.version >= 2)
+        return ext->getXml(dri2_dpy->driver_name);
+
+    return strdup(ext->xml);
+}
+
 
 void
 dri2_setup_screen(_EGLDisplay *disp)
@@ -701,6 +654,10 @@ dri2_setup_screen(_EGLDisplay *disp)
    assert(dri2_dpy->image_driver || dri2_dpy->dri2 || dri2_dpy->swrast);
    disp->Extensions.KHR_no_config_context = EGL_TRUE;
    disp->Extensions.KHR_surfaceless_context = EGL_TRUE;
+
+   if (dri2_dpy->configOptions) {
+       disp->Extensions.MESA_query_driver = EGL_TRUE;
+   }
 
    /* Report back to EGL the bitmask of priorities supported */
    disp->Extensions.IMG_context_priority =
@@ -933,6 +890,8 @@ dri2_initialize(_EGLDriver *drv, _EGLDisplay *disp)
       dri2_dpy->ref_count++;
       return EGL_TRUE;
    }
+
+   loader_set_logger(_eglLog);
 
    switch (disp->Platform) {
    case _EGL_PLATFORM_SURFACELESS:
@@ -1486,6 +1445,37 @@ dri2_surf_update_fence_fd(_EGLContext *ctx,
       dri2_dpy->fence->destroy_fence(dri2_dpy->dri_screen, fence);
    }
    dri2_surface_set_out_fence_fd(surf, fence_fd);
+}
+
+EGLBoolean
+dri2_create_drawable(struct dri2_egl_display *dri2_dpy,
+                     const __DRIconfig *config,
+                     struct dri2_egl_surface *dri2_surf)
+{
+   __DRIcreateNewDrawableFunc createNewDrawable;
+   void *loaderPrivate = dri2_surf;
+
+   if (dri2_dpy->image_driver)
+      createNewDrawable = dri2_dpy->image_driver->createNewDrawable;
+   else if (dri2_dpy->dri2)
+      createNewDrawable = dri2_dpy->dri2->createNewDrawable;
+   else if (dri2_dpy->swrast)
+      createNewDrawable = dri2_dpy->swrast->createNewDrawable;
+   else
+      return _eglError(EGL_BAD_ALLOC, "no createNewDrawable");
+
+   /* As always gbm is a bit special.. */
+#ifdef HAVE_DRM_PLATFORM
+   if (dri2_surf->gbm_surf)
+      loaderPrivate = dri2_surf->gbm_surf;
+#endif
+
+   dri2_surf->dri_drawable = (*createNewDrawable)(dri2_dpy->dri_screen,
+                                                  config, loaderPrivate);
+   if (dri2_surf->dri_drawable == NULL)
+      return _eglError(EGL_BAD_ALLOC, "createNewDrawable");
+
+   return EGL_TRUE;
 }
 
 /**
@@ -2312,6 +2302,7 @@ dri2_num_fourcc_format_planes(EGLint format)
    case DRM_FORMAT_YVYU:
    case DRM_FORMAT_UYVY:
    case DRM_FORMAT_VYUY:
+   case DRM_FORMAT_AYUV:
       return 1;
 
    case DRM_FORMAT_NV12:
@@ -2319,6 +2310,8 @@ dri2_num_fourcc_format_planes(EGLint format)
    case DRM_FORMAT_NV16:
    case DRM_FORMAT_NV61:
    case DRM_FORMAT_P010:
+   case DRM_FORMAT_P012:
+   case DRM_FORMAT_P016:
       return 2;
 
    case DRM_FORMAT_YUV410:
@@ -3322,6 +3315,8 @@ _eglInitDriver(_EGLDriver *dri2_drv)
    dri2_drv->API.DestroyImageKHR = dri2_destroy_image_khr;
    dri2_drv->API.CreateWaylandBufferFromImageWL = dri2_create_wayland_buffer_from_image;
    dri2_drv->API.QuerySurface = dri2_query_surface;
+   dri2_drv->API.QueryDriverName = dri2_query_driver_name;
+   dri2_drv->API.QueryDriverConfig = dri2_query_driver_config;
 #ifdef HAVE_LIBDRM
    dri2_drv->API.CreateDRMImageMESA = dri2_create_drm_image_mesa;
    dri2_drv->API.ExportDRMImageMESA = dri2_export_drm_image_mesa;

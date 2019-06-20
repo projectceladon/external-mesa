@@ -36,17 +36,22 @@ vk_enum_to_str = custom_target(
   ],
 )
 
-vulkan_util_deps = []
-
-if with_platform_wayland
-  vulkan_util_deps += dep_wayland_client
-endif
-
 libvulkan_util = static_library(
   'vulkan_util',
   [files_vulkan_util, vk_enum_to_str],
   include_directories : [inc_common, inc_vulkan],
-  dependencies : vulkan_util_deps,
   c_args : [c_vis_args],
   build_by_default : false,
+)
+
+idep_vulkan_util_headers = declare_dependency(
+  sources : vk_enum_to_str[1],
+  include_directories : include_directories('.')
+)
+
+idep_vulkan_util = declare_dependency(
+  sources : vk_enum_to_str[1],
+  link_with : libvulkan_util,
+  include_directories : include_directories('.'),
+  dependencies : idep_vulkan_util_headers
 )

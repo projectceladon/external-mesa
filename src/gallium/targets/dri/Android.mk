@@ -40,7 +40,6 @@ LOCAL_LDFLAGS := \
 	-Wl,--undefined-version
 
 LOCAL_SHARED_LIBRARIES := \
-	libbacktrace \
 	libdl \
 	libglapi \
 	libz
@@ -52,6 +51,10 @@ LOCAL_STATIC_LIBRARIES := \
 else
 LOCAL_SHARED_LIBRARIES += \
 	libexpat
+endif
+
+ifeq ($(USE_LIBBACKTRACE),true)
+	LOCAL_SHARED_LIBRARIES += libbacktrace
 endif
 
 $(foreach d, $(MESA_BUILD_GALLIUM), $(eval LOCAL_CFLAGS += $(patsubst HAVE_%,-D%,$(d))))

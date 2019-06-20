@@ -86,6 +86,7 @@ static const struct droid_yuv_format droid_yuv_formats[] = {
    { HAL_PIXEL_FORMAT_IMPLEMENTATION_DEFINED,   0, 2, __DRI_IMAGE_FOURCC_NV12 },
    { HAL_PIXEL_FORMAT_IMPLEMENTATION_DEFINED,   0, 1, __DRI_IMAGE_FOURCC_YUV420 },
    { HAL_PIXEL_FORMAT_IMPLEMENTATION_DEFINED,   1, 1, __DRI_IMAGE_FOURCC_YVU420 },
+   { HAL_PIXEL_FORMAT_IMPLEMENTATION_DEFINED,   1, 1, __DRI_IMAGE_FOURCC_AYUV },
 };
 
 static int
@@ -393,7 +394,6 @@ droid_create_surface(_EGLDriver *drv, _EGLDisplay *disp, EGLint type,
 		    _EGLConfig *conf, void *native_window,
 		    const EGLint *attrib_list)
 {
-   __DRIcreateNewDrawableFunc createNewDrawable;
    struct dri2_egl_display *dri2_dpy = dri2_egl_display(disp);
    struct dri2_egl_config *dri2_conf = dri2_egl_config(conf);
    struct dri2_egl_surface *dri2_surf;
@@ -437,17 +437,8 @@ droid_create_surface(_EGLDriver *drv, _EGLDisplay *disp, EGLint type,
       goto cleanup_surface;
    }
 
-   if (dri2_dpy->image_driver)
-      createNewDrawable = dri2_dpy->image_driver->createNewDrawable;
-   else
-      createNewDrawable = dri2_dpy->dri2->createNewDrawable;
-
-   dri2_surf->dri_drawable = (*createNewDrawable)(dri2_dpy->dri_screen, config,
-                                                  dri2_surf);
-   if (dri2_surf->dri_drawable == NULL) {
-      _eglError(EGL_BAD_ALLOC, "createNewDrawable");
+   if (!dri2_create_drawable(dri2_dpy, config, dri2_surf))
       goto cleanup_surface;
-   }
 
    if (window) {
       window->common.incRef(&window->common);
@@ -1674,8 +1665,6 @@ dri2_initialize_android(_EGLDriver *drv, _EGLDisplay *disp)
    /* Not supported yet */
    if (disp->Options.ForceSoftware)
       return EGL_FALSE;
-
-   loader_set_logger(_eglLog);
 
    dri2_dpy = calloc(1, sizeof(*dri2_dpy));
    if (!dri2_dpy)

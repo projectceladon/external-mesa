@@ -27,7 +27,6 @@ include $(CLEAR_VARS)
 
 LOCAL_SRC_FILES := \
 	$(C_SOURCES) \
-	$(drm_SOURCES) \
 	$(a2xx_SOURCES) \
 	$(a3xx_SOURCES)	\
 	$(a4xx_SOURCES) \
@@ -39,7 +38,8 @@ LOCAL_SRC_FILES := \
 #	-Wno-packed-bitfield-compat
 
 LOCAL_C_INCLUDES := \
-	$(LOCAL_PATH)/ir3
+	$(LOCAL_PATH)/ir3 \
+	$(MESA_TOP)/include/drm-uapi
 
 LOCAL_GENERATED_SOURCES := $(MESA_GEN_NIR_H)
 

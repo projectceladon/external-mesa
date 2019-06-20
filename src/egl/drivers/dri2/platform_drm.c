@@ -171,23 +171,8 @@ dri2_drm_create_window_surface(_EGLDriver *drv, _EGLDisplay *disp,
    dri2_surf->base.Height = surf->base.height;
    surf->dri_private = dri2_surf;
 
-   if (dri2_dpy->dri2) {
-      dri2_surf->dri_drawable =
-         dri2_dpy->dri2->createNewDrawable(dri2_dpy->dri_screen, config,
-                                           dri2_surf->gbm_surf);
-
-   } else {
-      assert(dri2_dpy->swrast != NULL);
-
-      dri2_surf->dri_drawable =
-         dri2_dpy->swrast->createNewDrawable(dri2_dpy->dri_screen, config,
-                                             dri2_surf->gbm_surf);
-
-   }
-   if (dri2_surf->dri_drawable == NULL) {
-      _eglError(EGL_BAD_ALLOC, "createNewDrawable()");
+   if (!dri2_create_drawable(dri2_dpy, config, dri2_surf))
       goto cleanup_surf;
-   }
 
    return &dri2_surf->base;
 
@@ -664,8 +649,9 @@ drm_add_configs_for_visuals(_EGLDriver *drv, _EGLDisplay *disp)
 
    for (unsigned i = 0; i < ARRAY_SIZE(format_count); i++) {
       if (!format_count[i]) {
-         _eglLog(_EGL_DEBUG, "No DRI config supports native format 0x%x",
-                 visuals[i].gbm_format);
+         struct gbm_format_name_desc desc;
+         _eglLog(_EGL_DEBUG, "No DRI config supports native format %s",
+                 gbm_format_get_name(visuals[i].gbm_format, &desc));
       }
    }
 
@@ -702,8 +688,6 @@ dri2_initialize_drm(_EGLDriver *drv, _EGLDisplay *disp)
    /* Not supported yet */
    if (disp->Options.ForceSoftware)
       return EGL_FALSE;
-
-   loader_set_logger(_eglLog);
 
    dri2_dpy = calloc(1, sizeof *dri2_dpy);
    if (!dri2_dpy)

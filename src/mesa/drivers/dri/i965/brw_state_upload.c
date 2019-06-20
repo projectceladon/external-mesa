@@ -55,7 +55,7 @@ brw_enable_obj_preemption(struct brw_context *brw, bool enable)
       return;
 
    /* A fixed function pipe flush is required before modifying this field */
-   brw_emit_pipe_control_flush(brw, PIPE_CONTROL_FLUSH_ENABLE);
+   brw_emit_end_of_pipe_sync(brw, PIPE_CONTROL_RENDER_TARGET_FLUSH);
 
    bool replay_mode = enable ?
       GEN9_REPLAY_MODE_MIDOBJECT : GEN9_REPLAY_MODE_MIDBUFFER;
@@ -101,6 +101,13 @@ brw_upload_initial_gpu_state(struct brw_context *brw)
       brw_load_register_imm32(brw, HALF_SLICE_CHICKEN7,
                               TEXEL_OFFSET_FIX_MASK |
                               TEXEL_OFFSET_FIX_ENABLE);
+
+      /* WA_1406697149: Bit 9 "Error Detection Behavior Control" must be set
+       * in L3CNTLREG register. The default setting of the bit is not the
+       * desirable behavior.
+       */
+      brw_load_register_imm32(brw, GEN8_L3CNTLREG,
+                              GEN8_L3CNTLREG_EDBC_NO_HANG);
    }
 
    if (devinfo->gen == 10 || devinfo->gen == 11) {
@@ -175,6 +182,8 @@ brw_upload_initial_gpu_state(struct brw_context *brw)
          ADVANCE_BATCH();
       }
    }
+
+   brw->object_preemption = false;
 
    if (devinfo->gen >= 10)
       brw_enable_obj_preemption(brw, true);

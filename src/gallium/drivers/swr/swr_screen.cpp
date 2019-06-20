@@ -36,6 +36,7 @@
 #include "util/u_cpu_detect.h"
 #include "util/u_format_s3tc.h"
 #include "util/u_string.h"
+#include "util/u_screen.h"
 
 #include "state_tracker/sw_winsys.h"
 
@@ -369,6 +370,8 @@ swr_get_param(struct pipe_screen *screen, enum pipe_cap param)
       return 32;
    case PIPE_CAP_MAX_SHADER_BUFFER_SIZE:
       return 1 << 27;
+   case PIPE_CAP_MAX_VARYINGS:
+      return 32;
 
    case PIPE_CAP_VENDOR_ID:
       return 0xFFFFFFFF;
@@ -385,11 +388,9 @@ swr_get_param(struct pipe_screen *screen, enum pipe_cap param)
 
       return (int)(system_memory >> 20);
    }
+   default:
+      return u_pipe_screen_get_param_defaults(screen, param);
    }
-
-   /* should only get here on unhandled cases */
-   debug_printf("Unexpected PIPE_CAP %d query\n", param);
-   return 0;
 }
 
 static int

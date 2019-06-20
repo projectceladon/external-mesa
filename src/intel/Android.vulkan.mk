@@ -39,10 +39,20 @@ VULKAN_COMMON_INCLUDES := \
 	$(MESA_TOP)/src/intel \
 	$(MESA_TOP)/include/drm-uapi \
 	$(MESA_TOP)/src/intel/vulkan \
+	$(MESA_TOP)/src/compiler \
+	frameworks/native/vulkan/include
+
+ifeq ($(shell test $(PLATFORM_SDK_VERSION) -ge 27; echo $$?), 0)
+VULKAN_COMMON_INCLUDES += \
 	frameworks/native/vulkan/include \
 	frameworks/native/libs/nativebase/include \
 	frameworks/native/libs/nativewindow/include \
 	frameworks/native/libs/arect/include
+
+VULKAN_COMMON_HEADER_LIBRARIES := \
+	libcutils_headers \
+	libhardware_headers
+endif
 
 # libmesa_anv_entrypoints with header and dummy.c
 #
@@ -62,6 +72,7 @@ LOCAL_C_INCLUDES := \
 
 LOCAL_GENERATED_SOURCES += $(intermediates)/vulkan/anv_entrypoints.h
 LOCAL_GENERATED_SOURCES += $(intermediates)/vulkan/dummy.c
+LOCAL_GENERATED_SOURCES += $(intermediates)/vulkan/anv_extensions.h
 
 $(intermediates)/vulkan/dummy.c:
 	@mkdir -p $(dir $@)
@@ -76,12 +87,18 @@ $(intermediates)/vulkan/anv_entrypoints.h: $(intermediates)/vulkan/dummy.c \
 		--outdir $(dir $@) \
 		--xml $(VULKAN_API_XML)
 
+$(intermediates)/vulkan/anv_extensions.h: $(ANV_ENTRYPOINTS_GEN_SCRIPT) \
+					  $(ANV_EXTENSIONS_SCRIPT) \
+					  $(VULKAN_API_XML)
+	@mkdir -p $(dir $@)
+	$(MESA_PYTHON2) $(ANV_EXTENSIONS_GEN_SCRIPT) \
+		--xml $(VULKAN_API_XML) \
+		--out-h $@
+
 LOCAL_EXPORT_C_INCLUDE_DIRS := \
         $(intermediates)
 
 LOCAL_SHARED_LIBRARIES := libdrm
-
-LOCAL_HEADER_LIBRARIES += libcutils_headers libhardware_headers
 
 include $(MESA_COMMON_MK)
 include $(BUILD_STATIC_LIBRARY)
@@ -115,8 +132,7 @@ LOCAL_C_INCLUDES := $(ANV_INCLUDES)
 LOCAL_WHOLE_STATIC_LIBRARIES := libmesa_anv_entrypoints libmesa_genxml
 
 LOCAL_SHARED_LIBRARIES := $(ANV_SHARED_LIBRARIES)
-
-LOCAL_HEADER_LIBRARIES += libcutils_headers libhardware_headers
+LOCAL_HEADER_LIBRARIES += $(VULKAN_COMMON_HEADER_LIBRARIES)
 
 include $(MESA_COMMON_MK)
 include $(BUILD_STATIC_LIBRARY)
@@ -131,14 +147,13 @@ LOCAL_MODULE_CLASS := STATIC_LIBRARIES
 
 LOCAL_SRC_FILES := $(VULKAN_GEN75_FILES)
 LOCAL_CFLAGS := -DGEN_VERSIONx10=75
-LOCAL_HEADER_LIBRARIES += libcutils_headers libsystem_headers
+
 LOCAL_C_INCLUDES := $(ANV_INCLUDES)
 
 LOCAL_WHOLE_STATIC_LIBRARIES := libmesa_anv_entrypoints libmesa_genxml
 
 LOCAL_SHARED_LIBRARIES := $(ANV_SHARED_LIBRARIES)
-
-LOCAL_HEADER_LIBRARIES += libcutils_headers libhardware_headers
+LOCAL_HEADER_LIBRARIES += $(VULKAN_COMMON_HEADER_LIBRARIES)
 
 include $(MESA_COMMON_MK)
 include $(BUILD_STATIC_LIBRARY)
@@ -153,14 +168,13 @@ LOCAL_MODULE_CLASS := STATIC_LIBRARIES
 
 LOCAL_SRC_FILES := $(VULKAN_GEN8_FILES)
 LOCAL_CFLAGS := -DGEN_VERSIONx10=80
-LOCAL_HEADER_LIBRARIES += libcutils_headers libsystem_headers
+
 LOCAL_C_INCLUDES := $(ANV_INCLUDES)
 
 LOCAL_WHOLE_STATIC_LIBRARIES := libmesa_anv_entrypoints libmesa_genxml
 
 LOCAL_SHARED_LIBRARIES := $(ANV_SHARED_LIBRARIES)
-
-LOCAL_HEADER_LIBRARIES += libcutils_headers libhardware_headers
+LOCAL_HEADER_LIBRARIES += $(VULKAN_COMMON_HEADER_LIBRARIES)
 
 include $(MESA_COMMON_MK)
 include $(BUILD_STATIC_LIBRARY)
@@ -175,14 +189,13 @@ LOCAL_MODULE_CLASS := STATIC_LIBRARIES
 
 LOCAL_SRC_FILES := $(VULKAN_GEN9_FILES)
 LOCAL_CFLAGS := -DGEN_VERSIONx10=90
-LOCAL_HEADER_LIBRARIES += libcutils_headers libsystem_headers
+
 LOCAL_C_INCLUDES := $(ANV_INCLUDES)
 
 LOCAL_WHOLE_STATIC_LIBRARIES := libmesa_anv_entrypoints libmesa_genxml
 
 LOCAL_SHARED_LIBRARIES := $(ANV_SHARED_LIBRARIES)
-
-LOCAL_HEADER_LIBRARIES += libcutils_headers libhardware_headers
+LOCAL_HEADER_LIBRARIES += $(VULKAN_COMMON_HEADER_LIBRARIES)
 
 include $(MESA_COMMON_MK)
 include $(BUILD_STATIC_LIBRARY)
@@ -197,14 +210,13 @@ LOCAL_MODULE_CLASS := STATIC_LIBRARIES
 
 LOCAL_SRC_FILES := $(VULKAN_GEN10_FILES)
 LOCAL_CFLAGS := -DGEN_VERSIONx10=100
-LOCAL_HEADER_LIBRARIES += libcutils_headers libsystem_headers
+
 LOCAL_C_INCLUDES := $(ANV_INCLUDES)
 
 LOCAL_WHOLE_STATIC_LIBRARIES := libmesa_anv_entrypoints libmesa_genxml
 
 LOCAL_SHARED_LIBRARIES := $(ANV_SHARED_LIBRARIES)
-
-LOCAL_HEADER_LIBRARIES += libcutils_headers libhardware_headers
+LOCAL_HEADER_LIBRARIES += $(VULKAN_COMMON_HEADER_LIBRARIES)
 
 include $(MESA_COMMON_MK)
 include $(BUILD_STATIC_LIBRARY)
@@ -225,8 +237,7 @@ LOCAL_C_INCLUDES := $(ANV_INCLUDES)
 LOCAL_WHOLE_STATIC_LIBRARIES := libmesa_anv_entrypoints libmesa_genxml
 
 LOCAL_SHARED_LIBRARIES := $(ANV_SHARED_LIBRARIES)
-
-LOCAL_HEADER_LIBRARIES += libcutils_headers libhardware_headers
+LOCAL_HEADER_LIBRARIES += $(VULKAN_COMMON_HEADER_LIBRARIES)
 
 include $(MESA_COMMON_MK)
 include $(BUILD_STATIC_LIBRARY)
@@ -260,7 +271,6 @@ LOCAL_WHOLE_STATIC_LIBRARIES := \
 
 LOCAL_GENERATED_SOURCES += $(intermediates)/vulkan/anv_entrypoints.c
 LOCAL_GENERATED_SOURCES += $(intermediates)/vulkan/anv_extensions.c
-LOCAL_GENERATED_SOURCES += $(intermediates)/vulkan/anv_extensions.h
 
 $(intermediates)/vulkan/anv_entrypoints.c: $(ANV_ENTRYPOINTS_GEN_SCRIPT) \
 					   $(ANV_EXTENSIONS_SCRIPT) \
@@ -278,17 +288,8 @@ $(intermediates)/vulkan/anv_extensions.c: $(ANV_EXTENSIONS_GEN_SCRIPT) \
 		--xml $(VULKAN_API_XML) \
 		--out-c $@
 
-$(intermediates)/vulkan/anv_extensions.h: $(ANV_EXTENSIONS_GEN_SCRIPT) \
-					   $(ANV_EXTENSIONS_SCRIPT) \
-					   $(VULKAN_API_XML)
-	@mkdir -p $(dir $@)
-	$(MESA_PYTHON2) $(ANV_EXTENSIONS_GEN_SCRIPT) \
-		--xml $(VULKAN_API_XML) \
-		--out-h $@
-
 LOCAL_SHARED_LIBRARIES := $(ANV_SHARED_LIBRARIES)
-
-LOCAL_HEADER_LIBRARIES += libcutils_headers libhardware_headers
+LOCAL_HEADER_LIBRARIES += $(VULKAN_COMMON_HEADER_LIBRARIES)
 
 include $(MESA_COMMON_MK)
 include $(BUILD_STATIC_LIBRARY)
@@ -338,17 +339,16 @@ LOCAL_WHOLE_STATIC_LIBRARIES := \
 	libmesa_anv_entrypoints
 
 LOCAL_SHARED_LIBRARIES := $(ANV_SHARED_LIBRARIES) libz libsync liblog
+LOCAL_HEADER_LIBRARIES += $(VULKAN_COMMON_HEADER_LIBRARIES)
 
 # If Android version >=8 MESA should static link libexpat else should dynamic link
 ifeq ($(shell test $(PLATFORM_SDK_VERSION) -ge 27; echo $$?), 0)
 LOCAL_STATIC_LIBRARIES := \
-	libexpat
+       libexpat
 else
-LOCAL_SHARED_LIBRARIES := \
-	libexpat
+ LOCAL_SHARED_LIBRARIES += \
+        libexpat
 endif
-
-LOCAL_HEADER_LIBRARIES += libcutils_headers libhardware_headers
 
 include $(MESA_COMMON_MK)
 include $(BUILD_SHARED_LIBRARY)
