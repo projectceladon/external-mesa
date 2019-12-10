@@ -149,6 +149,8 @@ write_variable(write_ctx *ctx, const nir_variable *var)
    blob_write_uint32(ctx->blob, !!(var->constant_initializer));
    if (var->constant_initializer)
       write_constant(ctx, var->constant_initializer);
+   if (var->pointer_initializer)
+      write_lookup_object(ctx, var->pointer_initializer);
    blob_write_uint32(ctx->blob, !!(var->interface_type));
    if (var->interface_type)
       encode_type_to_blob(ctx->blob, var->interface_type);
@@ -189,6 +191,11 @@ read_variable(read_ctx *ctx)
       var->constant_initializer = read_constant(ctx, var);
    else
       var->constant_initializer = NULL;
+   bool has_pointer_initializer = blob_read_uint32(ctx->blob);
+   if (has_pointer_initializer)
+      var->pointer_initializer = read_object(ctx);
+   else
+      var->pointer_initializer = NULL;
    bool has_interface_type = blob_read_uint32(ctx->blob);
    if (has_interface_type)
       var->interface_type = decode_type_from_blob(ctx->blob);
