@@ -30,9 +30,8 @@ LOCAL_MODULE := libmesa_amd_common
 
 LOCAL_SRC_FILES := \
 	$(AMD_COMMON_FILES) \
-	$(AMD_COMPILER_FILES) \
-	$(AMD_DEBUG_FILES) \
-	$(AMD_NIR_FILES)
+	$(AMD_COMMON_LLVM_FILES) \
+	$(AMD_DEBUG_FILES)
 
 LOCAL_CFLAGS += -DFORCE_BUILD_AMDGPU   # instructs LLVM to declare LLVMInitializeAMDGPU* functions
 
@@ -41,24 +40,49 @@ LOCAL_MODULE_CLASS := STATIC_LIBRARIES
 intermediates := $(call local-generated-sources-dir)
 LOCAL_GENERATED_SOURCES := $(addprefix $(intermediates)/, $(AMD_GENERATED_FILES))
 
-$(LOCAL_GENERATED_SOURCES): PRIVATE_PYTHON := $(MESA_PYTHON2)
-$(LOCAL_GENERATED_SOURCES): PRIVATE_CUSTOM_TOOL = $(PRIVATE_PYTHON) $^ > $@
+SID_TABLES := $(LOCAL_PATH)/common/sid_tables.py
 
-$(intermediates)/common/sid_tables.h: $(LOCAL_PATH)/common/sid_tables.py $(LOCAL_PATH)/common/sid.h $(LOCAL_PATH)/common/gfx9d.h
-	$(transform-generated-source)
+SID_TABLES_INPUTS := \
+	$(LOCAL_PATH)/common/sid.h \
+	$(LOCAL_PATH)/registers/amdgfxregs.json \
+	$(LOCAL_PATH)/registers/pkt3.json \
+	$(LOCAL_PATH)/registers/gfx10.json \
+	$(LOCAL_PATH)/registers/gfx10-rsrc.json
+
+$(intermediates)/common/sid_tables.h: $(SID_TABLES) $(SID_TABLES_INPUTS)
+	@mkdir -p $(dir $@)
+	@echo "Gen Header: $(PRIVATE_MODULE) <= $(notdir $(@))"
+	$(hide) $(MESA_PYTHON2) $(SID_TABLES) $(SID_TABLES_INPUTS) > $@ || ($(RM) $@; false)
+
+AMDGFXREGS := $(LOCAL_PATH)/registers/makeregheader.py
+
+AMDGFXREGS_INPUTS := \
+	$(LOCAL_PATH)/registers/amdgfxregs.json \
+	$(LOCAL_PATH)/registers/pkt3.json \
+	$(LOCAL_PATH)/registers/gfx10.json \
+	$(LOCAL_PATH)/registers/gfx10-rsrc.json
+
+$(intermediates)/common/amdgfxregs.h: $(AMDGFXREGS) $(AMDGFXREGS_INPUTS)
+	@mkdir -p $(dir $@)
+	@echo "Gen Header: $(PRIVATE_MODULE) <= $(notdir $(@))"
+	$(hide) $(MESA_PYTHON2) $(AMDGFXREGS) $(AMDGFXREGS_INPUTS) --sort address --guard AMDGFXREGS_H > $@ || ($(RM) $@; false)
 
 LOCAL_C_INCLUDES := \
 	$(MESA_TOP)/include \
 	$(MESA_TOP)/src \
 	$(MESA_TOP)/src/amd/common \
+	$(MESA_TOP)/src/amd/llvm \
 	$(MESA_TOP)/src/compiler \
 	$(call generated-sources-dir-for,STATIC_LIBRARIES,libmesa_nir,,)/nir \
 	$(MESA_TOP)/src/gallium/include \
 	$(MESA_TOP)/src/gallium/auxiliary \
+	$(MESA_TOP)/src/mesa \
 	$(intermediates)/common
 
 LOCAL_EXPORT_C_INCLUDE_DIRS := \
-	$(LOCAL_PATH)/common
+	$(LOCAL_PATH)/common \
+	$(LOCAL_PATH)/llvm \
+	$(intermediates)/common
 
 LOCAL_SHARED_LIBRARIES := \
 	libdrm_amdgpu

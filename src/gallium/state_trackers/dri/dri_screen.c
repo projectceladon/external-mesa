@@ -33,6 +33,7 @@
 
 #include "dri_screen.h"
 #include "dri_context.h"
+#include "dri_helpers.h"
 
 #include "util/u_inlines.h"
 #include "pipe/p_screen.h"
@@ -64,6 +65,8 @@ dri_fill_st_options(struct dri_screen *screen)
 
    options->disable_blend_func_extended =
       driQueryOptionb(optionCache, "disable_blend_func_extended");
+   options->disable_arb_gpu_shader5 =
+      driQueryOptionb(optionCache, "disable_arb_gpu_shader5");
    options->disable_glsl_line_continuations =
       driQueryOptionb(optionCache, "disable_glsl_line_continuations");
    options->force_glsl_extensions_warn =
@@ -81,12 +84,19 @@ dri_fill_st_options(struct dri_screen *screen)
    options->allow_higher_compat_version =
       driQueryOptionb(optionCache, "allow_higher_compat_version");
    options->glsl_zero_init = driQueryOptionb(optionCache, "glsl_zero_init");
+   options->vs_position_always_invariant =
+      driQueryOptionb(optionCache, "vs_position_always_invariant");
    options->force_glsl_abs_sqrt =
       driQueryOptionb(optionCache, "force_glsl_abs_sqrt");
    options->allow_glsl_cross_stage_interpolation_mismatch =
       driQueryOptionb(optionCache, "allow_glsl_cross_stage_interpolation_mismatch");
    options->allow_glsl_layout_qualifier_on_function_parameters =
       driQueryOptionb(optionCache, "allow_glsl_layout_qualifier_on_function_parameters");
+
+   char *vendor_str = driQueryOptionstr(optionCache, "force_gl_vendor");
+   /* not an empty string */
+   if (*vendor_str)
+      options->force_gl_vendor = strdup(vendor_str);
 
    driComputeOptionsSha1(optionCache, options->config_options_sha1);
 }
@@ -168,11 +178,11 @@ dri_fill_in_modes(struct dri_screen *screen)
    unsigned msaa_samples_max;
    unsigned i;
    struct pipe_screen *p_screen = screen->base.screen;
-   boolean pf_z16, pf_x8z24, pf_z24x8, pf_s8z24, pf_z24s8, pf_z32;
-   boolean mixed_color_depth;
-   boolean allow_rgba_ordering;
-   boolean allow_rgb10;
-   boolean allow_fp16;
+   bool pf_z16, pf_x8z24, pf_z24x8, pf_s8z24, pf_z24s8, pf_z32;
+   bool mixed_color_depth;
+   bool allow_rgba_ordering;
+   bool allow_rgb10;
+   bool allow_fp16;
 
    static const GLenum back_buffer_modes[] = {
       __DRI_ATTRIB_SWAP_NONE, __DRI_ATTRIB_SWAP_UNDEFINED,
@@ -420,7 +430,7 @@ dri_fill_st_visual(struct st_visual *stvis,
       break;
    }
 
-   stvis->accum_format = (mode->haveAccumBuffer) ?
+   stvis->accum_format = (mode->accumRedBits > 0) ?
       PIPE_FORMAT_R16G16B16A16_SNORM : PIPE_FORMAT_NONE;
 
    stvis->buffer_mask |= ST_ATTACHMENT_FRONT_LEFT_MASK;
@@ -435,18 +445,19 @@ dri_fill_st_visual(struct st_visual *stvis,
          stvis->buffer_mask |= ST_ATTACHMENT_BACK_RIGHT_MASK;
    }
 
-   if (mode->haveDepthBuffer || mode->haveStencilBuffer)
+   if (mode->depthBits > 0 || mode->stencilBits > 0)
       stvis->buffer_mask |= ST_ATTACHMENT_DEPTH_STENCIL_MASK;
    /* let the state tracker allocate the accum buffer */
 }
 
-static boolean
+static bool
 dri_get_egl_image(struct st_manager *smapi,
                   void *egl_image,
                   struct st_egl_image *stimg)
 {
    struct dri_screen *screen = (struct dri_screen *)smapi;
    __DRIimage *img = NULL;
+   const struct dri2_format_mapping *map;
 
    if (screen->lookup_egl_image) {
       img = screen->lookup_egl_image(screen, egl_image);
@@ -457,17 +468,8 @@ dri_get_egl_image(struct st_manager *smapi,
 
    stimg->texture = NULL;
    pipe_resource_reference(&stimg->texture, img->texture);
-   switch (img->dri_components) {
-   case __DRI_IMAGE_COMPONENTS_Y_U_V:
-      stimg->format = PIPE_FORMAT_IYUV;
-      break;
-   case __DRI_IMAGE_COMPONENTS_Y_UV:
-      stimg->format = PIPE_FORMAT_NV12;
-      break;
-   default:
-      stimg->format = img->texture->format;
-      break;
-   }
+   map = dri2_get_mapping_by_fourcc(img->dri_fourcc);
+   stimg->format = map ? map->pipe_format : img->texture->format;
    stimg->level = img->level;
    stimg->layer = img->layer;
 
@@ -511,6 +513,8 @@ dri_destroy_screen(__DRIscreen * sPriv)
    dri_destroy_screen_helper(screen);
 
    pipe_loader_release(&screen->dev, 1);
+
+   free(screen->options.force_gl_vendor);
 
    /* The caller in dri_util preserves the fd ownership */
    free(screen);

@@ -1,15 +1,16 @@
-# fixes: The following commits do not apply cleanly on 19.1 branch, as they
-#        depend on other commits not present in the branch.
-20b00e1ff24f974bc99e7ca9a720518da0ce5b89 panfrost: Make ctx->job useful
-f6c44549ee2dd0f218deea1feba3965523609406 iris: Replace devinfo->gen with GEN_GEN
-1cd13ccee7bc2733e7a56284dc02bdb1b1c40081 iris: Update fast clear colors on Gen9 with direct immediate writes.
-# fixes: The following commit depends on commits 77a1070d366a and df4c2ec5e19b
-#        in order to compile, which did not land in the branch.
-2d799250346331a93b21678dc5605cff74dfa3a1 iris: Avoid unnecessary resolves on transfer maps
-# stable: Explicit 19.2 only nominations.
-e73d863a66caac796ed5fb543a77f0b892df8573 radv: allow to enable VK_AMD_shader_ballot only on GFX8+
-f202ac27a99caf9009aa9d60e2e0d7f3b528e99f radv: add a new debug option called RADV_DEBUG=noshaderballot
-a6ad9e8ccf970a0da68508eb2ce26b316045b9f0 radv: force enable VK_AMD_shader_ballot for Wolfenstein Youngblood
-0813c27d8d4a7e9372a8a86d970b598fc4e3bfd1 radv/gfx10: don't initialize VGT_INSTANCE_STEP_RATE_0
-a4e6e59db82e61b47ef905f28dde80ae36a67d35 radv/gfx10: do not use NGG with NAVI14
-fe0ec41c4d36fd5a82e7579d89e34cce7423c4e5 radv: Change memory type order for GPUs without dedicated VRAM
+# This is reverted shortly after landing
+4432a2d14d80081d062f7939a950d65ea3a16eed
+
+# These were manually backported
+21be5c8edd3ad156f6cbfbceb96e7939716d9f2c
+4b392ced2d744fccffe95490ff57e6b41033c266
+b6905438514ae4de0b7f85c861e3d811ddaadda9
+809c8feb92d33c43ace3ef25584a2adca24b1be0
+05c81875d7bf871f73f24903e04dad3d286ed02e
+
+# This isn't worth the effort to backport, as it only affects build with
+# asserts enable, which hopefully wont happen in a stable branch.
+937b9055698be0dfdb7d2e0673a989e2ecc05912
+
+# this is reverted, so just don't apply
+973181c06cca3fe232c3a435abde31f2fc1b81ef

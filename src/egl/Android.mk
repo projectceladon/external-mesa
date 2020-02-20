@@ -36,10 +36,12 @@ include $(CLEAR_VARS)
 LOCAL_SRC_FILES := \
 	$(LIBEGL_C_FILES) \
 	$(dri2_backend_core_FILES) \
+	drivers/dri2/platform_device.c \
 	drivers/dri2/platform_android.c
 
 LOCAL_CFLAGS := \
 	-D_EGL_NATIVE_PLATFORM=_EGL_PLATFORM_ANDROID \
+	-DGLX_USE_TLS \
 	-DHAVE_ANDROID_PLATFORM
 
 LOCAL_C_INCLUDES := \
@@ -72,7 +74,7 @@ ifeq ($(BOARD_USES_DRM_GRALLOC),true)
 endif
 
 ifeq ($(strip $(BOARD_USES_GRALLOC1)),true)
-LOCAL_CFLAGS += -DHAVE_GRALLOC1
+	LOCAL_CFLAGS += -DHAVE_GRALLOC1
 endif
 
 ifeq ($(filter $(MESA_ANDROID_MAJOR_VERSION), 4 5 6 7),)

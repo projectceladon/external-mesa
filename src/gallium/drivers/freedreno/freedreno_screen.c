@@ -85,10 +85,9 @@ static const struct debug_named_value debug_options[] = {
 		{"noindirect",FD_DBG_NOINDR, "Disable hw indirect draws (emulate on CPU)"},
 		{"noblit",    FD_DBG_NOBLIT, "Disable blitter (fallback to generic blit path)"},
 		{"hiprio",    FD_DBG_HIPRIO, "Force high-priority context"},
-		{"ttile",     FD_DBG_TTILE,  "Enable texture tiling (a5xx)"},
+		{"ttile",     FD_DBG_TTILE,  "Enable texture tiling (a2xx/a3xx/a5xx)"},
 		{"perfcntrs", FD_DBG_PERFC,  "Expose performance counters"},
-		{"softpin",   FD_DBG_SOFTPIN,"Enable softpin command submission (experimental)"},
-		{"ubwc",      FD_DBG_UBWC,   "Enable UBWC for all internal buffers (experimental)"},
+		{"noubwc",    FD_DBG_NOUBWC, "Disable UBWC for all internal buffers"},
 		DEBUG_NAMED_VALUE_END
 };
 
@@ -102,7 +101,7 @@ static const char *
 fd_screen_get_name(struct pipe_screen *pscreen)
 {
 	static char buffer[128];
-	util_snprintf(buffer, sizeof(buffer), "FD%03d",
+	snprintf(buffer, sizeof(buffer), "FD%03d",
 			fd_screen(pscreen)->device_id);
 	return buffer;
 }
@@ -218,7 +217,9 @@ fd_screen_get_param(struct pipe_screen *pscreen, enum pipe_cap param)
 	case PIPE_CAP_DEPTH_CLIP_DISABLE_SEPARATE:
 		return 0;
 
-	case PIPE_CAP_SM3:
+	case PIPE_CAP_FRAGMENT_SHADER_TEXTURE_LOD:
+	case PIPE_CAP_FRAGMENT_SHADER_DERIVATIVES:
+	case PIPE_CAP_VERTEX_SHADER_SATURATE:
 	case PIPE_CAP_PRIMITIVE_RESTART:
 	case PIPE_CAP_TGSI_INSTANCEID:
 	case PIPE_CAP_VERTEX_ELEMENT_INSTANCE_DIVISOR:
@@ -307,7 +308,7 @@ fd_screen_get_param(struct pipe_screen *pscreen, enum pipe_cap param)
 	case PIPE_CAP_FORCE_PERSAMPLE_INTERP:
 		return 0;
 
-	case PIPE_CAP_TGSI_FS_FBFETCH:
+	case PIPE_CAP_FBFETCH:
 		if (fd_device_version(screen->dev) >= FD_VERSION_GMEM_BASE &&
 				is_a6xx(screen))
 			return 1;
@@ -353,6 +354,14 @@ fd_screen_get_param(struct pipe_screen *pscreen, enum pipe_cap param)
 			return 1;
 		return 0;
 
+	/* Geometry shaders.. */
+	case PIPE_CAP_MAX_GEOMETRY_OUTPUT_VERTICES:
+		return 512;
+	case PIPE_CAP_MAX_GEOMETRY_TOTAL_OUTPUT_COMPONENTS:
+		return 2048;
+	case PIPE_CAP_MAX_GS_INVOCATIONS:
+		return 32;
+
 	/* Stream output. */
 	case PIPE_CAP_MAX_STREAM_OUTPUT_BUFFERS:
 		if (is_ir3(screen))
@@ -364,6 +373,10 @@ fd_screen_get_param(struct pipe_screen *pscreen, enum pipe_cap param)
 		if (is_ir3(screen))
 			return 1;
 		return 0;
+	case PIPE_CAP_TGSI_FS_FACE_IS_INTEGER_SYSVAL:
+		return 1;
+	case PIPE_CAP_TGSI_FS_POINT_IS_SYSVAL:
+		return is_a2xx(screen);
 	case PIPE_CAP_MAX_STREAM_OUTPUT_SEPARATE_COMPONENTS:
 	case PIPE_CAP_MAX_STREAM_OUTPUT_INTERLEAVED_COMPONENTS:
 		if (is_ir3(screen))
@@ -371,7 +384,8 @@ fd_screen_get_param(struct pipe_screen *pscreen, enum pipe_cap param)
 		return 0;
 
 	/* Texturing. */
-	case PIPE_CAP_MAX_TEXTURE_2D_LEVELS:
+	case PIPE_CAP_MAX_TEXTURE_2D_SIZE:
+		return 1 << (MAX_MIP_LEVELS - 1);
 	case PIPE_CAP_MAX_TEXTURE_CUBE_LEVELS:
 		return MAX_MIP_LEVELS;
 	case PIPE_CAP_MAX_TEXTURE_3D_LEVELS:
@@ -460,9 +474,6 @@ fd_screen_get_shader_param(struct pipe_screen *pscreen,
 		if (has_compute(screen))
 			break;
 		return 0;
-	case PIPE_SHADER_GEOMETRY:
-		/* maye we could emulate.. */
-		return 0;
 	default:
 		DBG("unknown shader type %d", shader);
 		return 0;
@@ -534,8 +545,6 @@ fd_screen_get_shader_param(struct pipe_screen *pscreen,
 		return (1 << PIPE_SHADER_IR_NIR) | (1 << PIPE_SHADER_IR_TGSI);
 	case PIPE_SHADER_CAP_MAX_UNROLL_ITERATIONS_HINT:
 		return 32;
-	case PIPE_SHADER_CAP_SCALAR_ISA:
-		return is_ir3(screen) ? 1 : 0;
 	case PIPE_SHADER_CAP_MAX_SHADER_BUFFERS:
 	case PIPE_SHADER_CAP_MAX_SHADER_IMAGES:
 		if (is_a5xx(screen) || is_a6xx(screen)) {
@@ -606,7 +615,7 @@ fd_get_compute_param(struct pipe_screen *pscreen, enum pipe_shader_ir ir_type,
 
 	case PIPE_COMPUTE_CAP_IR_TARGET:
 		if (ret)
-			sprintf(ret, ir);
+			sprintf(ret, "%s", ir);
 		return strlen(ir) * sizeof(char);
 
 	case PIPE_COMPUTE_CAP_GRID_DIMENSION:
@@ -665,7 +674,7 @@ fd_get_compiler_options(struct pipe_screen *pscreen,
 	return ir2_get_compiler_options();
 }
 
-boolean
+bool
 fd_screen_bo_get_handle(struct pipe_screen *pscreen,
 		struct fd_bo *bo,
 		struct renderonly_scanout *scanout,
@@ -678,14 +687,14 @@ fd_screen_bo_get_handle(struct pipe_screen *pscreen,
 		return fd_bo_get_name(bo, &whandle->handle) == 0;
 	} else if (whandle->type == WINSYS_HANDLE_TYPE_KMS) {
 		if (renderonly_get_handle(scanout, whandle))
-			return TRUE;
+			return true;
 		whandle->handle = fd_bo_handle(bo);
-		return TRUE;
+		return true;
 	} else if (whandle->type == WINSYS_HANDLE_TYPE_FD) {
 		whandle->handle = fd_bo_dmabuf(bo);
-		return TRUE;
+		return true;
 	} else {
-		return FALSE;
+		return false;
 	}
 }
 
@@ -744,6 +753,13 @@ fd_screen_bo_from_handle(struct pipe_screen *pscreen,
 	}
 
 	return bo;
+}
+
+static void _fd_fence_ref(struct pipe_screen *pscreen,
+		struct pipe_fence_handle **ptr,
+		struct pipe_fence_handle *pfence)
+{
+	fd_fence_ref(ptr, pfence);
 }
 
 struct pipe_screen *
@@ -879,9 +895,12 @@ fd_screen_create(struct fd_device *dev, struct renderonly *ro)
 	case 430:
 		fd4_screen_init(pscreen);
 		break;
+	case 510:
 	case 530:
+	case 540:
 		fd5_screen_init(pscreen);
 		break;
+	case 618:
 	case 630:
 		fd6_screen_init(pscreen);
 		break;
@@ -931,7 +950,7 @@ fd_screen_create(struct fd_device *dev, struct renderonly *ro)
 
 	pscreen->get_timestamp = fd_screen_get_timestamp;
 
-	pscreen->fence_reference = fd_fence_ref;
+	pscreen->fence_reference = _fd_fence_ref;
 	pscreen->fence_finish = fd_fence_finish;
 	pscreen->fence_get_fd = fd_fence_get_fd;
 

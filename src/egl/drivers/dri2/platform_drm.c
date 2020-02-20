@@ -122,11 +122,13 @@ dri2_drm_config_is_compatible(struct dri2_egl_display *dri2_dpy,
    if (shifts[0] != visual->rgba_shifts.red ||
        shifts[1] != visual->rgba_shifts.green ||
        shifts[2] != visual->rgba_shifts.blue ||
-       (shifts[3] > -1 && shifts[3] != visual->rgba_shifts.alpha) ||
+       (shifts[3] > -1 && visual->rgba_shifts.alpha > -1 &&
+        shifts[3] != visual->rgba_shifts.alpha) ||
        sizes[0] != visual->rgba_sizes.red ||
        sizes[1] != visual->rgba_sizes.green ||
        sizes[2] != visual->rgba_sizes.blue ||
-       (sizes[3] > 0 && sizes[3] != visual->rgba_sizes.alpha) ||
+       (sizes[3] > 0 && visual->rgba_sizes.alpha > 0 &&
+        sizes[3] != visual->rgba_sizes.alpha) ||
        is_float != visual->is_float) {
       return false;
    }
@@ -155,7 +157,7 @@ dri2_drm_create_window_surface(_EGLDriver *drv, _EGLDisplay *disp,
    }
 
    if (!dri2_init_surface(&dri2_surf->base, disp, EGL_WINDOW_BIT, conf,
-                          attrib_list, false))
+                          attrib_list, false, native_surface))
       goto cleanup_surf;
 
    config = dri2_get_dri_config(dri2_conf, EGL_WINDOW_BIT,
@@ -177,7 +179,7 @@ dri2_drm_create_window_surface(_EGLDriver *drv, _EGLDisplay *disp,
    dri2_surf->base.Height = surf->base.height;
    surf->dri_private = dri2_surf;
 
-   if (!dri2_create_drawable(dri2_dpy, config, dri2_surf))
+   if (!dri2_create_drawable(dri2_dpy, config, dri2_surf, dri2_surf->gbm_surf))
       goto cleanup_surf;
 
    return &dri2_surf->base;
@@ -677,7 +679,6 @@ static const struct dri2_egl_display_vtbl dri2_drm_display_vtbl = {
    .swap_buffers = dri2_drm_swap_buffers,
    .swap_buffers_with_damage = dri2_fallback_swap_buffers_with_damage,
    .swap_buffers_region = dri2_fallback_swap_buffers_region,
-   .set_damage_region = dri2_fallback_set_damage_region,
    .post_sub_buffer = dri2_fallback_post_sub_buffer,
    .copy_buffers = dri2_fallback_copy_buffers,
    .query_buffer_age = dri2_drm_query_buffer_age,
@@ -740,6 +741,21 @@ dri2_initialize_drm(_EGLDriver *drv, _EGLDisplay *disp)
    disp->Device = dev;
 
    dri2_dpy->driver_name = strdup(dri2_dpy->gbm_dri->driver_name);
+   dri2_dpy->is_render_node = drmGetNodeTypeFromFd(dri2_dpy->fd) == DRM_NODE_RENDER;
+
+   /* render nodes cannot use Gem names, and thus do not support
+    * the __DRI_DRI2_LOADER extension */
+   if (!dri2_dpy->is_render_node) {
+      if (!dri2_load_driver(disp)) {
+         err = "DRI2: failed to load driver";
+         goto cleanup;
+      }
+   } else {
+      if (!dri2_load_driver_dri3(disp)) {
+         err = "DRI3: failed to load driver";
+         goto cleanup;
+      }
+   }
 
    dri2_dpy->dri_screen = dri2_dpy->gbm_dri->screen;
    dri2_dpy->core = dri2_dpy->gbm_dri->core;

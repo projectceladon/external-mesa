@@ -28,6 +28,9 @@
 
 #include <stdbool.h>
 
+/* Project-wide (GL and Vulkan) maximum. */
+#define MAX_DRAW_BUFFERS 8
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -575,11 +578,14 @@ typedef enum
     */
    /*@{*/
    SYSTEM_VALUE_FRAG_COORD,
+   SYSTEM_VALUE_POINT_COORD,
    SYSTEM_VALUE_FRONT_FACE,
    SYSTEM_VALUE_SAMPLE_ID,
    SYSTEM_VALUE_SAMPLE_POS,
    SYSTEM_VALUE_SAMPLE_MASK_IN,
    SYSTEM_VALUE_HELPER_INVOCATION,
+   SYSTEM_VALUE_COLOR0,
+   SYSTEM_VALUE_COLOR1,
    /*@}*/
 
    /**
@@ -591,6 +597,8 @@ typedef enum
    SYSTEM_VALUE_PRIMITIVE_ID,
    SYSTEM_VALUE_TESS_LEVEL_OUTER, /**< TES input */
    SYSTEM_VALUE_TESS_LEVEL_INNER, /**< TES input */
+   SYSTEM_VALUE_TESS_LEVEL_OUTER_DEFAULT, /**< TCS input for passthru TCS */
+   SYSTEM_VALUE_TESS_LEVEL_INNER_DEFAULT, /**< TCS input for passthru TCS */
    /*@}*/
 
    /**
@@ -606,6 +614,7 @@ typedef enum
    SYSTEM_VALUE_LOCAL_GROUP_SIZE,
    SYSTEM_VALUE_GLOBAL_GROUP_SIZE,
    SYSTEM_VALUE_WORK_DIM,
+   SYSTEM_VALUE_USER_DATA_AMD,
    /*@}*/
 
    /** Required for VK_KHR_device_group */
@@ -631,6 +640,13 @@ typedef enum
    SYSTEM_VALUE_BARYCENTRIC_SAMPLE,
    SYSTEM_VALUE_BARYCENTRIC_CENTROID,
    SYSTEM_VALUE_BARYCENTRIC_SIZE,
+
+   /**
+    * IR3 specific geometry shader system value that packs invocation id,
+    * thread id and vertex id.  Having this as a nir level system value lets
+    * us do the unpacking in nir.
+    */
+   SYSTEM_VALUE_GS_HEADER_IR3,
 
    SYSTEM_VALUE_MAX             /**< Number of values */
 } gl_system_value;
@@ -725,6 +741,17 @@ enum gl_access_qualifier
 
    /** The access may use a non-uniform buffer or image index */
    ACCESS_NON_UNIFORM   = (1 << 5),
+
+   /* This has the same semantics as NIR_INTRINSIC_CAN_REORDER, only to be
+    * used with loads. In other words, it means that the load can be
+    * arbitrarily reordered, or combined with other loads to the same address.
+    * It is implied by ACCESS_NON_WRITEABLE together with ACCESS_RESTRICT, and
+    * a lack of ACCESS_COHERENT and ACCESS_VOLATILE.
+    */
+   ACCESS_CAN_REORDER = (1 << 6),
+
+   /** Use as little cache space as possible. */
+   ACCESS_STREAM_CACHE_POLICY = (1 << 7),
 };
 
 /**
@@ -751,6 +778,27 @@ enum gl_advanced_blend_mode
    BLEND_HSL_LUMINOSITY = 0x4000,
 
    BLEND_ALL            = 0x7fff,
+};
+
+enum blend_func
+{
+   BLEND_FUNC_ADD,
+   BLEND_FUNC_SUBTRACT,
+   BLEND_FUNC_REVERSE_SUBTRACT,
+   BLEND_FUNC_MIN,
+   BLEND_FUNC_MAX,
+};
+
+enum blend_factor
+{
+   BLEND_FACTOR_ZERO,
+   BLEND_FACTOR_SRC_COLOR,
+   BLEND_FACTOR_DST_COLOR,
+   BLEND_FACTOR_SRC_ALPHA,
+   BLEND_FACTOR_DST_ALPHA,
+   BLEND_FACTOR_CONSTANT_COLOR,
+   BLEND_FACTOR_CONSTANT_ALPHA,
+   BLEND_FACTOR_SRC_ALPHA_SATURATE,
 };
 
 enum gl_tess_spacing
@@ -817,6 +865,26 @@ enum gl_derivative_group {
    DERIVATIVE_GROUP_NONE = 0,
    DERIVATIVE_GROUP_QUADS,
    DERIVATIVE_GROUP_LINEAR,
+};
+
+enum float_controls
+{
+   FLOAT_CONTROLS_DEFAULT_FLOAT_CONTROL_MODE        = 0x0000,
+   FLOAT_CONTROLS_DENORM_PRESERVE_FP16              = 0x0001,
+   FLOAT_CONTROLS_DENORM_PRESERVE_FP32              = 0x0002,
+   FLOAT_CONTROLS_DENORM_PRESERVE_FP64              = 0x0004,
+   FLOAT_CONTROLS_DENORM_FLUSH_TO_ZERO_FP16         = 0x0008,
+   FLOAT_CONTROLS_DENORM_FLUSH_TO_ZERO_FP32         = 0x0010,
+   FLOAT_CONTROLS_DENORM_FLUSH_TO_ZERO_FP64         = 0x0020,
+   FLOAT_CONTROLS_SIGNED_ZERO_INF_NAN_PRESERVE_FP16 = 0x0040,
+   FLOAT_CONTROLS_SIGNED_ZERO_INF_NAN_PRESERVE_FP32 = 0x0080,
+   FLOAT_CONTROLS_SIGNED_ZERO_INF_NAN_PRESERVE_FP64 = 0x0100,
+   FLOAT_CONTROLS_ROUNDING_MODE_RTE_FP16            = 0x0200,
+   FLOAT_CONTROLS_ROUNDING_MODE_RTE_FP32            = 0x0400,
+   FLOAT_CONTROLS_ROUNDING_MODE_RTE_FP64            = 0x0800,
+   FLOAT_CONTROLS_ROUNDING_MODE_RTZ_FP16            = 0x1000,
+   FLOAT_CONTROLS_ROUNDING_MODE_RTZ_FP32            = 0x2000,
+   FLOAT_CONTROLS_ROUNDING_MODE_RTZ_FP64            = 0x4000,
 };
 
 #ifdef __cplusplus

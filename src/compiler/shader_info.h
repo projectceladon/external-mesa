@@ -35,6 +35,7 @@ extern "C" {
 struct spirv_supported_capabilities {
    bool address;
    bool atomic_storage;
+   bool demote_to_helper_invocation;
    bool derivative_group;
    bool descriptor_array_dynamic_indexing;
    bool descriptor_array_non_uniform_indexing;
@@ -42,8 +43,9 @@ struct spirv_supported_capabilities {
    bool device_group;
    bool draw_parameters;
    bool float64;
+   bool fragment_shader_sample_interlock;
+   bool fragment_shader_pixel_interlock;
    bool geometry_streams;
-   bool gcn_shader;
    bool image_ms_array;
    bool image_read_without_format;
    bool image_write_without_format;
@@ -57,6 +59,8 @@ struct spirv_supported_capabilities {
    bool physical_storage_buffer_address;
    bool post_depth_coverage;
    bool runtime_descriptor_array;
+   bool float_controls;
+   bool shader_clock;
    bool shader_viewport_index_layer;
    bool stencil_export;
    bool storage_8bit;
@@ -70,9 +74,13 @@ struct spirv_supported_capabilities {
    bool subgroup_vote;
    bool tessellation;
    bool transform_feedback;
-   bool trinary_minmax;
    bool variable_pointers;
+   bool vk_memory_model;
+   bool vk_memory_model_device_scope;
    bool float16;
+   bool amd_gcn_shader;
+   bool amd_shader_ballot;
+   bool amd_trinary_minmax;
 };
 
 typedef struct shader_info {
@@ -99,6 +107,8 @@ typedef struct shader_info {
    unsigned num_ssbos;
    /* Number of images used by this shader */
    unsigned num_images;
+   /* Index of the last MSAA image. */
+   int last_msaa_image;
 
    /* Which inputs are actually read */
    uint64_t inputs_read;
@@ -143,16 +153,29 @@ typedef struct shader_info {
    /* The size of the gl_CullDistance[] array, if declared. */
    unsigned cull_distance_array_size;
 
+   /* Whether the first UBO is the default uniform buffer, i.e. uniforms. */
+   bool first_ubo_is_default_ubo;
+
    /* Whether or not separate shader objects were used */
    bool separate_shader;
 
    /** Was this shader linked with any transform feedback varyings? */
    bool has_transform_feedback_varyings;
 
+   /* SPV_KHR_float_controls: execution mode for floating point ops */
+   unsigned float_controls_execution_mode;
+
    union {
       struct {
          /* Which inputs are doubles */
          uint64_t double_inputs;
+
+         /* For AMD-specific driver-internal shaders. It replaces vertex
+          * buffer loads with code generating VS inputs from scalar registers.
+          *
+          * Valid values: SI_VS_BLIT_SGPRS_POS_*
+          */
+         unsigned blit_sgprs_amd;
 
          /* True if the shader writes position in window space coordinates pre-transform */
          bool window_space_position;
@@ -183,6 +206,14 @@ typedef struct shader_info {
 
       struct {
          bool uses_discard;
+
+         /**
+          * True if this fragment shader requires helper invocations.  This
+          * can be caused by the use of ALU derivative ops, texture
+          * instructions which do implicit derivatives, and the use of quad
+          * subgroup operations.
+          */
+         bool needs_helper_invocations;
 
          /**
           * Whether any inputs are declared with the "sample" qualifier.
@@ -242,6 +273,7 @@ typedef struct shader_info {
          unsigned local_size[3];
 
          bool local_size_variable;
+         char user_data_components_amd;
 
          /**
           * Size of shared variables accessed by the compute shader.

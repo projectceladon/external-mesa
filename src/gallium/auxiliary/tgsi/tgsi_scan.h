@@ -137,12 +137,15 @@ struct tgsi_shader_info
    boolean uses_derivatives;
    boolean uses_bindless_samplers;
    boolean uses_bindless_images;
+   boolean uses_fbfetch;
    unsigned clipdist_writemask;
    unsigned culldist_writemask;
    unsigned num_written_culldistance;
    unsigned num_written_clipdistance;
 
    unsigned images_declared; /**< bitmask of declared images */
+   unsigned msaa_images_declared; /**< bitmask of declared MSAA images */
+
    /**
     * Bitmask indicating which declared image is a buffer.
     */

@@ -249,17 +249,16 @@ process_block_array(struct uniform_block_array_elements *ub_array, char **name,
       ralloc_asprintf_rewrite_tail(name, &new_length, "[%u]", element_idx);
 
       if (ub_array->array) {
-         unsigned boffset = binding_offset + (element_idx *
-                            ub_array->array->total_num_array_elements);
+         unsigned binding_stride = binding_offset + (element_idx *
+                                   ub_array->array->aoa_size);
          process_block_array(ub_array->array, name, new_length, blocks,
                              parcel, variables, b, block_index,
-                             boffset, ctx, prog, first_index);
+                             binding_stride, ctx, prog, first_index);
       } else {
-         unsigned boffset = binding_offset + element_idx;
          process_block_array_leaf(*name, blocks,
                                   parcel, variables, b, block_index,
-                                  boffset, *block_index - first_index,
-                                  ctx, prog);
+                                  binding_offset + element_idx,
+                                  *block_index - first_index, ctx, prog);
       }
    }
 }

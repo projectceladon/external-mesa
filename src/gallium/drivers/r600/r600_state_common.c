@@ -419,7 +419,7 @@ static void r600_sampler_view_destroy(struct pipe_context *ctx,
 
 	if (view->tex_resource->gpu_address &&
 	    view->tex_resource->b.b.target == PIPE_BUFFER)
-		LIST_DELINIT(&view->list);
+		list_delinit(&view->list);
 
 	pipe_resource_reference(&state->texture, NULL);
 	FREE(view);
@@ -3277,7 +3277,7 @@ static void r600_invalidate_buffer(struct pipe_context *ctx, struct pipe_resourc
 
 }
 
-static void r600_set_active_query_state(struct pipe_context *ctx, boolean enable)
+static void r600_set_active_query_state(struct pipe_context *ctx, bool enable)
 {
 	struct r600_context *rctx = (struct r600_context*)ctx;
 

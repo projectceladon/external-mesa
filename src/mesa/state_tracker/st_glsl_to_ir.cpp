@@ -59,6 +59,12 @@ st_link_shader(struct gl_context *ctx, struct gl_shader_program *prog)
 
    assert(prog->data->LinkStatus);
 
+   /* Skip the GLSL steps when using SPIR-V. */
+   if (prog->data->spirv) {
+      assert(use_nir);
+      return st_link_nir(ctx, prog);
+   }
+
    for (unsigned i = 0; i < MESA_SHADER_STAGES; i++) {
       if (prog->_LinkedShaders[i] == NULL)
          continue;
@@ -121,7 +127,7 @@ st_link_shader(struct gl_context *ctx, struct gl_shader_program *prog)
             shader, ctx->Extensions.KHR_blend_equation_advanced_coherent);
 
       lower_instructions(ir,
-                         MOD_TO_FLOOR |
+                         (use_nir ? 0 : MOD_TO_FLOOR) |
                          FDIV_TO_MUL_RCP |
                          EXP_TO_EXP2 |
                          LOG_TO_LOG2 |

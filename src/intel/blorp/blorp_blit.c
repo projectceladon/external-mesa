@@ -60,9 +60,6 @@ struct brw_blorp_blit_vars {
    nir_variable *v_dst_offset;
    nir_variable *v_src_inv_size;
 
-   /* gl_FragCoord */
-   nir_variable *frag_coord;
-
    /* gl_FragColor */
    nir_variable *color_out;
 };
@@ -84,10 +81,6 @@ brw_blorp_blit_vars_init(nir_builder *b, struct brw_blorp_blit_vars *v,
 
 #undef LOAD_INPUT
 
-   v->frag_coord = nir_variable_create(b->shader, nir_var_shader_in,
-                                       glsl_vec4_type(), "gl_FragCoord");
-   v->frag_coord->data.location = VARYING_SLOT_POS;
-
    v->color_out = nir_variable_create(b->shader, nir_var_shader_out,
                                       glsl_vec4_type(), "gl_FragColor");
    v->color_out->data.location = FRAG_RESULT_COLOR;
@@ -98,7 +91,7 @@ blorp_blit_get_frag_coords(nir_builder *b,
                            const struct brw_blorp_blit_prog_key *key,
                            struct brw_blorp_blit_vars *v)
 {
-   nir_ssa_def *coord = nir_f2i32(b, nir_load_var(b, v->frag_coord));
+   nir_ssa_def *coord = nir_f2i32(b, nir_load_frag_coord(b));
 
    /* Account for destination surface intratile offset
     *
@@ -600,7 +593,7 @@ blorp_nir_combine_samples(nir_builder *b, struct brw_blorp_blit_vars *v,
       nir_local_variable_create(b->impl, glsl_vec4_type(), "color");
 
    nir_ssa_def *mcs = NULL;
-   if (tex_aux_usage == ISL_AUX_USAGE_MCS)
+   if (isl_aux_usage_has_mcs(tex_aux_usage))
       mcs = blorp_blit_txf_ms_mcs(b, v, pos);
 
    nir_op combine_op;
@@ -674,7 +667,7 @@ blorp_nir_combine_samples(nir_builder *b, struct brw_blorp_blit_vars *v,
                                         nir_imm_int(b, i));
       texture_data[stack_depth++] = blorp_nir_txf_ms(b, v, ms_pos, mcs, dst_type);
 
-      if (i == 0 && tex_aux_usage == ISL_AUX_USAGE_MCS) {
+      if (i == 0 && isl_aux_usage_has_mcs(tex_aux_usage)) {
          /* The Ivy Bridge PRM, Vol4 Part1 p27 (Multisample Control Surface)
           * suggests an optimization:
           *
@@ -790,7 +783,7 @@ blorp_nir_manual_blend_bilinear(nir_builder *b, nir_ssa_def *pos,
        * here inside the loop after computing the pixel coordinates.
        */
       nir_ssa_def *mcs = NULL;
-      if (key->tex_aux_usage == ISL_AUX_USAGE_MCS)
+      if (isl_aux_usage_has_mcs(key->tex_aux_usage))
          mcs = blorp_blit_txf_ms_mcs(b, v, sample_coords_int);
 
       /* Compute sample index and map the sample index to a sample number.
@@ -1350,7 +1343,7 @@ brw_blorp_build_nir_shader(struct blorp_context *blorp, void *mem_ctx,
          color = blorp_nir_txf(&b, &v, src_pos, key->texture_data_type);
       } else {
          nir_ssa_def *mcs = NULL;
-         if (key->tex_aux_usage == ISL_AUX_USAGE_MCS)
+         if (isl_aux_usage_has_mcs(key->tex_aux_usage))
             mcs = blorp_blit_txf_ms_mcs(&b, &v, src_pos);
 
          color = blorp_nir_txf_ms(&b, &v, src_pos, mcs, key->texture_data_type);
@@ -1426,6 +1419,29 @@ brw_blorp_build_nir_shader(struct blorp_context *blorp, void *mem_ctx,
       color = bit_cast_color(&b, color, key);
    } else if (key->dst_format) {
       color = convert_color(&b, color, key);
+   } else if (key->uint32_to_sint) {
+      /* Normally the hardware will take care of converting values from/to
+       * the source and destination formats.  But a few cases need help.
+       *
+       * The Skylake PRM, volume 07, page 658 has a programming note:
+       *
+       *    "When using SINT or UINT rendertarget surface formats, Blending
+       *     must be DISABLED. The Pre-Blend Color Clamp Enable and Color
+       *     Clamp Range fields are ignored, and an implied clamp to the
+       *     rendertarget surface format is performed."
+       *
+       * For UINT to SINT blits, our sample operation gives us a uint32_t,
+       * but our render target write expects a signed int32_t number.  If we
+       * simply passed the value along, the hardware would interpret a value
+       * with bit 31 set as a negative value, clamping it to the largest
+       * negative number the destination format could represent.  But the
+       * actual source value is a positive number, so we want to clamp it
+       * to INT_MAX.  To fix this, we explicitly take min(color, INT_MAX).
+       */
+      color = nir_umin(&b, color, nir_imm_int(&b, INT32_MAX));
+   } else if (key->sint32_to_uint) {
+      /* Similar to above, but clamping negative numbers to zero. */
+      color = nir_imax(&b, color, nir_imm_int(&b, 0));
    }
 
    if (key->dst_rgb) {
@@ -1473,9 +1489,9 @@ brw_blorp_get_blit_kernel(struct blorp_batch *batch,
 
    struct brw_wm_prog_key wm_key;
    brw_blorp_init_wm_prog_key(&wm_key);
-   wm_key.tex.compressed_multisample_layout_mask =
-      prog_key->tex_aux_usage == ISL_AUX_USAGE_MCS;
-   wm_key.tex.msaa_16 = prog_key->tex_samples == 16;
+   wm_key.base.tex.compressed_multisample_layout_mask =
+      isl_aux_usage_has_mcs(prog_key->tex_aux_usage);
+   wm_key.base.tex.msaa_16 = prog_key->tex_samples == 16;
    wm_key.multisample_fbo = prog_key->rt_samples > 1;
 
    program = blorp_compile_fs(blorp, mem_ctx, nir, &wm_key, false,
@@ -1593,9 +1609,9 @@ blorp_surf_convert_to_single_slice(const struct isl_device *isl_dev,
    info->z_offset = 0;
 }
 
-static void
-surf_fake_interleaved_msaa(const struct isl_device *isl_dev,
-                           struct brw_blorp_surface_info *info)
+void
+blorp_surf_fake_interleaved_msaa(const struct isl_device *isl_dev,
+                                 struct brw_blorp_surface_info *info)
 {
    assert(info->surf.msaa_layout == ISL_MSAA_LAYOUT_INTERLEAVED);
 
@@ -1607,9 +1623,9 @@ surf_fake_interleaved_msaa(const struct isl_device *isl_dev,
    info->surf.msaa_layout = ISL_MSAA_LAYOUT_NONE;
 }
 
-static void
-surf_retile_w_to_y(const struct isl_device *isl_dev,
-                   struct brw_blorp_surface_info *info)
+void
+blorp_surf_retile_w_to_y(const struct isl_device *isl_dev,
+                         struct brw_blorp_surface_info *info)
 {
    assert(info->surf.tiling == ISL_TILING_W);
 
@@ -1623,7 +1639,7 @@ surf_retile_w_to_y(const struct isl_device *isl_dev,
     */
    if (isl_dev->info->gen > 6 &&
        info->surf.msaa_layout == ISL_MSAA_LAYOUT_INTERLEAVED) {
-      surf_fake_interleaved_msaa(isl_dev, info);
+      blorp_surf_fake_interleaved_msaa(isl_dev, info);
    }
 
    if (isl_dev->info->gen == 6) {
@@ -1865,7 +1881,7 @@ try_blorp_blit(struct blorp_batch *batch,
       params->x1 = ALIGN(params->x1, 2) * px_size_sa.width;
       params->y1 = ALIGN(params->y1, 2) * px_size_sa.height;
 
-      surf_fake_interleaved_msaa(batch->blorp->isl_dev, &params->dst);
+      blorp_surf_fake_interleaved_msaa(batch->blorp->isl_dev, &params->dst);
 
       wm_prog_key->use_kill = true;
       wm_prog_key->need_dst_offset = true;
@@ -1926,7 +1942,7 @@ try_blorp_blit(struct blorp_batch *batch,
       params->y1 = ALIGN(params->y1, y_align) / 2;
 
       /* Retile the surface to Y-tiled */
-      surf_retile_w_to_y(batch->blorp->isl_dev, &params->dst);
+      blorp_surf_retile_w_to_y(batch->blorp->isl_dev, &params->dst);
 
       wm_prog_key->dst_tiled_w = true;
       wm_prog_key->use_kill = true;
@@ -1952,7 +1968,7 @@ try_blorp_blit(struct blorp_batch *batch,
        *
        * TODO: what if this makes the texture size too large?
        */
-      surf_retile_w_to_y(batch->blorp->isl_dev, &params->src);
+      blorp_surf_retile_w_to_y(batch->blorp->isl_dev, &params->src);
 
       wm_prog_key->src_tiled_w = true;
       wm_prog_key->need_src_offset = true;
@@ -2300,9 +2316,18 @@ blorp_blit(struct blorp_batch *batch,
    params.src.view.swizzle = src_swizzle;
    params.dst.view.swizzle = dst_swizzle;
 
+   const struct isl_format_layout *src_fmtl =
+      isl_format_get_layout(params.src.view.format);
+
    struct brw_blorp_blit_prog_key wm_prog_key = {
       .shader_type = BLORP_SHADER_TYPE_BLIT,
       .filter = filter,
+      .sint32_to_uint = src_fmtl->channels.r.bits == 32 &&
+                        isl_format_has_sint_channel(params.src.view.format) &&
+                        isl_format_has_uint_channel(params.dst.view.format),
+      .uint32_to_sint = src_fmtl->channels.r.bits == 32 &&
+                        isl_format_has_uint_channel(params.src.view.format) &&
+                        isl_format_has_sint_channel(params.dst.view.format),
    };
 
    /* Scaling factors used for bilinear filtering in multisample scaled
@@ -2460,8 +2485,29 @@ get_ccs_compatible_uint_format(const struct isl_format_layout *fmtl)
    case ISL_FORMAT_B10G10R10A2_UNORM:
    case ISL_FORMAT_B10G10R10A2_UNORM_SRGB:
    case ISL_FORMAT_R10G10B10A2_UNORM:
+   case ISL_FORMAT_R10G10B10A2_UNORM_SRGB:
+   case ISL_FORMAT_R10G10B10_FLOAT_A2_UNORM:
    case ISL_FORMAT_R10G10B10A2_UINT:
       return ISL_FORMAT_R10G10B10A2_UINT;
+
+   case ISL_FORMAT_R16_UNORM:
+   case ISL_FORMAT_R16_SNORM:
+   case ISL_FORMAT_R16_SINT:
+   case ISL_FORMAT_R16_UINT:
+   case ISL_FORMAT_R16_FLOAT:
+      return ISL_FORMAT_R16_UINT;
+
+   case ISL_FORMAT_R8G8_UNORM:
+   case ISL_FORMAT_R8G8_SNORM:
+   case ISL_FORMAT_R8G8_SINT:
+   case ISL_FORMAT_R8G8_UINT:
+      return ISL_FORMAT_R8G8_UINT;
+
+   case ISL_FORMAT_R8_UNORM:
+   case ISL_FORMAT_R8_SNORM:
+   case ISL_FORMAT_R8_SINT:
+   case ISL_FORMAT_R8_UINT:
+      return ISL_FORMAT_R8_UINT;
 
    default:
       unreachable("Not a compressible format");
@@ -2554,9 +2600,11 @@ blorp_copy(struct blorp_batch *batch,
 
    assert(params.src.aux_usage == ISL_AUX_USAGE_NONE ||
           params.src.aux_usage == ISL_AUX_USAGE_MCS ||
+          params.src.aux_usage == ISL_AUX_USAGE_MCS_CCS ||
           params.src.aux_usage == ISL_AUX_USAGE_CCS_E);
    assert(params.dst.aux_usage == ISL_AUX_USAGE_NONE ||
           params.dst.aux_usage == ISL_AUX_USAGE_MCS ||
+          params.dst.aux_usage == ISL_AUX_USAGE_MCS_CCS ||
           params.dst.aux_usage == ISL_AUX_USAGE_CCS_E);
 
    if (params.dst.aux_usage == ISL_AUX_USAGE_CCS_E) {

@@ -38,7 +38,7 @@ struct uniform_block_array_elements {
     * of elements in an array including the elements in arrays of arrays before
     * inactive elements are removed is needed to be perform that calculation.
     */
-   unsigned total_num_array_elements;
+   unsigned aoa_size;
 
    ir_dereference_array *ir;
 

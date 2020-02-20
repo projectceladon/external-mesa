@@ -1283,6 +1283,24 @@
 
 </category>
 
+<category name="GL_EXT_clip_control" number="290">
+
+    <enum name="LOWER_LEFT_EXT" value = "0x8CA1"/>
+    <enum name="UPPER_LEFT_EXT" value = "0x8CA2"/>
+
+    <enum name="NEGATIVE_ONE_TO_ONE_EXT" value = "0x935E"/>
+    <enum name="ZERO_TO_ONE_EXT" value = "0x935F"/>
+
+    <enum name="CLIP_ORIGIN_EXT" value = "0x935C"/>
+    <enum name="CLIP_DEPTH_MODE_EXT" value = "0x935D"/>
+
+    <function name="ClipControlEXT" no_error="true" es2="2.0" alias="ClipControl">
+        <param name="origin" type="GLenum"/>
+        <param name="depth" type="GLenum"/>
+    </function>
+
+</category>
+
 <category name="GL_OES_copy_image" number="208">
 
     <function name="CopyImageSubDataOES" alias="CopyImageSubData" es2="3.0">
@@ -1478,6 +1496,21 @@
         <param name="numlevels" type="GLuint"/>
         <param name="minlayer" type="GLuint"/>
         <param name="numlayers" type="GLuint"/>
+   </function>
+</category>
+
+<!-- 302. GL_MESA_framebuffer_flip_y -->
+<category name="GL_MESA_framebuffer_flip_y" number="302">
+   <enum name="GL_FRAMEBUFFER_FLIP_Y_MESA" value="0x8BBB"/>
+   <function name="FramebufferParameteriMESA" es2="3.0">
+       <param name="target" type="GLenum"/>
+       <param name="pname"  type="GLenum"/>
+       <param name="param"  type="GLint" />
+   </function>
+   <function name="GetFramebufferParameterivMESA" es2="3.0">
+       <param name="target" type="GLenum" />
+       <param name="pname"  type="GLenum" />
+       <param name="params" type="GLint *" output="true" />
    </function>
 </category>
 

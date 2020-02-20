@@ -55,7 +55,7 @@ enum fd_render_stage {
 	FD_STAGE_ALL      = 0xff,
 };
 
-#define MAX_HW_SAMPLE_PROVIDERS 5
+#define MAX_HW_SAMPLE_PROVIDERS 7
 struct fd_hw_sample_provider;
 struct fd_hw_sample;
 
@@ -229,7 +229,7 @@ struct fd_batch * fd_batch_create(struct fd_context *ctx, bool nondraw);
 
 void fd_batch_reset(struct fd_batch *batch);
 void fd_batch_sync(struct fd_batch *batch);
-void fd_batch_flush(struct fd_batch *batch, bool sync, bool force);
+void fd_batch_flush(struct fd_batch *batch, bool sync);
 void fd_batch_add_dep(struct fd_batch *batch, struct fd_batch *dep);
 void fd_batch_resource_used(struct fd_batch *batch, struct fd_resource *rsc, bool write);
 void fd_batch_check_size(struct fd_batch *batch);

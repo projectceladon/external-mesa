@@ -74,11 +74,21 @@ protected:
       return result;
    }
 
+   unsigned count_derefs(nir_deref_type deref_type);
    unsigned count_intrinsics(nir_intrinsic_op intrinsic);
+   unsigned count_function_temp_vars(void) {
+      return exec_list_length(&b->impl->locals);
+   }
+
+   unsigned count_shader_temp_vars(void) {
+      return exec_list_length(&b->shader->globals);
+   }
 
    nir_intrinsic_instr *get_intrinsic(nir_intrinsic_op intrinsic,
                                       unsigned index);
 
+   nir_deref_instr *get_deref(nir_deref_type deref_type,
+                              unsigned index);
    void *mem_ctx;
    void *lin_ctx;
 
@@ -87,11 +97,13 @@ protected:
 
 nir_vars_test::nir_vars_test()
 {
+   glsl_type_singleton_init_or_ref();
+
    mem_ctx = ralloc_context(NULL);
    lin_ctx = linear_alloc_parent(mem_ctx, 0);
    static const nir_shader_compiler_options options = { };
    b = rzalloc(mem_ctx, nir_builder);
-   nir_builder_init_simple_shader(b, mem_ctx, MESA_SHADER_FRAGMENT, &options);
+   nir_builder_init_simple_shader(b, mem_ctx, MESA_SHADER_COMPUTE, &options);
 }
 
 nir_vars_test::~nir_vars_test()
@@ -102,6 +114,8 @@ nir_vars_test::~nir_vars_test()
    }
 
    ralloc_free(mem_ctx);
+
+   glsl_type_singleton_decref();
 }
 
 unsigned
@@ -114,6 +128,22 @@ nir_vars_test::count_intrinsics(nir_intrinsic_op intrinsic)
             continue;
          nir_intrinsic_instr *intrin = nir_instr_as_intrinsic(instr);
          if (intrin->intrinsic == intrinsic)
+            count++;
+      }
+   }
+   return count;
+}
+
+unsigned
+nir_vars_test::count_derefs(nir_deref_type deref_type)
+{
+   unsigned count = 0;
+   nir_foreach_block(block, b->impl) {
+      nir_foreach_instr(instr, block) {
+         if (instr->type != nir_instr_type_deref)
+            continue;
+         nir_deref_instr *intrin = nir_instr_as_deref(instr);
+         if (intrin->deref_type == deref_type)
             count++;
       }
    }
@@ -139,11 +169,45 @@ nir_vars_test::get_intrinsic(nir_intrinsic_op intrinsic,
    return NULL;
 }
 
+nir_deref_instr *
+nir_vars_test::get_deref(nir_deref_type deref_type,
+                         unsigned index)
+{
+   nir_foreach_block(block, b->impl) {
+      nir_foreach_instr(instr, block) {
+         if (instr->type != nir_instr_type_deref)
+            continue;
+         nir_deref_instr *deref = nir_instr_as_deref(instr);
+         if (deref->deref_type == deref_type) {
+            if (index == 0)
+               return deref;
+            index--;
+         }
+      }
+   }
+   return NULL;
+}
+
 /* Allow grouping the tests while still sharing the helpers. */
 class nir_redundant_load_vars_test : public nir_vars_test {};
 class nir_copy_prop_vars_test : public nir_vars_test {};
 class nir_dead_write_vars_test : public nir_vars_test {};
 class nir_combine_stores_test : public nir_vars_test {};
+class nir_split_vars_test : public nir_vars_test {};
+
+void
+scoped_memory_barrier(nir_builder *b,
+                      nir_memory_semantics semantics,
+                      nir_variable_mode modes,
+                      nir_scope scope = NIR_SCOPE_DEVICE)
+{
+   nir_intrinsic_instr *intrin =
+      nir_intrinsic_instr_create(b->shader, nir_intrinsic_scoped_memory_barrier);
+   nir_intrinsic_set_memory_semantics(intrin, semantics);
+   nir_intrinsic_set_memory_modes(intrin, modes);
+   nir_intrinsic_set_memory_scope(intrin, scope);
+   nir_builder_instr_insert(b, &intrin->instr);
+}
 
 } // namespace
 
@@ -444,6 +508,397 @@ TEST_F(nir_copy_prop_vars_test, memory_barrier_in_two_blocks)
    ASSERT_EQ(1, count_intrinsics(nir_intrinsic_load_deref));
    nir_intrinsic_instr *load = get_intrinsic(nir_intrinsic_load_deref, 0);
    ASSERT_EQ(nir_intrinsic_get_var(load, 0), v[1]);
+}
+
+TEST_F(nir_redundant_load_vars_test, acquire_barrier_prevents_load_removal)
+{
+   nir_variable **x = create_many_int(nir_var_mem_ssbo, "x", 1);
+
+   nir_load_var(b, x[0]);
+
+   scoped_memory_barrier(b, NIR_MEMORY_ACQUIRE, nir_var_mem_ssbo);
+
+   nir_load_var(b, x[0]);
+
+   bool progress = nir_opt_copy_prop_vars(b->shader);
+   ASSERT_FALSE(progress);
+
+   ASSERT_EQ(2, count_intrinsics(nir_intrinsic_load_deref));
+}
+
+TEST_F(nir_redundant_load_vars_test, acquire_barrier_prevents_same_mode_load_removal)
+{
+   nir_variable **x = create_many_int(nir_var_mem_ssbo, "x", 2);
+
+   nir_load_var(b, x[0]);
+   nir_load_var(b, x[1]);
+
+   scoped_memory_barrier(b, NIR_MEMORY_ACQUIRE, nir_var_mem_ssbo);
+
+   nir_load_var(b, x[0]);
+   nir_load_var(b, x[1]);
+
+   bool progress = nir_opt_copy_prop_vars(b->shader);
+   ASSERT_FALSE(progress);
+
+   ASSERT_EQ(4, count_intrinsics(nir_intrinsic_load_deref));
+}
+
+TEST_F(nir_redundant_load_vars_test, acquire_barrier_allows_different_mode_load_removal)
+{
+   nir_variable **x = create_many_int(nir_var_mem_ssbo, "x", 2);
+   nir_variable **y = create_many_int(nir_var_mem_shared, "y", 2);
+
+   nir_load_var(b, x[0]);
+   nir_load_var(b, x[1]);
+   nir_load_var(b, y[0]);
+   nir_load_var(b, y[1]);
+
+   scoped_memory_barrier(b, NIR_MEMORY_ACQUIRE, nir_var_mem_ssbo);
+
+   nir_load_var(b, x[0]);
+   nir_load_var(b, x[1]);
+   nir_load_var(b, y[0]);
+   nir_load_var(b, y[1]);
+
+   bool progress = nir_opt_copy_prop_vars(b->shader);
+   ASSERT_TRUE(progress);
+
+   ASSERT_EQ(6, count_intrinsics(nir_intrinsic_load_deref));
+
+   nir_intrinsic_instr *load;
+
+   load = get_intrinsic(nir_intrinsic_load_deref, 0);
+   ASSERT_EQ(nir_intrinsic_get_var(load, 0), x[0]);
+   load = get_intrinsic(nir_intrinsic_load_deref, 1);
+   ASSERT_EQ(nir_intrinsic_get_var(load, 0), x[1]);
+
+   load = get_intrinsic(nir_intrinsic_load_deref, 2);
+   ASSERT_EQ(nir_intrinsic_get_var(load, 0), y[0]);
+   load = get_intrinsic(nir_intrinsic_load_deref, 3);
+   ASSERT_EQ(nir_intrinsic_get_var(load, 0), y[1]);
+
+   load = get_intrinsic(nir_intrinsic_load_deref, 4);
+   ASSERT_EQ(nir_intrinsic_get_var(load, 0), x[0]);
+   load = get_intrinsic(nir_intrinsic_load_deref, 5);
+   ASSERT_EQ(nir_intrinsic_get_var(load, 0), x[1]);
+}
+
+TEST_F(nir_redundant_load_vars_test, release_barrier_allows_load_removal)
+{
+   nir_variable **x = create_many_int(nir_var_mem_ssbo, "x", 1);
+
+   nir_load_var(b, x[0]);
+
+   scoped_memory_barrier(b, NIR_MEMORY_RELEASE, nir_var_mem_ssbo);
+
+   nir_load_var(b, x[0]);
+
+   bool progress = nir_opt_copy_prop_vars(b->shader);
+   ASSERT_TRUE(progress);
+
+   ASSERT_EQ(1, count_intrinsics(nir_intrinsic_load_deref));
+}
+
+TEST_F(nir_redundant_load_vars_test, release_barrier_allows_same_mode_load_removal)
+{
+   nir_variable **x = create_many_int(nir_var_mem_ssbo, "x", 2);
+
+   nir_load_var(b, x[0]);
+   nir_load_var(b, x[1]);
+
+   scoped_memory_barrier(b, NIR_MEMORY_RELEASE, nir_var_mem_ssbo);
+
+   nir_load_var(b, x[0]);
+   nir_load_var(b, x[1]);
+
+   bool progress = nir_opt_copy_prop_vars(b->shader);
+   ASSERT_TRUE(progress);
+
+   ASSERT_EQ(2, count_intrinsics(nir_intrinsic_load_deref));
+}
+
+TEST_F(nir_redundant_load_vars_test, release_barrier_allows_different_mode_load_removal)
+{
+   nir_variable **x = create_many_int(nir_var_mem_ssbo, "x", 2);
+   nir_variable **y = create_many_int(nir_var_mem_shared, "y", 2);
+
+   nir_load_var(b, x[0]);
+   nir_load_var(b, x[1]);
+   nir_load_var(b, y[0]);
+   nir_load_var(b, y[1]);
+
+   scoped_memory_barrier(b, NIR_MEMORY_RELEASE, nir_var_mem_ssbo);
+
+   nir_load_var(b, x[0]);
+   nir_load_var(b, x[1]);
+   nir_load_var(b, y[0]);
+   nir_load_var(b, y[1]);
+
+   bool progress = nir_opt_copy_prop_vars(b->shader);
+   ASSERT_TRUE(progress);
+
+   ASSERT_EQ(4, count_intrinsics(nir_intrinsic_load_deref));
+
+   nir_intrinsic_instr *load;
+
+   load = get_intrinsic(nir_intrinsic_load_deref, 0);
+   ASSERT_EQ(nir_intrinsic_get_var(load, 0), x[0]);
+   load = get_intrinsic(nir_intrinsic_load_deref, 1);
+   ASSERT_EQ(nir_intrinsic_get_var(load, 0), x[1]);
+
+   load = get_intrinsic(nir_intrinsic_load_deref, 2);
+   ASSERT_EQ(nir_intrinsic_get_var(load, 0), y[0]);
+   load = get_intrinsic(nir_intrinsic_load_deref, 3);
+   ASSERT_EQ(nir_intrinsic_get_var(load, 0), y[1]);
+}
+
+TEST_F(nir_copy_prop_vars_test, acquire_barrier_prevents_propagation)
+{
+   nir_variable **x = create_many_int(nir_var_mem_ssbo, "x", 1);
+
+   nir_store_var(b, x[0], nir_imm_int(b, 10), 1);
+
+   scoped_memory_barrier(b, NIR_MEMORY_ACQUIRE, nir_var_mem_ssbo);
+
+   nir_load_var(b, x[0]);
+
+   bool progress = nir_opt_copy_prop_vars(b->shader);
+   ASSERT_FALSE(progress);
+
+   ASSERT_EQ(1, count_intrinsics(nir_intrinsic_store_deref));
+   ASSERT_EQ(1, count_intrinsics(nir_intrinsic_load_deref));
+}
+
+TEST_F(nir_copy_prop_vars_test, acquire_barrier_prevents_same_mode_propagation)
+{
+   nir_variable **x = create_many_int(nir_var_mem_ssbo, "x", 2);
+
+   nir_store_var(b, x[0], nir_imm_int(b, 10), 1);
+   nir_store_var(b, x[1], nir_imm_int(b, 20), 1);
+
+   scoped_memory_barrier(b, NIR_MEMORY_ACQUIRE, nir_var_mem_ssbo);
+
+   nir_load_var(b, x[0]);
+   nir_load_var(b, x[1]);
+
+   bool progress = nir_opt_copy_prop_vars(b->shader);
+   ASSERT_FALSE(progress);
+
+   ASSERT_EQ(2, count_intrinsics(nir_intrinsic_store_deref));
+   ASSERT_EQ(2, count_intrinsics(nir_intrinsic_load_deref));
+}
+
+TEST_F(nir_copy_prop_vars_test, acquire_barrier_allows_different_mode_propagation)
+{
+   nir_variable **x = create_many_int(nir_var_mem_ssbo, "x", 2);
+   nir_variable **y = create_many_int(nir_var_mem_shared, "y", 2);
+
+   nir_store_var(b, x[0], nir_imm_int(b, 10), 1);
+   nir_store_var(b, x[1], nir_imm_int(b, 20), 1);
+   nir_store_var(b, y[0], nir_imm_int(b, 30), 1);
+   nir_store_var(b, y[1], nir_imm_int(b, 40), 1);
+
+   scoped_memory_barrier(b, NIR_MEMORY_ACQUIRE, nir_var_mem_ssbo);
+
+   nir_load_var(b, x[0]);
+   nir_load_var(b, x[1]);
+   nir_load_var(b, y[0]);
+   nir_load_var(b, y[1]);
+
+   bool progress = nir_opt_copy_prop_vars(b->shader);
+   ASSERT_TRUE(progress);
+
+   ASSERT_EQ(4, count_intrinsics(nir_intrinsic_store_deref));
+   ASSERT_EQ(2, count_intrinsics(nir_intrinsic_load_deref));
+
+   nir_intrinsic_instr *store;
+
+   store = get_intrinsic(nir_intrinsic_store_deref, 0);
+   ASSERT_EQ(nir_intrinsic_get_var(store, 0), x[0]);
+   store = get_intrinsic(nir_intrinsic_store_deref, 1);
+   ASSERT_EQ(nir_intrinsic_get_var(store, 0), x[1]);
+
+   store = get_intrinsic(nir_intrinsic_store_deref, 2);
+   ASSERT_EQ(nir_intrinsic_get_var(store, 0), y[0]);
+   store = get_intrinsic(nir_intrinsic_store_deref, 3);
+   ASSERT_EQ(nir_intrinsic_get_var(store, 0), y[1]);
+
+   nir_intrinsic_instr *load;
+
+   load = get_intrinsic(nir_intrinsic_load_deref, 0);
+   ASSERT_EQ(nir_intrinsic_get_var(load, 0), x[0]);
+   load = get_intrinsic(nir_intrinsic_load_deref, 1);
+   ASSERT_EQ(nir_intrinsic_get_var(load, 0), x[1]);
+}
+
+TEST_F(nir_copy_prop_vars_test, release_barrier_allows_propagation)
+{
+   nir_variable **x = create_many_int(nir_var_mem_ssbo, "x", 1);
+
+   nir_store_var(b, x[0], nir_imm_int(b, 10), 1);
+
+   scoped_memory_barrier(b, NIR_MEMORY_RELEASE, nir_var_mem_ssbo);
+
+   nir_load_var(b, x[0]);
+
+   bool progress = nir_opt_copy_prop_vars(b->shader);
+   ASSERT_TRUE(progress);
+
+   ASSERT_EQ(1, count_intrinsics(nir_intrinsic_store_deref));
+}
+
+TEST_F(nir_copy_prop_vars_test, release_barrier_allows_same_mode_propagation)
+{
+   nir_variable **x = create_many_int(nir_var_mem_ssbo, "x", 2);
+
+   nir_store_var(b, x[0], nir_imm_int(b, 10), 1);
+   nir_store_var(b, x[1], nir_imm_int(b, 20), 1);
+
+   scoped_memory_barrier(b, NIR_MEMORY_RELEASE, nir_var_mem_ssbo);
+
+   nir_load_var(b, x[0]);
+   nir_load_var(b, x[1]);
+
+   bool progress = nir_opt_copy_prop_vars(b->shader);
+   ASSERT_TRUE(progress);
+
+   ASSERT_EQ(2, count_intrinsics(nir_intrinsic_store_deref));
+   ASSERT_EQ(0, count_intrinsics(nir_intrinsic_load_deref));
+}
+
+TEST_F(nir_copy_prop_vars_test, release_barrier_allows_different_mode_propagation)
+{
+   nir_variable **x = create_many_int(nir_var_mem_ssbo, "x", 2);
+   nir_variable **y = create_many_int(nir_var_mem_shared, "y", 2);
+
+   nir_store_var(b, x[0], nir_imm_int(b, 10), 1);
+   nir_store_var(b, x[1], nir_imm_int(b, 20), 1);
+   nir_store_var(b, y[0], nir_imm_int(b, 30), 1);
+   nir_store_var(b, y[1], nir_imm_int(b, 40), 1);
+
+   scoped_memory_barrier(b, NIR_MEMORY_RELEASE, nir_var_mem_ssbo);
+
+   nir_load_var(b, x[0]);
+   nir_load_var(b, x[1]);
+   nir_load_var(b, y[0]);
+   nir_load_var(b, y[1]);
+
+   bool progress = nir_opt_copy_prop_vars(b->shader);
+   ASSERT_TRUE(progress);
+
+   ASSERT_EQ(4, count_intrinsics(nir_intrinsic_store_deref));
+   ASSERT_EQ(0, count_intrinsics(nir_intrinsic_load_deref));
+
+   nir_intrinsic_instr *store;
+
+   store = get_intrinsic(nir_intrinsic_store_deref, 0);
+   ASSERT_EQ(nir_intrinsic_get_var(store, 0), x[0]);
+   store = get_intrinsic(nir_intrinsic_store_deref, 1);
+   ASSERT_EQ(nir_intrinsic_get_var(store, 0), x[1]);
+
+   store = get_intrinsic(nir_intrinsic_store_deref, 2);
+   ASSERT_EQ(nir_intrinsic_get_var(store, 0), y[0]);
+   store = get_intrinsic(nir_intrinsic_store_deref, 3);
+   ASSERT_EQ(nir_intrinsic_get_var(store, 0), y[1]);
+}
+
+TEST_F(nir_copy_prop_vars_test, acquire_barrier_prevents_propagation_from_copy)
+{
+   nir_variable **x = create_many_int(nir_var_mem_ssbo, "x", 3);
+
+   nir_copy_var(b, x[1], x[0]);
+
+   scoped_memory_barrier(b, NIR_MEMORY_ACQUIRE, nir_var_mem_ssbo);
+
+   nir_copy_var(b, x[2], x[1]);
+
+   bool progress = nir_opt_copy_prop_vars(b->shader);
+   ASSERT_FALSE(progress);
+
+   ASSERT_EQ(2, count_intrinsics(nir_intrinsic_copy_deref));
+
+   nir_intrinsic_instr *copy;
+
+   copy = get_intrinsic(nir_intrinsic_copy_deref, 0);
+   ASSERT_EQ(nir_intrinsic_get_var(copy, 1), x[0]);
+
+   copy = get_intrinsic(nir_intrinsic_copy_deref, 1);
+   ASSERT_EQ(nir_intrinsic_get_var(copy, 1), x[1]);
+}
+
+TEST_F(nir_copy_prop_vars_test, acquire_barrier_prevents_propagation_from_copy_to_different_mode)
+{
+   nir_variable **x = create_many_int(nir_var_mem_ssbo, "x", 2);
+   nir_variable **y = create_many_int(nir_var_mem_shared, "y", 1);
+
+   nir_copy_var(b, y[0], x[0]);
+
+   scoped_memory_barrier(b, NIR_MEMORY_ACQUIRE, nir_var_mem_ssbo);
+
+   nir_copy_var(b, x[1], y[0]);
+
+   bool progress = nir_opt_copy_prop_vars(b->shader);
+   ASSERT_FALSE(progress);
+
+   ASSERT_EQ(2, count_intrinsics(nir_intrinsic_copy_deref));
+
+   nir_intrinsic_instr *copy;
+
+   copy = get_intrinsic(nir_intrinsic_copy_deref, 0);
+   ASSERT_EQ(nir_intrinsic_get_var(copy, 1), x[0]);
+
+   copy = get_intrinsic(nir_intrinsic_copy_deref, 1);
+   ASSERT_EQ(nir_intrinsic_get_var(copy, 1), y[0]);
+}
+
+TEST_F(nir_copy_prop_vars_test, release_barrier_allows_propagation_from_copy)
+{
+   nir_variable **x = create_many_int(nir_var_mem_ssbo, "x", 3);
+
+   nir_copy_var(b, x[1], x[0]);
+
+   scoped_memory_barrier(b, NIR_MEMORY_RELEASE, nir_var_mem_ssbo);
+
+   nir_copy_var(b, x[2], x[1]);
+
+   bool progress = nir_opt_copy_prop_vars(b->shader);
+   ASSERT_TRUE(progress);
+
+   ASSERT_EQ(2, count_intrinsics(nir_intrinsic_copy_deref));
+
+   nir_intrinsic_instr *copy;
+
+   copy = get_intrinsic(nir_intrinsic_copy_deref, 0);
+   ASSERT_EQ(nir_intrinsic_get_var(copy, 1), x[0]);
+
+   copy = get_intrinsic(nir_intrinsic_copy_deref, 1);
+   ASSERT_EQ(nir_intrinsic_get_var(copy, 1), x[0]);
+}
+
+TEST_F(nir_copy_prop_vars_test, release_barrier_allows_propagation_from_copy_to_different_mode)
+{
+   nir_variable **x = create_many_int(nir_var_mem_ssbo, "x", 2);
+   nir_variable **y = create_many_int(nir_var_mem_shared, "y", 1);
+
+   nir_copy_var(b, y[0], x[0]);
+
+   scoped_memory_barrier(b, NIR_MEMORY_RELEASE, nir_var_mem_ssbo);
+
+   nir_copy_var(b, x[1], y[0]);
+
+   bool progress = nir_opt_copy_prop_vars(b->shader);
+   ASSERT_TRUE(progress);
+
+   ASSERT_EQ(2, count_intrinsics(nir_intrinsic_copy_deref));
+
+   nir_intrinsic_instr *copy;
+
+   copy = get_intrinsic(nir_intrinsic_copy_deref, 0);
+   ASSERT_EQ(nir_intrinsic_get_var(copy, 1), x[0]);
+
+   copy = get_intrinsic(nir_intrinsic_copy_deref, 1);
+   ASSERT_EQ(nir_intrinsic_get_var(copy, 1), x[0]);
 }
 
 TEST_F(nir_copy_prop_vars_test, simple_store_load_in_two_blocks)
@@ -1117,4 +1572,377 @@ TEST_F(nir_combine_stores_test, direct_array_derefs)
    nir_intrinsic_instr *load_for_w = nir_src_as_intrinsic(vec->src[3].src);
    ASSERT_EQ(nir_intrinsic_get_var(load_for_w, 0), s[1]);
    ASSERT_EQ(vec->src[3].swizzle[0], 0);
+}
+
+TEST_F(nir_split_vars_test, simple_split)
+{
+   nir_variable **in = create_many_int(nir_var_shader_in, "in", 4);
+   nir_variable *temp = create_var(nir_var_function_temp, glsl_array_type(glsl_int_type(), 4, 0),
+                                   "temp");
+   nir_deref_instr *temp_deref = nir_build_deref_var(b, temp);
+   for (int i = 0; i < 4; i++)
+      nir_store_deref(b, nir_build_deref_array_imm(b, temp_deref, i), nir_load_var(b, in[i]), 1);
+
+   nir_validate_shader(b->shader, NULL);
+   ASSERT_EQ(count_derefs(nir_deref_type_array), 4);
+   ASSERT_EQ(count_function_temp_vars(), 1);
+
+   bool progress = nir_split_array_vars(b->shader, nir_var_function_temp);
+   EXPECT_TRUE(progress);
+
+   nir_validate_shader(b->shader, NULL);
+   ASSERT_EQ(count_derefs(nir_deref_type_array), 0);
+   ASSERT_EQ(count_function_temp_vars(), 4);
+}
+
+TEST_F(nir_split_vars_test, simple_no_split_array_struct)
+{
+   nir_variable **in = create_many_int(nir_var_shader_in, "in", 4);
+   struct glsl_struct_field field;
+
+   field.type = glsl_float_type();
+   field.name = ralloc_asprintf(b, "field1");
+   field.location = -1;
+   field.offset = 0;
+
+   const struct glsl_type *st_type = glsl_struct_type(&field, 1, "struct", false);
+   nir_variable *temp = create_var(nir_var_function_temp, glsl_array_type(st_type, 4, 0),
+                                   "temp");
+
+   nir_variable *temp2 = create_var(nir_var_function_temp, glsl_array_type(glsl_int_type(), 4, 0), "temp2");
+
+   nir_deref_instr *temp_deref = nir_build_deref_var(b, temp);
+   nir_deref_instr *temp2_deref = nir_build_deref_var(b, temp2);
+   for (int i = 0; i < 4; i++)
+      nir_store_deref(b, nir_build_deref_array_imm(b, temp2_deref, i), nir_load_var(b, in[i]), 1);
+
+   for (int i = 0; i < 4; i++)
+      nir_store_deref(b, nir_build_deref_struct(b, nir_build_deref_array_imm(b, temp_deref, i), 0), nir_load_var(b, in[i]), 1);
+
+   nir_validate_shader(b->shader, NULL);
+   ASSERT_EQ(count_derefs(nir_deref_type_array), 8);
+   ASSERT_EQ(count_derefs(nir_deref_type_struct), 4);
+   ASSERT_EQ(count_function_temp_vars(), 2);
+
+   bool progress = nir_split_array_vars(b->shader, nir_var_function_temp);
+   EXPECT_TRUE(progress);
+
+   nir_validate_shader(b->shader, NULL);
+
+   ASSERT_EQ(count_derefs(nir_deref_type_array), 4);
+   ASSERT_EQ(count_derefs(nir_deref_type_struct), 4);
+   for (int i = 0; i < 4; i++) {
+      nir_deref_instr *deref = get_deref(nir_deref_type_array, i);
+      ASSERT_TRUE(deref);
+      ASSERT_TRUE(glsl_type_is_struct(deref->type));
+   }
+
+   ASSERT_EQ(count_function_temp_vars(), 5);
+}
+
+TEST_F(nir_split_vars_test, simple_split_shader_temp)
+{
+   nir_variable **in = create_many_int(nir_var_shader_in, "in", 4);
+   nir_variable *temp = create_var(nir_var_shader_temp, glsl_array_type(glsl_int_type(), 4, 0),
+                                   "temp");
+   nir_deref_instr *temp_deref = nir_build_deref_var(b, temp);
+
+   for (int i = 0; i < 4; i++)
+      nir_store_deref(b, nir_build_deref_array_imm(b, temp_deref, i), nir_load_var(b, in[i]), 1);
+
+   nir_validate_shader(b->shader, NULL);
+   ASSERT_EQ(count_derefs(nir_deref_type_array), 4);
+   ASSERT_EQ(count_shader_temp_vars(), 1);
+
+   bool progress = nir_split_array_vars(b->shader, nir_var_shader_temp);
+   EXPECT_TRUE(progress);
+
+   nir_validate_shader(b->shader, NULL);
+   ASSERT_EQ(count_derefs(nir_deref_type_array), 0);
+   ASSERT_EQ(count_shader_temp_vars(), 4);
+}
+
+TEST_F(nir_split_vars_test, simple_oob)
+{
+   nir_variable **in = create_many_int(nir_var_shader_in, "in", 6);
+   nir_variable *temp = create_var(nir_var_function_temp, glsl_array_type(glsl_int_type(), 4, 0),
+                                   "temp");
+   nir_deref_instr *temp_deref = nir_build_deref_var(b, temp);
+
+   for (int i = 0; i < 6; i++)
+      nir_store_deref(b, nir_build_deref_array_imm(b, temp_deref, i), nir_load_var(b, in[i]), 1);
+
+   nir_validate_shader(b->shader, NULL);
+   ASSERT_EQ(count_derefs(nir_deref_type_array), 6);
+   ASSERT_EQ(count_function_temp_vars(), 1);
+
+   bool progress = nir_split_array_vars(b->shader, nir_var_function_temp);
+   EXPECT_TRUE(progress);
+
+   nir_validate_shader(b->shader, NULL);
+   ASSERT_EQ(count_derefs(nir_deref_type_array), 0);
+   ASSERT_EQ(count_function_temp_vars(), 4);
+}
+
+TEST_F(nir_split_vars_test, simple_unused)
+{
+   nir_variable **in = create_many_int(nir_var_shader_in, "in", 2);
+   nir_variable *temp = create_var(nir_var_function_temp, glsl_array_type(glsl_int_type(), 4, 0),
+                                   "temp");
+   nir_deref_instr *temp_deref = nir_build_deref_var(b, temp);
+
+   for (int i = 0; i < 2; i++)
+      nir_store_deref(b, nir_build_deref_array_imm(b, temp_deref, i), nir_load_var(b, in[i]), 1);
+
+   nir_validate_shader(b->shader, NULL);
+   ASSERT_EQ(count_derefs(nir_deref_type_array), 2);
+   ASSERT_EQ(count_function_temp_vars(), 1);
+
+   bool progress = nir_split_array_vars(b->shader, nir_var_function_temp);
+   EXPECT_TRUE(progress);
+
+   nir_validate_shader(b->shader, NULL);
+   ASSERT_EQ(count_derefs(nir_deref_type_array), 0);
+   /* this pass doesn't remove the unused ones */
+   ASSERT_EQ(count_function_temp_vars(), 4);
+}
+
+TEST_F(nir_split_vars_test, two_level_split)
+{
+   nir_variable **in = create_many_int(nir_var_shader_in, "in", 4);
+   nir_variable *temp = create_var(nir_var_function_temp, glsl_array_type(glsl_array_type(glsl_int_type(), 4, 0), 4, 0),
+                                   "temp");
+   nir_deref_instr *temp_deref = nir_build_deref_var(b, temp);
+   for (int i = 0; i < 4; i++) {
+      nir_deref_instr *level0 = nir_build_deref_array_imm(b, temp_deref, i);
+      for (int j = 0; j < 4; j++) {
+         nir_deref_instr *level1 = nir_build_deref_array_imm(b, level0, j);
+         nir_store_deref(b, level1, nir_load_var(b, in[i]), 1);
+      }
+   }
+
+   nir_validate_shader(b->shader, NULL);
+   ASSERT_EQ(count_derefs(nir_deref_type_array), 20);
+   ASSERT_EQ(count_function_temp_vars(), 1);
+
+   bool progress = nir_split_array_vars(b->shader, nir_var_function_temp);
+   EXPECT_TRUE(progress);
+
+   nir_validate_shader(b->shader, NULL);
+   ASSERT_EQ(count_derefs(nir_deref_type_array), 0);
+   ASSERT_EQ(count_function_temp_vars(), 16);
+}
+
+TEST_F(nir_split_vars_test, simple_dont_split)
+{
+   nir_variable **in = create_many_int(nir_var_shader_in, "in", 4);
+   nir_variable *temp = create_var(nir_var_function_temp, glsl_array_type(glsl_int_type(), 4, 0),
+                                   "temp");
+   nir_variable *ind = create_int(nir_var_shader_in, "ind");
+
+   nir_deref_instr *ind_deref = nir_build_deref_var(b, ind);
+   nir_deref_instr *temp_deref = nir_build_deref_var(b, temp);
+
+   for (int i = 0; i < 4; i++)
+      nir_store_deref(b, nir_build_deref_array(b, temp_deref, &ind_deref->dest.ssa), nir_load_var(b, in[i]), 1);
+
+   nir_validate_shader(b->shader, NULL);
+   ASSERT_EQ(count_derefs(nir_deref_type_array), 4);
+   ASSERT_EQ(count_function_temp_vars(), 1);
+
+   bool progress = nir_split_array_vars(b->shader, nir_var_function_temp);
+   EXPECT_FALSE(progress);
+
+   nir_validate_shader(b->shader, NULL);
+   ASSERT_EQ(count_derefs(nir_deref_type_array), 4);
+   ASSERT_EQ(count_function_temp_vars(), 1);
+}
+
+TEST_F(nir_split_vars_test, twolevel_dont_split_lvl_0)
+{
+   nir_variable **in = create_many_int(nir_var_shader_in, "in", 4);
+   nir_variable *temp = create_var(nir_var_function_temp, glsl_array_type(glsl_array_type(glsl_int_type(), 6, 0), 4, 0),
+                                   "temp");
+   nir_variable *ind = create_int(nir_var_shader_in, "ind");
+
+   nir_deref_instr *ind_deref = nir_build_deref_var(b, ind);
+   nir_deref_instr *temp_deref = nir_build_deref_var(b, temp);
+
+   for (int i = 0; i < 4; i++) {
+      nir_deref_instr *level0 = nir_build_deref_array(b, temp_deref, &ind_deref->dest.ssa);
+      for (int j = 0; j < 6; j++) {
+         nir_deref_instr *level1 = nir_build_deref_array_imm(b, level0, j);
+         nir_store_deref(b, level1, nir_load_var(b, in[i]), 1);
+      }
+   }
+
+   nir_validate_shader(b->shader, NULL);
+   ASSERT_EQ(count_derefs(nir_deref_type_array), 28);
+   ASSERT_EQ(count_function_temp_vars(), 1);
+
+   bool progress = nir_split_array_vars(b->shader, nir_var_function_temp);
+   EXPECT_TRUE(progress);
+
+   nir_validate_shader(b->shader, NULL);
+   ASSERT_EQ(count_derefs(nir_deref_type_array), 24);
+   ASSERT_EQ(count_function_temp_vars(), 6);
+}
+
+TEST_F(nir_split_vars_test, twolevel_dont_split_lvl_1)
+{
+   nir_variable **in = create_many_int(nir_var_shader_in, "in", 6);
+   nir_variable *temp = create_var(nir_var_function_temp, glsl_array_type(glsl_array_type(glsl_int_type(), 6, 0), 4, 0),
+                                   "temp");
+   nir_variable *ind = create_int(nir_var_shader_in, "ind");
+
+   nir_deref_instr *ind_deref = nir_build_deref_var(b, ind);
+   nir_deref_instr *temp_deref = nir_build_deref_var(b, temp);
+
+   for (int i = 0; i < 4; i++) {
+      nir_deref_instr *level0 = nir_build_deref_array_imm(b, temp_deref, i);
+      for (int j = 0; j < 6; j++) {
+         /* just add the inner index to get some different derefs */
+         nir_deref_instr *level1 = nir_build_deref_array(b, level0, nir_iadd(b, &ind_deref->dest.ssa, nir_imm_int(b, j)));
+         nir_store_deref(b, level1, nir_load_var(b, in[i]), 1);
+      }
+   }
+
+   nir_validate_shader(b->shader, NULL);
+   ASSERT_EQ(count_derefs(nir_deref_type_array), 28);
+   ASSERT_EQ(count_function_temp_vars(), 1);
+
+   bool progress = nir_split_array_vars(b->shader, nir_var_function_temp);
+   EXPECT_TRUE(progress);
+
+   nir_validate_shader(b->shader, NULL);
+   ASSERT_EQ(count_derefs(nir_deref_type_array), 24);
+   ASSERT_EQ(count_function_temp_vars(), 4);
+}
+
+TEST_F(nir_split_vars_test, split_multiple_store)
+{
+   nir_variable **in = create_many_int(nir_var_shader_in, "in", 4);
+   nir_variable *temp = create_var(nir_var_function_temp, glsl_array_type(glsl_int_type(), 4, 0),
+                                   "temp");
+   nir_variable *temp2 = create_var(nir_var_function_temp, glsl_array_type(glsl_int_type(), 4, 0),
+                                    "temp2");
+
+   nir_deref_instr *temp_deref = nir_build_deref_var(b, temp);
+   nir_deref_instr *temp2_deref = nir_build_deref_var(b, temp2);
+
+   for (int i = 0; i < 4; i++)
+      nir_store_deref(b, nir_build_deref_array_imm(b, temp_deref, i), nir_load_var(b, in[i]), 1);
+
+   for (int i = 0; i < 4; i++)
+      nir_store_deref(b, nir_build_deref_array_imm(b, temp2_deref, i), nir_load_var(b, in[i]), 1);
+
+   nir_validate_shader(b->shader, NULL);
+   ASSERT_EQ(count_derefs(nir_deref_type_array), 8);
+   ASSERT_EQ(count_function_temp_vars(), 2);
+
+   bool progress = nir_split_array_vars(b->shader, nir_var_function_temp);
+   EXPECT_TRUE(progress);
+
+   nir_validate_shader(b->shader, NULL);
+   ASSERT_EQ(count_derefs(nir_deref_type_array), 0);
+   ASSERT_EQ(count_function_temp_vars(), 8);
+}
+
+TEST_F(nir_split_vars_test, split_load_store)
+{
+   nir_variable **in = create_many_int(nir_var_shader_in, "in", 4);
+   nir_variable *temp = create_var(nir_var_function_temp, glsl_array_type(glsl_int_type(), 4, 0),
+                                   "temp");
+   nir_variable *temp2 = create_var(nir_var_function_temp, glsl_array_type(glsl_int_type(), 4, 0),
+                                    "temp2");
+
+   nir_deref_instr *temp_deref = nir_build_deref_var(b, temp);
+   nir_deref_instr *temp2_deref = nir_build_deref_var(b, temp2);
+
+   for (int i = 0; i < 4; i++)
+      nir_store_deref(b, nir_build_deref_array_imm(b, temp_deref, i), nir_load_var(b, in[i]), 1);
+
+   for (int i = 0; i < 4; i++) {
+      nir_deref_instr *store_deref = nir_build_deref_array_imm(b, temp2_deref, i);
+      nir_deref_instr *load_deref = nir_build_deref_array_imm(b, temp_deref, i);
+      nir_store_deref(b, store_deref, nir_load_deref(b, load_deref), 1);
+   }
+
+   nir_validate_shader(b->shader, NULL);
+   ASSERT_EQ(count_derefs(nir_deref_type_array), 12);
+   ASSERT_EQ(count_function_temp_vars(), 2);
+
+   bool progress = nir_split_array_vars(b->shader, nir_var_function_temp);
+   EXPECT_TRUE(progress);
+
+   nir_validate_shader(b->shader, NULL);
+   ASSERT_EQ(count_derefs(nir_deref_type_array), 0);
+   ASSERT_EQ(count_function_temp_vars(), 8);
+}
+
+TEST_F(nir_split_vars_test, split_copy)
+{
+   nir_variable **in = create_many_int(nir_var_shader_in, "in", 4);
+   nir_variable *temp = create_var(nir_var_function_temp, glsl_array_type(glsl_int_type(), 4, 0),
+                                   "temp");
+   nir_variable *temp2 = create_var(nir_var_function_temp, glsl_array_type(glsl_int_type(), 4, 0),
+                                    "temp2");
+
+   nir_deref_instr *temp_deref = nir_build_deref_var(b, temp);
+   nir_deref_instr *temp2_deref = nir_build_deref_var(b, temp2);
+
+   for (int i = 0; i < 4; i++)
+      nir_store_deref(b, nir_build_deref_array_imm(b, temp_deref, i), nir_load_var(b, in[i]), 1);
+
+   for (int i = 0; i < 4; i++) {
+      nir_deref_instr *store_deref = nir_build_deref_array_imm(b, temp2_deref, i);
+      nir_deref_instr *load_deref = nir_build_deref_array_imm(b, temp_deref, i);
+      nir_copy_deref(b, store_deref, load_deref);
+   }
+
+   nir_validate_shader(b->shader, NULL);
+   ASSERT_EQ(count_derefs(nir_deref_type_array), 12);
+   ASSERT_EQ(count_function_temp_vars(), 2);
+
+   bool progress = nir_split_array_vars(b->shader, nir_var_function_temp);
+   EXPECT_TRUE(progress);
+
+   nir_validate_shader(b->shader, NULL);
+   ASSERT_EQ(count_derefs(nir_deref_type_array), 0);
+   ASSERT_EQ(count_function_temp_vars(), 8);
+}
+
+TEST_F(nir_split_vars_test, split_wildcard_copy)
+{
+   nir_variable **in = create_many_int(nir_var_shader_in, "in", 4);
+   nir_variable *temp = create_var(nir_var_function_temp, glsl_array_type(glsl_int_type(), 4, 0),
+                                   "temp");
+   nir_variable *temp2 = create_var(nir_var_function_temp, glsl_array_type(glsl_int_type(), 4, 0),
+                                    "temp2");
+
+   nir_deref_instr *temp_deref = nir_build_deref_var(b, temp);
+   nir_deref_instr *temp2_deref = nir_build_deref_var(b, temp2);
+
+   for (int i = 0; i < 4; i++)
+      nir_store_deref(b, nir_build_deref_array_imm(b, temp_deref, i), nir_load_var(b, in[i]), 1);
+
+   nir_deref_instr *src_wildcard = nir_build_deref_array_wildcard(b, temp_deref);
+   nir_deref_instr *dst_wildcard = nir_build_deref_array_wildcard(b, temp2_deref);
+
+   nir_copy_deref(b, dst_wildcard, src_wildcard);
+
+   nir_validate_shader(b->shader, NULL);
+   ASSERT_EQ(count_derefs(nir_deref_type_array), 4);
+   ASSERT_EQ(count_derefs(nir_deref_type_array_wildcard), 2);
+   ASSERT_EQ(count_function_temp_vars(), 2);
+   ASSERT_EQ(count_intrinsics(nir_intrinsic_copy_deref), 1);
+
+   bool progress = nir_split_array_vars(b->shader, nir_var_function_temp);
+   EXPECT_TRUE(progress);
+
+   nir_validate_shader(b->shader, NULL);
+   ASSERT_EQ(count_derefs(nir_deref_type_array), 0);
+   ASSERT_EQ(count_derefs(nir_deref_type_array_wildcard), 0);
+   ASSERT_EQ(count_function_temp_vars(), 8);
+   ASSERT_EQ(count_intrinsics(nir_intrinsic_copy_deref), 4);
 }

@@ -75,24 +75,16 @@ can_fast_clear_color(struct iris_context *ice,
 {
    struct iris_resource *res = (void *) p_res;
 
-   struct iris_batch *batch = &ice->batches[IRIS_BATCH_RENDER];
-   const struct gen_device_info *devinfo = &batch->screen->devinfo;
+   if (INTEL_DEBUG & DEBUG_NO_FAST_CLEAR)
+      return false;
 
    if (res->aux.usage == ISL_AUX_USAGE_NONE)
       return false;
 
-   /* Surface state can only record one fast clear color value. Therefore
-    * unless different levels/layers agree on the color it can be used to
-    * represent only single level/layer. Here it will be reserved for the
-    * first slice (level 0, layer 0).
-    */
-   if (level > 0 || box->z > 0 || box->depth > 1)
-      return false;
-
    /* Check for partial clear */
    if (box->x > 0 || box->y > 0 ||
-       box->width < p_res->width0 ||
-       box->height < p_res->height0) {
+       box->width < minify(p_res->width0, level) ||
+       box->height < minify(p_res->height0, level)) {
       return false;
    }
 
@@ -227,9 +219,57 @@ fast_clear_color(struct iris_context *ice,
        * is not something that should happen often, we stall on the CPU here
        * to resolve the predication, and then proceed.
        */
-      iris_resolve_conditional_render(ice);
+      ice->vtbl.resolve_conditional_render(ice);
       if (ice->state.predicate == IRIS_PREDICATE_STATE_DONT_RENDER)
          return;
+
+      /* If we are clearing to a new clear value, we need to resolve fast
+       * clears from other levels/layers first, since we can't have different
+       * levels/layers with different fast clear colors.
+       */
+      for (unsigned res_lvl = 0; res_lvl < res->surf.levels; res_lvl++) {
+         const unsigned level_layers =
+            iris_get_num_logical_layers(res, res_lvl);
+         for (unsigned layer = 0; layer < level_layers; layer++) {
+            if (res_lvl == level &&
+                layer >= box->z &&
+                layer < box->z + box->depth) {
+               /* We're going to clear this layer anyway.  Leave it alone. */
+               continue;
+            }
+
+            enum isl_aux_state aux_state =
+               iris_resource_get_aux_state(res, res_lvl, layer);
+
+            if (aux_state != ISL_AUX_STATE_CLEAR &&
+                aux_state != ISL_AUX_STATE_PARTIAL_CLEAR &&
+                aux_state != ISL_AUX_STATE_COMPRESSED_CLEAR) {
+               /* This slice doesn't have any fast-cleared bits. */
+               continue;
+            }
+
+            /* If we got here, then the level may have fast-clear bits that use
+             * the old clear value.  We need to do a color resolve to get rid
+             * of their use of the clear color before we can change it.
+             * Fortunately, few applications ever change their clear color at
+             * different levels/layers, so this shouldn't happen often.
+             */
+            iris_resource_prepare_access(ice, batch, res,
+                                         res_lvl, 1, layer, 1,
+                                         res->aux.usage,
+                                         false);
+            perf_debug(&ice->dbg,
+                       "Resolving resource (%p) level %d, layer %d: color changing from "
+                       "(%0.2f, %0.2f, %0.2f, %0.2f) to "
+                       "(%0.2f, %0.2f, %0.2f, %0.2f)\n",
+                       res, res_lvl, layer,
+                       res->aux.clear_color.f32[0],
+                       res->aux.clear_color.f32[1],
+                       res->aux.clear_color.f32[2],
+                       res->aux.clear_color.f32[3],
+                       color.f32[0], color.f32[1], color.f32[2], color.f32[3]);
+         }
+      }
    }
 
    iris_resource_set_clear_color(ice, res, color);
@@ -252,7 +292,9 @@ fast_clear_color(struct iris_context *ice,
     * and again afterwards to ensure that the resolve is complete before we
     * do any more regular drawing.
     */
-   iris_emit_end_of_pipe_sync(batch, PIPE_CONTROL_RENDER_TARGET_FLUSH);
+   iris_emit_end_of_pipe_sync(batch,
+                              "fast clear: pre-flush",
+                              PIPE_CONTROL_RENDER_TARGET_FLUSH);
 
    /* If we reach this point, we need to fast clear to change the state to
     * ISL_AUX_STATE_CLEAR, or to update the fast clear color (or both).
@@ -277,7 +319,9 @@ fast_clear_color(struct iris_context *ice,
                     box->x, box->y, box->x + box->width,
                     box->y + box->height);
    blorp_batch_finish(&blorp_batch);
-   iris_emit_end_of_pipe_sync(batch, PIPE_CONTROL_RENDER_TARGET_FLUSH);
+   iris_emit_end_of_pipe_sync(batch,
+                              "fast clear: post flush",
+                              PIPE_CONTROL_RENDER_TARGET_FLUSH);
 
    iris_resource_set_aux_state(ice, res, level, box->z,
                                box->depth, ISL_AUX_STATE_CLEAR);
@@ -310,7 +354,7 @@ clear_color(struct iris_context *ice,
    }
 
    if (p_res->target == PIPE_BUFFER)
-      util_range_add(&res->valid_buffer_range, box->x, box->x + box->width);
+      util_range_add(&res->base, &res->valid_buffer_range, box->x, box->x + box->width);
 
    iris_batch_maybe_flush(batch, 1500);
 
@@ -347,7 +391,9 @@ clear_color(struct iris_context *ice,
                color, color_write_disable);
 
    blorp_batch_finish(&blorp_batch);
-   iris_flush_and_dirty_for_history(ice, batch, res);
+   iris_flush_and_dirty_for_history(ice, batch, res,
+                                    PIPE_CONTROL_RENDER_TARGET_FLUSH,
+                                    "cache history: post color clear");
 
    iris_resource_finish_render(ice, res, level,
                                box->z, box->depth, aux_usage);
@@ -361,6 +407,12 @@ can_fast_clear_depth(struct iris_context *ice,
                      float depth)
 {
    struct pipe_resource *p_res = (void *) res;
+   struct pipe_context *ctx = (void *) ice;
+   struct iris_screen *screen = (void *) ctx->screen;
+   const struct gen_device_info *devinfo = &screen->devinfo;
+
+   if (INTEL_DEBUG & DEBUG_NO_FAST_CLEAR)
+      return false;
 
    /* Check for partial clears */
    if (box->x > 0 || box->y > 0 ||
@@ -372,7 +424,10 @@ can_fast_clear_depth(struct iris_context *ice,
    if (!(res->aux.has_hiz & (1 << level)))
       return false;
 
-   return true;
+   return blorp_can_hiz_clear_depth(devinfo, &res->surf, res->aux.usage,
+                                    level, box->z, box->x, box->y,
+                                    box->x + box->width,
+                                    box->y + box->height);
 }
 
 static void
@@ -419,7 +474,7 @@ fast_clear_depth(struct iris_context *ice,
        * even more complex, so the easiest thing to do when the fast clear
        * depth is changing is to stall on the CPU and resolve the predication.
        */
-      iris_resolve_conditional_render(ice);
+      ice->vtbl.resolve_conditional_render(ice);
       if (ice->state.predicate == IRIS_PREDICATE_STATE_DONT_RENDER)
          return;
 
@@ -513,7 +568,8 @@ clear_depth_stencil(struct iris_context *ice,
    if (z_res && clear_depth &&
        can_fast_clear_depth(ice, z_res, level, box, depth)) {
       fast_clear_depth(ice, z_res, level, box, depth);
-      iris_flush_and_dirty_for_history(ice, batch, res);
+      iris_flush_and_dirty_for_history(ice, batch, res, 0,
+                                       "cache history: post fast Z clear");
       clear_depth = false;
       z_res = false;
    }
@@ -525,7 +581,7 @@ clear_depth_stencil(struct iris_context *ice,
       return;
    }
 
-   if (z_res) {
+   if (clear_depth && z_res) {
       iris_resource_prepare_depth(ice, batch, z_res, level, box->z, box->depth);
       iris_blorp_surf_for_resource(&ice->vtbl, &z_surf, &z_res->base,
                                    z_res->aux.usage, level, true);
@@ -534,7 +590,10 @@ clear_depth_stencil(struct iris_context *ice,
    struct blorp_batch blorp_batch;
    blorp_batch_init(&ice->blorp, &blorp_batch, batch, blorp_flags);
 
-   if (stencil_res) {
+   uint8_t stencil_mask = clear_stencil && stencil_res ? 0xff : 0;
+   if (stencil_mask) {
+      iris_resource_prepare_access(ice, batch, stencil_res, level, 1, box->z,
+                                   box->depth, stencil_res->aux.usage, false);
       iris_blorp_surf_for_resource(&ice->vtbl, &stencil_surf,
                                    &stencil_res->base, stencil_res->aux.usage,
                                    level, true);
@@ -546,14 +605,20 @@ clear_depth_stencil(struct iris_context *ice,
                              box->x + box->width,
                              box->y + box->height,
                              clear_depth && z_res, depth,
-                             clear_stencil && stencil_res ? 0xff : 0, stencil);
+                             stencil_mask, stencil);
 
    blorp_batch_finish(&blorp_batch);
-   iris_flush_and_dirty_for_history(ice, batch, res);
+   iris_flush_and_dirty_for_history(ice, batch, res, 0,
+                                    "cache history: post slow ZS clear");
 
-   if (z_res) {
+   if (clear_depth && z_res) {
       iris_resource_finish_depth(ice, z_res, level,
                                  box->z, box->depth, true);
+   }
+
+   if (stencil_mask) {
+      iris_resource_finish_write(ice, stencil_res, level, box->z, box->depth,
+                                 stencil_res->aux.usage);
    }
 }
 

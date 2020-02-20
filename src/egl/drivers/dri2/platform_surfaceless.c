@@ -124,7 +124,8 @@ dri2_surfaceless_create_surface(_EGLDriver *drv, _EGLDisplay *disp, EGLint type,
       return NULL;
    }
 
-   if (!dri2_init_surface(&dri2_surf->base, disp, type, conf, attrib_list, false))
+   if (!dri2_init_surface(&dri2_surf->base, disp, type, conf, attrib_list,
+                          false, NULL))
       goto cleanup_surface;
 
    config = dri2_get_dri_config(dri2_conf, type,
@@ -135,7 +136,7 @@ dri2_surfaceless_create_surface(_EGLDriver *drv, _EGLDisplay *disp, EGLint type,
       goto cleanup_surface;
    }
 
-   if (!dri2_create_drawable(dri2_dpy, config, dri2_surf))
+   if (!dri2_create_drawable(dri2_dpy, config, dri2_surf, dri2_surf))
       goto cleanup_surface;
 
    if (conf->RedSize == 5)
@@ -184,6 +185,10 @@ surfaceless_add_configs_for_visuals(_EGLDriver *drv, _EGLDisplay *disp)
       int rgba_shifts[4];
       unsigned int rgba_sizes[4];
    } visuals[] = {
+      { "ABGR16F",  { 0, 16, 32, 48 }, { 16, 16, 16, 16 } },
+      { "XBGR16F",  { 0, 16, 32, -1 }, { 16, 16, 16, 0 } },
+      { "A2RGB10",  { 20, 10, 0, 30 }, { 10, 10, 10, 2 } },
+      { "X2RGB10",  { 20, 10, 0, -1 }, { 10, 10, 10, 0 } },
       { "ARGB8888", { 16, 8, 0, 24 }, { 8, 8, 8, 8 } },
       { "RGB888",   { 16, 8, 0, -1 }, { 8, 8, 8, 0 } },
       { "RGB565",   { 11, 5, 0, -1 }, { 5, 6, 5, 0 } },
@@ -223,7 +228,6 @@ static const struct dri2_egl_display_vtbl dri2_surfaceless_display_vtbl = {
    .destroy_surface = surfaceless_destroy_surface,
    .create_image = dri2_create_image_khr,
    .swap_buffers_region = dri2_fallback_swap_buffers_region,
-   .set_damage_region = dri2_fallback_set_damage_region,
    .post_sub_buffer = dri2_fallback_post_sub_buffer,
    .copy_buffers = dri2_fallback_copy_buffers,
    .query_buffer_age = dri2_fallback_query_buffer_age,
@@ -237,17 +241,23 @@ surfaceless_flush_front_buffer(__DRIdrawable *driDrawable, void *loaderPrivate)
 {
 }
 
+static unsigned
+surfaceless_get_capability(void *loaderPrivate, enum dri_loader_cap cap)
+{
+   /* Note: loaderPrivate is _EGLDisplay* */
+   switch (cap) {
+   case DRI_LOADER_CAP_FP16:
+      return 1;
+   default:
+      return 0;
+   }
+}
+
 static const __DRIimageLoaderExtension image_loader_extension = {
-   .base             = { __DRI_IMAGE_LOADER, 1 },
+   .base             = { __DRI_IMAGE_LOADER, 2 },
    .getBuffers       = surfaceless_image_get_buffers,
    .flushFrontBuffer = surfaceless_flush_front_buffer,
-};
-
-static const __DRIswrastLoaderExtension swrast_loader_extension = {
-   .base            = { __DRI_SWRAST_LOADER, 1 },
-   .getDrawableInfo = NULL,
-   .putImage        = NULL,
-   .getImage        = NULL,
+   .getCapability    = surfaceless_get_capability,
 };
 
 static const __DRIextension *image_loader_extensions[] = {
@@ -258,7 +268,7 @@ static const __DRIextension *image_loader_extensions[] = {
 };
 
 static const __DRIextension *swrast_loader_extensions[] = {
-   &swrast_loader_extension.base,
+   &swrast_pbuffer_loader_extension.base,
    &image_loader_extension.base,
    &image_lookup_extension.base,
    &use_invalidate.base,
@@ -302,8 +312,9 @@ surfaceless_probe_device(_EGLDisplay *disp, bool swrast)
           * are unavailable since 6c5ab, and kms_swrast is more
           * feature complete than swrast.
           */
-         if (strcmp(driver_name, "vgem") == 0 ||
-             strcmp(driver_name, "virtio_gpu") == 0)
+         if (driver_name &&
+             (strcmp(driver_name, "vgem") == 0 ||
+              strcmp(driver_name, "virtio_gpu") == 0))
             dri2_dpy->driver_name = strdup("kms_swrast");
          free(driver_name);
       } else {
@@ -398,6 +409,10 @@ dri2_initialize_surfaceless(_EGLDriver *drv, _EGLDisplay *disp)
    }
 
    dri2_setup_screen(disp);
+#ifdef HAVE_WAYLAND_PLATFORM
+   dri2_dpy->device_name = loader_get_device_name_for_fd(dri2_dpy->fd);
+#endif
+   dri2_set_WL_bind_wayland_display(drv, disp);
 
    if (!surfaceless_add_configs_for_visuals(drv, disp)) {
       err = "DRI2: failed to add configs";

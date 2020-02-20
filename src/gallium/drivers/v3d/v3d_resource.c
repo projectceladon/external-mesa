@@ -169,7 +169,8 @@ v3d_map_usage_prep(struct pipe_context *pctx,
                         /* If we failed to reallocate, flush users so that we
                          * don't violate any syncing requirements.
                          */
-                        v3d_flush_jobs_reading_resource(v3d, prsc);
+                        v3d_flush_jobs_reading_resource(v3d, prsc,
+                                                        V3D_FLUSH_DEFAULT);
                 }
         } else if (!(usage & PIPE_TRANSFER_UNSYNCHRONIZED)) {
                 /* If we're writing and the buffer is being used by the CL, we
@@ -177,9 +178,11 @@ v3d_map_usage_prep(struct pipe_context *pctx,
                  * to flush if the CL has written our buffer.
                  */
                 if (usage & PIPE_TRANSFER_WRITE)
-                        v3d_flush_jobs_reading_resource(v3d, prsc);
+                        v3d_flush_jobs_reading_resource(v3d, prsc,
+                                                        V3D_FLUSH_ALWAYS);
                 else
-                        v3d_flush_jobs_writing_resource(v3d, prsc);
+                        v3d_flush_jobs_writing_resource(v3d, prsc,
+                                                        V3D_FLUSH_ALWAYS);
         }
 
         if (usage & PIPE_TRANSFER_WRITE) {
@@ -366,7 +369,7 @@ v3d_resource_destroy(struct pipe_screen *pscreen,
         free(rsc);
 }
 
-static boolean
+static bool
 v3d_resource_get_handle(struct pipe_screen *pscreen,
                         struct pipe_context *pctx,
                         struct pipe_resource *prsc,
@@ -408,13 +411,13 @@ v3d_resource_get_handle(struct pipe_screen *pscreen,
                         return ok;
                 }
                 whandle->handle = bo->handle;
-                return TRUE;
+                return true;
         case WINSYS_HANDLE_TYPE_FD:
                 whandle->handle = v3d_bo_get_dmabuf(bo);
                 return whandle->handle != -1;
         }
 
-        return FALSE;
+        return false;
 }
 
 #define PAGE_UB_ROWS (VC5_UIFCFG_PAGE_SIZE / VC5_UIFBLOCK_ROW_SIZE)
@@ -839,13 +842,6 @@ v3d_resource_from_handle(struct pipe_screen *pscreen,
                 goto fail;
         }
 
-        if (whandle->offset != 0) {
-                fprintf(stderr,
-                        "Attempt to import unsupported winsys offset %u\n",
-                        whandle->offset);
-                goto fail;
-        }
-
         switch (whandle->type) {
         case WINSYS_HANDLE_TYPE_SHARED:
                 rsc->bo = v3d_bo_open_name(screen, whandle->handle);
@@ -868,6 +864,26 @@ v3d_resource_from_handle(struct pipe_screen *pscreen,
         v3d_setup_slices(rsc, whandle->stride, true);
         v3d_debug_resource_layout(rsc, "import");
 
+        if (whandle->offset != 0) {
+                if (rsc->tiled) {
+                        fprintf(stderr,
+                                "Attempt to import unsupported winsys offset %u\n",
+                                whandle->offset);
+                        goto fail;
+                }
+                rsc->slices[0].offset += whandle->offset;
+
+                if (rsc->slices[0].offset + rsc->slices[0].size >
+                    rsc->bo->size) {
+                        fprintf(stderr, "Attempt to import "
+                                "with overflowing offset (%d + %d > %d)\n",
+                                whandle->offset,
+                                rsc->slices[0].size,
+                                rsc->bo->size);
+                         goto fail;
+                 }
+        }
+
         if (screen->ro) {
                 /* Make sure that renderonly has a handle to our buffer in the
                  * display's fd, so that a later renderonly_get_handle()
@@ -883,7 +899,7 @@ v3d_resource_from_handle(struct pipe_screen *pscreen,
                 }
         }
 
-        if (whandle->stride != slice->stride) {
+        if (rsc->tiled && whandle->stride != slice->stride) {
                 static bool warned = false;
                 if (!warned) {
                         warned = true;
@@ -896,6 +912,8 @@ v3d_resource_from_handle(struct pipe_screen *pscreen,
                                 slice->stride);
                 }
                 goto fail;
+        } else if (!rsc->tiled) {
+                slice->stride = whandle->stride;
         }
 
         return prsc;

@@ -8,7 +8,7 @@
 <body>
 
 <div class="header">
-  <h1>The Mesa 3D Graphics Library</h1>
+  The Mesa 3D Graphics Library
 </div>
 
 <iframe src="contents.html"></iframe>
@@ -23,7 +23,6 @@
   <li><a href="#prereq-dri">For DRI and hardware acceleration</a>
   </ul>
 <li><a href="#meson">Building with meson</a>
-<li><a href="#autoconf">Building with autoconf (Linux/Unix/X11)</a>
 <li><a href="#scons">Building with SCons (Windows/Linux)</a>
 <li><a href="#android">Building with AOSP (Android)</a>
 <li><a href="#libs">Library Information</a>
@@ -31,26 +30,23 @@
 </ol>
 
 
-<h1 id="prereq-general">1. Prerequisites for building</h1>
+<h2 id="prereq-general">1. Prerequisites for building</h2>
 
-<h2>1.1 General</h2>
+<h3>1.1 General</h3>
 
-<p>
-Build system.
-</p>
+<h4>Build system</h4>
 
 <ul>
-<li><a href="https://mesonbuild.com">meson</a> is required when building on *nix platforms.
-<li>Autoconf was removed in 19.1.0, use meson instead
-<li><a href="http://www.scons.org/">SCons</a> is required for building on
-Windows and optional for Linux (it's an alternative to meson.)
+<li><a href="https://mesonbuild.com">meson</a> is required when building on *nix platforms and is supported on windows.
+<li><a href="http://www.scons.org/">SCons</a> is an alternative for building on
+Windows and Linux.
 </li>
-<li>Android Build system when building as native Android component. Autoconf
+<li>Android Build system when building as native Android component. Meson
 is used when when building ARC.
 </li>
 </ul>
 
-
+<h4>Compiler</h4>
 <p>
 The following compilers are known to work, if you know of others or you're
 willing to maintain support for other compiler get in touch.
@@ -63,14 +59,7 @@ willing to maintain support for other compiler get in touch.
 </ul>
 
 
-<p>
-Third party/extra tools.
-<br>
-<strong>Note</strong>: These should not be required, when building from a release tarball. If
-you think you've spotted a bug let developers know by filing a
-<a href="bugs.html">bug report</a>.
-</p>
-
+<h4>Third party/extra tools.</h4>
 
 <ul>
 <li><a href="https://www.python.org/">Python</a> - Python is required.
@@ -81,14 +70,16 @@ When building with meson 3.5 or newer is required.
 Python Mako module is required. Version 0.8.0 or later should work.
 </li>
 <li>lex / yacc - for building the Mesa IR and GLSL compiler.
-<div>
+<p>
 On Linux systems, flex and bison versions 2.5.35 and 2.4.1, respectively,
 (or later) should work.
 On Windows with MinGW, install flex and bison with:
+</p>
 <pre>mingw-get install msys-flex msys-bison</pre>
+<p>
 For MSVC on Windows, install
 <a href="http://winflexbison.sourceforge.net/">Win flex-bison</a>.
-</div>
+</p>
 </ul>
 <p><strong>Note</strong>: Some versions can be buggy (eg. flex 2.6.2) so do try others if things fail.</p>
 
@@ -114,11 +105,13 @@ the packaging tool used by your distro.
   ... # others
 </pre>
 
-<h1 id="meson">2. Building with meson</h1>
+<h2 id="meson">2. Building with meson</h2>
+
+<p><strong>Meson &gt;= 0.46.0 is required</strong></p>
 
 <p>
 Meson is the latest build system in mesa, it is currently able to build for
-*nix systems like Linux and BSD, and will be able to build for windows as well.
+*nix systems like Linux and BSD, macOS, Haiku, and Windows.
 </p>
 
 <p>
@@ -129,20 +122,34 @@ The general approach is:
   ninja -C builddir/
   sudo ninja -C builddir/ install
 </pre>
+
+<p>On windows you can also use the visual studio backend</p>
+<pre>
+  meson builddir --backend=vs
+  cd builddir
+  msbuild mesa.sln /m
+</pre>
+
 <p>
 Please read the <a href="meson.html">detailed meson instructions</a>
 for more information
 </p>
 
-<h1 id="autoconf">3. Building with autoconf (Linux/Unix/X11)</h1>
+<p>On windows you can also use the visual studio backend</p>
+<pre>
+  meson builddir --backend=vs
+  cd builddir
+  msbuild mesa.sln /m
+</pre>
 
 <p>
-  Autoconf support was removed in Mesa 19.1.0. Please use meson instead.
+Please read the <a href="meson.html">detailed meson instructions</a>
+for more information
 </p>
 
 
 
-<h1 id="scons">4. Building with SCons (Windows/Linux)</h1>
+<h2 id="scons">3. Building with SCons (Windows/Linux)</h2>
 
 <p>
 To build Mesa with SCons on Linux or Windows do
@@ -178,7 +185,7 @@ Additional information is available in <a href="README.WIN32">README.WIN32</a>.
 
 
 
-<h1 id="android">5. Building with AOSP (Android)</h1>
+<h2 id="android">4. Building with AOSP (Android)</h2>
 
 <p>
 Currently one can build Mesa for Android as part of the AOSP project, yet
@@ -197,7 +204,7 @@ Android-x86 and/or other resources.
 </p>
 
 
-<h1 id="libs">6. Library Information</h1>
+<h2 id="libs">5. Library Information</h2>
 
 <p>
 When compilation has finished, look in the top-level <code>lib/</code>
@@ -214,9 +221,8 @@ lrwxrwxrwx    1 brian    users          23 Mar 26 07:53 libOSMesa.so.6 -&gt; lib
 </pre>
 
 <p>
-<b>libGL</b> is the main OpenGL library (i.e. Mesa).
-<br>
-<b>libOSMesa</b> is the OSMesa (Off-Screen) interface library.
+<b>libGL</b> is the main OpenGL library (i.e. Mesa), while <b>libOSMesa</b>
+is the OSMesa (Off-Screen) interface library.
 </p>
 
 <p>
@@ -235,7 +241,7 @@ versions of libGL and device drivers.
 </p>
 
 
-<h1 id="pkg-config">7. Building OpenGL programs with pkg-config</h1>
+<h2 id="pkg-config">6. Building OpenGL programs with pkg-config</h2>
 
 <p>
 Running <code>ninja install</code> will install package configuration files
@@ -253,8 +259,6 @@ For example, compiling and linking a GLUT application can be done with:
 <pre>
    gcc `pkg-config --cflags --libs glut` mydemo.c -o mydemo
 </pre>
-
-<br>
 
 </div>
 </body>

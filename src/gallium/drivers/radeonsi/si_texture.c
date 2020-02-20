@@ -23,8 +23,8 @@
  * USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 
-#include "radeonsi/si_pipe.h"
-#include "radeonsi/si_query.h"
+#include "si_pipe.h"
+#include "si_query.h"
 #include "util/u_format.h"
 #include "util/u_log.h"
 #include "util/u_memory.h"
@@ -36,8 +36,9 @@
 #include <errno.h>
 #include <inttypes.h>
 #include "state_tracker/drm_driver.h"
-#include "amd/common/sid.h"
-#include "amd/common/gfx9d.h"
+#include "sid.h"
+#include "amd/addrlib/inc/addrinterface.h"
+#include "drm-uapi/drm_fourcc.h"
 
 static enum radeon_surf_mode
 si_choose_tiling(struct si_screen *sscreen,
@@ -129,8 +130,7 @@ static void si_copy_region_with_blit(struct pipe_context *pipe,
 	blit.dst.box.width = src_box->width;
 	blit.dst.box.height = src_box->height;
 	blit.dst.box.depth = src_box->depth;
-	blit.mask = util_format_get_mask(src->format) &
-		    util_format_get_mask(dst->format);
+	blit.mask = util_format_get_mask(dst->format);
 	blit.filter = PIPE_TEX_FILTER_NEAREST;
 
 	if (blit.mask) {
@@ -146,7 +146,7 @@ static void si_copy_to_staging_texture(struct pipe_context *ctx, struct si_trans
 	struct pipe_resource *dst = &stransfer->staging->b.b;
 	struct pipe_resource *src = transfer->resource;
 
-	if (src->nr_samples > 1) {
+	if (src->nr_samples > 1 || ((struct si_texture*)src)->is_depth) {
 		si_copy_region_with_blit(ctx, dst, 0, 0, 0, 0,
 					   src, transfer->level, &transfer->box);
 		return;
@@ -167,11 +167,16 @@ static void si_copy_from_staging_texture(struct pipe_context *ctx, struct si_tra
 
 	u_box_3d(0, 0, 0, transfer->box.width, transfer->box.height, transfer->box.depth, &sbox);
 
-	if (dst->nr_samples > 1) {
+	if (dst->nr_samples > 1 || ((struct si_texture*)dst)->is_depth) {
 		si_copy_region_with_blit(ctx, dst, transfer->level,
 					   transfer->box.x, transfer->box.y, transfer->box.z,
 					   src, 0, &sbox);
 		return;
+	}
+
+	if (util_format_is_compressed(dst->format)) {
+		sbox.width = util_format_get_nblocksx(dst->format, sbox.width);
+		sbox.height = util_format_get_nblocksx(dst->format, sbox.height);
 	}
 
 	sctx->dma_copy(ctx, dst, transfer->level,
@@ -194,7 +199,8 @@ static unsigned si_texture_get_offset(struct si_screen *sscreen,
 
 		/* Each texture is an array of slices. Each slice is an array
 		 * of mipmap levels. */
-		return box->z * tex->surface.u.gfx9.surf_slice_size +
+		return tex->surface.u.gfx9.surf_offset +
+		       box->z * tex->surface.u.gfx9.surf_slice_size +
 		       tex->surface.u.gfx9.offset[level] +
 		       (box->y / tex->surface.blk_h *
 			tex->surface.u.gfx9.surf_pitch +
@@ -223,7 +229,6 @@ static int si_init_surface(struct si_screen *sscreen,
 			   const struct pipe_resource *ptex,
 			   enum radeon_surf_mode array_mode,
 			   unsigned pitch_in_bytes_override,
-			   unsigned offset,
 			   bool is_imported,
 			   bool is_scanout,
 			   bool is_flushed_depth,
@@ -233,7 +238,7 @@ static int si_init_surface(struct si_screen *sscreen,
 		util_format_description(ptex->format);
 	bool is_depth, is_stencil;
 	int r;
-	unsigned i, bpe, flags = 0;
+	unsigned bpe, flags = 0;
 
 	is_depth = util_format_has_depth(desc);
 	is_stencil = util_format_has_stencil(desc);
@@ -249,15 +254,17 @@ static int si_init_surface(struct si_screen *sscreen,
 	if (!is_flushed_depth && is_depth) {
 		flags |= RADEON_SURF_ZBUFFER;
 
-		if (tc_compatible_htile &&
-		    (sscreen->info.chip_class >= GFX9 ||
-		     array_mode == RADEON_SURF_MODE_2D)) {
+		if (sscreen->debug_flags & DBG(NO_HYPERZ)) {
+			flags |= RADEON_SURF_NO_HTILE;
+		} else if (tc_compatible_htile &&
+			   (sscreen->info.chip_class >= GFX9 ||
+			    array_mode == RADEON_SURF_MODE_2D)) {
 			/* TC-compatible HTILE only supports Z32_FLOAT.
 			 * GFX9 also supports Z16_UNORM.
-			 * On VI, promote Z16 to Z32. DB->CB copies will convert
+			 * On GFX8, promote Z16 to Z32. DB->CB copies will convert
 			 * the format for transfers.
 			 */
-			if (sscreen->info.chip_class == VI)
+			if (sscreen->info.chip_class == GFX8)
 				bpe = 4;
 
 			flags |= RADEON_SURF_TC_COMPATIBLE_HTILE;
@@ -267,7 +274,7 @@ static int si_init_surface(struct si_screen *sscreen,
 			flags |= RADEON_SURF_SBUFFER;
 	}
 
-	if (sscreen->info.chip_class >= VI &&
+	if (sscreen->info.chip_class >= GFX8 &&
 	    (ptex->flags & SI_RESOURCE_FLAG_DISABLE_DCC ||
 	     ptex->format == PIPE_FORMAT_R9G9B9E5_FLOAT ||
 	     (ptex->nr_samples >= 2 && !sscreen->dcc_msaa_allowed)))
@@ -278,15 +285,27 @@ static int si_init_surface(struct si_screen *sscreen,
 	    bpe == 16 && ptex->nr_samples >= 2)
 		flags |= RADEON_SURF_DISABLE_DCC;
 
-	/* VI: DCC clear for 4x and 8x MSAA array textures unimplemented. */
-	if (sscreen->info.chip_class == VI &&
+	/* GFX8: DCC clear for 4x and 8x MSAA array textures unimplemented. */
+	if (sscreen->info.chip_class == GFX8 &&
 	    ptex->nr_storage_samples >= 4 &&
 	    ptex->array_size > 1)
 		flags |= RADEON_SURF_DISABLE_DCC;
 
 	/* GFX9: DCC clear for 4x and 8x MSAA textures unimplemented. */
-	if (sscreen->info.chip_class >= GFX9 &&
+	if (sscreen->info.chip_class == GFX9 &&
 	    ptex->nr_storage_samples >= 4)
+		flags |= RADEON_SURF_DISABLE_DCC;
+
+	/* TODO: GFX10: DCC causes corruption with MSAA. */
+	if (sscreen->info.chip_class >= GFX10 &&
+	    ptex->nr_storage_samples >= 2)
+		flags |= RADEON_SURF_DISABLE_DCC;
+
+	/* Shared textures must always set up DCC.
+	 * If it's not present, it will be disabled by
+	 * si_get_opaque_metadata later.
+	 */
+	if (!is_imported && (sscreen->debug_flags & DBG(NO_DCC)))
 		flags |= RADEON_SURF_DISABLE_DCC;
 
 	if (ptex->bind & PIPE_BIND_SCANOUT || is_scanout) {
@@ -306,6 +325,14 @@ static int si_init_surface(struct si_screen *sscreen,
 		flags |= RADEON_SURF_IMPORTED | RADEON_SURF_SHAREABLE;
 	if (!(ptex->flags & SI_RESOURCE_FLAG_FORCE_MSAA_TILING))
 		flags |= RADEON_SURF_OPTIMIZE_FOR_SPACE;
+	if (sscreen->debug_flags & DBG(NO_FMASK))
+		flags |= RADEON_SURF_NO_FMASK;
+
+	if (sscreen->info.chip_class >= GFX10 &&
+	    (ptex->flags & SI_RESOURCE_FLAG_FORCE_MSAA_TILING)) {
+		flags |= RADEON_SURF_FORCE_SWIZZLE_MODE;
+		surface->u.gfx9.surf.swizzle_mode = ADDR_SW_64KB_R_X;
+	}
 
 	r = sscreen->ws->surface_init(sscreen->ws, ptex, flags, bpe,
 				      array_mode, surface);
@@ -318,19 +345,16 @@ static int si_init_surface(struct si_screen *sscreen,
 	if (sscreen->info.chip_class >= GFX9) {
 		if (pitch) {
 			surface->u.gfx9.surf_pitch = pitch;
+			if (ptex->last_level == 0)
+				surface->u.gfx9.surf.epitch = pitch - 1;
 			surface->u.gfx9.surf_slice_size =
 				(uint64_t)pitch * surface->u.gfx9.surf_height * bpe;
 		}
-		surface->u.gfx9.surf_offset = offset;
 	} else {
 		if (pitch) {
 			surface->u.legacy.level[0].nblk_x = pitch;
 			surface->u.legacy.level[0].slice_size_dw =
 				((uint64_t)pitch * surface->u.legacy.level[0].nblk_y * bpe) / 4;
-		}
-		if (offset) {
-			for (i = 0; i < ARRAY_SIZE(surface->u.legacy.level); ++i)
-				surface->u.legacy.level[i].offset += offset;
 		}
 	}
 	return 0;
@@ -383,7 +407,7 @@ void si_eliminate_fast_color_clear(struct si_context *sctx,
 	struct pipe_context *ctx = &sctx->b;
 
 	if (ctx == sscreen->aux_context)
-		mtx_lock(&sscreen->aux_context_lock);
+		simple_mtx_lock(&sscreen->aux_context_lock);
 
 	unsigned n = sctx->num_decompress_calls;
 	ctx->flush_resource(ctx, &tex->buffer.b.b);
@@ -393,7 +417,7 @@ void si_eliminate_fast_color_clear(struct si_context *sctx,
 		ctx->flush(ctx, NULL, 0);
 
 	if (ctx == sscreen->aux_context)
-		mtx_unlock(&sscreen->aux_context_lock);
+		simple_mtx_unlock(&sscreen->aux_context_lock);
 }
 
 void si_texture_discard_cmask(struct si_screen *sscreen,
@@ -423,25 +447,30 @@ void si_texture_discard_cmask(struct si_screen *sscreen,
 static bool si_can_disable_dcc(struct si_texture *tex)
 {
 	/* We can't disable DCC if it can be written by another process. */
-	return tex->dcc_offset &&
+	return tex->surface.dcc_offset &&
 	       (!tex->buffer.b.is_shared ||
 		!(tex->buffer.external_usage & PIPE_HANDLE_USAGE_FRAMEBUFFER_WRITE));
+}
+
+static void si_texture_zero_dcc_fields(struct si_texture *tex)
+{
+	tex->surface.dcc_offset = 0;
+	tex->surface.display_dcc_offset = 0;
+	tex->surface.dcc_retile_map_offset = 0;
 }
 
 static bool si_texture_discard_dcc(struct si_screen *sscreen,
 				   struct si_texture *tex)
 {
 	if (!si_can_disable_dcc(tex)) {
-		assert(tex->display_dcc_offset == 0);
+		assert(tex->surface.display_dcc_offset == 0);
 		return false;
 	}
 
 	assert(tex->dcc_separate_buffer == NULL);
 
 	/* Disable DCC. */
-	tex->dcc_offset = 0;
-	tex->display_dcc_offset = 0;
-	tex->dcc_retile_map_offset = 0;
+	si_texture_zero_dcc_fields(tex);
 
 	/* Notify all contexts about the change. */
 	p_atomic_inc(&sscreen->dirty_tex_counter);
@@ -481,14 +510,14 @@ bool si_texture_disable_dcc(struct si_context *sctx,
 		return false;
 
 	if (&sctx->b == sscreen->aux_context)
-		mtx_lock(&sscreen->aux_context_lock);
+		simple_mtx_lock(&sscreen->aux_context_lock);
 
 	/* Decompress DCC. */
 	si_decompress_dcc(sctx, tex);
 	sctx->b.flush(&sctx->b, NULL, 0);
 
 	if (&sctx->b == sscreen->aux_context)
-		mtx_unlock(&sscreen->aux_context_lock);
+		simple_mtx_unlock(&sscreen->aux_context_lock);
 
 	return si_texture_discard_dcc(sscreen, tex);
 }
@@ -505,7 +534,7 @@ static void si_reallocate_texture_inplace(struct si_context *sctx,
 
 	templ.bind |= new_bind_flag;
 
-	if (tex->buffer.b.is_shared)
+	if (tex->buffer.b.is_shared || tex->num_planes > 1)
 		return;
 
 	if (new_bind_flag == PIPE_BIND_LINEAR) {
@@ -553,12 +582,11 @@ static void si_reallocate_texture_inplace(struct si_context *sctx,
 	tex->buffer.flags = new_tex->buffer.flags;
 
 	tex->surface = new_tex->surface;
-	tex->size = new_tex->size;
 	si_texture_reference(&tex->flushed_depth_texture,
 			     new_tex->flushed_depth_texture);
 
-	tex->fmask_offset = new_tex->fmask_offset;
-	tex->cmask_offset = new_tex->cmask_offset;
+	tex->surface.fmask_offset = new_tex->surface.fmask_offset;
+	tex->surface.cmask_offset = new_tex->surface.cmask_offset;
 	tex->cmask_base_address_reg = new_tex->cmask_base_address_reg;
 
 	if (tex->cmask_buffer == &tex->buffer)
@@ -571,13 +599,13 @@ static void si_reallocate_texture_inplace(struct si_context *sctx,
 	else
 		si_resource_reference(&tex->cmask_buffer, new_tex->cmask_buffer);
 
-	tex->dcc_offset = new_tex->dcc_offset;
+	tex->surface.dcc_offset = new_tex->surface.dcc_offset;
 	tex->cb_color_info = new_tex->cb_color_info;
 	memcpy(tex->color_clear_value, new_tex->color_clear_value,
 	       sizeof(tex->color_clear_value));
 	tex->last_msaa_resolve_target_micro_mode = new_tex->last_msaa_resolve_target_micro_mode;
 
-	tex->htile_offset = new_tex->htile_offset;
+	tex->surface.htile_offset = new_tex->surface.htile_offset;
 	tex->depth_clear_value = new_tex->depth_clear_value;
 	tex->dirty_level_mask = new_tex->dirty_level_mask;
 	tex->stencil_dirty_level_mask = new_tex->stencil_dirty_level_mask;
@@ -599,10 +627,10 @@ static void si_reallocate_texture_inplace(struct si_context *sctx,
 				new_tex->last_dcc_separate_buffer);
 
 	if (new_bind_flag == PIPE_BIND_LINEAR) {
-		assert(!tex->htile_offset);
+		assert(!tex->surface.htile_offset);
 		assert(!tex->cmask_buffer);
 		assert(!tex->surface.fmask_size);
-		assert(!tex->dcc_offset);
+		assert(!tex->surface.dcc_offset);
 		assert(!tex->is_depth);
 	}
 
@@ -628,10 +656,10 @@ static void si_set_tex_bo_metadata(struct si_screen *sscreen,
 	if (sscreen->info.chip_class >= GFX9) {
 		md.u.gfx9.swizzle_mode = surface->u.gfx9.surf.swizzle_mode;
 
-		if (tex->dcc_offset && !tex->dcc_separate_buffer) {
+		if (tex->surface.dcc_offset && !tex->dcc_separate_buffer) {
 			uint64_t dcc_offset =
-				tex->display_dcc_offset ? tex->display_dcc_offset
-							: tex->dcc_offset;
+				tex->surface.display_dcc_offset ? tex->surface.display_dcc_offset
+							: tex->surface.dcc_offset;
 
 			assert((dcc_offset >> 8) != 0 && (dcc_offset >> 8) < (1 << 24));
 			md.u.gfx9.dcc_offset_256B = dcc_offset >> 8;
@@ -680,7 +708,7 @@ static void si_set_tex_bo_metadata(struct si_screen *sscreen,
 	bool is_array = util_texture_is_array(res->target);
 	uint32_t desc[8];
 
-	si_make_texture_descriptor(sscreen, tex, true,
+	sscreen->make_texture_descriptor(sscreen, tex, true,
 				   res->target, res->format,
 				   swizzle, 0, res->last_level, 0,
 				   is_array ? res->array_size - 1 : 0,
@@ -693,14 +721,35 @@ static void si_set_tex_bo_metadata(struct si_screen *sscreen,
 	/* Clear the base address and set the relative DCC offset. */
 	desc[0] = 0;
 	desc[1] &= C_008F14_BASE_ADDRESS_HI;
-	desc[7] = tex->dcc_offset >> 8;
+
+	switch (sscreen->info.chip_class) {
+	case GFX6:
+	case GFX7:
+		break;
+	case GFX8:
+		desc[7] = tex->surface.dcc_offset >> 8;
+		break;
+	case GFX9:
+		desc[7] = tex->surface.dcc_offset >> 8;
+		desc[5] &= C_008F24_META_DATA_ADDRESS;
+		desc[5] |= S_008F24_META_DATA_ADDRESS(tex->surface.dcc_offset >> 40);
+		break;
+	case GFX10:
+		desc[6] &= C_00A018_META_DATA_ADDRESS_LO;
+		desc[6] |= S_00A018_META_DATA_ADDRESS_LO(tex->surface.dcc_offset >> 8);
+		desc[7] = tex->surface.dcc_offset >> 16;
+		break;
+	default:
+		assert(0);
+	}
+
 
 	/* Dwords [2:9] contain the image descriptor. */
 	memcpy(&md.metadata[2], desc, sizeof(desc));
 	md.size_metadata = 10 * 4;
 
 	/* Dwords [10:..] contain the mipmap level offsets. */
-	if (sscreen->info.chip_class <= VI) {
+	if (sscreen->info.chip_class <= GFX8) {
 		for (unsigned i = 0; i <= res->last_level; i++)
 			md.metadata[10+i] = tex->surface.u.legacy.level[i].offset >> 8;
 
@@ -710,30 +759,67 @@ static void si_set_tex_bo_metadata(struct si_screen *sscreen,
 	sscreen->ws->buffer_set_metadata(tex->buffer.buf, &md);
 }
 
-static void si_get_opaque_metadata(struct si_screen *sscreen,
-				   struct si_texture *tex,
-				   struct radeon_bo_metadata *md)
+static bool si_read_tex_bo_metadata(struct si_screen *sscreen,
+				    struct si_texture *tex,
+				    uint64_t offset,
+				    struct radeon_bo_metadata *md)
 {
 	uint32_t *desc = &md->metadata[2];
 
-	if (sscreen->info.chip_class < VI)
-		return;
+	if (offset || /* Non-zero planes ignore metadata. */
+	    md->size_metadata < 10 * 4 || /* at least 2(header) + 8(desc) dwords */
+	    md->metadata[0] == 0 || /* invalid version number */
+	    md->metadata[1] != si_get_bo_metadata_word1(sscreen)) /* invalid PCI ID */ {
+		/* Disable DCC because it might not be enabled. */
+		si_texture_zero_dcc_fields(tex);
 
-	/* Return if DCC is enabled. The texture should be set up with it
-	 * already.
-	 */
-	if (md->size_metadata >= 10 * 4 && /* at least 2(header) + 8(desc) dwords */
-	    md->metadata[0] != 0 &&
-	    md->metadata[1] == si_get_bo_metadata_word1(sscreen) &&
+		/* Don't report an error if the texture comes from an incompatible driver,
+		 * but this might not work.
+		 */
+		return true;
+	}
+
+	/* Validate that sample counts and the number of mipmap levels match. */
+	unsigned last_level = G_008F1C_LAST_LEVEL(desc[3]);
+	unsigned type = G_008F1C_TYPE(desc[3]);
+
+	if (type == V_008F1C_SQ_RSRC_IMG_2D_MSAA ||
+	    type == V_008F1C_SQ_RSRC_IMG_2D_MSAA_ARRAY) {
+		unsigned log_samples =
+			util_logbase2(MAX2(1, tex->buffer.b.b.nr_storage_samples));
+
+		if (last_level != log_samples) {
+			fprintf(stderr, "radeonsi: invalid MSAA texture import, "
+					"metadata has log2(samples) = %u, the caller set %u\n",
+				last_level, log_samples);
+			return false;
+		}
+	} else {
+		if (last_level != tex->buffer.b.b.last_level) {
+			fprintf(stderr, "radeonsi: invalid mipmapped texture import, "
+					"metadata has last_level = %u, the caller set %u\n",
+				last_level, tex->buffer.b.b.last_level);
+			return false;
+		}
+	}
+
+	if (sscreen->info.chip_class >= GFX8 &&
 	    G_008F28_COMPRESSION_EN(desc[6])) {
-		tex->dcc_offset = (uint64_t)desc[7] << 8;
+		/* Read DCC information.
+		 *
+		 * Some state trackers don't set the SCANOUT flag when
+		 * importing displayable images, which affects PIPE_ALIGNED
+		 * and RB_ALIGNED, so we need to recover them here.
+		 */
+		switch (sscreen->info.chip_class) {
+		case GFX8:
+			tex->surface.dcc_offset = (uint64_t)desc[7] << 8;
+			break;
 
-		if (sscreen->info.chip_class >= GFX9) {
-			/* Fix up parameters for displayable DCC. Some state
-			 * trackers don't set the SCANOUT flag when importing
-			 * displayable images, so we have to recover the correct
-			 * parameters here.
-			 */
+		case GFX9:
+			tex->surface.dcc_offset =
+				((uint64_t)desc[7] << 8) |
+				((uint64_t)G_008F24_META_DATA_ADDRESS(desc[5]) << 40);
 			tex->surface.u.gfx9.dcc.pipe_aligned =
 				G_008F24_META_PIPE_ALIGNED(desc[5]);
 			tex->surface.u.gfx9.dcc.rb_aligned =
@@ -743,37 +829,118 @@ static void si_get_opaque_metadata(struct si_screen *sscreen,
 			if (!tex->surface.u.gfx9.dcc.pipe_aligned &&
 			    !tex->surface.u.gfx9.dcc.rb_aligned)
 				tex->surface.is_displayable = true;
+			break;
+
+		case GFX10:
+			tex->surface.dcc_offset =
+				((uint64_t)G_00A018_META_DATA_ADDRESS_LO(desc[6]) << 8) |
+				((uint64_t)desc[7] << 16);
+			tex->surface.u.gfx9.dcc.pipe_aligned =
+				G_00A018_META_PIPE_ALIGNED(desc[6]);
+			break;
+
+		default:
+			assert(0);
+			return false;
 		}
-		return;
+	} else {
+		/* Disable DCC. dcc_offset is always set by texture_from_handle
+		 * and must be cleared here.
+		 */
+		si_texture_zero_dcc_fields(tex);
 	}
 
-	/* Disable DCC. These are always set by texture_from_handle and must
-	 * be cleared here.
-	 */
-	tex->dcc_offset = 0;
+	return true;
 }
 
 static bool si_has_displayable_dcc(struct si_texture *tex)
 {
 	struct si_screen *sscreen = (struct si_screen*)tex->buffer.b.b.screen;
 
-	if (sscreen->info.chip_class <= VI)
+	if (sscreen->info.chip_class <= GFX8)
 		return false;
 
 	/* This needs a cache flush before scanout.
 	 * (it can't be scanned out and rendered to simultaneously)
 	 */
 	if (sscreen->info.use_display_dcc_unaligned &&
-	    tex->dcc_offset &&
+	    tex->surface.dcc_offset &&
 	    !tex->surface.u.gfx9.dcc.pipe_aligned &&
 	    !tex->surface.u.gfx9.dcc.rb_aligned)
 		return true;
 
 	/* This needs an explicit flush (flush_resource). */
 	if (sscreen->info.use_display_dcc_with_retile_blit &&
-	    tex->display_dcc_offset)
+	    tex->surface.display_dcc_offset)
 		return true;
 
+	return false;
+}
+
+static bool si_resource_get_param(struct pipe_screen *screen,
+				  struct pipe_context *context,
+				  struct pipe_resource *resource,
+				  unsigned plane,
+				  unsigned layer,
+				  enum pipe_resource_param param,
+				  unsigned handle_usage,
+				  uint64_t *value)
+{
+	for (unsigned i = 0; i < plane; i++)
+		resource = resource->next;
+
+	struct si_screen *sscreen = (struct si_screen*)screen;
+	struct si_texture *tex = (struct si_texture*)resource;
+	struct winsys_handle whandle;
+
+	switch (param) {
+	case PIPE_RESOURCE_PARAM_NPLANES:
+		*value = resource->target == PIPE_BUFFER ? 1 : tex->num_planes;
+		return true;
+
+	case PIPE_RESOURCE_PARAM_STRIDE:
+		if (resource->target == PIPE_BUFFER)
+			*value = 0;
+		else if (sscreen->info.chip_class >= GFX9)
+			*value = tex->surface.u.gfx9.surf_pitch * tex->surface.bpe;
+		else
+			*value = tex->surface.u.legacy.level[0].nblk_x * tex->surface.bpe;
+		return true;
+
+	case PIPE_RESOURCE_PARAM_OFFSET:
+		if (resource->target == PIPE_BUFFER)
+			*value = 0;
+		else if (sscreen->info.chip_class >= GFX9)
+			*value = tex->surface.u.gfx9.surf_offset +
+				 layer * tex->surface.u.gfx9.surf_slice_size;
+		else
+			*value = tex->surface.u.legacy.level[0].offset +
+				 layer * (uint64_t)tex->surface.u.legacy.level[0].slice_size_dw * 4;
+		return true;
+
+	case PIPE_RESOURCE_PARAM_MODIFIER:
+		*value = DRM_FORMAT_MOD_INVALID;
+		return true;
+
+	case PIPE_RESOURCE_PARAM_HANDLE_TYPE_SHARED:
+	case PIPE_RESOURCE_PARAM_HANDLE_TYPE_KMS:
+	case PIPE_RESOURCE_PARAM_HANDLE_TYPE_FD:
+		memset(&whandle, 0, sizeof(whandle));
+
+		if (param == PIPE_RESOURCE_PARAM_HANDLE_TYPE_SHARED)
+			whandle.type = WINSYS_HANDLE_TYPE_SHARED;
+		else if (param == PIPE_RESOURCE_PARAM_HANDLE_TYPE_KMS)
+			whandle.type = WINSYS_HANDLE_TYPE_KMS;
+		else if (param == PIPE_RESOURCE_PARAM_HANDLE_TYPE_FD)
+			whandle.type = WINSYS_HANDLE_TYPE_FD;
+
+		if (!screen->resource_get_handle(screen, context, resource,
+						 &whandle, handle_usage))
+			return false;
+
+		*value = whandle.handle;
+		return true;
+	}
 	return false;
 }
 
@@ -782,38 +949,26 @@ static void si_texture_get_info(struct pipe_screen* screen,
 				unsigned *pstride,
 				unsigned *poffset)
 {
-	struct si_screen *sscreen = (struct si_screen*)screen;
-	struct si_texture *tex = (struct si_texture*)resource;
-	unsigned stride = 0;
-	unsigned offset = 0;
+	uint64_t value;
 
-	if (!sscreen || !tex)
-		return;
-
-	if (resource->target != PIPE_BUFFER) {
-		if (sscreen->info.chip_class >= GFX9) {
-			offset = tex->surface.u.gfx9.surf_offset;
-			stride = tex->surface.u.gfx9.surf_pitch *
-					tex->surface.bpe;
-		} else {
-			offset = tex->surface.u.legacy.level[0].offset;
-			stride = tex->surface.u.legacy.level[0].nblk_x *
-					tex->surface.bpe;
-		}
+	if (pstride) {
+		si_resource_get_param(screen, NULL, resource, 0, 0,
+				      PIPE_RESOURCE_PARAM_STRIDE, 0, &value);
+		*pstride = value;
 	}
 
-	if (pstride)
-		*pstride = stride;
-
-	if (poffset)
-		*poffset = offset;
+	if (poffset) {
+		si_resource_get_param(screen, NULL, resource, 0, 0,
+				      PIPE_RESOURCE_PARAM_OFFSET, 0, &value);
+		*poffset = value;
+	}
 }
 
-static boolean si_texture_get_handle(struct pipe_screen* screen,
-				     struct pipe_context *ctx,
-				     struct pipe_resource *resource,
-				     struct winsys_handle *whandle,
-				     unsigned usage)
+static bool si_texture_get_handle(struct pipe_screen* screen,
+				  struct pipe_context *ctx,
+				  struct pipe_resource *resource,
+				  struct winsys_handle *whandle,
+				  unsigned usage)
 {
 	struct si_screen *sscreen = (struct si_screen*)screen;
 	struct si_context *sctx;
@@ -827,6 +982,13 @@ static boolean si_texture_get_handle(struct pipe_screen* screen,
 	sctx = (struct si_context*)(ctx ? ctx : sscreen->aux_context);
 
 	if (resource->target != PIPE_BUFFER) {
+		/* Individual planes are chained pipe_resource instances. */
+		for (unsigned i = 0; i < whandle->plane; i++) {
+			resource = resource->next;
+			res = si_resource(resource);
+			tex = (struct si_texture*)resource;
+		}
+
 		/* This is not supported now, but it might be required for OpenCL
 		 * interop in the future.
 		 */
@@ -848,11 +1010,11 @@ static boolean si_texture_get_handle(struct pipe_screen* screen,
 			assert(tex->surface.tile_swizzle == 0);
 		}
 
-		/* Since shader image stores don't support DCC on VI,
+		/* Since shader image stores don't support DCC on GFX8,
 		 * disable it for external clients that want write
 		 * access.
 		 */
-		if ((usage & PIPE_HANDLE_USAGE_SHADER_WRITE && tex->dcc_offset) ||
+		if ((usage & PIPE_HANDLE_USAGE_SHADER_WRITE && tex->surface.dcc_offset) ||
 		    /* Displayable DCC requires an explicit flush. */
 		    (!(usage & PIPE_HANDLE_USAGE_EXPLICIT_FLUSH) &&
 		     si_has_displayable_dcc(tex))) {
@@ -864,7 +1026,7 @@ static boolean si_texture_get_handle(struct pipe_screen* screen,
 		}
 
 		if (!(usage & PIPE_HANDLE_USAGE_EXPLICIT_FLUSH) &&
-		    (tex->cmask_buffer || tex->dcc_offset)) {
+		    (tex->cmask_buffer || tex->surface.dcc_offset)) {
 			/* Eliminate fast clear (both CMASK and DCC) */
 			si_eliminate_fast_color_clear(sctx, tex);
 			/* eliminate_fast_color_clear flushes the context */
@@ -878,7 +1040,7 @@ static boolean si_texture_get_handle(struct pipe_screen* screen,
 		}
 
 		/* Set metadata. */
-		if (!res->b.is_shared || update_metadata)
+		if ((!res->b.is_shared || update_metadata) && whandle->offset == 0)
 			si_set_tex_bo_metadata(sscreen, tex);
 
 		if (sscreen->info.chip_class >= GFX9) {
@@ -939,8 +1101,10 @@ static boolean si_texture_get_handle(struct pipe_screen* screen,
 		res->external_usage = usage;
 	}
 
-	return sscreen->ws->buffer_get_handle(res->buf, stride, offset,
-					      slice_size, whandle);
+	whandle->stride = stride;
+	whandle->offset = offset + slice_size * whandle->layer;
+
+	return sscreen->ws->buffer_get_handle(sscreen->ws, res->buf, whandle);
 }
 
 static void si_texture_destroy(struct pipe_screen *screen,
@@ -965,85 +1129,6 @@ static void si_texture_destroy(struct pipe_screen *screen,
 }
 
 static const struct u_resource_vtbl si_texture_vtbl;
-
-static void si_texture_get_htile_size(struct si_screen *sscreen,
-				      struct si_texture *tex)
-{
-	unsigned cl_width, cl_height, width, height;
-	unsigned slice_elements, slice_bytes, pipe_interleave_bytes, base_align;
-	unsigned num_pipes = sscreen->info.num_tile_pipes;
-
-	assert(sscreen->info.chip_class <= VI);
-
-	tex->surface.htile_size = 0;
-
-	if (tex->surface.u.legacy.level[0].mode == RADEON_SURF_MODE_1D &&
-	    !sscreen->info.htile_cmask_support_1d_tiling)
-		return;
-
-	/* Overalign HTILE on P2 configs to work around GPU hangs in
-	 * piglit/depthstencil-render-miplevels 585.
-	 *
-	 * This has been confirmed to help Kabini & Stoney, where the hangs
-	 * are always reproducible. I think I have seen the test hang
-	 * on Carrizo too, though it was very rare there.
-	 */
-	if (sscreen->info.chip_class >= CIK && num_pipes < 4)
-		num_pipes = 4;
-
-	switch (num_pipes) {
-	case 1:
-		cl_width = 32;
-		cl_height = 16;
-		break;
-	case 2:
-		cl_width = 32;
-		cl_height = 32;
-		break;
-	case 4:
-		cl_width = 64;
-		cl_height = 32;
-		break;
-	case 8:
-		cl_width = 64;
-		cl_height = 64;
-		break;
-	case 16:
-		cl_width = 128;
-		cl_height = 64;
-		break;
-	default:
-		assert(0);
-		return;
-	}
-
-	width = align(tex->surface.u.legacy.level[0].nblk_x, cl_width * 8);
-	height = align(tex->surface.u.legacy.level[0].nblk_y, cl_height * 8);
-
-	slice_elements = (width * height) / (8 * 8);
-	slice_bytes = slice_elements * 4;
-
-	pipe_interleave_bytes = sscreen->info.pipe_interleave_bytes;
-	base_align = num_pipes * pipe_interleave_bytes;
-
-	tex->surface.htile_alignment = base_align;
-	tex->surface.htile_size =
-		util_num_layers(&tex->buffer.b.b, 0) *
-		align(slice_bytes, base_align);
-}
-
-static void si_texture_allocate_htile(struct si_screen *sscreen,
-				      struct si_texture *tex)
-{
-	if (sscreen->info.chip_class <= VI && !tex->tc_compatible_htile)
-		si_texture_get_htile_size(sscreen, tex);
-
-	if (!tex->surface.htile_size)
-		return;
-
-	tex->htile_offset = align(tex->size, tex->surface.htile_alignment);
-	tex->size = tex->htile_offset + tex->surface.htile_size;
-}
 
 void si_print_texture_info(struct si_screen *sscreen,
 			   struct si_texture *tex, struct u_log_context *log)
@@ -1071,10 +1156,10 @@ void si_print_texture_info(struct si_screen *sscreen,
 			tex->surface.u.gfx9.surf.epitch,
 			tex->surface.u.gfx9.surf_pitch);
 
-		if (tex->surface.fmask_size) {
+		if (tex->surface.fmask_offset) {
 			u_log_printf(log, "  FMASK: offset=%"PRIu64", size=%"PRIu64", "
 				"alignment=%u, swmode=%u, epitch=%u\n",
-				tex->fmask_offset,
+				tex->surface.fmask_offset,
 				tex->surface.fmask_size,
 				tex->surface.fmask_alignment,
 				tex->surface.u.gfx9.fmask.swizzle_mode,
@@ -1084,27 +1169,27 @@ void si_print_texture_info(struct si_screen *sscreen,
 		if (tex->cmask_buffer) {
 			u_log_printf(log, "  CMask: offset=%"PRIu64", size=%u, "
 				"alignment=%u, rb_aligned=%u, pipe_aligned=%u\n",
-				tex->cmask_offset,
+				tex->surface.cmask_offset,
 				tex->surface.cmask_size,
 				tex->surface.cmask_alignment,
 				tex->surface.u.gfx9.cmask.rb_aligned,
 				tex->surface.u.gfx9.cmask.pipe_aligned);
 		}
 
-		if (tex->htile_offset) {
+		if (tex->surface.htile_offset) {
 			u_log_printf(log, "  HTile: offset=%"PRIu64", size=%u, alignment=%u, "
 				"rb_aligned=%u, pipe_aligned=%u\n",
-				tex->htile_offset,
+				tex->surface.htile_offset,
 				tex->surface.htile_size,
 				tex->surface.htile_alignment,
 				tex->surface.u.gfx9.htile.rb_aligned,
 				tex->surface.u.gfx9.htile.pipe_aligned);
 		}
 
-		if (tex->dcc_offset) {
+		if (tex->surface.dcc_offset) {
 			u_log_printf(log, "  DCC: offset=%"PRIu64", size=%u, "
 				"alignment=%u, pitch_max=%u, num_dcc_levels=%u\n",
-				tex->dcc_offset, tex->surface.dcc_size,
+				tex->surface.dcc_offset, tex->surface.dcc_size,
 				tex->surface.dcc_alignment,
 				tex->surface.u.gfx9.display_dcc_pitch_max,
 				tex->surface.num_dcc_levels);
@@ -1126,10 +1211,10 @@ void si_print_texture_info(struct si_screen *sscreen,
 		tex->surface.u.legacy.tile_split, tex->surface.u.legacy.pipe_config,
 		(tex->surface.flags & RADEON_SURF_SCANOUT) != 0);
 
-	if (tex->surface.fmask_size)
+	if (tex->surface.fmask_offset)
 		u_log_printf(log, "  FMask: offset=%"PRIu64", size=%"PRIu64", alignment=%u, pitch_in_pixels=%u, "
 			"bankh=%u, slice_tile_max=%u, tile_mode_index=%u\n",
-			tex->fmask_offset, tex->surface.fmask_size, tex->surface.fmask_alignment,
+			tex->surface.fmask_offset, tex->surface.fmask_size, tex->surface.fmask_alignment,
 			tex->surface.u.legacy.fmask.pitch_in_pixels,
 			tex->surface.u.legacy.fmask.bankh,
 			tex->surface.u.legacy.fmask.slice_tile_max,
@@ -1138,19 +1223,19 @@ void si_print_texture_info(struct si_screen *sscreen,
 	if (tex->cmask_buffer)
 		u_log_printf(log, "  CMask: offset=%"PRIu64", size=%u, alignment=%u, "
 			"slice_tile_max=%u\n",
-			tex->cmask_offset, tex->surface.cmask_size, tex->surface.cmask_alignment,
+			tex->surface.cmask_offset, tex->surface.cmask_size, tex->surface.cmask_alignment,
 			tex->surface.u.legacy.cmask_slice_tile_max);
 
-	if (tex->htile_offset)
+	if (tex->surface.htile_offset)
 		u_log_printf(log, "  HTile: offset=%"PRIu64", size=%u, "
 			"alignment=%u, TC_compatible = %u\n",
-			tex->htile_offset, tex->surface.htile_size,
+			tex->surface.htile_offset, tex->surface.htile_size,
 			tex->surface.htile_alignment,
 			tex->tc_compatible_htile);
 
-	if (tex->dcc_offset) {
+	if (tex->surface.dcc_offset) {
 		u_log_printf(log, "  DCC: offset=%"PRIu64", size=%u, alignment=%u\n",
-			tex->dcc_offset, tex->surface.dcc_size,
+			tex->surface.dcc_offset, tex->surface.dcc_size,
 			tex->surface.dcc_alignment);
 		for (i = 0; i <= tex->buffer.b.b.last_level; i++)
 			u_log_printf(log, "  DCCLevel[%i]: enabled=%u, offset=%u, "
@@ -1195,12 +1280,27 @@ void si_print_texture_info(struct si_screen *sscreen,
 	}
 }
 
-/* Common processing for si_texture_create and si_texture_from_handle */
+/**
+ * Common function for si_texture_create and si_texture_from_handle.
+ *
+ * \param screen	screen
+ * \param base		resource template
+ * \param surface	radeon_surf
+ * \param plane0	if a non-zero plane is being created, this is the first plane
+ * \param imported_buf	from si_texture_from_handle
+ * \param offset	offset for non-zero planes or imported buffers
+ * \param alloc_size	the size to allocate if plane0 != NULL
+ * \param alignment	alignment for the allocation
+ */
 static struct si_texture *
 si_texture_create_object(struct pipe_screen *screen,
 			 const struct pipe_resource *base,
-			 struct pb_buffer *buf,
-			 struct radeon_surf *surface)
+			 const struct radeon_surf *surface,
+			 const struct si_texture *plane0,
+			 struct pb_buffer *imported_buf,
+			 uint64_t offset,
+			 uint64_t alloc_size,
+			 unsigned alignment)
 {
 	struct si_texture *tex;
 	struct si_resource *resource;
@@ -1219,16 +1319,13 @@ si_texture_create_object(struct pipe_screen *screen,
 
 	/* don't include stencil-only formats which we don't support for rendering */
 	tex->is_depth = util_format_has_depth(util_format_description(tex->buffer.b.b.format));
-
 	tex->surface = *surface;
-	tex->size = tex->surface.surf_size;
-
 	tex->tc_compatible_htile = tex->surface.htile_size != 0 &&
 				   (tex->surface.flags &
 				    RADEON_SURF_TC_COMPATIBLE_HTILE);
 
 	/* TC-compatible HTILE:
-	 * - VI only supports Z32_FLOAT.
+	 * - GFX8 only supports Z32_FLOAT.
 	 * - GFX9 only supports Z32_FLOAT and Z16_UNORM. */
 	if (tex->tc_compatible_htile) {
 		if (sscreen->info.chip_class >= GFX9 &&
@@ -1252,116 +1349,87 @@ si_texture_create_object(struct pipe_screen *screen,
 	 */
 	tex->ps_draw_ratio = 0;
 
+	if (sscreen->info.chip_class >= GFX9) {
+		tex->surface.u.gfx9.surf_offset = offset;
+	} else {
+		for (unsigned i = 0; i < ARRAY_SIZE(surface->u.legacy.level); ++i)
+			tex->surface.u.legacy.level[i].offset += offset;
+	}
+
 	if (tex->is_depth) {
 		if (sscreen->info.chip_class >= GFX9) {
 			tex->can_sample_z = true;
 			tex->can_sample_s = true;
+
+			/* Stencil texturing with HTILE doesn't work
+			 * with mipmapping on Navi10-14. */
+			if ((sscreen->info.family == CHIP_NAVI10 ||
+			     sscreen->info.family == CHIP_NAVI12 ||
+			     sscreen->info.family == CHIP_NAVI14) &&
+			    base->last_level > 0)
+				tex->htile_stencil_disabled = true;
 		} else {
 			tex->can_sample_z = !tex->surface.u.legacy.depth_adjusted;
 			tex->can_sample_s = !tex->surface.u.legacy.stencil_adjusted;
 		}
 
-		if (!(base->flags & (SI_RESOURCE_FLAG_TRANSFER |
-				     SI_RESOURCE_FLAG_FLUSHED_DEPTH))) {
-			tex->db_compatible = true;
-
-			if (!(sscreen->debug_flags & DBG(NO_HYPERZ)))
-				si_texture_allocate_htile(sscreen, tex);
-		}
+		tex->db_compatible = surface->flags & RADEON_SURF_ZBUFFER;
 	} else {
-		if (base->nr_samples > 1 &&
-		    !buf &&
-		    !(sscreen->debug_flags & DBG(NO_FMASK))) {
-			/* Allocate FMASK. */
-			tex->fmask_offset = align64(tex->size,
-						     tex->surface.fmask_alignment);
-			tex->size = tex->fmask_offset + tex->surface.fmask_size;
-
-			/* Allocate CMASK. */
-			tex->cmask_offset = align64(tex->size, tex->surface.cmask_alignment);
-			tex->size = tex->cmask_offset + tex->surface.cmask_size;
+		if (tex->surface.cmask_offset) {
 			tex->cb_color_info |= S_028C70_FAST_CLEAR(1);
 			tex->cmask_buffer = &tex->buffer;
-
-			if (!tex->surface.fmask_size || !tex->surface.cmask_size)
-				goto error;
-		}
-
-		/* Shared textures must always set up DCC here.
-		 * If it's not present, it will be disabled by
-		 * apply_opaque_metadata later.
-		 */
-		if (tex->surface.dcc_size &&
-		    (buf || !(sscreen->debug_flags & DBG(NO_DCC))) &&
-		    (sscreen->info.use_display_dcc_unaligned ||
-		     sscreen->info.use_display_dcc_with_retile_blit ||
-		     !(tex->surface.flags & RADEON_SURF_SCANOUT))) {
-			/* Add space for the DCC buffer. */
-			tex->dcc_offset = align64(tex->size, tex->surface.dcc_alignment);
-			tex->size = tex->dcc_offset + tex->surface.dcc_size;
-
-			if (sscreen->info.chip_class >= GFX9 &&
-			    tex->surface.u.gfx9.dcc_retile_num_elements) {
-				/* Add space for the displayable DCC buffer. */
-				tex->display_dcc_offset =
-					align64(tex->size, tex->surface.u.gfx9.display_dcc_alignment);
-				tex->size = tex->display_dcc_offset +
-					    tex->surface.u.gfx9.display_dcc_size;
-
-				/* Add space for the DCC retile buffer. (16-bit or 32-bit elements) */
-				tex->dcc_retile_map_offset =
-					align64(tex->size, sscreen->info.tcc_cache_line_size);
-
-				if (tex->surface.u.gfx9.dcc_retile_use_uint16) {
-					tex->size = tex->dcc_retile_map_offset +
-						    tex->surface.u.gfx9.dcc_retile_num_elements * 2;
-				} else {
-					tex->size = tex->dcc_retile_map_offset +
-						    tex->surface.u.gfx9.dcc_retile_num_elements * 4;
-				}
-			}
 		}
 	}
 
-	/* Now create the backing buffer. */
-	if (!buf) {
-		si_init_resource_fields(sscreen, resource, tex->size,
-					  tex->surface.surf_alignment);
+	if (plane0) {
+		/* The buffer is shared with the first plane. */
+		resource->bo_size = plane0->buffer.bo_size;
+		resource->bo_alignment = plane0->buffer.bo_alignment;
+		resource->flags = plane0->buffer.flags;
+		resource->domains = plane0->buffer.domains;
+		resource->vram_usage = plane0->buffer.vram_usage;
+		resource->gart_usage = plane0->buffer.gart_usage;
+
+		pb_reference(&resource->buf, plane0->buffer.buf);
+		resource->gpu_address = plane0->buffer.gpu_address;
+	} else if (!(surface->flags & RADEON_SURF_IMPORTED)) {
+		/* Create the backing buffer. */
+		si_init_resource_fields(sscreen, resource, alloc_size, alignment);
 
 		if (!si_alloc_resource(sscreen, resource))
 			goto error;
 	} else {
-		resource->buf = buf;
+		resource->buf = imported_buf;
 		resource->gpu_address = sscreen->ws->buffer_get_virtual_address(resource->buf);
-		resource->bo_size = buf->size;
-		resource->bo_alignment = buf->alignment;
+		resource->bo_size = imported_buf->size;
+		resource->bo_alignment = imported_buf->alignment;
 		resource->domains = sscreen->ws->buffer_get_initial_domain(resource->buf);
 		if (resource->domains & RADEON_DOMAIN_VRAM)
-			resource->vram_usage = buf->size;
+			resource->vram_usage = resource->bo_size;
 		else if (resource->domains & RADEON_DOMAIN_GTT)
-			resource->gart_usage = buf->size;
+			resource->gart_usage = resource->bo_size;
 	}
 
 	if (tex->cmask_buffer) {
 		/* Initialize the cmask to 0xCC (= compressed state). */
 		si_screen_clear_buffer(sscreen, &tex->cmask_buffer->b.b,
-					 tex->cmask_offset, tex->surface.cmask_size,
+					 tex->surface.cmask_offset, tex->surface.cmask_size,
 					 0xCCCCCCCC);
 	}
-	if (tex->htile_offset) {
+	if (tex->surface.htile_offset) {
 		uint32_t clear_value = 0;
 
 		if (sscreen->info.chip_class >= GFX9 || tex->tc_compatible_htile)
 			clear_value = 0x0000030F;
 
 		si_screen_clear_buffer(sscreen, &tex->buffer.b.b,
-					 tex->htile_offset,
+					 tex->surface.htile_offset,
 					 tex->surface.htile_size,
 					 clear_value);
 	}
 
 	/* Initialize DCC only if the texture is not being imported. */
-	if (!buf && tex->dcc_offset) {
+	if (!(surface->flags & RADEON_SURF_IMPORTED) && tex->surface.dcc_offset) {
 		/* Clear DCC to black for all tiles with DCC enabled.
 		 *
 		 * This fixes corruption in 3DMark Slingshot Extreme, which
@@ -1371,13 +1439,13 @@ si_texture_create_object(struct pipe_screen *screen,
 		    tex->buffer.b.b.nr_samples <= 2) {
 			/* Simple case - all tiles have DCC enabled. */
 			si_screen_clear_buffer(sscreen, &tex->buffer.b.b,
-					       tex->dcc_offset,
+					       tex->surface.dcc_offset,
 					       tex->surface.dcc_size,
 					       DCC_CLEAR_COLOR_0000);
 		} else if (sscreen->info.chip_class >= GFX9) {
 			/* Clear to uncompressed. Clearing this to black is complicated. */
 			si_screen_clear_buffer(sscreen, &tex->buffer.b.b,
-					       tex->dcc_offset,
+					       tex->surface.dcc_offset,
 					       tex->surface.dcc_size,
 					       DCC_UNCOMPRESSED);
 		} else {
@@ -1385,7 +1453,7 @@ si_texture_create_object(struct pipe_screen *screen,
 			if (tex->buffer.b.b.nr_samples >= 2) {
 				/* Clearing this to black is complicated. */
 				si_screen_clear_buffer(sscreen, &tex->buffer.b.b,
-						       tex->dcc_offset,
+						       tex->surface.dcc_offset,
 						       tex->surface.dcc_size,
 						       DCC_UNCOMPRESSED);
 			} else {
@@ -1403,22 +1471,30 @@ si_texture_create_object(struct pipe_screen *screen,
 				/* Mipmap levels with DCC. */
 				if (size) {
 					si_screen_clear_buffer(sscreen, &tex->buffer.b.b,
-							       tex->dcc_offset, size,
+							       tex->surface.dcc_offset, size,
 							       DCC_CLEAR_COLOR_0000);
 				}
 				/* Mipmap levels without DCC. */
 				if (size != tex->surface.dcc_size) {
 					si_screen_clear_buffer(sscreen, &tex->buffer.b.b,
-							       tex->dcc_offset + size,
+							       tex->surface.dcc_offset + size,
 							       tex->surface.dcc_size - size,
 							       DCC_UNCOMPRESSED);
 				}
 			}
 		}
 
-		/* Upload the DCC retile map. */
-		if (tex->dcc_retile_map_offset) {
-			/* Use a staging buffer for the upload, because
+		/* Initialize displayable DCC that requires the retile blit. */
+		if (tex->surface.dcc_retile_map_offset) {
+			/* Uninitialized DCC can hang the display hw.
+			 * Clear to white to indicate that. */
+			si_screen_clear_buffer(sscreen, &tex->buffer.b.b,
+					       tex->surface.display_dcc_offset,
+					       tex->surface.u.gfx9.display_dcc_size,
+					       DCC_CLEAR_COLOR_1111);
+
+			/* Upload the DCC retile map.
+			 * Use a staging buffer for the upload, because
 			 * the buffer backing the texture is unmappable.
 			 */
 			bool use_uint16 = tex->surface.u.gfx9.dcc_retile_use_uint16;
@@ -1445,13 +1521,13 @@ si_texture_create_object(struct pipe_screen *screen,
 			struct pipe_box box;
 			u_box_1d(0, buf->b.b.width0, &box);
 
-			assert(tex->dcc_retile_map_offset <= UINT_MAX);
-			mtx_lock(&sscreen->aux_context_lock);
+			assert(tex->surface.dcc_retile_map_offset <= UINT_MAX);
+			simple_mtx_lock(&sscreen->aux_context_lock);
 			sctx->dma_copy(&sctx->b, &tex->buffer.b.b, 0,
-				       tex->dcc_retile_map_offset, 0, 0,
+				       tex->surface.dcc_retile_map_offset, 0, 0,
 				       &buf->b.b, 0, &box);
 			sscreen->aux_context->flush(sscreen->aux_context, NULL, 0);
-			mtx_unlock(&sscreen->aux_context_lock);
+			simple_mtx_unlock(&sscreen->aux_context_lock);
 
 			si_resource_reference(&buf, NULL);
 		}
@@ -1459,7 +1535,7 @@ si_texture_create_object(struct pipe_screen *screen,
 
 	/* Initialize the CMASK base register value. */
 	tex->cmask_base_address_reg =
-		(tex->buffer.gpu_address + tex->cmask_offset) >> 8;
+		(tex->buffer.gpu_address + tex->surface.cmask_offset) >> 8;
 
 	if (sscreen->debug_flags & DBG(VM)) {
 		fprintf(stderr, "VM start=0x%"PRIX64"  end=0x%"PRIX64" | Texture %ix%ix%i, %i levels, %i samples, %s\n",
@@ -1505,10 +1581,10 @@ si_choose_tiling(struct si_screen *sscreen,
 	if (templ->flags & SI_RESOURCE_FLAG_TRANSFER)
 		return RADEON_SURF_MODE_LINEAR_ALIGNED;
 
-	/* Avoid Z/S decompress blits by forcing TC-compatible HTILE on VI,
+	/* Avoid Z/S decompress blits by forcing TC-compatible HTILE on GFX8,
 	 * which requires 2D tiling.
 	 */
-	if (sscreen->info.chip_class == VI && tc_compatible_htile)
+	if (sscreen->info.chip_class == GFX8 && tc_compatible_htile)
 		return RADEON_SURF_MODE_2D;
 
 	/* Handle common candidates for the linear mode.
@@ -1524,7 +1600,7 @@ si_choose_tiling(struct si_screen *sscreen,
 		if (desc->layout == UTIL_FORMAT_LAYOUT_SUBSAMPLED)
 			return RADEON_SURF_MODE_LINEAR_ALIGNED;
 
-		/* Cursors are linear on SI.
+		/* Cursors are linear on AMD GCN.
 		 * (XXX double-check, maybe also use RADEON_SURF_SCANOUT) */
 		if (templ->bind & PIPE_BIND_CURSOR)
 			return RADEON_SURF_MODE_LINEAR_ALIGNED;
@@ -1578,10 +1654,10 @@ struct pipe_resource *si_texture_create(struct pipe_screen *screen,
 		}
 	}
 
-	struct radeon_surf surface = {0};
-	bool is_flushed_depth = templ->flags & SI_RESOURCE_FLAG_FLUSHED_DEPTH;
+	bool is_flushed_depth = templ->flags & SI_RESOURCE_FLAG_FLUSHED_DEPTH ||
+				templ->flags & SI_RESOURCE_FLAG_TRANSFER;
 	bool tc_compatible_htile =
-		sscreen->info.chip_class >= VI &&
+		sscreen->info.chip_class >= GFX8 &&
 		/* There are issues with TC-compatible HTILE on Tonga (and
 		 * Iceland is the same design), and documented bug workarounds
 		 * don't help. For example, this fails:
@@ -1594,18 +1670,67 @@ struct pipe_resource *si_texture_create(struct pipe_screen *screen,
 		!is_flushed_depth &&
 		templ->nr_samples <= 1 && /* TC-compat HTILE is less efficient with MSAA */
 		is_zs;
-	int r;
+	enum radeon_surf_mode tile_mode = si_choose_tiling(sscreen, templ,
+							   tc_compatible_htile);
 
-	r = si_init_surface(sscreen, &surface, templ,
-			    si_choose_tiling(sscreen, templ, tc_compatible_htile),
-			    0, 0, false, false, is_flushed_depth,
-			    tc_compatible_htile);
-	if (r) {
-		return NULL;
+	/* This allocates textures with multiple planes like NV12 in 1 buffer. */
+	enum { SI_TEXTURE_MAX_PLANES = 3 };
+	struct radeon_surf surface[SI_TEXTURE_MAX_PLANES] = {};
+	struct pipe_resource plane_templ[SI_TEXTURE_MAX_PLANES];
+	uint64_t plane_offset[SI_TEXTURE_MAX_PLANES] = {};
+	uint64_t total_size = 0;
+	unsigned max_alignment = 0;
+	unsigned num_planes = util_format_get_num_planes(templ->format);
+	assert(num_planes <= SI_TEXTURE_MAX_PLANES);
+
+	/* Compute texture or plane layouts and offsets. */
+	for (unsigned i = 0; i < num_planes; i++) {
+		plane_templ[i] = *templ;
+		plane_templ[i].format = util_format_get_plane_format(templ->format, i);
+		plane_templ[i].width0 = util_format_get_plane_width(templ->format, i, templ->width0);
+		plane_templ[i].height0 = util_format_get_plane_height(templ->format, i, templ->height0);
+
+		/* Multi-plane allocations need PIPE_BIND_SHARED, because we can't
+		 * reallocate the storage to add PIPE_BIND_SHARED, because it's
+		 * shared by 3 pipe_resources.
+		 */
+		if (num_planes > 1)
+			plane_templ[i].bind |= PIPE_BIND_SHARED;
+
+		if (si_init_surface(sscreen, &surface[i], &plane_templ[i],
+				    tile_mode, 0, false, false,
+				    is_flushed_depth, tc_compatible_htile))
+			return NULL;
+
+		plane_offset[i] = align64(total_size, surface[i].surf_alignment);
+		total_size = plane_offset[i] + surface[i].total_size;
+		max_alignment = MAX2(max_alignment, surface[i].surf_alignment);
 	}
 
-	return (struct pipe_resource *)
-	       si_texture_create_object(screen, templ, NULL, &surface);
+	struct si_texture *plane0 = NULL, *last_plane = NULL;
+
+	for (unsigned i = 0; i < num_planes; i++) {
+		struct si_texture *tex =
+			si_texture_create_object(screen, &plane_templ[i], &surface[i],
+						 plane0, NULL, plane_offset[i],
+						 total_size, max_alignment);
+		if (!tex) {
+			si_texture_reference(&plane0, NULL);
+			return NULL;
+		}
+
+		tex->plane_index = i;
+		tex->num_planes = num_planes;
+
+		if (!plane0) {
+			plane0 = last_plane = tex;
+		} else {
+			last_plane->buffer.b.b.next = &tex->buffer.b.b;
+			last_plane = tex;
+		}
+	}
+
+	return (struct pipe_resource *)plane0;
 }
 
 static struct pipe_resource *si_texture_from_winsys_buffer(struct si_screen *sscreen,
@@ -1622,6 +1747,10 @@ static struct pipe_resource *si_texture_from_winsys_buffer(struct si_screen *ssc
 	struct si_texture *tex;
 	bool is_scanout;
 	int r;
+
+	/* Ignore metadata for non-zero planes. */
+	if (offset != 0)
+		dedicated = false;
 
 	if (dedicated) {
 		sscreen->ws->buffer_get_metadata(buf, &metadata);
@@ -1655,22 +1784,27 @@ static struct pipe_resource *si_texture_from_winsys_buffer(struct si_screen *ssc
 	}
 
 	r = si_init_surface(sscreen, &surface, templ,
-			    array_mode, stride, offset, true, is_scanout,
+			    array_mode, stride, true, is_scanout,
 			    false, false);
 	if (r)
 		return NULL;
 
-	tex = si_texture_create_object(&sscreen->b, templ, buf, &surface);
+	tex = si_texture_create_object(&sscreen->b, templ, &surface, NULL, buf,
+				       offset, 0, 0);
 	if (!tex)
 		return NULL;
 
 	tex->buffer.b.is_shared = true;
 	tex->buffer.external_usage = usage;
+	tex->num_planes = 1;
 
-	si_get_opaque_metadata(sscreen, tex, &metadata);
+	if (!si_read_tex_bo_metadata(sscreen, tex, offset, &metadata)) {
+		si_texture_reference(&tex, NULL);
+		return NULL;
+	}
 
 	/* Displayable DCC requires an explicit flush. */
-	if (dedicated &&
+	if (dedicated && offset == 0 &&
 	    !(usage & PIPE_HANDLE_USAGE_EXPLICIT_FLUSH) &&
 	    si_has_displayable_dcc(tex)) {
 		/* TODO: do we need to decompress DCC? */
@@ -1691,64 +1825,58 @@ static struct pipe_resource *si_texture_from_handle(struct pipe_screen *screen,
 {
 	struct si_screen *sscreen = (struct si_screen*)screen;
 	struct pb_buffer *buf = NULL;
-	unsigned stride = 0, offset = 0;
 
 	/* Support only 2D textures without mipmaps */
-	if ((templ->target != PIPE_TEXTURE_2D && templ->target != PIPE_TEXTURE_RECT) ||
-	      templ->depth0 != 1 || templ->last_level != 0)
+	if ((templ->target != PIPE_TEXTURE_2D && templ->target != PIPE_TEXTURE_RECT &&
+	     templ->target != PIPE_TEXTURE_2D_ARRAY) ||
+	      templ->last_level != 0)
 		return NULL;
 
 	buf = sscreen->ws->buffer_from_handle(sscreen->ws, whandle,
-					      sscreen->info.max_alignment,
-					      &stride, &offset);
+					      sscreen->info.max_alignment);
 	if (!buf)
 		return NULL;
 
-	return si_texture_from_winsys_buffer(sscreen, templ, buf, stride,
-					     offset, usage, true);
+	return si_texture_from_winsys_buffer(sscreen, templ, buf,
+					     whandle->stride, whandle->offset,
+					     usage, true);
 }
 
 bool si_init_flushed_depth_texture(struct pipe_context *ctx,
-				   struct pipe_resource *texture,
-				   struct si_texture **staging)
+				   struct pipe_resource *texture)
 {
 	struct si_texture *tex = (struct si_texture*)texture;
 	struct pipe_resource resource;
-	struct si_texture **flushed_depth_texture = staging ?
-			staging : &tex->flushed_depth_texture;
 	enum pipe_format pipe_format = texture->format;
 
-	if (!staging) {
-		if (tex->flushed_depth_texture)
-			return true; /* it's ready */
+	assert(!tex->flushed_depth_texture);
 
-		if (!tex->can_sample_z && tex->can_sample_s) {
-			switch (pipe_format) {
-			case PIPE_FORMAT_Z32_FLOAT_S8X24_UINT:
-				/* Save memory by not allocating the S plane. */
-				pipe_format = PIPE_FORMAT_Z32_FLOAT;
-				break;
-			case PIPE_FORMAT_Z24_UNORM_S8_UINT:
-			case PIPE_FORMAT_S8_UINT_Z24_UNORM:
-				/* Save memory bandwidth by not copying the
-				 * stencil part during flush.
-				 *
-				 * This potentially increases memory bandwidth
-				 * if an application uses both Z and S texturing
-				 * simultaneously (a flushed Z24S8 texture
-				 * would be stored compactly), but how often
-				 * does that really happen?
-				 */
-				pipe_format = PIPE_FORMAT_Z24X8_UNORM;
-				break;
-			default:;
-			}
-		} else if (!tex->can_sample_s && tex->can_sample_z) {
-			assert(util_format_has_stencil(util_format_description(pipe_format)));
-
-			/* DB->CB copies to an 8bpp surface don't work. */
-			pipe_format = PIPE_FORMAT_X24S8_UINT;
+	if (!tex->can_sample_z && tex->can_sample_s) {
+		switch (pipe_format) {
+		case PIPE_FORMAT_Z32_FLOAT_S8X24_UINT:
+			/* Save memory by not allocating the S plane. */
+			pipe_format = PIPE_FORMAT_Z32_FLOAT;
+			break;
+		case PIPE_FORMAT_Z24_UNORM_S8_UINT:
+		case PIPE_FORMAT_S8_UINT_Z24_UNORM:
+			/* Save memory bandwidth by not copying the
+			 * stencil part during flush.
+			 *
+			 * This potentially increases memory bandwidth
+			 * if an application uses both Z and S texturing
+			 * simultaneously (a flushed Z24S8 texture
+			 * would be stored compactly), but how often
+			 * does that really happen?
+			 */
+			pipe_format = PIPE_FORMAT_Z24X8_UNORM;
+			break;
+		default:;
 		}
+	} else if (!tex->can_sample_s && tex->can_sample_z) {
+		assert(util_format_has_stencil(util_format_description(pipe_format)));
+
+		/* DB->CB copies to an 8bpp surface don't work. */
+		pipe_format = PIPE_FORMAT_X24S8_UINT;
 	}
 
 	memset(&resource, 0, sizeof(resource));
@@ -1760,15 +1888,12 @@ bool si_init_flushed_depth_texture(struct pipe_context *ctx,
 	resource.array_size = texture->array_size;
 	resource.last_level = texture->last_level;
 	resource.nr_samples = texture->nr_samples;
-	resource.usage = staging ? PIPE_USAGE_STAGING : PIPE_USAGE_DEFAULT;
+	resource.usage = PIPE_USAGE_DEFAULT;
 	resource.bind = texture->bind & ~PIPE_BIND_DEPTH_STENCIL;
 	resource.flags = texture->flags | SI_RESOURCE_FLAG_FLUSHED_DEPTH;
 
-	if (staging)
-		resource.flags |= SI_RESOURCE_FLAG_TRANSFER;
-
-	*flushed_depth_texture = (struct si_texture *)ctx->screen->resource_create(ctx->screen, &resource);
-	if (*flushed_depth_texture == NULL) {
+	tex->flushed_depth_texture = (struct si_texture *)ctx->screen->resource_create(ctx->screen, &resource);
+	if (!tex->flushed_depth_texture) {
 		PRINT_ERR("failed to create temporary texture to hold flushed depth\n");
 		return false;
 	}
@@ -1794,6 +1919,25 @@ static void si_init_temp_resource_from_box(struct pipe_resource *res,
 	res->usage = flags & SI_RESOURCE_FLAG_TRANSFER ? PIPE_USAGE_STAGING : PIPE_USAGE_DEFAULT;
 	res->flags = flags;
 
+	if (flags & SI_RESOURCE_FLAG_TRANSFER &&
+	    util_format_is_compressed(orig->format)) {
+		/* Transfer resources are allocated with linear tiling, which is
+		 * not supported for compressed formats.
+		 */
+		unsigned blocksize =
+			util_format_get_blocksize(orig->format);
+
+		if (blocksize == 8) {
+			res->format = PIPE_FORMAT_R16G16B16A16_UINT;
+		} else {
+			assert(blocksize == 16);
+			res->format = PIPE_FORMAT_R32G32B32A32_UINT;
+		}
+
+		res->width0 = util_format_get_nblocksx(orig->format, box->width);
+		res->height0 = util_format_get_nblocksy(orig->format, box->height);
+	}
+
 	/* We must set the correct texture target and dimensions for a 3D box. */
 	if (box->depth > 1 && util_max_layer(orig, level) > 0) {
 		res->target = PIPE_TEXTURE_2D_ARRAY;
@@ -1809,6 +1953,7 @@ static bool si_can_invalidate_texture(struct si_screen *sscreen,
 				      const struct pipe_box *box)
 {
 	return !tex->buffer.b.is_shared &&
+		!(tex->surface.flags & RADEON_SURF_IMPORTED) &&
 		!(transfer_usage & PIPE_TRANSFER_READ) &&
 		tex->buffer.b.b.last_level == 0 &&
 		util_texrange_covers_whole_level(&tex->buffer.b.b, 0,
@@ -1831,11 +1976,11 @@ static void si_texture_invalidate_storage(struct si_context *sctx,
 
 	/* Initialize the CMASK base address (needed even without CMASK). */
 	tex->cmask_base_address_reg =
-		(tex->buffer.gpu_address + tex->cmask_offset) >> 8;
+		(tex->buffer.gpu_address + tex->surface.cmask_offset) >> 8;
 
 	p_atomic_inc(&sscreen->dirty_tex_counter);
 
-	sctx->num_alloc_tex_transfer_bytes += tex->size;
+	sctx->num_alloc_tex_transfer_bytes += tex->surface.total_size;
 }
 
 static void *si_texture_transfer_map(struct pipe_context *ctx,
@@ -1856,8 +2001,10 @@ static void *si_texture_transfer_map(struct pipe_context *ctx,
 	assert(!(texture->flags & SI_RESOURCE_FLAG_TRANSFER));
 	assert(box->width && box->height && box->depth);
 
-	/* Depth textures use staging unconditionally. */
-	if (!tex->is_depth) {
+	if (tex->is_depth) {
+		/* Depth textures use staging unconditionally. */
+		use_staging_texture = true;
+	} else {
 		/* Degrade the tile mode if we get too many transfers on APUs.
 		 * On dGPUs, the staging texture is always faster.
 		 * Only count uploads that are at least 4x4 pixels large.
@@ -1912,68 +2059,7 @@ static void *si_texture_transfer_map(struct pipe_context *ctx,
 	trans->b.b.usage = usage;
 	trans->b.b.box = *box;
 
-	if (tex->is_depth) {
-		struct si_texture *staging_depth;
-
-		if (tex->buffer.b.b.nr_samples > 1) {
-			/* MSAA depth buffers need to be converted to single sample buffers.
-			 *
-			 * Mapping MSAA depth buffers can occur if ReadPixels is called
-			 * with a multisample GLX visual.
-			 *
-			 * First downsample the depth buffer to a temporary texture,
-			 * then decompress the temporary one to staging.
-			 *
-			 * Only the region being mapped is transfered.
-			 */
-			struct pipe_resource resource;
-
-			si_init_temp_resource_from_box(&resource, texture, box, level, 0);
-
-			if (!si_init_flushed_depth_texture(ctx, &resource, &staging_depth)) {
-				PRINT_ERR("failed to create temporary texture to hold untiled copy\n");
-				goto fail_trans;
-			}
-
-			if (usage & PIPE_TRANSFER_READ) {
-				struct pipe_resource *temp = ctx->screen->resource_create(ctx->screen, &resource);
-				if (!temp) {
-					PRINT_ERR("failed to create a temporary depth texture\n");
-					goto fail_trans;
-				}
-
-				si_copy_region_with_blit(ctx, temp, 0, 0, 0, 0, texture, level, box);
-				si_blit_decompress_depth(ctx, (struct si_texture*)temp, staging_depth,
-							 0, 0, 0, box->depth, 0, 0);
-				pipe_resource_reference(&temp, NULL);
-			}
-
-			/* Just get the strides. */
-			si_texture_get_offset(sctx->screen, staging_depth, level, NULL,
-						&trans->b.b.stride,
-						&trans->b.b.layer_stride);
-		} else {
-			/* XXX: only readback the rectangle which is being mapped? */
-			/* XXX: when discard is true, no need to read back from depth texture */
-			if (!si_init_flushed_depth_texture(ctx, texture, &staging_depth)) {
-				PRINT_ERR("failed to create temporary texture to hold untiled copy\n");
-				goto fail_trans;
-			}
-
-			si_blit_decompress_depth(ctx, tex, staging_depth,
-						 level, level,
-						 box->z, box->z + box->depth - 1,
-						 0, 0);
-
-			offset = si_texture_get_offset(sctx->screen, staging_depth,
-							 level, box,
-							 &trans->b.b.stride,
-							 &trans->b.b.layer_stride);
-		}
-
-		trans->staging = &staging_depth->buffer;
-		buf = trans->staging;
-	} else if (use_staging_texture) {
+	if (use_staging_texture) {
 		struct pipe_resource resource;
 		struct si_texture *staging;
 
@@ -1981,6 +2067,13 @@ static void *si_texture_transfer_map(struct pipe_context *ctx,
 						 SI_RESOURCE_FLAG_TRANSFER);
 		resource.usage = (usage & PIPE_TRANSFER_READ) ?
 			PIPE_USAGE_STAGING : PIPE_USAGE_STREAM;
+
+		/* Since depth-stencil textures don't support linear tiling,
+		 * blit from ZS to color and vice versa. u_blitter will do
+		 * the packing for these formats.
+		 */
+		if (tex->is_depth)
+			resource.format = util_blitter_get_color_format_for_zs(resource.format);
 
 		/* Create the temporary texture. */
 		staging = (struct si_texture*)ctx->screen->resource_create(ctx->screen, &resource);
@@ -2046,16 +2139,8 @@ static void si_texture_transfer_unmap(struct pipe_context *ctx,
 		sctx->ws->buffer_unmap(buf->buf);
 	}
 
-	if ((transfer->usage & PIPE_TRANSFER_WRITE) && stransfer->staging) {
-		if (tex->is_depth && tex->buffer.b.b.nr_samples <= 1) {
-			ctx->resource_copy_region(ctx, texture, transfer->level,
-						  transfer->box.x, transfer->box.y, transfer->box.z,
-						  &stransfer->staging->b.b, transfer->level,
-						  &transfer->box);
-		} else {
-			si_copy_from_staging_texture(ctx, stransfer);
-		}
-	}
+	if ((transfer->usage & PIPE_TRANSFER_WRITE) && stransfer->staging)
+		si_copy_from_staging_texture(ctx, stransfer);
 
 	if (stransfer->staging) {
 		sctx->num_alloc_tex_transfer_bytes += stransfer->staging->buf->size;
@@ -2095,7 +2180,8 @@ static const struct u_resource_vtbl si_texture_vtbl =
 
 /* Return if it's allowed to reinterpret one format as another with DCC enabled.
  */
-bool vi_dcc_formats_compatible(enum pipe_format format1,
+bool vi_dcc_formats_compatible(struct si_screen *sscreen,
+			       enum pipe_format format1,
 			       enum pipe_format format2)
 {
 	const struct util_format_description *desc1, *desc2;
@@ -2137,7 +2223,7 @@ bool vi_dcc_formats_compatible(enum pipe_format format1,
 
 	/* If the clear values are all 1 or all 0, this constraint can be
 	 * ignored. */
-	if (vi_alpha_is_on_msb(format1) != vi_alpha_is_on_msb(format2))
+	if (vi_alpha_is_on_msb(sscreen, format1) != vi_alpha_is_on_msb(sscreen, format2))
 		return false;
 
 	/* Channel types must match if the clear value of 1 is used.
@@ -2159,7 +2245,8 @@ bool vi_dcc_formats_are_incompatible(struct pipe_resource *tex,
 	struct si_texture *stex = (struct si_texture *)tex;
 
 	return vi_dcc_enabled(stex, level) &&
-	       !vi_dcc_formats_compatible(tex->format, view_format);
+	       !vi_dcc_formats_compatible((struct si_screen*)tex->screen,
+					  tex->format, view_format);
 }
 
 /* This can't be merged with the above function, because
@@ -2449,9 +2536,9 @@ void vi_separate_dcc_try_enable(struct si_context *sctx,
 	    sctx->screen->debug_flags & DBG(NO_DCC_FB))
 		return;
 
-	assert(sctx->chip_class >= VI);
+	assert(sctx->chip_class >= GFX8);
 
-	if (tex->dcc_offset)
+	if (tex->surface.dcc_offset)
 		return; /* already enabled */
 
 	/* Enable the DCC stat gathering. */
@@ -2486,7 +2573,7 @@ void vi_separate_dcc_try_enable(struct si_context *sctx,
 	}
 
 	/* dcc_offset is the absolute GPUVM address. */
-	tex->dcc_offset = tex->dcc_separate_buffer->gpu_address;
+	tex->surface.dcc_offset = tex->dcc_separate_buffer->gpu_address;
 
 	/* no need to flag anything since this is called by fast clear that
 	 * flags framebuffer state
@@ -2545,7 +2632,7 @@ void vi_separate_dcc_process_and_reset_stats(struct pipe_context *ctx,
 		assert(!tex->last_dcc_separate_buffer);
 		tex->last_dcc_separate_buffer = tex->dcc_separate_buffer;
 		tex->dcc_separate_buffer = NULL;
-		tex->dcc_offset = 0;
+		tex->surface.dcc_offset = 0;
 		/* no need to flag anything since this is called after
 		 * decompression that re-sets framebuffer state
 		 */
@@ -2560,14 +2647,12 @@ si_memobj_from_handle(struct pipe_screen *screen,
 	struct si_screen *sscreen = (struct si_screen*)screen;
 	struct si_memory_object *memobj = CALLOC_STRUCT(si_memory_object);
 	struct pb_buffer *buf = NULL;
-	uint32_t stride, offset;
 
 	if (!memobj)
 		return NULL;
 
 	buf = sscreen->ws->buffer_from_handle(sscreen->ws, whandle,
-					      sscreen->info.max_alignment,
-					      &stride, &offset);
+					      sscreen->info.max_alignment);
 	if (!buf) {
 		free(memobj);
 		return NULL;
@@ -2575,7 +2660,7 @@ si_memobj_from_handle(struct pipe_screen *screen,
 
 	memobj->b.dedicated = dedicated;
 	memobj->buf = buf;
-	memobj->stride = stride;
+	memobj->stride = whandle->stride;
 
 	return (struct pipe_memory_object *)memobj;
 
@@ -2640,6 +2725,7 @@ void si_init_screen_texture_functions(struct si_screen *sscreen)
 {
 	sscreen->b.resource_from_handle = si_texture_from_handle;
 	sscreen->b.resource_get_handle = si_texture_get_handle;
+	sscreen->b.resource_get_param = si_resource_get_param;
 	sscreen->b.resource_get_info = si_texture_get_info;
 	sscreen->b.resource_from_memobj = si_texture_from_memobj;
 	sscreen->b.memobj_create_from_handle = si_memobj_from_handle;

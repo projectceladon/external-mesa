@@ -321,8 +321,6 @@ files_libgallium = files(
   'util/u_rect.h',
   'util/u_resource.c',
   'util/u_resource.h',
-  'util/u_ringbuffer.c',
-  'util/u_ringbuffer.h',
   'util/u_sampler.c',
   'util/u_sampler.h',
   'util/u_screen.c',
@@ -381,6 +379,8 @@ if with_llvm
     'gallivm/lp_bld_const.h',
     'gallivm/lp_bld_conv.c',
     'gallivm/lp_bld_conv.h',
+    'gallivm/lp_bld_coro.c',
+    'gallivm/lp_bld_coro.h',
     'gallivm/lp_bld_debug.cpp',
     'gallivm/lp_bld_debug.h',
     'gallivm/lp_bld_flow.c',
@@ -479,7 +479,8 @@ files_libgalliumvl = files(
 )
 
 vlwinsys_deps = []
-files_libgalliumvlwinsys = files('vl/vl_winsys.h')
+files_libgalliumvlwinsys = files('vl/vl_winsys.h',
+                                 'vl/vl_winsys_drm.c')
 if with_dri2 and with_platform_x11
   files_libgalliumvlwinsys += files('vl/vl_winsys_dri.c')
   if with_dri3
@@ -489,9 +490,6 @@ if with_dri2 and with_platform_x11
     ]
     files_libgalliumvlwinsys += files('vl/vl_winsys_dri3.c')
   endif
-endif
-if with_platform_drm
-  files_libgalliumvlwinsys += files('vl/vl_winsys_drm.c')
 endif
 
 u_indices_gen_c = custom_target(
@@ -529,12 +527,9 @@ libgallium = static_library(
   cpp_args : [cpp_vis_args, cpp_msvc_compat_args],
   dependencies : [
     dep_libdrm, dep_llvm, dep_unwind, dep_dl, dep_m, dep_thread, dep_lmsensors,
-    idep_nir_headers,
+    idep_nir, idep_nir_headers, idep_mesautil,
   ],
-  build_by_default : false,
-  link_with: [
-    libglsl
-  ]
+  build_by_default : false
 )
 
 libgalliumvl_stub = static_library(

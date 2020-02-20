@@ -1851,7 +1851,8 @@ _glcpp_parser_expand_function(glcpp_parser_t *parser, token_node_t *node,
  */
 static token_list_t *
 _glcpp_parser_expand_node(glcpp_parser_t *parser, token_node_t *node,
-                          token_node_t **last, expansion_mode_t mode)
+                          token_node_t **last, expansion_mode_t mode,
+                          int line)
 {
    token_t *token = node->token;
    const char *identifier;
@@ -1870,8 +1871,7 @@ _glcpp_parser_expand_node(glcpp_parser_t *parser, token_node_t *node,
     * the hash table). */
    if (*identifier == '_') {
       if (strcmp(identifier, "__LINE__") == 0)
-         return _token_list_create_with_one_integer(parser,
-                                                    node->token->location.first_line);
+         return _token_list_create_with_one_integer(parser, line);
 
       if (strcmp(identifier, "__FILE__") == 0)
          return _token_list_create_with_one_integer(parser,
@@ -1996,11 +1996,14 @@ _glcpp_parser_expand_token_list(glcpp_parser_t *parser, token_list_t *list,
    token_node_t *node, *last = NULL;
    token_list_t *expansion;
    active_list_t *active_initial = parser->active;
+   int line;
 
    if (list == NULL)
       return;
 
    _token_list_trim_trailing_space (list);
+
+   line = list->tail->token->location.last_line;
 
    node_prev = NULL;
    node = list->head;
@@ -2013,7 +2016,7 @@ _glcpp_parser_expand_token_list(glcpp_parser_t *parser, token_list_t *list,
       while (parser->active && parser->active->marker == node)
          _parser_active_list_pop (parser);
 
-      expansion = _glcpp_parser_expand_node (parser, node, &last, mode);
+      expansion = _glcpp_parser_expand_node (parser, node, &last, mode, line);
       if (expansion) {
          token_node_t *n;
 

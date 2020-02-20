@@ -29,6 +29,7 @@
 
 #include <stdio.h>
 
+#include "c11/threads.h"
 #include "compiler/shader_enums.h"
 #include "compiler/nir/nir.h"
 #include "util/bitscan.h"
@@ -71,6 +72,14 @@ enum ir3_driver_param {
 
 
 /**
+ * Describes the layout of shader consts.  This includes:
+ *   + Driver lowered UBO ranges
+ *   + SSBO sizes
+ *   + Image sizes/dimensions
+ *   + Driver params (ie. IR3_DP_*)
+ *   + TFBO addresses (for generations that do not have hardware streamout)
+ *   + Lowered immediates
+ *
  * For consts needed to pass internal values to shader which may or may not
  * be required, rather than allocating worst-case const space, we scan the
  * shader and allocate consts as-needed:
@@ -80,8 +89,44 @@ enum ir3_driver_param {
  *
  *   + Image dimensions: needed to calculate pixel offset, but only for
  *     images that have a image_store intrinsic
+ *
+ * Layout of constant registers, each section aligned to vec4.  Note
+ * that pointer size (ubo, etc) changes depending on generation.
+ *
+ *    user consts
+ *    UBO addresses
+ *    SSBO sizes
+ *    if (vertex shader) {
+ *        driver params (IR3_DP_*)
+ *        if (stream_output.num_outputs > 0)
+ *           stream-out addresses
+ *    } else if (compute_shader) {
+ *        driver params (IR3_DP_*)
+ *    }
+ *    immediates
+ *
+ * Immediates go last mostly because they are inserted in the CP pass
+ * after the nir -> ir3 frontend.
+ *
+ * Note UBO size in bytes should be aligned to vec4
  */
-struct ir3_driver_const_layout {
+struct ir3_const_state {
+	unsigned num_ubos;
+	unsigned num_driver_params;   /* scalar */
+
+	struct {
+		/* user const start at zero */
+		unsigned ubo;
+		/* NOTE that a3xx might need a section for SSBO addresses too */
+		unsigned ssbo_sizes;
+		unsigned image_dims;
+		unsigned driver_param;
+		unsigned tfbo;
+		unsigned primitive_param;
+		unsigned primitive_map;
+		unsigned immediate;
+	} offsets;
+
 	struct {
 		uint32_t mask;  /* bitmask of SSBOs that have get_buffer_size */
 		uint32_t count; /* number of consts allocated */
@@ -102,6 +147,13 @@ struct ir3_driver_const_layout {
 		 */
 		uint32_t off[IR3_MAX_SHADER_IMAGES];
 	} image_dims;
+
+	unsigned immediate_idx;
+	unsigned immediates_count;
+	unsigned immediates_size;
+	struct {
+		uint32_t val[4];
+	} *immediates;
 };
 
 /**
@@ -130,6 +182,39 @@ struct ir3_stream_output_info {
 	 */
 	struct ir3_stream_output output[IR3_MAX_SO_OUTPUTS];
 };
+
+
+/**
+ * Starting from a4xx, HW supports pre-dispatching texture sampling
+ * instructions prior to scheduling a shader stage, when the
+ * coordinate maps exactly to an output of the previous stage.
+ */
+
+/**
+ * There is a limit in the number of pre-dispatches allowed for any
+ * given stage.
+ */
+#define IR3_MAX_SAMPLER_PREFETCH 4
+
+/**
+ * This is the output stream value for 'cmd', as used by blob. It may
+ * encode the return type (in 3 bits) but it hasn't been verified yet.
+ */
+#define IR3_SAMPLER_PREFETCH_CMD 0x4
+
+/**
+ * Stream output for texture sampling pre-dispatches.
+ */
+struct ir3_sampler_prefetch {
+	uint8_t src;
+	uint8_t samp_id;
+	uint8_t tex_id;
+	uint8_t dst;
+	uint8_t wrmask;
+	uint8_t half_precision;
+	uint8_t cmd;
+};
+
 
 /* Configuration key used to identify a shader variant.. different
  * shader variants can be used to implement features not supported
@@ -163,6 +248,8 @@ struct ir3_shader_key {
 			 */
 			unsigned rasterflat : 1;
 			unsigned fclamp_color : 1;
+
+			unsigned has_gs : 1;
 		};
 		uint32_t global;
 	};
@@ -260,9 +347,11 @@ ir3_normalize_key(struct ir3_shader_key *key, gl_shader_stage type)
 			key->vsaturate_r = 0;
 			key->vastc_srgb = 0;
 			key->vsamples = 0;
+			key->has_gs = false; /* FS doesn't care */
 		}
 		break;
 	case MESA_SHADER_VERTEX:
+	case MESA_SHADER_GEOMETRY:
 		key->color_two_side = false;
 		key->half_precision = false;
 		key->rasterflat = false;
@@ -326,6 +415,9 @@ struct ir3_ibo_mapping {
 	uint8_t tex_base;   /* the number of real textures, ie. image/ssbo start here */
 };
 
+/* Represents half register in regid */
+#define HALF_REG_ID    0x100
+
 struct ir3_shader_variant {
 	struct fd_bo *bo;
 
@@ -338,9 +430,11 @@ struct ir3_shader_variant {
 	 * which is pointed to by so->binning:
 	 */
 	bool binning_pass;
-	struct ir3_shader_variant *binning;
+//	union {
+		struct ir3_shader_variant *binning;
+		struct ir3_shader_variant *nonbinning;
+//	};
 
-	struct ir3_driver_const_layout const_layout;
 	struct ir3_info info;
 	struct ir3 *ir;
 
@@ -349,6 +443,7 @@ struct ir3_shader_variant {
 	unsigned branchstack;
 
 	unsigned max_sun;
+	unsigned loops;
 
 	/* the instructions length is in units of instruction groups
 	 * (4 instructions for a3xx, 16 instructions for a4xx.. each
@@ -360,13 +455,6 @@ struct ir3_shader_variant {
 	 * the uniforms and the built-in compiler constants
 	 */
 	unsigned constlen;
-
-	/* number of uniforms (in vec4), not including built-in compiler
-	 * constants, etc.
-	 */
-	unsigned num_uniforms;
-
-	unsigned num_ubos;
 
 	/* About Linkage:
 	 *   + Let the frag shader determine the position/compmask for the
@@ -391,7 +479,7 @@ struct ir3_shader_variant {
 		uint8_t slot;
 		uint8_t regid;
 		bool    half : 1;
-	} outputs[16 + 2];  /* +POSITION +PSIZE */
+	} outputs[32 + 2];  /* +POSITION +PSIZE */
 	bool writes_pos, writes_smask, writes_psize;
 
 	/* attributes (VS) / varyings (FS):
@@ -402,7 +490,6 @@ struct ir3_shader_variant {
 		uint8_t slot;
 		uint8_t regid;
 		uint8_t compmask;
-		uint8_t ncomp;
 		/* location of input (ie. offset passed to bary.f, etc).  This
 		 * matches the SP_VS_VPC_DST_REG.OUTLOCn value (a3xx and a4xx
 		 * have the OUTLOCn value offset by 8, presumably to account
@@ -417,7 +504,7 @@ struct ir3_shader_variant {
 		bool    use_ldlv   : 1;   /* internal to ir3_compiler_nir */
 		bool    half       : 1;
 		enum glsl_interp_mode interpolate;
-	} inputs[16 + 2];  /* +POSITION +FACE */
+	} inputs[32 + 2];  /* +POSITION +FACE */
 
 	/* sum of input components (scalar).  For frag shaders, it only counts
 	 * the varying inputs:
@@ -452,27 +539,6 @@ struct ir3_shader_variant {
 
 	bool per_samp;
 
-	/* Layout of constant registers, each section (in vec4). Pointer size
-	 * is 32b (a3xx, a4xx), or 64b (a5xx+), which effects the size of the
-	 * UBO and stream-out consts.
-	 */
-	struct {
-		/* user const start at zero */
-		unsigned ubo;
-		/* NOTE that a3xx might need a section for SSBO addresses too */
-		unsigned ssbo_sizes;
-		unsigned image_dims;
-		unsigned driver_param;
-		unsigned tfbo;
-		unsigned immediate;
-	} constbase;
-
-	unsigned immediates_count;
-	unsigned immediates_size;
-	struct {
-		uint32_t val[4];
-	} *immediates;
-
 	/* for astc srgb workaround, the number/base of additional
 	 * alpha tex states we need, and index of original tex states
 	 */
@@ -487,18 +553,38 @@ struct ir3_shader_variant {
 	/* replicated here to avoid passing extra ptrs everywhere: */
 	gl_shader_stage type;
 	struct ir3_shader *shader;
+
+	/* texture sampler pre-dispatches */
+	uint32_t num_sampler_prefetch;
+	struct ir3_sampler_prefetch sampler_prefetch[IR3_MAX_SAMPLER_PREFETCH];
 };
+
+static inline const char *
+ir3_shader_stage(struct ir3_shader_variant *v)
+{
+	switch (v->type) {
+	case MESA_SHADER_VERTEX:     return v->binning_pass ? "BVERT" : "VERT";
+	case MESA_SHADER_TESS_CTRL:  return "TCS";
+	case MESA_SHADER_TESS_EVAL:  return "TES";
+	case MESA_SHADER_GEOMETRY:   return "GEOM";
+	case MESA_SHADER_FRAGMENT:   return "FRAG";
+	case MESA_SHADER_COMPUTE:    return "CL";
+	default:
+		unreachable("invalid type");
+		return NULL;
+	}
+}
 
 struct ir3_ubo_range {
 	uint32_t offset; /* start offset of this block in const register file */
 	uint32_t start, end; /* range of block that's actually used */
 };
 
-struct ir3_ubo_analysis_state
-{
+struct ir3_ubo_analysis_state {
 	struct ir3_ubo_range range[IR3_MAX_CONSTANT_BUFFERS];
 	uint32_t size;
 	uint32_t lower_count;
+	uint32_t cmdstream_size; /* for per-gen backend to stash required cmdstream size */
 };
 
 
@@ -515,11 +601,18 @@ struct ir3_shader {
 	struct ir3_compiler *compiler;
 
 	struct ir3_ubo_analysis_state ubo_state;
+	struct ir3_const_state const_state;
 
 	struct nir_shader *nir;
 	struct ir3_stream_output_info stream_output;
 
 	struct ir3_shader_variant *variants;
+	mtx_t variants_lock;
+
+	uint32_t output_size; /* Size in dwords of all outputs for VS, size of entire patch for HS. */
+
+	/* Map from driver_location to byte offset in per-primitive storage */
+	unsigned output_loc[32];
 };
 
 void * ir3_shader_assemble(struct ir3_shader_variant *v, uint32_t gpu_id);
@@ -532,19 +625,6 @@ uint64_t ir3_shader_outputs(const struct ir3_shader *so);
 
 int
 ir3_glsl_type_size(const struct glsl_type *type, bool bindless);
-
-static inline const char *
-ir3_shader_stage(struct ir3_shader *shader)
-{
-	switch (shader->type) {
-	case MESA_SHADER_VERTEX:     return "VERT";
-	case MESA_SHADER_FRAGMENT:   return "FRAG";
-	case MESA_SHADER_COMPUTE:    return "CL";
-	default:
-		unreachable("invalid type");
-		return NULL;
-	}
-}
 
 /*
  * Helper/util:
@@ -647,10 +727,18 @@ ir3_find_output_regid(const struct ir3_shader_variant *so, unsigned slot)
 {
 	int j;
 	for (j = 0; j < so->outputs_count; j++)
-		if (so->outputs[j].slot == slot)
-			return so->outputs[j].regid;
+		if (so->outputs[j].slot == slot) {
+			uint32_t regid = so->outputs[j].regid;
+			if (so->outputs[j].half)
+				regid |= HALF_REG_ID;
+			return regid;
+		}
 	return regid(63, 0);
 }
+
+#define VARYING_SLOT_GS_HEADER_IR3			(VARYING_SLOT_MAX + 0)
+#define VARYING_SLOT_GS_VERTEX_FLAGS_IR3	(VARYING_SLOT_MAX + 1)
+
 
 static inline uint32_t
 ir3_find_sysval_regid(const struct ir3_shader_variant *so, unsigned slot)

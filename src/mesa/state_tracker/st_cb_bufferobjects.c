@@ -131,10 +131,16 @@ st_bufferobj_subdata(struct gl_context *ctx,
     * even if the buffer is currently referenced by hardware - they
     * just queue the upload as dma rather than mapping the underlying
     * buffer directly.
+    *
+    * If the buffer is mapped, suppress implicit buffer range invalidation
+    * by using PIPE_TRANSFER_MAP_DIRECTLY.
     */
-   pipe_buffer_write(st_context(ctx)->pipe,
-                     st_obj->buffer,
-                     offset, size, data);
+   struct pipe_context *pipe = st_context(ctx)->pipe;
+
+   pipe->buffer_subdata(pipe, st_obj->buffer,
+                        _mesa_bufferobj_mapped(obj, MAP_USER) ?
+                           PIPE_TRANSFER_MAP_DIRECTLY : 0,
+                        offset, size, data);
 }
 
 
@@ -239,6 +245,11 @@ buffer_usage(GLenum target, GLboolean immutable,
       }
    }
    else {
+      /* These are often read by the CPU, so enable CPU caches. */
+      if (target == GL_PIXEL_PACK_BUFFER ||
+          target == GL_PIXEL_UNPACK_BUFFER)
+         return PIPE_USAGE_STAGING;
+
       /* BufferData */
       switch (usage) {
       case GL_DYNAMIC_DRAW:
@@ -246,14 +257,7 @@ buffer_usage(GLenum target, GLboolean immutable,
          return PIPE_USAGE_DYNAMIC;
       case GL_STREAM_DRAW:
       case GL_STREAM_COPY:
-         /* XXX: Remove this test and fall-through when we have PBO unpacking
-          * acceleration. Right now, PBO unpacking is done by the CPU, so we
-          * have to make sure CPU reads are fast.
-          */
-         if (target != GL_PIXEL_UNPACK_BUFFER_ARB) {
-            return PIPE_USAGE_STREAM;
-         }
-         /* fall through */
+         return PIPE_USAGE_STREAM;
       case GL_STATIC_READ:
       case GL_DYNAMIC_READ:
       case GL_STREAM_READ:
@@ -283,6 +287,7 @@ bufferobj_data(struct gl_context *ctx,
    struct pipe_screen *screen = pipe->screen;
    struct st_buffer_object *st_obj = st_buffer_object(obj);
    struct st_memory_object *st_mem_obj = st_memory_object(memObj);
+   bool is_mapped = _mesa_bufferobj_mapped(obj, MAP_USER);
 
    if (target != GL_EXTERNAL_VIRTUAL_MEMORY_BUFFER_AMD &&
        size && st_obj->buffer &&
@@ -293,11 +298,19 @@ bufferobj_data(struct gl_context *ctx,
          /* Just discard the old contents and write new data.
           * This should be the same as creating a new buffer, but we avoid
           * a lot of validation in Mesa.
+          *
+          * If the buffer is mapped, we can't discard it.
+          *
+          * PIPE_TRANSFER_MAP_DIRECTLY supresses implicit buffer range
+          * invalidation.
           */
          pipe->buffer_subdata(pipe, st_obj->buffer,
-                              PIPE_TRANSFER_DISCARD_WHOLE_RESOURCE,
+                              is_mapped ? PIPE_TRANSFER_MAP_DIRECTLY :
+                                          PIPE_TRANSFER_DISCARD_WHOLE_RESOURCE,
                               0, size, data);
          return GL_TRUE;
+      } else if (is_mapped) {
+         return GL_TRUE; /* can't reallocate, nothing to do */
       } else if (screen->get_param(screen, PIPE_CAP_INVALIDATE_BUFFER)) {
          pipe->invalidate_resource(pipe, st_obj->buffer);
          return GL_TRUE;
@@ -422,8 +435,8 @@ st_bufferobj_invalidate(struct gl_context *ctx,
    if (offset != 0 || size != obj->Size)
       return;
 
-   /* Nothing to invalidate. */
-   if (!st_obj->buffer)
+   /* If the buffer is mapped, we can't invalidate it. */
+   if (!st_obj->buffer || _mesa_bufferobj_mapped(obj, MAP_USER))
       return;
 
    pipe->invalidate_resource(pipe, st_obj->buffer);

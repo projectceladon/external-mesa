@@ -43,12 +43,20 @@
 #include "egl_dri2_fallbacks.h"
 #include "loader.h"
 #include "util/u_vector.h"
+#include "util/anon_file.h"
 #include "eglglobals.h"
 
 #include <wayland-egl-backend.h>
 #include <wayland-client.h>
 #include "wayland-drm-client-protocol.h"
 #include "linux-dmabuf-unstable-v1-client-protocol.h"
+
+/* cheesy workaround until wayland 1.18 is released */
+#if WAYLAND_VERSION_MAJOR > 1 || \
+   (WAYLAND_VERSION_MAJOR == 1 && WAYLAND_VERSION_MINOR < 18)
+#define WL_SHM_FORMAT_ABGR16161616F 0x48344241
+#define WL_SHM_FORMAT_XBGR16161616F 0x48344258
+#endif
 
 /*
  * The index of entries in this table is used as a bitmask in
@@ -72,55 +80,73 @@ static const struct dri2_wl_visual {
    unsigned int rgba_sizes[4];
 } dri2_wl_visuals[] = {
    {
-     "XRGB2101010",
-     WL_DRM_FORMAT_XRGB2101010, WL_SHM_FORMAT_XRGB2101010,
-     __DRI_IMAGE_FORMAT_XRGB2101010, __DRI_IMAGE_FORMAT_XBGR2101010, 32,
-     { 20, 10, 0, -1 },
-     { 10, 10, 10, 0 },
+      "ABGR16F",
+      WL_DRM_FORMAT_ABGR16F, WL_SHM_FORMAT_ABGR16161616F,
+      __DRI_IMAGE_FORMAT_ABGR16161616F, 0, 64,
+      { 0, 16, 32, 48 },
+      { 16, 16, 16, 16 },
    },
    {
-     "ARGB2101010",
-     WL_DRM_FORMAT_ARGB2101010, WL_SHM_FORMAT_ARGB2101010,
-     __DRI_IMAGE_FORMAT_ARGB2101010, __DRI_IMAGE_FORMAT_ABGR2101010, 32,
-     { 20, 10, 0, 30 },
-     { 10, 10, 10, 2 },
+      "XBGR16F",
+      WL_DRM_FORMAT_XBGR16F, WL_SHM_FORMAT_XBGR16161616F,
+      __DRI_IMAGE_FORMAT_XBGR16161616F, 0, 64,
+      { 0, 16, 32, -1 },
+      { 16, 16, 16, 0 },
    },
    {
-     "XBGR2101010",
-     WL_DRM_FORMAT_XBGR2101010, WL_SHM_FORMAT_XBGR2101010,
-     __DRI_IMAGE_FORMAT_XBGR2101010, __DRI_IMAGE_FORMAT_XRGB2101010, 32,
-     { 0, 10, 20, -1 },
-     { 10, 10, 10, 0 },
+      "XRGB2101010",
+      WL_DRM_FORMAT_XRGB2101010, WL_SHM_FORMAT_XRGB2101010,
+      __DRI_IMAGE_FORMAT_XRGB2101010, __DRI_IMAGE_FORMAT_XBGR2101010, 32,
+      { 20, 10, 0, -1 },
+      { 10, 10, 10, 0 },
    },
    {
-     "ABGR2101010",
-     WL_DRM_FORMAT_ABGR2101010, WL_SHM_FORMAT_ABGR2101010,
-     __DRI_IMAGE_FORMAT_ABGR2101010, __DRI_IMAGE_FORMAT_ARGB2101010, 32,
-     { 0, 10, 20, 30 },
-     { 10, 10, 10, 2 },
+      "ARGB2101010",
+      WL_DRM_FORMAT_ARGB2101010, WL_SHM_FORMAT_ARGB2101010,
+      __DRI_IMAGE_FORMAT_ARGB2101010, __DRI_IMAGE_FORMAT_ABGR2101010, 32,
+      { 20, 10, 0, 30 },
+      { 10, 10, 10, 2 },
    },
    {
-     "XRGB8888",
-     WL_DRM_FORMAT_XRGB8888, WL_SHM_FORMAT_XRGB8888,
-     __DRI_IMAGE_FORMAT_XRGB8888, __DRI_IMAGE_FORMAT_NONE, 32,
-     { 16, 8, 0, -1 },
-     { 8, 8, 8, 0 },
+      "XBGR2101010",
+      WL_DRM_FORMAT_XBGR2101010, WL_SHM_FORMAT_XBGR2101010,
+      __DRI_IMAGE_FORMAT_XBGR2101010, __DRI_IMAGE_FORMAT_XRGB2101010, 32,
+      { 0, 10, 20, -1 },
+      { 10, 10, 10, 0 },
    },
    {
-     "ARGB8888",
-     WL_DRM_FORMAT_ARGB8888, WL_SHM_FORMAT_ARGB8888,
-     __DRI_IMAGE_FORMAT_ARGB8888, __DRI_IMAGE_FORMAT_NONE, 32,
-     { 16, 8, 0, 24 },
-     { 8, 8, 8, 8 },
+      "ABGR2101010",
+      WL_DRM_FORMAT_ABGR2101010, WL_SHM_FORMAT_ABGR2101010,
+      __DRI_IMAGE_FORMAT_ABGR2101010, __DRI_IMAGE_FORMAT_ARGB2101010, 32,
+      { 0, 10, 20, 30 },
+      { 10, 10, 10, 2 },
    },
    {
-     "RGB565",
-     WL_DRM_FORMAT_RGB565, WL_SHM_FORMAT_RGB565,
-     __DRI_IMAGE_FORMAT_RGB565, __DRI_IMAGE_FORMAT_NONE, 16,
-     { 11, 5, 0, -1 },
-     { 5, 6, 5, 0 },
+      "XRGB8888",
+      WL_DRM_FORMAT_XRGB8888, WL_SHM_FORMAT_XRGB8888,
+      __DRI_IMAGE_FORMAT_XRGB8888, __DRI_IMAGE_FORMAT_NONE, 32,
+      { 16, 8, 0, -1 },
+      { 8, 8, 8, 0 },
+   },
+   {
+      "ARGB8888",
+      WL_DRM_FORMAT_ARGB8888, WL_SHM_FORMAT_ARGB8888,
+      __DRI_IMAGE_FORMAT_ARGB8888, __DRI_IMAGE_FORMAT_NONE, 32,
+      { 16, 8, 0, 24 },
+      { 8, 8, 8, 8 },
+   },
+   {
+      "RGB565",
+      WL_DRM_FORMAT_RGB565, WL_SHM_FORMAT_RGB565,
+      __DRI_IMAGE_FORMAT_RGB565, __DRI_IMAGE_FORMAT_NONE, 16,
+      { 11, 5, 0, -1 },
+      { 5, 6, 5, 0 },
    },
 };
+
+static_assert(ARRAY_SIZE(dri2_wl_visuals) <= EGL_DRI2_MAX_FORMATS,
+              "dri2_egl_display::formats is not large enough for "
+              "the formats in dri2_wl_visuals");
 
 static int
 dri2_wl_visual_idx_from_config(struct dri2_egl_display *dri2_dpy,
@@ -296,7 +322,7 @@ dri2_wl_create_window_surface(_EGLDriver *drv, _EGLDisplay *disp,
    }
 
    if (!dri2_init_surface(&dri2_surf->base, disp, EGL_WINDOW_BIT, conf,
-                          attrib_list, false))
+                          attrib_list, false, native_window))
       goto cleanup_surf;
 
    config = dri2_get_dri_config(dri2_conf, EGL_WINDOW_BIT,
@@ -358,7 +384,7 @@ dri2_wl_create_window_surface(_EGLDriver *drv, _EGLDisplay *disp,
    if (dri2_dpy->flush)
       dri2_surf->wl_win->resize_callback = resize_callback;
 
-   if (!dri2_create_drawable(dri2_dpy, config, dri2_surf))
+   if (!dri2_create_drawable(dri2_dpy, config, dri2_surf, dri2_surf))
        goto cleanup_surf_wrapper;
 
    dri2_surf->base.SwapInterval = dri2_dpy->default_swap_interval;
@@ -497,7 +523,7 @@ get_back_bo(struct dri2_egl_surface *dri2_surf)
    num_modifiers = u_vector_length(&dri2_dpy->wl_modifiers[visual_idx]);
 
    /* Substitute dri image format if server does not support original format */
-   if (!(dri2_dpy->formats & (1 << visual_idx)))
+   if (!BITSET_TEST(dri2_dpy->formats, visual_idx))
       linear_dri_image_format = dri2_wl_visuals[visual_idx].alt_dri_image_format;
 
    /* These asserts hold, as long as dri2_wl_visuals[] is self-consistent and
@@ -505,8 +531,8 @@ get_back_bo(struct dri2_egl_surface *dri2_surf)
     * of bugs.
     */
    assert(linear_dri_image_format != __DRI_IMAGE_FORMAT_NONE);
-   assert(dri2_dpy->formats &
-          (1 << dri2_wl_visual_idx_from_dri_image_format(linear_dri_image_format)));
+   assert(BITSET_TEST(dri2_dpy->formats,
+          dri2_wl_visual_idx_from_dri_image_format(linear_dri_image_format)));
 
    /* There might be a buffer release already queued that wasn't processed */
    wl_display_dispatch_queue_pending(dri2_dpy->wl_dpy, dri2_surf->wl_queue);
@@ -786,19 +812,32 @@ dri2_wl_flush_front_buffer(__DRIdrawable * driDrawable, void *loaderPrivate)
    (void) loaderPrivate;
 }
 
+static unsigned
+dri2_wl_get_capability(void *loaderPrivate, enum dri_loader_cap cap)
+{
+   switch (cap) {
+   case DRI_LOADER_CAP_FP16:
+      return 1;
+   default:
+      return 0;
+   }
+}
+
 static const __DRIdri2LoaderExtension dri2_loader_extension = {
-   .base = { __DRI_DRI2_LOADER, 3 },
+   .base = { __DRI_DRI2_LOADER, 4 },
 
    .getBuffers           = dri2_wl_get_buffers,
    .flushFrontBuffer     = dri2_wl_flush_front_buffer,
    .getBuffersWithFormat = dri2_wl_get_buffers_with_format,
+   .getCapability        = dri2_wl_get_capability,
 };
 
 static const __DRIimageLoaderExtension image_loader_extension = {
-   .base = { __DRI_IMAGE_LOADER, 1 },
+   .base = { __DRI_IMAGE_LOADER, 2 },
 
    .getBuffers          = image_get_buffers,
    .flushFrontBuffer    = dri2_wl_flush_front_buffer,
+   .getCapability       = dri2_wl_get_capability,
 };
 
 static void
@@ -1116,7 +1155,7 @@ dri2_wl_create_wayland_buffer_from_image(_EGLDriver *drv,
    if (visual_idx == -1)
       goto bad_format;
 
-   if (!(dri2_dpy->formats & (1u << visual_idx)))
+   if (!BITSET_TEST(dri2_dpy->formats, visual_idx))
       goto bad_format;
 
    buffer = create_wl_buffer(dri2_dpy, NULL, image);
@@ -1206,7 +1245,7 @@ drm_handle_format(void *data, struct wl_drm *drm, uint32_t format)
    if (visual_idx == -1)
       return;
 
-   dri2_dpy->formats |= (1u << visual_idx);
+   BITSET_SET(dri2_dpy->formats, visual_idx);
 }
 
 static void
@@ -1255,7 +1294,7 @@ dmabuf_handle_modifier(void *data, struct zwp_linux_dmabuf_v1 *dmabuf,
        modifier_lo == (DRM_FORMAT_MOD_INVALID & 0xffffffff))
       return;
 
-   dri2_dpy->formats |= (1u << visual_idx);
+   BITSET_SET(dri2_dpy->formats, visual_idx);
 
    mod = u_vector_add(&dri2_dpy->wl_modifiers[visual_idx]);
    *mod = combine_u32_into_u64(modifier_hi, modifier_lo);
@@ -1318,7 +1357,6 @@ static const struct dri2_egl_display_vtbl dri2_wl_display_vtbl = {
    .swap_buffers = dri2_wl_swap_buffers,
    .swap_buffers_with_damage = dri2_wl_swap_buffers_with_damage,
    .swap_buffers_region = dri2_fallback_swap_buffers_region,
-   .set_damage_region = dri2_fallback_set_damage_region,
    .post_sub_buffer = dri2_fallback_post_sub_buffer,
    .copy_buffers = dri2_fallback_copy_buffers,
    .query_buffer_age = dri2_wl_query_buffer_age,
@@ -1356,7 +1394,7 @@ dri2_wl_add_configs_for_visuals(_EGLDriver *drv, _EGLDisplay *disp)
       for (unsigned j = 0; j < ARRAY_SIZE(dri2_wl_visuals); j++) {
          struct dri2_egl_config *dri2_conf;
 
-         if (!(dri2_dpy->formats & (1u << j)))
+         if (!BITSET_TEST(dri2_dpy->formats, j))
             continue;
 
          dri2_conf = dri2_add_config(disp, dri2_dpy->driver_configs[i],
@@ -1384,7 +1422,7 @@ dri2_wl_add_configs_for_visuals(_EGLDriver *drv, _EGLDisplay *disp)
          alt_dri_image_format = dri2_wl_visuals[c].alt_dri_image_format;
          s = dri2_wl_visual_idx_from_dri_image_format(alt_dri_image_format);
 
-         if (s == -1 || !(dri2_dpy->formats & (1 << s)))
+         if (s == -1 || !BITSET_TEST(dri2_dpy->formats, s))
             continue;
 
          /* Visual s works for the Wayland server, and c can be converted into s
@@ -1595,122 +1633,6 @@ dri2_wl_swrast_get_stride_for_format(int format, int w)
    return w * (dri2_wl_visuals[visual_idx].bpp / 8);
 }
 
-/*
- * Taken from weston shared/os-compatibility.c
- */
-
-#ifndef HAVE_MKOSTEMP
-
-static int
-set_cloexec_or_close(int fd)
-{
-   long flags;
-
-   if (fd == -1)
-      return -1;
-
-   flags = fcntl(fd, F_GETFD);
-   if (flags == -1)
-      goto err;
-
-   if (fcntl(fd, F_SETFD, flags | FD_CLOEXEC) == -1)
-      goto err;
-
-   return fd;
-
-err:
-   close(fd);
-   return -1;
-}
-
-#endif
-
-/*
- * Taken from weston shared/os-compatibility.c
- */
-
-static int
-create_tmpfile_cloexec(char *tmpname)
-{
-   int fd;
-
-#ifdef HAVE_MKOSTEMP
-   fd = mkostemp(tmpname, O_CLOEXEC);
-   if (fd >= 0)
-      unlink(tmpname);
-#else
-   fd = mkstemp(tmpname);
-   if (fd >= 0) {
-      fd = set_cloexec_or_close(fd);
-      unlink(tmpname);
-   }
-#endif
-
-   return fd;
-}
-
-/*
- * Taken from weston shared/os-compatibility.c
- *
- * Create a new, unique, anonymous file of the given size, and
- * return the file descriptor for it. The file descriptor is set
- * CLOEXEC. The file is immediately suitable for mmap()'ing
- * the given size at offset zero.
- *
- * The file should not have a permanent backing store like a disk,
- * but may have if XDG_RUNTIME_DIR is not properly implemented in OS.
- *
- * The file name is deleted from the file system.
- *
- * The file is suitable for buffer sharing between processes by
- * transmitting the file descriptor over Unix sockets using the
- * SCM_RIGHTS methods.
- *
- * If the C library implements posix_fallocate(), it is used to
- * guarantee that disk space is available for the file at the
- * given size. If disk space is insufficient, errno is set to ENOSPC.
- * If posix_fallocate() is not supported, program may receive
- * SIGBUS on accessing mmap()'ed file contents instead.
- */
-static int
-os_create_anonymous_file(off_t size)
-{
-   static const char templ[] = "/mesa-shared-XXXXXX";
-   const char *path;
-   char *name;
-   int fd;
-   int ret;
-
-   path = getenv("XDG_RUNTIME_DIR");
-   if (!path) {
-      errno = ENOENT;
-      return -1;
-   }
-
-   name = malloc(strlen(path) + sizeof(templ));
-   if (!name)
-      return -1;
-
-   strcpy(name, path);
-   strcat(name, templ);
-
-   fd = create_tmpfile_cloexec(name);
-
-   free(name);
-
-   if (fd < 0)
-      return -1;
-
-   ret = ftruncate(fd, size);
-   if (ret < 0) {
-      close(fd);
-      return -1;
-   }
-
-   return fd;
-}
-
-
 static EGLBoolean
 dri2_wl_swrast_allocate_buffer(struct dri2_egl_surface *dri2_surf,
                                int format, int w, int h,
@@ -1727,7 +1649,7 @@ dri2_wl_swrast_allocate_buffer(struct dri2_egl_surface *dri2_surf,
    size_map = h * stride;
 
    /* Create a shareable buffer */
-   fd = os_create_anonymous_file(size_map);
+   fd = os_create_anonymous_file(size_map, NULL);
    if (fd < 0)
       return EGL_FALSE;
 
@@ -2019,7 +1941,7 @@ shm_handle_format(void *data, struct wl_shm *shm, uint32_t format)
    if (visual_idx == -1)
       return;
 
-   dri2_dpy->formats |= (1u << visual_idx);
+   BITSET_SET(dri2_dpy->formats, visual_idx);
 }
 
 static const struct wl_shm_listener shm_listener = {
@@ -2126,7 +2048,8 @@ dri2_initialize_wayland_swrast(_EGLDriver *drv, _EGLDisplay *disp)
    if (roundtrip(dri2_dpy) < 0 || dri2_dpy->wl_shm == NULL)
       goto cleanup;
 
-   if (roundtrip(dri2_dpy) < 0 || dri2_dpy->formats == 0)
+   if (roundtrip(dri2_dpy) < 0 || !BITSET_TEST_RANGE(dri2_dpy->formats,
+                                                     0, EGL_DRI2_MAX_FORMATS))
       goto cleanup;
 
    dri2_dpy->driver_name = strdup("swrast");

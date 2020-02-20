@@ -200,6 +200,8 @@ v3d_shader_precompile(struct v3d_context *v3d,
                         }
                 }
 
+                key.logicop_func = PIPE_LOGICOP_COPY;
+
                 v3d_setup_shared_precompile_key(so, &key.base);
                 v3d_get_compiled_shader(v3d, &key.base, sizeof(key));
         } else {
@@ -537,6 +539,17 @@ v3d_update_compiled_fs(struct v3d_context *v3d, uint8_t prim_mode)
                  */
                 key->cbufs |= 1 << i;
 
+                /* If logic operations are enabled then we might emit color
+                 * reads and we need to know the color buffer format and
+                 * swizzle for that.
+                 */
+                if (key->logicop_func != PIPE_LOGICOP_COPY) {
+                        key->color_fmt[i].format = cbuf->format;
+                        key->color_fmt[i].swizzle =
+                                v3d_get_format_swizzle(&v3d->screen->devinfo,
+                                                       cbuf->format);
+                }
+
                 const struct util_format_description *desc =
                         util_format_description(cbuf->format);
 
@@ -666,9 +679,8 @@ v3d_update_compiled_cs(struct v3d_context *v3d)
         struct v3d_key local_key;
         struct v3d_key *key = &local_key;
 
-        if (!(v3d->dirty & (~0 | /* XXX */
-                            VC5_DIRTY_VERTTEX |
-                            VC5_DIRTY_UNCOMPILED_FS))) {
+        if (!(v3d->dirty & (VC5_DIRTY_UNCOMPILED_CS |
+                            VC5_DIRTY_COMPTEX))) {
                 return;
         }
 
@@ -773,6 +785,7 @@ v3d_compute_state_bind(struct pipe_context *pctx, void *state)
         struct v3d_context *v3d = v3d_context(pctx);
 
         v3d->prog.bind_compute = state;
+        v3d->dirty |= VC5_DIRTY_UNCOMPILED_CS;
 }
 
 static void *

@@ -182,11 +182,23 @@ update_textures(struct st_context *st,
       /* use original view as template: */
       tmpl = *sampler_views[unit];
 
+      /* if resource format matches then YUV wasn't lowered */
+      if (st_get_view_format(stObj) == stObj->pt->format)
+         continue;
+
       switch (st_get_view_format(stObj)) {
       case PIPE_FORMAT_NV12:
          /* we need one additional R8G8 view: */
          tmpl.format = PIPE_FORMAT_RG88_UNORM;
          tmpl.swizzle_g = PIPE_SWIZZLE_Y;   /* tmpl from Y plane is R8 */
+         extra = u_bit_scan(&free_slots);
+         sampler_views[extra] =
+               st->pipe->create_sampler_view(st->pipe, stObj->pt->next, &tmpl);
+         break;
+      case PIPE_FORMAT_P016:
+         /* we need one additional R16G16 view: */
+         tmpl.format = PIPE_FORMAT_RG1616_UNORM;
+         tmpl.swizzle_g = PIPE_SWIZZLE_Y;   /* tmpl from Y plane is R16 */
          extra = u_bit_scan(&free_slots);
          sampler_views[extra] =
                st->pipe->create_sampler_view(st->pipe, stObj->pt->next, &tmpl);
@@ -200,6 +212,24 @@ update_textures(struct st_context *st,
          extra = u_bit_scan(&free_slots);
          sampler_views[extra] =
                st->pipe->create_sampler_view(st->pipe, stObj->pt->next->next, &tmpl);
+         break;
+      case PIPE_FORMAT_YUYV:
+         /* we need one additional BGRA8888 view: */
+         tmpl.format = PIPE_FORMAT_BGRA8888_UNORM;
+         tmpl.swizzle_b = PIPE_SWIZZLE_Z;
+         tmpl.swizzle_a = PIPE_SWIZZLE_W;
+         extra = u_bit_scan(&free_slots);
+         sampler_views[extra] =
+               st->pipe->create_sampler_view(st->pipe, stObj->pt->next, &tmpl);
+         break;
+      case PIPE_FORMAT_UYVY:
+         /* we need one additional RGBA8888 view: */
+         tmpl.format = PIPE_FORMAT_RGBA8888_UNORM;
+         tmpl.swizzle_b = PIPE_SWIZZLE_Z;
+         tmpl.swizzle_a = PIPE_SWIZZLE_W;
+         extra = u_bit_scan(&free_slots);
+         sampler_views[extra] =
+               st->pipe->create_sampler_view(st->pipe, stObj->pt->next, &tmpl);
          break;
       default:
          break;

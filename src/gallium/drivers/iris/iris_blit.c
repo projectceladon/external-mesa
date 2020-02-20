@@ -238,7 +238,9 @@ iris_blorp_surf_for_resource(struct iris_vtable *vtbl,
 {
    struct iris_resource *res = (void *) p_res;
 
-   if (aux_usage == ISL_AUX_USAGE_HIZ &&
+   assert(!iris_resource_unfinished_aux_import(res));
+
+   if (isl_aux_usage_has_hiz(aux_usage) &&
        !iris_resource_level_has_hiz(res, level))
       aux_usage = ISL_AUX_USAGE_NONE;
 
@@ -246,7 +248,7 @@ iris_blorp_surf_for_resource(struct iris_vtable *vtbl,
       .surf = &res->surf,
       .addr = (struct blorp_address) {
          .buffer = res->bo,
-         .offset = 0, // XXX: ???
+         .offset = res->offset,
          .reloc_flags = is_render_target ? EXEC_OBJECT_WRITE : 0,
          .mocs = vtbl->mocs(res->bo),
       },
@@ -274,23 +276,47 @@ iris_blorp_surf_for_resource(struct iris_vtable *vtbl,
    // XXX: ASTC
 }
 
-static void
-tex_cache_flush_hack(struct iris_batch *batch)
+static bool
+is_astc(enum isl_format format)
 {
-   /* The hardware seems to have issues with having a two different
-    * format views of the same texture in the sampler cache at the
-    * same time.  It's unclear exactly what the issue is but it hurts
-    * blits and copies particularly badly because they often reinterpret
-    * formats.  We badly need better understanding of the sampler issue
-    * and a better fix but this works for now and fixes CTS tests.
+   return format != ISL_FORMAT_UNSUPPORTED &&
+          isl_format_get_layout(format)->txc == ISL_TXC_ASTC;
+}
+
+static void
+tex_cache_flush_hack(struct iris_batch *batch,
+                     enum isl_format view_format,
+                     enum isl_format surf_format)
+{
+   const struct gen_device_info *devinfo = &batch->screen->devinfo;
+
+   /* The WaSamplerCacheFlushBetweenRedescribedSurfaceReads workaround says:
+    *
+    *    "Currently Sampler assumes that a surface would not have two
+    *     different format associate with it.  It will not properly cache
+    *     the different views in the MT cache, causing a data corruption."
+    *
+    * We may need to handle this for texture views in general someday, but
+    * for now we handle it here, as it hurts copies and blits particularly
+    * badly because they ofter reinterpret formats.
     *
     * If the BO hasn't been referenced yet this batch, we assume that the
     * texture cache doesn't contain any relevant data nor need flushing.
     *
-    * TODO: Remove this hack!
+    * Icelake (Gen11+) claims to fix this issue, but seems to still have
+    * issues with ASTC formats.
     */
-   iris_emit_pipe_control_flush(batch,
-                                PIPE_CONTROL_CS_STALL |
+   bool need_flush = devinfo->gen >= 11 ?
+                     is_astc(surf_format) != is_astc(view_format) :
+                     view_format != surf_format;
+   if (!need_flush)
+      return;
+
+   const char *reason =
+      "workaround: WaSamplerCacheFlushBetweenRedescribedSurfaceReads";
+
+   iris_emit_pipe_control_flush(batch, reason, PIPE_CONTROL_CS_STALL);
+   iris_emit_pipe_control_flush(batch, reason,
                                 PIPE_CONTROL_TEXTURE_CACHE_INVALIDATE);
 }
 
@@ -329,7 +355,7 @@ iris_blit(struct pipe_context *ctx, const struct pipe_blit_info *info)
    enum isl_aux_usage src_aux_usage =
       iris_resource_texture_aux_usage(ice, src_res, src_fmt.fmt, 0);
 
-   if (src_aux_usage == ISL_AUX_USAGE_HIZ)
+   if (iris_resource_level_has_hiz(src_res, info->src.level))
       src_aux_usage = ISL_AUX_USAGE_NONE;
 
    bool src_clear_supported = src_aux_usage != ISL_AUX_USAGE_NONE &&
@@ -423,14 +449,11 @@ iris_blit(struct pipe_context *ctx, const struct pipe_blit_info *info)
       filter = BLORP_FILTER_NEAREST;
    }
 
-   bool flush_hack = src_fmt.fmt != src_res->surf.format &&
-                     iris_batch_references(batch, src_res->bo);
-
-   if (flush_hack)
-      tex_cache_flush_hack(batch);
+   if (iris_batch_references(batch, src_res->bo))
+      tex_cache_flush_hack(batch, src_fmt.fmt, src_res->surf.format);
 
    if (dst_res->base.target == PIPE_BUFFER)
-      util_range_add(&dst_res->valid_buffer_range, dst_x0, dst_x1);
+      util_range_add(&dst_res->base, &dst_res->valid_buffer_range, dst_x0, dst_x1);
 
    struct blorp_batch blorp_batch;
    blorp_batch_init(&ice->blorp, &blorp_batch, batch, blorp_flags);
@@ -456,16 +479,54 @@ iris_blit(struct pipe_context *ctx, const struct pipe_blit_info *info)
       }
    }
 
+   struct iris_resource *stc_dst = NULL;
+   enum isl_aux_usage stc_src_aux_usage, stc_dst_aux_usage;
    if ((info->mask & PIPE_MASK_S) &&
        util_format_has_stencil(util_format_description(info->dst.format)) &&
        util_format_has_stencil(util_format_description(info->src.format))) {
-      struct iris_resource *src_res, *dst_res, *junk;
+      struct iris_resource *src_res, *junk;
+      struct blorp_surf src_surf, dst_surf;
       iris_get_depth_stencil_resources(info->src.resource, &junk, &src_res);
-      iris_get_depth_stencil_resources(info->dst.resource, &junk, &dst_res);
+      iris_get_depth_stencil_resources(info->dst.resource, &junk, &stc_dst);
+
+      struct iris_format_info src_fmt =
+         iris_format_for_usage(devinfo, src_res->base.format,
+                               ISL_SURF_USAGE_TEXTURE_BIT);
+      stc_src_aux_usage =
+         iris_resource_texture_aux_usage(ice, src_res, src_fmt.fmt, 0);
+
+      struct iris_format_info dst_fmt =
+         iris_format_for_usage(devinfo, stc_dst->base.format,
+                               ISL_SURF_USAGE_RENDER_TARGET_BIT);
+      stc_dst_aux_usage =
+         iris_resource_render_aux_usage(ice, stc_dst, dst_fmt.fmt, false, false);
+
+      /* Resolve destination surface before blit because :
+       *    1. when we try to blit from the same surface, we can't read and
+       *    write to the same surfaces at the same time when we have
+       *    compression enabled so it's safe to resolve surface first and then
+       *    do blit.
+       *    2. While bliting from one surface to another surface, we might be
+       *    mixing compression formats, Our experiments shows that if after
+       *    blit if we set DepthStencilResource flag to 0, blit passes but
+       *    clear fails.
+       *
+       *    XXX: In second case by destructing the compression, we might lose
+       *    some performance.
+       */
+      if (devinfo->gen >= 12)
+         stc_dst_aux_usage = ISL_AUX_USAGE_NONE;
+
+      iris_resource_prepare_access(ice, batch, src_res, info->src.level, 1,
+                                   info->src.box.z, info->src.box.depth,
+                                   stc_src_aux_usage, false);
+      iris_resource_prepare_access(ice, batch, stc_dst, info->dst.level, 1,
+                                   info->dst.box.z, info->dst.box.depth,
+                                   stc_dst_aux_usage, false);
       iris_blorp_surf_for_resource(&ice->vtbl, &src_surf, &src_res->base,
-                                   ISL_AUX_USAGE_NONE, info->src.level, false);
-      iris_blorp_surf_for_resource(&ice->vtbl, &dst_surf, &dst_res->base,
-                                   ISL_AUX_USAGE_NONE, info->dst.level, true);
+                                   stc_src_aux_usage, info->src.level, false);
+      iris_blorp_surf_for_resource(&ice->vtbl, &dst_surf, &stc_dst->base,
+                                   stc_dst_aux_usage, info->dst.level, true);
 
       for (int slice = 0; slice < info->dst.box.depth; slice++) {
          iris_batch_maybe_flush(batch, 1500);
@@ -483,32 +544,51 @@ iris_blit(struct pipe_context *ctx, const struct pipe_blit_info *info)
 
    blorp_batch_finish(&blorp_batch);
 
-   if (flush_hack)
-      tex_cache_flush_hack(batch);
+   tex_cache_flush_hack(batch, src_fmt.fmt, src_res->surf.format);
 
-   iris_resource_finish_write(ice, dst_res, info->dst.level, info->dst.box.z,
-                              info->dst.box.depth, dst_aux_usage);
+   if (info->mask & main_mask) {
+      iris_resource_finish_write(ice, dst_res, info->dst.level, info->dst.box.z,
+                                 info->dst.box.depth, dst_aux_usage);
+   }
+
+   if (stc_dst) {
+      iris_resource_finish_write(ice, stc_dst, info->dst.level, info->dst.box.z,
+                                 info->dst.box.depth, stc_dst_aux_usage);
+   }
 
    iris_flush_and_dirty_for_history(ice, batch, (struct iris_resource *)
-                                    info->dst.resource);
+                                    info->dst.resource,
+                                    PIPE_CONTROL_RENDER_TARGET_FLUSH,
+                                    "cache history: post-blit");
 }
 
 static void
 get_copy_region_aux_settings(const struct gen_device_info *devinfo,
                              struct iris_resource *res,
                              enum isl_aux_usage *out_aux_usage,
-                             bool *out_clear_supported)
+                             bool *out_clear_supported,
+                             bool is_render_target)
 {
    switch (res->aux.usage) {
    case ISL_AUX_USAGE_MCS:
+   case ISL_AUX_USAGE_MCS_CCS:
    case ISL_AUX_USAGE_CCS_E:
-      *out_aux_usage = res->aux.usage;
-      /* Prior to Gen9, fast-clear only supported 0/1 clear colors.  Since
-       * we're going to re-interpret the format as an integer format possibly
-       * with a different number of components, we can't handle clear colors
-       * until Gen9.
+      /* A stencil resolve operation must be performed prior to doing resource
+       * copies or used by CPU.
+       * (see HSD 1209978162)
        */
-      *out_clear_supported = devinfo->gen >= 9;
+      if (is_render_target && isl_surf_usage_is_stencil(res->surf.usage)) {
+         *out_aux_usage = ISL_AUX_USAGE_NONE;
+         *out_clear_supported = false;
+      } else {
+         *out_aux_usage = res->aux.usage;
+         /* Prior to Gen9, fast-clear only supported 0/1 clear colors.  Since
+          * we're going to re-interpret the format as an integer format possibly
+          * with a different number of components, we can't handle clear colors
+          * until Gen9.
+          */
+         *out_clear_supported = devinfo->gen >= 9;
+      }
       break;
    default:
       *out_aux_usage = ISL_AUX_USAGE_NONE;
@@ -545,16 +625,15 @@ iris_copy_region(struct blorp_context *blorp,
    enum isl_aux_usage src_aux_usage, dst_aux_usage;
    bool src_clear_supported, dst_clear_supported;
    get_copy_region_aux_settings(devinfo, src_res, &src_aux_usage,
-                                &src_clear_supported);
+                                &src_clear_supported, false);
    get_copy_region_aux_settings(devinfo, dst_res, &dst_aux_usage,
-                                &dst_clear_supported);
+                                &dst_clear_supported, true);
 
-   bool flush_hack = iris_batch_references(batch, src_res->bo);
-   if (flush_hack)
-      tex_cache_flush_hack(batch);
+   if (iris_batch_references(batch, src_res->bo))
+      tex_cache_flush_hack(batch, ISL_FORMAT_UNSUPPORTED, src_res->surf.format);
 
    if (dst->target == PIPE_BUFFER)
-      util_range_add(&dst_res->valid_buffer_range, dstx, dstx + src_box->width);
+      util_range_add(&dst_res->base, &dst_res->valid_buffer_range, dstx, dstx + src_box->width);
 
    if (dst->target == PIPE_BUFFER && src->target == PIPE_BUFFER) {
       struct blorp_address src_addr = {
@@ -570,9 +649,6 @@ iris_copy_region(struct blorp_context *blorp,
       blorp_batch_init(&ice->blorp, &blorp_batch, batch, 0);
       blorp_buffer_copy(&blorp_batch, src_addr, dst_addr, src_box->width);
       blorp_batch_finish(&blorp_batch);
-
-      iris_flush_and_dirty_for_history(ice, batch,
-                                       (struct iris_resource *) dst);
    } else {
       // XXX: what about one surface being a buffer and not the other?
 
@@ -605,8 +681,20 @@ iris_copy_region(struct blorp_context *blorp,
                                  src_box->depth, dst_aux_usage);
    }
 
-   if (flush_hack)
-      tex_cache_flush_hack(batch);
+   tex_cache_flush_hack(batch, ISL_FORMAT_UNSUPPORTED, src_res->surf.format);
+}
+
+static struct iris_batch *
+get_preferred_batch(struct iris_context *ice, struct iris_bo *bo)
+{
+   /* If the compute batch is already using this buffer, we'd prefer to
+    * continue queueing in the compute batch.
+    */
+   if (iris_batch_references(&ice->batches[IRIS_BATCH_COMPUTE], bo))
+      return &ice->batches[IRIS_BATCH_COMPUTE];
+
+   /* Otherwise default to the render batch. */
+   return &ice->batches[IRIS_BATCH_RENDER];
 }
 
 
@@ -628,8 +716,36 @@ iris_resource_copy_region(struct pipe_context *ctx,
    struct iris_context *ice = (void *) ctx;
    struct iris_batch *batch = &ice->batches[IRIS_BATCH_RENDER];
 
+   /* Use MI_COPY_MEM_MEM for tiny (<= 16 byte, % 4) buffer copies. */
+   if (src->target == PIPE_BUFFER && dst->target == PIPE_BUFFER &&
+       (src_box->width % 4 == 0) && src_box->width <= 16) {
+      struct iris_bo *dst_bo = iris_resource_bo(dst);
+      batch = get_preferred_batch(ice, dst_bo);
+      iris_batch_maybe_flush(batch, 24 + 5 * (src_box->width / 4));
+      iris_emit_pipe_control_flush(batch,
+                                   "stall for MI_COPY_MEM_MEM copy_region",
+                                   PIPE_CONTROL_CS_STALL);
+      ice->vtbl.copy_mem_mem(batch, dst_bo, dstx, iris_resource_bo(src),
+                             src_box->x, src_box->width);
+      return;
+   }
+
    iris_copy_region(&ice->blorp, batch, dst, dst_level, dstx, dsty, dstz,
                     src, src_level, src_box);
+
+   if (util_format_is_depth_and_stencil(dst->format) &&
+       util_format_has_stencil(util_format_description(src->format))) {
+      struct iris_resource *junk, *s_src_res, *s_dst_res;
+      iris_get_depth_stencil_resources(src, &junk, &s_src_res);
+      iris_get_depth_stencil_resources(dst, &junk, &s_dst_res);
+
+      iris_copy_region(&ice->blorp, batch, &s_dst_res->base, dst_level, dstx,
+                       dsty, dstz, &s_src_res->base, src_level, src_box);
+   }
+
+   iris_flush_and_dirty_for_history(ice, batch, (struct iris_resource *) dst,
+                                    PIPE_CONTROL_RENDER_TARGET_FLUSH,
+                                    "cache history: post copy_region");
 }
 
 void
