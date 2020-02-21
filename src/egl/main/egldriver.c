@@ -56,9 +56,10 @@ _eglGetDriver(void)
 
    if (!_eglDriver) {
       _eglDriver = calloc(1, sizeof(*_eglDriver));
-      if (!_eglDriver)
+      if (!_eglDriver) {
+         mtx_unlock(&_eglModuleMutex);
          return NULL;
-      _eglInitDriverFallbacks(_eglDriver);
+      }
       _eglInitDriver(_eglDriver);
    }
 
@@ -109,7 +110,7 @@ _eglMatchDriver(_EGLDisplay *disp)
 __eglMustCastToProperFunctionPointerType
 _eglGetDriverProc(const char *procname)
 {
-   if (_eglGetDriver())
+   if (_eglGetDriver() && _eglDriver->API.GetProcAddress)
       return _eglDriver->API.GetProcAddress(_eglDriver, procname);
 
    return NULL;

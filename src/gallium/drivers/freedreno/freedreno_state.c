@@ -165,7 +165,7 @@ fd_set_shader_buffers(struct pipe_context *pctx,
 	ctx->dirty_shader[shader] |= FD_DIRTY_SHADER_SSBO;
 }
 
-static void
+void
 fd_set_shader_images(struct pipe_context *pctx,
 		enum pipe_shader_type shader,
 		unsigned start, unsigned count,
@@ -248,14 +248,14 @@ fd_set_framebuffer_state(struct pipe_context *pctx,
 			 * multiple times to the same surface), so we might as
 			 * well go ahead and flush this one:
 			 */
-			fd_batch_flush(old_batch, false, false);
+			fd_batch_flush(old_batch, false);
 		}
 
 		fd_batch_reference(&old_batch, NULL);
 	} else {
 		DBG("%d: cbufs[0]=%p, zsbuf=%p", ctx->batch->needs_flush,
 				framebuffer->cbufs[0], framebuffer->zsbuf);
-		fd_batch_flush(ctx->batch, false, false);
+		fd_batch_flush(ctx->batch, false);
 		util_copy_framebuffer_state(&ctx->batch->framebuffer, cso);
 	}
 
@@ -472,7 +472,7 @@ fd_create_stream_output_target(struct pipe_context *pctx,
 	target->buffer_size = buffer_size;
 
 	assert(rsc->base.target == PIPE_BUFFER);
-	util_range_add(&rsc->valid_buffer_range,
+	util_range_add(&rsc->base, &rsc->valid_buffer_range,
 		buffer_offset, buffer_offset + buffer_size);
 
 	return target;
@@ -499,12 +499,14 @@ fd_set_stream_output_targets(struct pipe_context *pctx,
 
 	for (i = 0; i < num_targets; i++) {
 		boolean changed = targets[i] != so->targets[i];
-		boolean append = (offsets[i] == (unsigned)-1);
+		boolean reset = (offsets[i] != (unsigned)-1);
 
-		if (!changed && append)
+		so->reset |= (reset << i);
+
+		if (!changed && !reset)
 			continue;
 
-		if (!append)
+		if (reset)
 			so->offsets[i] = offsets[i];
 
 		pipe_so_target_reference(&so->targets[i], targets[i]);

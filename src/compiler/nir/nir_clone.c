@@ -265,11 +265,33 @@ __clone_dst(clone_state *state, nir_instr *ninstr,
    }
 }
 
+nir_alu_instr *
+nir_alu_instr_clone(nir_shader *shader, const nir_alu_instr *orig)
+{
+   nir_alu_instr *clone = nir_alu_instr_create(shader, orig->op);
+
+   clone->exact = orig->exact;
+
+   for (unsigned i = 0; i < nir_op_infos[orig->op].num_inputs; i++)
+      nir_alu_src_copy(&clone->src[i], &orig->src[i], clone);
+
+   nir_ssa_dest_init(&clone->instr,
+                     &clone->dest.dest,
+                     orig->dest.dest.ssa.num_components,
+                     orig->dest.dest.ssa.bit_size,
+                     orig->dest.dest.ssa.name);
+   clone->dest.write_mask = orig->dest.write_mask;
+
+   return clone;
+}
+
 static nir_alu_instr *
 clone_alu(clone_state *state, const nir_alu_instr *alu)
 {
    nir_alu_instr *nalu = nir_alu_instr_create(state->ns, alu->op);
    nalu->exact = alu->exact;
+   nalu->no_signed_wrap = alu->no_signed_wrap;
+   nalu->no_unsigned_wrap = alu->no_unsigned_wrap;
 
    __clone_dst(state, &nalu->instr, &nalu->dest.dest, &alu->dest.dest);
    nalu->dest.saturate = alu->dest.saturate;
@@ -399,6 +421,9 @@ clone_tex(clone_state *state, const nir_tex_instr *tex)
    ntex->texture_index = tex->texture_index;
    ntex->texture_array_size = tex->texture_array_size;
    ntex->sampler_index = tex->sampler_index;
+
+   ntex->texture_non_uniform = tex->texture_non_uniform;
+   ntex->sampler_non_uniform = tex->sampler_non_uniform;
 
    return ntex;
 }
@@ -607,7 +632,7 @@ fixup_phi_srcs(clone_state *state)
          list_addtail(&src->src.use_link, &src->src.reg.reg->uses);
       }
    }
-   assert(list_empty(&state->phi_srcs));
+   assert(list_is_empty(&state->phi_srcs));
 }
 
 void
@@ -647,7 +672,7 @@ clone_function_impl(clone_state *state, const nir_function_impl *fi)
    clone_reg_list(state, &nfi->registers, &fi->registers);
    nfi->reg_alloc = fi->reg_alloc;
 
-   assert(list_empty(&state->phi_srcs));
+   assert(list_is_empty(&state->phi_srcs));
 
    clone_cf_list(state, &nfi->body, &fi->body);
 
@@ -748,4 +773,43 @@ nir_shader_clone(void *mem_ctx, const nir_shader *s)
    free_clone_state(&state);
 
    return ns;
+}
+
+/** Overwrites dst and replaces its contents with src
+ *
+ * Everything ralloc parented to dst and src itself (but not its children)
+ * will be freed.
+ *
+ * This should only be used by test code which needs to swap out shaders with
+ * a cloned or deserialized version.
+ */
+void
+nir_shader_replace(nir_shader *dst, nir_shader *src)
+{
+   /* Delete all of dest's ralloc children */
+   void *dead_ctx = ralloc_context(NULL);
+   ralloc_adopt(dead_ctx, dst);
+   ralloc_free(dead_ctx);
+
+   /* Re-parent all of src's ralloc children to dst */
+   ralloc_adopt(dst, src);
+
+   memcpy(dst, src, sizeof(*dst));
+
+   /* We have to move all the linked lists over separately because we need the
+    * pointers in the list elements to point to the lists in dst and not src.
+    */
+   exec_list_move_nodes_to(&src->uniforms,      &dst->uniforms);
+   exec_list_move_nodes_to(&src->inputs,        &dst->inputs);
+   exec_list_move_nodes_to(&src->outputs,       &dst->outputs);
+   exec_list_move_nodes_to(&src->shared,        &dst->shared);
+   exec_list_move_nodes_to(&src->globals,       &dst->globals);
+   exec_list_move_nodes_to(&src->system_values, &dst->system_values);
+
+   /* Now move the functions over.  This takes a tiny bit more work */
+   exec_list_move_nodes_to(&src->functions, &dst->functions);
+   nir_foreach_function(function, dst)
+      function->shader = dst;
+
+   ralloc_free(src);
 }

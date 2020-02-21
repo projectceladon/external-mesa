@@ -116,7 +116,7 @@ static GLboolean
 dri_is_thread_safe(void *loaderPrivate)
 {
    struct dri2_egl_surface *dri2_surf = loaderPrivate;
-   MAYBE_UNUSED _EGLDisplay *display =  dri2_surf->base.Resource.Display;
+   UNUSED _EGLDisplay *display =  dri2_surf->base.Resource.Display;
 
 #ifdef HAVE_X11_PLATFORM
    Display *xdpy = (Display*)display->PlatformDisplay;
@@ -148,6 +148,29 @@ const __DRIbackgroundCallableExtension background_callable_extension = {
 
 const __DRIuseInvalidateExtension use_invalidate = {
    .base = { __DRI_USE_INVALIDATE, 1 }
+};
+
+static void
+dri2_get_pbuffer_drawable_info(__DRIdrawable * draw,
+                               int *x, int *y, int *w, int *h,
+                               void *loaderPrivate)
+{
+   struct dri2_egl_surface *dri2_surf = loaderPrivate;
+
+   *x = *y = 0;
+   *w = dri2_surf->base.Width;
+   *h = dri2_surf->base.Height;
+}
+
+/* HACK: technically we should have swrast_null, instead of these. We
+ * get away since only pbuffers are supported, thus the callbacks are
+ * unused.
+ */
+const __DRIswrastLoaderExtension swrast_pbuffer_loader_extension = {
+   .base            = { __DRI_SWRAST_LOADER, 1 },
+   .getDrawableInfo = dri2_get_pbuffer_drawable_info,
+   .putImage        = NULL,
+   .getImage        = NULL,
 };
 
 static const EGLint dri2_to_egl_attribute_map[__DRI_ATTRIB_MAX] = {
@@ -398,6 +421,22 @@ dri2_add_config(_EGLDisplay *disp, const __DRIconfig *dri_config, int id,
          base.BindToTextureRGBA = bind_to_texture_rgba;
    }
 
+   if (double_buffer) {
+      surface_type &= ~EGL_PIXMAP_BIT;
+   }
+
+   /* No support for pbuffer + MSAA for now.
+    *
+    * XXX TODO: pbuffer + MSAA does not work and causes crashes.
+    * See QT bugreport: https://bugreports.qt.io/browse/QTBUG-47509
+    */
+   if (base.Samples) {
+      surface_type &= ~EGL_PBUFFER_BIT;
+   }
+
+   if (!surface_type)
+      return NULL;
+
    base.RenderableType = disp->ClientAPIs;
    base.Conformant = disp->ClientAPIs;
 
@@ -440,19 +479,6 @@ dri2_add_config(_EGLDisplay *disp, const __DRIconfig *dri_config, int id,
    else {
       unreachable("duplicates should not be possible");
       return NULL;
-   }
-
-   if (double_buffer) {
-      surface_type &= ~EGL_PIXMAP_BIT;
-   }
-
-   /* No support for pbuffer + MSAA for now.
-    *
-    * XXX TODO: pbuffer + MSAA does not work and causes crashes.
-    * See QT bugreport: https://bugreports.qt.io/browse/QTBUG-47509
-    */
-   if (base.Samples) {
-      surface_type &= ~EGL_PBUFFER_BIT;
    }
 
    conf->base.SurfaceType |= surface_type;
@@ -532,6 +558,7 @@ static const struct dri2_extension_match optional_core_extensions[] = {
    { __DRI2_NO_ERROR, 1, offsetof(struct dri2_egl_display, no_error) },
    { __DRI2_CONFIG_QUERY, 1, offsetof(struct dri2_egl_display, config) },
    { __DRI2_FENCE, 1, offsetof(struct dri2_egl_display, fence) },
+   { __DRI2_BUFFER_DAMAGE, 1, offsetof(struct dri2_egl_display, buffer_damage) },
    { __DRI2_RENDERER_QUERY, 1, offsetof(struct dri2_egl_display, rendererQuery) },
    { __DRI2_INTEROP, 1, offsetof(struct dri2_egl_display, interop) },
    { __DRI_IMAGE, 1, offsetof(struct dri2_egl_display, image) },
@@ -606,10 +633,9 @@ dri2_load_driver_common(_EGLDisplay *disp,
    if (!extensions)
       return EGL_FALSE;
 
-   if (!dri2_bind_extensions(dri2_dpy, driver_extensions, extensions, false)) {
-      dlclose(dri2_dpy->driver);
+   if (!dri2_bind_extensions(dri2_dpy, driver_extensions, extensions, false))
       return EGL_FALSE;
-   }
+
    dri2_dpy->driver_extensions = extensions;
 
    dri2_bind_extensions(dri2_dpy, optional_driver_extensions, extensions, true);
@@ -801,6 +827,9 @@ dri2_setup_screen(_EGLDisplay *disp)
 
    if (dri2_dpy->flush_control)
       disp->Extensions.KHR_context_flush_control = EGL_TRUE;
+
+   if (dri2_dpy->buffer_damage && dri2_dpy->buffer_damage->set_damage_region)
+      disp->Extensions.KHR_partial_update = EGL_TRUE;
 }
 
 void
@@ -953,6 +982,9 @@ dri2_initialize(_EGLDriver *drv, _EGLDisplay *disp)
    switch (disp->Platform) {
    case _EGL_PLATFORM_SURFACELESS:
       ret = dri2_initialize_surfaceless(drv, disp);
+      break;
+   case _EGL_PLATFORM_DEVICE:
+      ret = dri2_initialize_device(drv, disp);
       break;
    case _EGL_PLATFORM_X11:
       ret = dri2_initialize_x11(drv, disp);
@@ -1322,6 +1354,9 @@ dri2_create_context(_EGLDriver *drv, _EGLDisplay *disp, _EGLConfig *conf,
                && dri2_ctx->base.ClientMinorVersion >= 2))
           && dri2_ctx->base.Profile == EGL_CONTEXT_OPENGL_CORE_PROFILE_BIT_KHR)
          api = __DRI_API_OPENGL_CORE;
+      else if (dri2_ctx->base.ClientMajorVersion == 3 &&
+               dri2_ctx->base.ClientMinorVersion == 1)
+         api = __DRI_API_OPENGL_CORE;
       else
          api = __DRI_API_OPENGL;
       break;
@@ -1434,7 +1469,8 @@ dri2_destroy_context(_EGLDriver *drv, _EGLDisplay *disp, _EGLContext *ctx)
 
 EGLBoolean
 dri2_init_surface(_EGLSurface *surf, _EGLDisplay *disp, EGLint type,
-        _EGLConfig *conf, const EGLint *attrib_list, EGLBoolean enable_out_fence)
+        _EGLConfig *conf, const EGLint *attrib_list,
+        EGLBoolean enable_out_fence, void *native_surface)
 {
    struct dri2_egl_surface *dri2_surf = dri2_egl_surface(surf);
    struct dri2_egl_display *dri2_dpy = dri2_egl_display(disp);
@@ -1448,7 +1484,7 @@ dri2_init_surface(_EGLSurface *surf, _EGLDisplay *disp, EGLint type,
       dri2_surf->enable_out_fence = enable_out_fence;
    }
 
-   return _eglInitSurface(surf, disp, type, conf, attrib_list);
+   return _eglInitSurface(surf, disp, type, conf, attrib_list, native_surface);
 }
 
 static void
@@ -1507,10 +1543,10 @@ dri2_surf_update_fence_fd(_EGLContext *ctx,
 EGLBoolean
 dri2_create_drawable(struct dri2_egl_display *dri2_dpy,
                      const __DRIconfig *config,
-                     struct dri2_egl_surface *dri2_surf)
+                     struct dri2_egl_surface *dri2_surf,
+                     void *loaderPrivate)
 {
    __DRIcreateNewDrawableFunc createNewDrawable;
-   void *loaderPrivate = dri2_surf;
 
    if (dri2_dpy->image_driver)
       createNewDrawable = dri2_dpy->image_driver->createNewDrawable;
@@ -1521,14 +1557,8 @@ dri2_create_drawable(struct dri2_egl_display *dri2_dpy,
    else
       return _eglError(EGL_BAD_ALLOC, "no createNewDrawable");
 
-   /* As always gbm is a bit special.. */
-#ifdef HAVE_DRM_PLATFORM
-   if (dri2_surf->gbm_surf)
-      loaderPrivate = dri2_surf->gbm_surf;
-#endif
-
-   dri2_surf->dri_drawable = (*createNewDrawable)(dri2_dpy->dri_screen,
-                                                  config, loaderPrivate);
+   dri2_surf->dri_drawable = createNewDrawable(dri2_dpy->dri_screen,
+                                               config, loaderPrivate);
    if (dri2_surf->dri_drawable == NULL)
       return _eglError(EGL_BAD_ALLOC, "createNewDrawable");
 
@@ -1740,11 +1770,22 @@ static EGLBoolean
 dri2_swap_buffers(_EGLDriver *drv, _EGLDisplay *disp, _EGLSurface *surf)
 {
    struct dri2_egl_display *dri2_dpy = dri2_egl_display(disp);
+   __DRIdrawable *dri_drawable = dri2_dpy->vtbl->get_dri_drawable(surf);
    _EGLContext *ctx = _eglGetCurrentContext();
+   EGLBoolean ret;
 
    if (ctx && surf)
       dri2_surf_update_fence_fd(ctx, disp, surf);
-   return dri2_dpy->vtbl->swap_buffers(drv, disp, surf);
+   ret = dri2_dpy->vtbl->swap_buffers(drv, disp, surf);
+
+   /* SwapBuffers marks the end of the frame; reset the damage region for
+    * use again next time.
+    */
+   if (ret && dri2_dpy->buffer_damage &&
+       dri2_dpy->buffer_damage->set_damage_region)
+      dri2_dpy->buffer_damage->set_damage_region(dri_drawable, 0, NULL);
+
+   return ret;
 }
 
 static EGLBoolean
@@ -1753,12 +1794,23 @@ dri2_swap_buffers_with_damage(_EGLDriver *drv, _EGLDisplay *disp,
                               const EGLint *rects, EGLint n_rects)
 {
    struct dri2_egl_display *dri2_dpy = dri2_egl_display(disp);
+   __DRIdrawable *dri_drawable = dri2_dpy->vtbl->get_dri_drawable(surf);
    _EGLContext *ctx = _eglGetCurrentContext();
+   EGLBoolean ret;
 
    if (ctx && surf)
       dri2_surf_update_fence_fd(ctx, disp, surf);
-   return dri2_dpy->vtbl->swap_buffers_with_damage(drv, disp, surf,
-                                                   rects, n_rects);
+   ret = dri2_dpy->vtbl->swap_buffers_with_damage(drv, disp, surf,
+                                                  rects, n_rects);
+
+   /* SwapBuffers marks the end of the frame; reset the damage region for
+    * use again next time.
+    */
+   if (ret && dri2_dpy->buffer_damage &&
+       dri2_dpy->buffer_damage->set_damage_region)
+      dri2_dpy->buffer_damage->set_damage_region(dri_drawable, 0, NULL);
+
+   return ret;
 }
 
 static EGLBoolean
@@ -1766,7 +1818,19 @@ dri2_swap_buffers_region(_EGLDriver *drv, _EGLDisplay *disp, _EGLSurface *surf,
                          EGLint numRects, const EGLint *rects)
 {
    struct dri2_egl_display *dri2_dpy = dri2_egl_display(disp);
-   return dri2_dpy->vtbl->swap_buffers_region(drv, disp, surf, numRects, rects);
+   __DRIdrawable *dri_drawable = dri2_dpy->vtbl->get_dri_drawable(surf);
+   EGLBoolean ret;
+
+   ret = dri2_dpy->vtbl->swap_buffers_region(drv, disp, surf, numRects, rects);
+
+   /* SwapBuffers marks the end of the frame; reset the damage region for
+    * use again next time.
+    */
+   if (ret && dri2_dpy->buffer_damage &&
+       dri2_dpy->buffer_damage->set_damage_region)
+      dri2_dpy->buffer_damage->set_damage_region(dri_drawable, 0, NULL);
+
+   return ret;
 }
 
 static EGLBoolean
@@ -1774,7 +1838,13 @@ dri2_set_damage_region(_EGLDriver *drv, _EGLDisplay *disp, _EGLSurface *surf,
                        EGLint *rects, EGLint n_rects)
 {
    struct dri2_egl_display *dri2_dpy = dri2_egl_display(disp);
-   return dri2_dpy->vtbl->set_damage_region(drv, disp, surf, rects, n_rects);
+   __DRIdrawable *drawable = dri2_dpy->vtbl->get_dri_drawable(surf);
+
+   if (!dri2_dpy->buffer_damage || !dri2_dpy->buffer_damage->set_damage_region)
+      return EGL_FALSE;
+
+   dri2_dpy->buffer_damage->set_damage_region(drawable, n_rects, rects);
+   return EGL_TRUE;
 }
 
 static EGLBoolean

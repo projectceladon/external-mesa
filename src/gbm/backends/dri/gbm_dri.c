@@ -228,10 +228,11 @@ static const __DRIdri2LoaderExtension dri2_loader_extension = {
 };
 
 static const __DRIimageLoaderExtension image_loader_extension = {
-   .base = { __DRI_IMAGE_LOADER, 1 },
+   .base = { __DRI_IMAGE_LOADER, 2 },
 
    .getBuffers          = image_get_buffers,
    .flushFrontBuffer    = dri_flush_front_buffer,
+   .getCapability       = dri_get_capability,
 };
 
 static const __DRIswrastLoaderExtension swrast_loader_extension = {
@@ -256,38 +257,35 @@ struct dri_extension_match {
    const char *name;
    int version;
    int offset;
-   int optional;
+   bool optional;
 };
 
 static struct dri_extension_match dri_core_extensions[] = {
-   { __DRI2_FLUSH, 1, offsetof(struct gbm_dri_device, flush) },
-   { __DRI_IMAGE, 1, offsetof(struct gbm_dri_device, image) },
-   { __DRI2_FENCE, 1, offsetof(struct gbm_dri_device, fence), 1 },
-   { NULL, 0, 0 }
+   { __DRI2_FLUSH, 1, offsetof(struct gbm_dri_device, flush), false },
+   { __DRI_IMAGE, 1, offsetof(struct gbm_dri_device, image), false },
+   { __DRI2_FENCE, 1, offsetof(struct gbm_dri_device, fence), true },
 };
 
 static struct dri_extension_match gbm_dri_device_extensions[] = {
-   { __DRI_CORE, 1, offsetof(struct gbm_dri_device, core) },
-   { __DRI_DRI2, 1, offsetof(struct gbm_dri_device, dri2) },
-   { NULL, 0, 0 }
+   { __DRI_CORE, 1, offsetof(struct gbm_dri_device, core), false },
+   { __DRI_DRI2, 1, offsetof(struct gbm_dri_device, dri2), false },
 };
 
 static struct dri_extension_match gbm_swrast_device_extensions[] = {
-   { __DRI_CORE, 1, offsetof(struct gbm_dri_device, core), },
-   { __DRI_SWRAST, 1, offsetof(struct gbm_dri_device, swrast) },
-   { NULL, 0, 0 }
+   { __DRI_CORE, 1, offsetof(struct gbm_dri_device, core), false },
+   { __DRI_SWRAST, 1, offsetof(struct gbm_dri_device, swrast), false },
 };
 
-static int
+static bool
 dri_bind_extensions(struct gbm_dri_device *dri,
-                    struct dri_extension_match *matches,
+                    struct dri_extension_match *matches, size_t num_matches,
                     const __DRIextension **extensions)
 {
-   int i, j, ret = 0;
+   bool ret = true;
    void *field;
 
-   for (i = 0; extensions[i]; i++) {
-      for (j = 0; matches[j].name; j++) {
+   for (size_t i = 0; extensions[i]; i++) {
+      for (size_t j = 0; j < num_matches; j++) {
          if (strcmp(extensions[i]->name, matches[j].name) == 0 &&
              extensions[i]->version >= matches[j].version) {
             field = ((char *) dri + matches[j].offset);
@@ -296,10 +294,10 @@ dri_bind_extensions(struct gbm_dri_device *dri,
       }
    }
 
-   for (j = 0; matches[j].name; j++) {
+   for (size_t j = 0; j < num_matches; j++) {
       field = ((char *) dri + matches[j].offset);
       if ((*(const __DRIextension **) field == NULL) && !matches[j].optional) {
-         ret = -1;
+         ret = false;
       }
    }
 
@@ -340,7 +338,9 @@ dri_load_driver(struct gbm_dri_device *dri)
    if (!extensions)
       return -1;
 
-   if (dri_bind_extensions(dri, gbm_dri_device_extensions, extensions) < 0) {
+   if (!dri_bind_extensions(dri, gbm_dri_device_extensions,
+                            ARRAY_SIZE(gbm_dri_device_extensions),
+                            extensions)) {
       dlclose(dri->driver);
       fprintf(stderr, "failed to bind extensions\n");
       return -1;
@@ -360,7 +360,9 @@ dri_load_driver_swrast(struct gbm_dri_device *dri)
    if (!extensions)
       return -1;
 
-   if (dri_bind_extensions(dri, gbm_swrast_device_extensions, extensions) < 0) {
+   if (!dri_bind_extensions(dri, gbm_swrast_device_extensions,
+                            ARRAY_SIZE(gbm_swrast_device_extensions),
+                            extensions)) {
       dlclose(dri->driver);
       fprintf(stderr, "failed to bind extensions\n");
       return -1;
@@ -406,7 +408,9 @@ dri_screen_create_dri2(struct gbm_dri_device *dri, char *driver_name)
       return -1;
 
    extensions = dri->core->getExtensions(dri->screen);
-   if (dri_bind_extensions(dri, dri_core_extensions, extensions) < 0) {
+   if (!dri_bind_extensions(dri, dri_core_extensions,
+                            ARRAY_SIZE(dri_core_extensions),
+                            extensions)) {
       ret = -1;
       goto free_screen;
    }
@@ -566,10 +570,8 @@ static const struct gbm_dri_visual gbm_dri_visuals_table[] = {
 static int
 gbm_format_to_dri_format(uint32_t gbm_format)
 {
-   int i;
-
    gbm_format = gbm_format_canonicalize(gbm_format);
-   for (i = 0; i < ARRAY_SIZE(gbm_dri_visuals_table); i++) {
+   for (size_t i = 0; i < ARRAY_SIZE(gbm_dri_visuals_table); i++) {
       if (gbm_dri_visuals_table[i].gbm_format == gbm_format)
          return gbm_dri_visuals_table[i].dri_image_format;
    }
@@ -580,9 +582,7 @@ gbm_format_to_dri_format(uint32_t gbm_format)
 static uint32_t
 gbm_dri_to_gbm_format(int dri_format)
 {
-   int i;
-
-   for (i = 0; i < ARRAY_SIZE(gbm_dri_visuals_table); i++) {
+   for (size_t i = 0; i < ARRAY_SIZE(gbm_dri_visuals_table); i++) {
       if (gbm_dri_visuals_table[i].dri_image_format == dri_format)
          return gbm_dri_visuals_table[i].gbm_format;
    }
@@ -718,6 +718,12 @@ gbm_dri_bo_get_handle_for_plane(struct gbm_bo *_bo, int plane)
    ret.s32 = -1;
 
    if (!dri->image || dri->image->base.version < 13 || !dri->image->fromPlanar) {
+      /* Preserve legacy behavior if plane is 0 */
+      if (plane == 0) {
+         /* NOTE: return _bo->handle, *NOT* bo->handle which is invalid at this point */
+         return _bo->handle;
+      }
+
       errno = ENOSYS;
       return ret;
    }

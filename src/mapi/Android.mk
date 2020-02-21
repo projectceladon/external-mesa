@@ -44,13 +44,14 @@ LOCAL_SRC_FILES := \
 	u_execmem.c
 
 LOCAL_CFLAGS := \
+	-DGLX_USE_TLS \
 	-DMAPI_MODE_GLAPI \
 	-DMAPI_ABI_HEADER=\"$(abi_header)\"
 
 LOCAL_C_INCLUDES := \
 	$(MESA_TOP)/src/mapi
 
-LOCAL_EXPORT_C_INCLUDES := \
+LOCAL_EXPORT_C_INCLUDE_DIRS := \
 	$(MESA_TOP)/src/mapi
 
 LOCAL_MODULE := libglapi

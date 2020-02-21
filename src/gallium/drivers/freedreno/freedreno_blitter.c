@@ -41,10 +41,6 @@ default_dst_texture(struct pipe_surface *dst_templ, struct pipe_resource *dst,
 		unsigned dstlevel, unsigned dstz)
 {
 	memset(dst_templ, 0, sizeof(*dst_templ));
-	if (dst->target == PIPE_BUFFER)
-		dst_templ->format = PIPE_FORMAT_R8_UINT;
-	else
-		dst_templ->format = util_format_linear(dst->format);
 	dst_templ->u.tex.level = dstlevel;
 	dst_templ->u.tex.first_layer = dstz;
 	dst_templ->u.tex.last_layer = dstz;
@@ -67,9 +63,6 @@ default_src_texture(struct pipe_sampler_view *src_templ,
 
 	if (src->target  == PIPE_BUFFER) {
 		src_templ->target = PIPE_TEXTURE_1D;
-		src_templ->format = PIPE_FORMAT_R8_UINT;
-	} else {
-		src_templ->format = util_format_linear(src->format);
 	}
 	src_templ->u.tex.first_level = srclevel;
 	src_templ->u.tex.last_level = srclevel;
@@ -87,19 +80,20 @@ static void
 fd_blitter_pipe_begin(struct fd_context *ctx, bool render_cond, bool discard,
 		enum fd_render_stage stage)
 {
-	fd_fence_ref(ctx->base.screen, &ctx->last_fence, NULL);
+	fd_fence_ref(&ctx->last_fence, NULL);
 
 	util_blitter_save_fragment_constant_buffer_slot(ctx->blitter,
 			ctx->constbuf[PIPE_SHADER_FRAGMENT].cb);
 	util_blitter_save_vertex_buffer_slot(ctx->blitter, ctx->vtx.vertexbuf.vb);
 	util_blitter_save_vertex_elements(ctx->blitter, ctx->vtx.vtx);
-	util_blitter_save_vertex_shader(ctx->blitter, ctx->prog.vp);
+	util_blitter_save_vertex_shader(ctx->blitter, ctx->prog.vs);
+	util_blitter_save_geometry_shader(ctx->blitter, ctx->prog.gs);
 	util_blitter_save_so_targets(ctx->blitter, ctx->streamout.num_targets,
 			ctx->streamout.targets);
 	util_blitter_save_rasterizer(ctx->blitter, ctx->rasterizer);
 	util_blitter_save_viewport(ctx->blitter, &ctx->viewport);
 	util_blitter_save_scissor(ctx->blitter, &ctx->scissor);
-	util_blitter_save_fragment_shader(ctx->blitter, ctx->prog.fp);
+	util_blitter_save_fragment_shader(ctx->blitter, ctx->prog.fs);
 	util_blitter_save_blend(ctx->blitter, ctx->blend);
 	util_blitter_save_depth_stencil_alpha(ctx->blitter, ctx->zsa);
 	util_blitter_save_stencil_ref(ctx->blitter, &ctx->stencil_ref);
@@ -223,8 +217,8 @@ fd_blitter_clear(struct pipe_context *pctx, unsigned buffers,
 	pctx->set_vertex_buffers(pctx, blitter->vb_slot, 1,
 			&ctx->solid_vbuf_state.vertexbuf.vb[0]);
 	pctx->set_stream_output_targets(pctx, 0, NULL, NULL);
-	pctx->bind_vs_state(pctx, ctx->solid_prog.vp);
-	pctx->bind_fs_state(pctx, ctx->solid_prog.fp);
+	pctx->bind_vs_state(pctx, ctx->solid_prog.vs);
+	pctx->bind_fs_state(pctx, ctx->solid_prog.fs);
 
 	struct pipe_draw_info info = {
 		.mode = PIPE_PRIM_MAX,    /* maps to DI_PT_RECTLIST */

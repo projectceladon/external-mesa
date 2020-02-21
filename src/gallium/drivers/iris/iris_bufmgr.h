@@ -33,6 +33,7 @@
 #include "util/list.h"
 #include "pipe/p_defines.h"
 
+struct iris_batch;
 struct gen_device_info;
 struct pipe_debug_callback;
 
@@ -111,6 +112,11 @@ struct iris_bo {
     * same address in all contexts, for simplicity.
     */
    uint64_t gtt_offset;
+
+   /**
+    * If non-zero, then this bo has an aux-map translation to this address.
+    */
+   uint64_t aux_map_address;
 
    /**
     * The validation list index for this buffer, or -1 when not in a batch.
@@ -219,6 +225,7 @@ struct iris_bo *iris_bo_alloc(struct iris_bufmgr *bufmgr,
 struct iris_bo *iris_bo_alloc_tiled(struct iris_bufmgr *bufmgr,
                                     const char *name,
                                     uint64_t size,
+                                    uint32_t alignment,
                                     enum iris_memory_zone memzone,
                                     uint32_t tiling_mode,
                                     uint32_t pitch,
@@ -322,15 +329,18 @@ int iris_bo_busy(struct iris_bo *bo);
 int iris_bo_madvise(struct iris_bo *bo, int madv);
 
 /* drm_bacon_bufmgr_gem.c */
-struct iris_bufmgr *iris_bufmgr_init(struct gen_device_info *devinfo, int fd);
+struct iris_bufmgr *iris_bufmgr_init(struct gen_device_info *devinfo, int fd,
+                                     bool bo_reuse);
 struct iris_bo *iris_bo_gem_create_from_name(struct iris_bufmgr *bufmgr,
                                              const char *name,
                                              unsigned handle);
-void iris_bufmgr_enable_reuse(struct iris_bufmgr *bufmgr);
+
+void* iris_bufmgr_get_aux_map_context(struct iris_bufmgr *bufmgr);
 
 int iris_bo_wait(struct iris_bo *bo, int64_t timeout_ns);
 
 uint32_t iris_create_hw_context(struct iris_bufmgr *bufmgr);
+uint32_t iris_clone_hw_context(struct iris_bufmgr *bufmgr, uint32_t ctx_id);
 
 #define IRIS_CONTEXT_LOW_PRIORITY    ((I915_CONTEXT_MIN_USER_PRIORITY-1)/2)
 #define IRIS_CONTEXT_MEDIUM_PRIORITY (I915_CONTEXT_DEFAULT_PRIORITY)
@@ -342,7 +352,8 @@ int iris_hw_context_set_priority(struct iris_bufmgr *bufmgr,
 void iris_destroy_hw_context(struct iris_bufmgr *bufmgr, uint32_t ctx_id);
 
 int iris_bo_export_dmabuf(struct iris_bo *bo, int *prime_fd);
-struct iris_bo *iris_bo_import_dmabuf(struct iris_bufmgr *bufmgr, int prime_fd);
+struct iris_bo *iris_bo_import_dmabuf(struct iris_bufmgr *bufmgr, int prime_fd,
+                                      uint32_t tiling, uint32_t stride);
 
 uint32_t iris_bo_export_gem_handle(struct iris_bo *bo);
 

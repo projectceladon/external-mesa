@@ -107,14 +107,17 @@ static const struct drm_driver_descriptor driver_descriptors[] = {
     {
         .driver_name = "virtio_gpu",
         .create_screen = pipe_virgl_create_screen,
+        .driconf_xml = &virgl_driconf_xml,
     },
     {
         .driver_name = "v3d",
         .create_screen = pipe_v3d_create_screen,
+        .driconf_xml = &v3d_driconf_xml,
     },
     {
         .driver_name = "vc4",
         .create_screen = pipe_vc4_create_screen,
+        .driconf_xml = &v3d_driconf_xml,
     },
     {
         .driver_name = "panfrost",
@@ -132,11 +135,16 @@ static const struct drm_driver_descriptor driver_descriptors[] = {
         .driver_name = "lima",
         .create_screen = pipe_lima_create_screen,
     },
+    {
+        .driver_name = "zink",
+        .create_screen = pipe_zink_create_screen,
+    },
 };
 
 static const struct drm_driver_descriptor default_driver_descriptor = {
         .driver_name = "kmsro",
         .create_screen = pipe_kmsro_create_screen,
+        .driconf_xml = &v3d_driconf_xml,
 };
 
 #endif
@@ -190,11 +198,25 @@ pipe_loader_drm_probe_fd_nodup(struct pipe_loader_device **dev, int fd)
    if (!ddev->base.driver_name)
       goto fail;
 
+   /* For the closed source AMD OpenGL driver, we want libgbm to load
+    * "amdgpu_dri.so", but we want Gallium multimedia drivers to load
+    * "radeonsi". So change amdgpu to radeonsi for Gallium.
+    */
+   if (strcmp(ddev->base.driver_name, "amdgpu") == 0) {
+      FREE(ddev->base.driver_name);
+      ddev->base.driver_name = strdup("radeonsi");
+   }
+
    struct util_dl_library **plib = NULL;
 #ifndef GALLIUM_STATIC_TARGETS
    plib = &ddev->lib;
 #endif
    ddev->dd = get_driver_descriptor(ddev->base.driver_name, plib);
+
+   /* kmsro supports lots of drivers, try as a fallback */
+   if (!ddev->dd)
+      ddev->dd = get_driver_descriptor("kmsro", plib);
+
    if (!ddev->dd)
       goto fail;
 

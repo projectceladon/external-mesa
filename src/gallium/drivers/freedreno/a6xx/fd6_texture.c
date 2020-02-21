@@ -33,6 +33,7 @@
 #include "util/hash_table.h"
 
 #include "fd6_texture.h"
+#include "fd6_resource.h"
 #include "fd6_format.h"
 #include "fd6_emit.h"
 
@@ -129,15 +130,15 @@ fd6_sampler_state_create(struct pipe_context *pctx,
 		A6XX_TEX_SAMP_0_WRAP_R(tex_clamp(cso->wrap_r, clamp_to_edge, &so->needs_border));
 
 	so->texsamp1 =
+		COND(cso->min_mip_filter == PIPE_TEX_MIPFILTER_NONE,
+				A6XX_TEX_SAMP_1_MIPFILTER_LINEAR_FAR) |
 		COND(!cso->seamless_cube_map, A6XX_TEX_SAMP_1_CUBEMAPSEAMLESSFILTOFF) |
 		COND(!cso->normalized_coords, A6XX_TEX_SAMP_1_UNNORM_COORDS);
 
-	if (cso->min_mip_filter != PIPE_TEX_MIPFILTER_NONE) {
-		so->texsamp0 |= A6XX_TEX_SAMP_0_LOD_BIAS(cso->lod_bias);
-		so->texsamp1 |=
-			A6XX_TEX_SAMP_1_MIN_LOD(cso->min_lod) |
-			A6XX_TEX_SAMP_1_MAX_LOD(cso->max_lod);
-	}
+	so->texsamp0 |= A6XX_TEX_SAMP_0_LOD_BIAS(cso->lod_bias);
+	so->texsamp1 |=
+		A6XX_TEX_SAMP_1_MIN_LOD(cso->min_lod) |
+		A6XX_TEX_SAMP_1_MAX_LOD(cso->max_lod);
 
 	if (cso->compare_mode)
 		so->texsamp1 |= A6XX_TEX_SAMP_1_COMPARE_FUNC(cso->compare_func); /* maps 1:1 */
@@ -220,10 +221,12 @@ fd6_sampler_view_create(struct pipe_context *pctx, struct pipe_resource *prsc,
 	struct fd6_pipe_sampler_view *so = CALLOC_STRUCT(fd6_pipe_sampler_view);
 	struct fd_resource *rsc = fd_resource(prsc);
 	enum pipe_format format = cso->format;
-	unsigned lvl, layers;
+	unsigned lvl, layers = 0;
 
 	if (!so)
 		return NULL;
+
+	fd6_validate_format(fd_context(pctx), rsc, format);
 
 	if (format == PIPE_FORMAT_X32_S8X24_UINT) {
 		rsc = rsc->stencil;
@@ -396,6 +399,7 @@ fd6_texture_state(struct fd_context *ctx, enum pipe_shader_type type,
 		needs_border |= sampler->needs_border;
 	}
 
+	key.type = type;
 	key.bcolor_offset = fd6_border_color_offset(ctx, type, tex);
 
 	uint32_t hash = key_hash(&key);

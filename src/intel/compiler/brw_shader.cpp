@@ -164,7 +164,7 @@ const char *
 brw_instruction_name(const struct gen_device_info *devinfo, enum opcode op)
 {
    switch (op) {
-   case BRW_OPCODE_ILLEGAL ... BRW_OPCODE_NOP:
+   case 0 ... NUM_BRW_OPCODES - 1:
       /* The DO instruction doesn't exist on Gen6+, but we use it to mark the
        * start of a loop in the IR.
        */
@@ -216,6 +216,9 @@ brw_instruction_name(const struct gen_device_info *devinfo, enum opcode op)
 
    case SHADER_OPCODE_SEND:
       return "send";
+
+   case SHADER_OPCODE_UNDEF:
+      return "undef";
 
    case SHADER_OPCODE_TEX:
       return "tex";
@@ -516,6 +519,8 @@ brw_instruction_name(const struct gen_device_info *devinfo, enum opcode op)
 
    case SHADER_OPCODE_RND_MODE:
       return "rnd_mode";
+   case SHADER_OPCODE_FLOAT_CONTROL_MODE:
+      return "float_control_mode";
    }
 
    unreachable("not reached");
@@ -1037,6 +1042,7 @@ backend_instruction::has_side_effects() const
    case SHADER_OPCODE_SEND:
       return send_has_side_effects;
 
+   case BRW_OPCODE_SYNC:
    case VEC4_OPCODE_UNTYPED_ATOMIC:
    case SHADER_OPCODE_UNTYPED_ATOMIC_LOGICAL:
    case SHADER_OPCODE_UNTYPED_ATOMIC_FLOAT_LOGICAL:
@@ -1064,6 +1070,7 @@ backend_instruction::has_side_effects() const
    case TCS_OPCODE_URB_WRITE:
    case TCS_OPCODE_RELEASE_INPUT:
    case SHADER_OPCODE_RND_MODE:
+   case SHADER_OPCODE_FLOAT_CONTROL_MODE:
       return true;
    default:
       return eot;
@@ -1230,8 +1237,8 @@ brw_compile_tes(const struct brw_compiler *compiler,
                 const struct brw_vue_map *input_vue_map,
                 struct brw_tes_prog_data *prog_data,
                 nir_shader *nir,
-                struct gl_program *prog,
                 int shader_time_index,
+                struct brw_compile_stats *stats,
                 char **error_str)
 {
    const struct gen_device_info *devinfo = compiler->devinfo;
@@ -1241,10 +1248,10 @@ brw_compile_tes(const struct brw_compiler *compiler,
    nir->info.inputs_read = key->inputs_read;
    nir->info.patch_inputs_read = key->patch_inputs_read;
 
-   nir = brw_nir_apply_sampler_key(nir, compiler, &key->tex, is_scalar);
+   brw_nir_apply_key(nir, compiler, &key->base, 8, is_scalar);
    brw_nir_lower_tes_inputs(nir, input_vue_map);
    brw_nir_lower_vue_outputs(nir);
-   nir = brw_postprocess_nir(nir, compiler, is_scalar);
+   brw_postprocess_nir(nir, compiler, is_scalar);
 
    brw_compute_vue_map(devinfo, &prog_data->base.vue_map,
                        nir->info.outputs_written,
@@ -1319,8 +1326,8 @@ brw_compile_tes(const struct brw_compiler *compiler,
    }
 
    if (is_scalar) {
-      fs_visitor v(compiler, log_data, mem_ctx, (void *) key,
-                   &prog_data->base.base, NULL, nir, 8,
+      fs_visitor v(compiler, log_data, mem_ctx, &key->base,
+                   &prog_data->base.base, nir, 8,
                    shader_time_index, input_vue_map);
       if (!v.run_tes()) {
          if (error_str)
@@ -1332,7 +1339,7 @@ brw_compile_tes(const struct brw_compiler *compiler,
       prog_data->base.dispatch_mode = DISPATCH_MODE_SIMD8;
 
       fs_generator g(compiler, log_data, mem_ctx,
-                     &prog_data->base.base, v.promoted_constants, false,
+                     &prog_data->base.base, v.shader_stats, false,
                      MESA_SHADER_TESS_EVAL);
       if (unlikely(INTEL_DEBUG & DEBUG_TES)) {
          g.enable_debug(ralloc_asprintf(mem_ctx,
@@ -1342,7 +1349,7 @@ brw_compile_tes(const struct brw_compiler *compiler,
                                         nir->info.name));
       }
 
-      g.generate_code(v.cfg, 8);
+      g.generate_code(v.cfg, 8, stats);
 
       assembly = g.get_assembly();
    } else {
@@ -1358,7 +1365,7 @@ brw_compile_tes(const struct brw_compiler *compiler,
 	 v.dump_instructions();
 
       assembly = brw_vec4_generate_assembly(compiler, log_data, mem_ctx, nir,
-                                            &prog_data->base, v.cfg);
+                                            &prog_data->base, v.cfg, stats);
    }
 
    return assembly;

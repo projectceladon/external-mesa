@@ -96,7 +96,10 @@ private:
    // If the found value has not a constant part, the Value gets returned
    // through the Value parameter.
    uint32_t getIndirect(nir_src *, uint8_t, Value *&);
-   uint32_t getIndirect(nir_intrinsic_instr *, uint8_t s, uint8_t c, Value *&);
+   // isScalar indicates that the addressing is scalar, vec4 addressing is
+   // assumed otherwise
+   uint32_t getIndirect(nir_intrinsic_instr *, uint8_t s, uint8_t c, Value *&,
+                        bool isScalar = false);
 
    uint32_t getSlotAddress(nir_intrinsic_instr *, uint8_t idx, uint8_t slot);
 
@@ -348,7 +351,6 @@ Converter::getOperation(nir_op op)
    case nir_op_fadd:
    case nir_op_iadd:
       return OP_ADD;
-   case nir_op_fand:
    case nir_op_iand:
       return OP_AND;
    case nir_op_ifind_msb:
@@ -417,10 +419,8 @@ Converter::getOperation(nir_op op)
    case nir_op_fneg:
    case nir_op_ineg:
       return OP_NEG;
-   case nir_op_fnot:
    case nir_op_inot:
       return OP_NOT;
-   case nir_op_for:
    case nir_op_ior:
       return OP_OR;
    case nir_op_fpow:
@@ -451,12 +451,8 @@ Converter::getOperation(nir_op op)
       return OP_SIN;
    case nir_op_fsqrt:
       return OP_SQRT;
-   case nir_op_fsub:
-   case nir_op_isub:
-      return OP_SUB;
    case nir_op_ftrunc:
       return OP_TRUNC;
-   case nir_op_fxor:
    case nir_op_ixor:
       return OP_XOR;
    default:
@@ -516,12 +512,18 @@ Converter::getOperation(nir_intrinsic_op op)
    case nir_intrinsic_bindless_image_atomic_exchange:
    case nir_intrinsic_image_atomic_exchange:
    case nir_intrinsic_image_deref_atomic_exchange:
-   case nir_intrinsic_bindless_image_atomic_max:
-   case nir_intrinsic_image_atomic_max:
-   case nir_intrinsic_image_deref_atomic_max:
-   case nir_intrinsic_bindless_image_atomic_min:
-   case nir_intrinsic_image_atomic_min:
-   case nir_intrinsic_image_deref_atomic_min:
+   case nir_intrinsic_bindless_image_atomic_imax:
+   case nir_intrinsic_image_atomic_imax:
+   case nir_intrinsic_image_deref_atomic_imax:
+   case nir_intrinsic_bindless_image_atomic_umax:
+   case nir_intrinsic_image_atomic_umax:
+   case nir_intrinsic_image_deref_atomic_umax:
+   case nir_intrinsic_bindless_image_atomic_imin:
+   case nir_intrinsic_image_atomic_imin:
+   case nir_intrinsic_image_deref_atomic_imin:
+   case nir_intrinsic_bindless_image_atomic_umin:
+   case nir_intrinsic_image_atomic_umin:
+   case nir_intrinsic_image_deref_atomic_umin:
    case nir_intrinsic_bindless_image_atomic_or:
    case nir_intrinsic_image_atomic_or:
    case nir_intrinsic_image_deref_atomic_or:
@@ -609,17 +611,23 @@ Converter::getSubOp(nir_intrinsic_op op)
    case nir_intrinsic_shared_atomic_or:
    case nir_intrinsic_ssbo_atomic_or:
       return  NV50_IR_SUBOP_ATOM_OR;
-   case nir_intrinsic_bindless_image_atomic_max:
-   case nir_intrinsic_image_atomic_max:
-   case nir_intrinsic_image_deref_atomic_max:
+   case nir_intrinsic_bindless_image_atomic_imax:
+   case nir_intrinsic_image_atomic_imax:
+   case nir_intrinsic_image_deref_atomic_imax:
+   case nir_intrinsic_bindless_image_atomic_umax:
+   case nir_intrinsic_image_atomic_umax:
+   case nir_intrinsic_image_deref_atomic_umax:
    case nir_intrinsic_shared_atomic_imax:
    case nir_intrinsic_shared_atomic_umax:
    case nir_intrinsic_ssbo_atomic_imax:
    case nir_intrinsic_ssbo_atomic_umax:
       return  NV50_IR_SUBOP_ATOM_MAX;
-   case nir_intrinsic_bindless_image_atomic_min:
-   case nir_intrinsic_image_atomic_min:
-   case nir_intrinsic_image_deref_atomic_min:
+   case nir_intrinsic_bindless_image_atomic_imin:
+   case nir_intrinsic_image_atomic_imin:
+   case nir_intrinsic_image_deref_atomic_imin:
+   case nir_intrinsic_bindless_image_atomic_umin:
+   case nir_intrinsic_image_atomic_umin:
+   case nir_intrinsic_image_deref_atomic_umin:
    case nir_intrinsic_shared_atomic_imin:
    case nir_intrinsic_shared_atomic_umin:
    case nir_intrinsic_ssbo_atomic_imin:
@@ -789,10 +797,10 @@ Converter::getIndirect(nir_src *src, uint8_t idx, Value *&indirect)
 }
 
 uint32_t
-Converter::getIndirect(nir_intrinsic_instr *insn, uint8_t s, uint8_t c, Value *&indirect)
+Converter::getIndirect(nir_intrinsic_instr *insn, uint8_t s, uint8_t c, Value *&indirect, bool isScalar)
 {
    int32_t idx = nir_intrinsic_base(insn) + getIndirect(&insn->src[s], c, indirect);
-   if (indirect)
+   if (indirect && !isScalar)
       indirect = mkOp2v(OP_SHL, TYPE_U32, getSSA(4, FILE_ADDRESS), indirect, loadImm(NULL, 4));
    return idx;
 }
@@ -1169,6 +1177,7 @@ bool Converter::assignSlots() {
 
    info->io.viewportId = -1;
    info->numInputs = 0;
+   info->numOutputs = 0;
 
    // we have to fixup the uniform locations for arrays
    unsigned numImages = 0;
@@ -1179,6 +1188,37 @@ bool Converter::assignSlots() {
       var->data.driver_location = numImages;
       numImages += type->is_array() ? type->arrays_of_arrays_size() : 1;
    }
+
+   info->numSysVals = 0;
+   for (uint8_t i = 0; i < SYSTEM_VALUE_MAX; ++i) {
+      if (!(nir->info.system_values_read & 1ull << i))
+         continue;
+
+      system_val_to_tgsi_semantic(i, &name, &index);
+      info->sv[info->numSysVals].sn = name;
+      info->sv[info->numSysVals].si = index;
+      info->sv[info->numSysVals].input = 0; // TODO inferSysValDirection(sn);
+
+      switch (i) {
+      case SYSTEM_VALUE_INSTANCE_ID:
+         info->io.instanceId = info->numSysVals;
+         break;
+      case SYSTEM_VALUE_TESS_LEVEL_INNER:
+      case SYSTEM_VALUE_TESS_LEVEL_OUTER:
+         info->sv[info->numSysVals].patch = 1;
+         break;
+      case SYSTEM_VALUE_VERTEX_ID:
+         info->io.vertexId = info->numSysVals;
+         break;
+      default:
+         break;
+      }
+
+      info->numSysVals += 1;
+   }
+
+   if (prog->getType() == Program::TYPE_COMPUTE)
+      return true;
 
    nir_foreach_variable(var, &nir->inputs) {
       const glsl_type *type = var->type;
@@ -1244,7 +1284,6 @@ bool Converter::assignSlots() {
       info->numInputs = std::max<uint8_t>(info->numInputs, vary);
    }
 
-   info->numOutputs = 0;
    nir_foreach_variable(var, &nir->outputs) {
       const glsl_type *type = var->type;
       int slot = var->data.location;
@@ -1330,38 +1369,10 @@ bool Converter::assignSlots() {
          else
             info->out[vary].mask |= ((1 << comp) - 1) << frac;
 
-         if (nir->info.outputs_read & 1ll << slot)
+         if (nir->info.outputs_read & 1ull << slot)
             info->out[vary].oread = 1;
       }
       info->numOutputs = std::max<uint8_t>(info->numOutputs, vary);
-   }
-
-   info->numSysVals = 0;
-   for (uint8_t i = 0; i < 64; ++i) {
-      if (!(nir->info.system_values_read & 1ll << i))
-         continue;
-
-      system_val_to_tgsi_semantic(i, &name, &index);
-      info->sv[info->numSysVals].sn = name;
-      info->sv[info->numSysVals].si = index;
-      info->sv[info->numSysVals].input = 0; // TODO inferSysValDirection(sn);
-
-      switch (i) {
-      case SYSTEM_VALUE_INSTANCE_ID:
-         info->io.instanceId = info->numSysVals;
-         break;
-      case SYSTEM_VALUE_TESS_LEVEL_INNER:
-      case SYSTEM_VALUE_TESS_LEVEL_OUTER:
-         info->sv[info->numSysVals].patch = 1;
-         break;
-      case SYSTEM_VALUE_VERTEX_ID:
-         info->io.vertexId = info->numSysVals;
-         break;
-      default:
-         break;
-      }
-
-      info->numSysVals += 1;
    }
 
    if (info->io.genUserClip > 0) {
@@ -1557,8 +1568,6 @@ Converter::parseNIR()
 bool
 Converter::visit(nir_function *function)
 {
-   // we only support emiting the main function for now
-   assert(!strcmp(function->name, "main"));
    assert(function->impl);
 
    // usually the blocks will set everything up, but main is special
@@ -1945,7 +1954,7 @@ Converter::visit(nir_intrinsic_instr *insn)
          }
          case Program::TYPE_GEOMETRY:
          case Program::TYPE_VERTEX: {
-            if (info->io.genUserClip > 0 && idx == clipVertexOutput) {
+            if (info->io.genUserClip > 0 && idx == (uint32_t)clipVertexOutput) {
                mkMov(clipVtx[i], src);
                src = clipVtx[i];
             }
@@ -2056,6 +2065,18 @@ Converter::visit(nir_intrinsic_instr *insn)
             mkLoad(dType, newDefs[i], sym, indirect)->perPatch = vary.patch;
          }
       }
+      break;
+   }
+   case nir_intrinsic_load_kernel_input: {
+      assert(prog->getType() == Program::TYPE_COMPUTE);
+      assert(insn->num_components == 1);
+
+      LValues &newDefs = convert(&insn->dest);
+      const DataType dType = getDType(insn);
+      Value *indirect;
+      uint32_t idx = getIndirect(insn, 0, 0, indirect, true);
+
+      mkLoad(dType, newDefs[0], mkSymbol(FILE_SHADER_INPUT, 0, dType, idx), indirect);
       break;
    }
    case nir_intrinsic_load_barycentric_at_offset:
@@ -2362,8 +2383,10 @@ Converter::visit(nir_intrinsic_instr *insn)
    case nir_intrinsic_bindless_image_atomic_and:
    case nir_intrinsic_bindless_image_atomic_comp_swap:
    case nir_intrinsic_bindless_image_atomic_exchange:
-   case nir_intrinsic_bindless_image_atomic_max:
-   case nir_intrinsic_bindless_image_atomic_min:
+   case nir_intrinsic_bindless_image_atomic_imax:
+   case nir_intrinsic_bindless_image_atomic_umax:
+   case nir_intrinsic_bindless_image_atomic_imin:
+   case nir_intrinsic_bindless_image_atomic_umin:
    case nir_intrinsic_bindless_image_atomic_or:
    case nir_intrinsic_bindless_image_atomic_xor:
    case nir_intrinsic_bindless_image_load:
@@ -2393,8 +2416,10 @@ Converter::visit(nir_intrinsic_instr *insn)
       case nir_intrinsic_bindless_image_atomic_and:
       case nir_intrinsic_bindless_image_atomic_comp_swap:
       case nir_intrinsic_bindless_image_atomic_exchange:
-      case nir_intrinsic_bindless_image_atomic_max:
-      case nir_intrinsic_bindless_image_atomic_min:
+      case nir_intrinsic_bindless_image_atomic_imax:
+      case nir_intrinsic_bindless_image_atomic_umax:
+      case nir_intrinsic_bindless_image_atomic_imin:
+      case nir_intrinsic_bindless_image_atomic_umin:
       case nir_intrinsic_bindless_image_atomic_or:
       case nir_intrinsic_bindless_image_atomic_xor:
          ty = getDType(insn);
@@ -2460,8 +2485,10 @@ Converter::visit(nir_intrinsic_instr *insn)
    case nir_intrinsic_image_deref_atomic_and:
    case nir_intrinsic_image_deref_atomic_comp_swap:
    case nir_intrinsic_image_deref_atomic_exchange:
-   case nir_intrinsic_image_deref_atomic_max:
-   case nir_intrinsic_image_deref_atomic_min:
+   case nir_intrinsic_image_deref_atomic_imax:
+   case nir_intrinsic_image_deref_atomic_umax:
+   case nir_intrinsic_image_deref_atomic_imin:
+   case nir_intrinsic_image_deref_atomic_umin:
    case nir_intrinsic_image_deref_atomic_or:
    case nir_intrinsic_image_deref_atomic_xor:
    case nir_intrinsic_image_deref_load:
@@ -2495,8 +2522,10 @@ Converter::visit(nir_intrinsic_instr *insn)
       case nir_intrinsic_image_deref_atomic_and:
       case nir_intrinsic_image_deref_atomic_comp_swap:
       case nir_intrinsic_image_deref_atomic_exchange:
-      case nir_intrinsic_image_deref_atomic_max:
-      case nir_intrinsic_image_deref_atomic_min:
+      case nir_intrinsic_image_deref_atomic_imax:
+      case nir_intrinsic_image_deref_atomic_umax:
+      case nir_intrinsic_image_deref_atomic_imin:
+      case nir_intrinsic_image_deref_atomic_umin:
       case nir_intrinsic_image_deref_atomic_or:
       case nir_intrinsic_image_deref_atomic_xor:
          ty = getDType(insn);
@@ -2608,6 +2637,42 @@ Converter::visit(nir_intrinsic_instr *insn)
       mkOp1(OP_RDSV, dType, newDefs[1], mkSysVal(SV_CLOCK, 0))->fixed = 1;
       break;
    }
+   case nir_intrinsic_load_global: {
+      const DataType dType = getDType(insn);
+      LValues &newDefs = convert(&insn->dest);
+      Value *indirectOffset;
+      uint32_t offset = getIndirect(&insn->src[0], 0, indirectOffset);
+
+      for (auto i = 0u; i < insn->num_components; ++i)
+         loadFrom(FILE_MEMORY_GLOBAL, 0, dType, newDefs[i], offset, i, indirectOffset);
+
+      info->io.globalAccess |= 0x1;
+      break;
+   }
+   case nir_intrinsic_store_global: {
+      DataType sType = getSType(insn->src[0], false, false);
+
+      for (auto i = 0u; i < insn->num_components; ++i) {
+         if (!((1u << i) & nir_intrinsic_write_mask(insn)))
+            continue;
+         if (typeSizeof(sType) == 8) {
+            Value *split[2];
+            mkSplit(split, 4, getSrc(&insn->src[0], i));
+
+            Symbol *sym = mkSymbol(FILE_MEMORY_GLOBAL, 0, TYPE_U32, i * typeSizeof(sType));
+            mkStore(OP_STORE, TYPE_U32, sym, getSrc(&insn->src[1], 0), split[0]);
+
+            sym = mkSymbol(FILE_MEMORY_GLOBAL, 0, TYPE_U32, i * typeSizeof(sType) + 4);
+            mkStore(OP_STORE, TYPE_U32, sym, getSrc(&insn->src[1], 0), split[1]);
+         } else {
+            Symbol *sym = mkSymbol(FILE_MEMORY_GLOBAL, 0, sType, i * typeSizeof(sType));
+            mkStore(OP_STORE, sType, sym, getSrc(&insn->src[1], 0), getSrc(&insn->src[0], i));
+         }
+      }
+
+      info->io.globalAccess |= 0x2;
+      break;
+   }
    default:
       ERROR("unknown nir_intrinsic_op %s\n", nir_intrinsic_infos[op].name);
       return false;
@@ -2705,7 +2770,6 @@ Converter::visit(nir_alu_instr *insn)
    case nir_op_iabs:
    case nir_op_fadd:
    case nir_op_iadd:
-   case nir_op_fand:
    case nir_op_iand:
    case nir_op_fceil:
    case nir_op_fcos:
@@ -2737,9 +2801,7 @@ Converter::visit(nir_alu_instr *insn)
    case nir_op_umul_high:
    case nir_op_fneg:
    case nir_op_ineg:
-   case nir_op_fnot:
    case nir_op_inot:
-   case nir_op_for:
    case nir_op_ior:
    case nir_op_pack_64_2x32_split:
    case nir_op_fpow:
@@ -2752,11 +2814,8 @@ Converter::visit(nir_alu_instr *insn)
    case nir_op_ushr:
    case nir_op_fsin:
    case nir_op_fsqrt:
-   case nir_op_fsub:
-   case nir_op_isub:
    case nir_op_ftrunc:
    case nir_op_ishl:
-   case nir_op_fxor:
    case nir_op_ixor: {
       DEFAULT_CHECKS;
       LValues &newDefs = convert(&insn->dest);
@@ -2845,8 +2904,7 @@ Converter::visit(nir_alu_instr *insn)
    // those are weird ALU ops and need special handling, because
    //   1. they are always componend based
    //   2. they basically just merge multiple values into one data type
-   case nir_op_imov:
-   case nir_op_fmov:
+   case nir_op_mov:
       if (!insn->dest.dest.is_ssa && insn->dest.dest.reg.reg->num_array_elems) {
          nir_reg_dest& reg = insn->dest.dest.reg;
          uint32_t goffset = regToLmemOffset[reg.reg->index];
@@ -3437,7 +3495,7 @@ Converter::run()
    NIR_PASS_V(nir, nir_lower_regs_to_ssa);
    NIR_PASS_V(nir, nir_lower_load_const_to_scalar);
    NIR_PASS_V(nir, nir_lower_vars_to_ssa);
-   NIR_PASS_V(nir, nir_lower_alu_to_scalar);
+   NIR_PASS_V(nir, nir_lower_alu_to_scalar, NULL, NULL);
    NIR_PASS_V(nir, nir_lower_phis_to_scalar);
 
    do {

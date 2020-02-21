@@ -46,61 +46,58 @@
  * Functions related to anv_reloc_list
  *-----------------------------------------------------------------------*/
 
+VkResult
+anv_reloc_list_init(struct anv_reloc_list *list,
+                    const VkAllocationCallbacks *alloc)
+{
+   memset(list, 0, sizeof(*list));
+   return VK_SUCCESS;
+}
+
 static VkResult
 anv_reloc_list_init_clone(struct anv_reloc_list *list,
                           const VkAllocationCallbacks *alloc,
                           const struct anv_reloc_list *other_list)
 {
-   if (other_list) {
-      list->num_relocs = other_list->num_relocs;
-      list->array_length = other_list->array_length;
-   } else {
-      list->num_relocs = 0;
-      list->array_length = 256;
-   }
+   list->num_relocs = other_list->num_relocs;
+   list->array_length = other_list->array_length;
 
-   list->relocs =
-      vk_alloc(alloc, list->array_length * sizeof(*list->relocs), 8,
-                VK_SYSTEM_ALLOCATION_SCOPE_OBJECT);
+   if (list->num_relocs > 0) {
+      list->relocs =
+         vk_alloc(alloc, list->array_length * sizeof(*list->relocs), 8,
+                   VK_SYSTEM_ALLOCATION_SCOPE_OBJECT);
+      if (list->relocs == NULL)
+         return vk_error(VK_ERROR_OUT_OF_HOST_MEMORY);
 
-   if (list->relocs == NULL)
-      return vk_error(VK_ERROR_OUT_OF_HOST_MEMORY);
+      list->reloc_bos =
+         vk_alloc(alloc, list->array_length * sizeof(*list->reloc_bos), 8,
+                   VK_SYSTEM_ALLOCATION_SCOPE_OBJECT);
+      if (list->reloc_bos == NULL) {
+         vk_free(alloc, list->relocs);
+         return vk_error(VK_ERROR_OUT_OF_HOST_MEMORY);
+      }
 
-   list->reloc_bos =
-      vk_alloc(alloc, list->array_length * sizeof(*list->reloc_bos), 8,
-                VK_SYSTEM_ALLOCATION_SCOPE_OBJECT);
-
-   if (list->reloc_bos == NULL) {
-      vk_free(alloc, list->relocs);
-      return vk_error(VK_ERROR_OUT_OF_HOST_MEMORY);
-   }
-
-   list->deps = _mesa_pointer_set_create(NULL);
-
-   if (!list->deps) {
-      vk_free(alloc, list->relocs);
-      vk_free(alloc, list->reloc_bos);
-      return vk_error(VK_ERROR_OUT_OF_HOST_MEMORY);
-   }
-
-   if (other_list) {
       memcpy(list->relocs, other_list->relocs,
              list->array_length * sizeof(*list->relocs));
       memcpy(list->reloc_bos, other_list->reloc_bos,
              list->array_length * sizeof(*list->reloc_bos));
-      set_foreach(other_list->deps, entry) {
-         _mesa_set_add_pre_hashed(list->deps, entry->hash, entry->key);
+   } else {
+      list->relocs = NULL;
+      list->reloc_bos = NULL;
+   }
+
+   if (other_list->deps) {
+      list->deps = _mesa_set_clone(other_list->deps, NULL);
+      if (!list->deps) {
+         vk_free(alloc, list->relocs);
+         vk_free(alloc, list->reloc_bos);
+         return vk_error(VK_ERROR_OUT_OF_HOST_MEMORY);
       }
+   } else {
+      list->deps = NULL;
    }
 
    return VK_SUCCESS;
-}
-
-VkResult
-anv_reloc_list_init(struct anv_reloc_list *list,
-                    const VkAllocationCallbacks *alloc)
-{
-   return anv_reloc_list_init_clone(list, alloc, NULL);
 }
 
 void
@@ -109,7 +106,8 @@ anv_reloc_list_finish(struct anv_reloc_list *list,
 {
    vk_free(alloc, list->relocs);
    vk_free(alloc, list->reloc_bos);
-   _mesa_set_destroy(list->deps, NULL);
+   if (list->deps != NULL)
+      _mesa_set_destroy(list->deps, NULL);
 }
 
 static VkResult
@@ -120,34 +118,27 @@ anv_reloc_list_grow(struct anv_reloc_list *list,
    if (list->num_relocs + num_additional_relocs <= list->array_length)
       return VK_SUCCESS;
 
-   size_t new_length = list->array_length * 2;
+   size_t new_length = MAX2(16, list->array_length * 2);
    while (new_length < list->num_relocs + num_additional_relocs)
       new_length *= 2;
 
    struct drm_i915_gem_relocation_entry *new_relocs =
-      vk_alloc(alloc, new_length * sizeof(*list->relocs), 8,
-                VK_SYSTEM_ALLOCATION_SCOPE_OBJECT);
+      vk_realloc(alloc, list->relocs,
+                 new_length * sizeof(*list->relocs), 8,
+                 VK_SYSTEM_ALLOCATION_SCOPE_OBJECT);
    if (new_relocs == NULL)
       return vk_error(VK_ERROR_OUT_OF_HOST_MEMORY);
+   list->relocs = new_relocs;
 
    struct anv_bo **new_reloc_bos =
-      vk_alloc(alloc, new_length * sizeof(*list->reloc_bos), 8,
-                VK_SYSTEM_ALLOCATION_SCOPE_OBJECT);
-   if (new_reloc_bos == NULL) {
-      vk_free(alloc, new_relocs);
+      vk_realloc(alloc, list->reloc_bos,
+                 new_length * sizeof(*list->reloc_bos), 8,
+                 VK_SYSTEM_ALLOCATION_SCOPE_OBJECT);
+   if (new_reloc_bos == NULL)
       return vk_error(VK_ERROR_OUT_OF_HOST_MEMORY);
-   }
-
-   memcpy(new_relocs, list->relocs, list->num_relocs * sizeof(*list->relocs));
-   memcpy(new_reloc_bos, list->reloc_bos,
-          list->num_relocs * sizeof(*list->reloc_bos));
-
-   vk_free(alloc, list->relocs);
-   vk_free(alloc, list->reloc_bos);
+   list->reloc_bos = new_reloc_bos;
 
    list->array_length = new_length;
-   list->relocs = new_relocs;
-   list->reloc_bos = new_reloc_bos;
 
    return VK_SUCCESS;
 }
@@ -161,6 +152,11 @@ anv_reloc_list_add(struct anv_reloc_list *list,
    int index;
 
    if (target_bo->flags & EXEC_OBJECT_PINNED) {
+      if (list->deps == NULL) {
+         list->deps = _mesa_pointer_set_create(NULL);
+         if (unlikely(list->deps == NULL))
+            return vk_error(VK_ERROR_OUT_OF_HOST_MEMORY);
+      }
       _mesa_set_add(list->deps, target_bo);
       return VK_SUCCESS;
    }
@@ -193,18 +189,26 @@ anv_reloc_list_append(struct anv_reloc_list *list,
    if (result != VK_SUCCESS)
       return result;
 
-   memcpy(&list->relocs[list->num_relocs], &other->relocs[0],
-          other->num_relocs * sizeof(other->relocs[0]));
-   memcpy(&list->reloc_bos[list->num_relocs], &other->reloc_bos[0],
-          other->num_relocs * sizeof(other->reloc_bos[0]));
+   if (other->num_relocs > 0) {
+      memcpy(&list->relocs[list->num_relocs], &other->relocs[0],
+             other->num_relocs * sizeof(other->relocs[0]));
+      memcpy(&list->reloc_bos[list->num_relocs], &other->reloc_bos[0],
+             other->num_relocs * sizeof(other->reloc_bos[0]));
 
-   for (uint32_t i = 0; i < other->num_relocs; i++)
-      list->relocs[i + list->num_relocs].offset += offset;
+      for (uint32_t i = 0; i < other->num_relocs; i++)
+         list->relocs[i + list->num_relocs].offset += offset;
 
-   list->num_relocs += other->num_relocs;
+      list->num_relocs += other->num_relocs;
+   }
 
-   set_foreach(other->deps, entry) {
-      _mesa_set_add_pre_hashed(list->deps, entry->hash, entry->key);
+   if (other->deps) {
+      if (list->deps == NULL) {
+         list->deps = _mesa_pointer_set_create(NULL);
+         if (unlikely(list->deps == NULL))
+            return vk_error(VK_ERROR_OUT_OF_HOST_MEMORY);
+      }
+      set_foreach(other->deps, entry)
+         _mesa_set_add_pre_hashed(list->deps, entry->hash, entry->key);
    }
 
    return VK_SUCCESS;
@@ -418,9 +422,9 @@ anv_batch_bo_link(struct anv_cmd_buffer *cmd_buffer,
                   struct anv_batch_bo *next_bbo,
                   uint32_t next_bbo_offset)
 {
-   MAYBE_UNUSED const uint32_t bb_start_offset =
+   const uint32_t bb_start_offset =
       prev_bbo->length - GEN8_MI_BATCH_BUFFER_START_length * 4;
-   MAYBE_UNUSED const uint32_t *bb_start = prev_bbo->bo.map + bb_start_offset;
+   ASSERTED const uint32_t *bb_start = prev_bbo->bo.map + bb_start_offset;
 
    /* Make sure we're looking at a MI_BATCH_BUFFER_START */
    assert(((*bb_start >> 29) & 0x07) == 0);
@@ -478,8 +482,10 @@ anv_batch_bo_list_clone(const struct list_head *list,
    }
 
    if (result != VK_SUCCESS) {
-      list_for_each_entry_safe(struct anv_batch_bo, bbo, new_list, link)
+      list_for_each_entry_safe(struct anv_batch_bo, bbo, new_list, link) {
+         list_del(&bbo->link);
          anv_batch_bo_destroy(bbo, cmd_buffer);
+      }
    }
 
    return result;
@@ -804,6 +810,7 @@ anv_cmd_buffer_fini_batch_bo_chain(struct anv_cmd_buffer *cmd_buffer)
    /* Destroy all of the batch buffers */
    list_for_each_entry_safe(struct anv_batch_bo, bbo,
                             &cmd_buffer->batch_bos, link) {
+      list_del(&bbo->link);
       anv_batch_bo_destroy(bbo, cmd_buffer);
    }
 }
@@ -812,13 +819,13 @@ void
 anv_cmd_buffer_reset_batch_bo_chain(struct anv_cmd_buffer *cmd_buffer)
 {
    /* Delete all but the first batch bo */
-   assert(!list_empty(&cmd_buffer->batch_bos));
+   assert(!list_is_empty(&cmd_buffer->batch_bos));
    while (cmd_buffer->batch_bos.next != cmd_buffer->batch_bos.prev) {
       struct anv_batch_bo *bbo = anv_cmd_buffer_current_batch_bo(cmd_buffer);
       list_del(&bbo->link);
       anv_batch_bo_destroy(bbo, cmd_buffer);
    }
-   assert(!list_empty(&cmd_buffer->batch_bos));
+   assert(!list_is_empty(&cmd_buffer->batch_bos));
 
    anv_batch_bo_start(anv_cmd_buffer_current_batch_bo(cmd_buffer),
                       &cmd_buffer->batch,
@@ -1594,6 +1601,7 @@ anv_cmd_buffer_execbuf(struct anv_device *device,
                        VkFence _fence)
 {
    ANV_FROM_HANDLE(anv_fence, fence, _fence);
+   UNUSED struct anv_physical_device *pdevice = &device->instance->physicalDevice;
 
    struct anv_execbuf execbuf;
    anv_execbuf_init(&execbuf);
@@ -1608,6 +1616,7 @@ anv_cmd_buffer_execbuf(struct anv_device *device,
 
       switch (impl->type) {
       case ANV_SEMAPHORE_TYPE_BO:
+         assert(!pdevice->has_syncobj);
          result = anv_execbuf_add_bo(&execbuf, impl->bo, NULL,
                                      0, &device->alloc);
          if (result != VK_SUCCESS)
@@ -1615,8 +1624,12 @@ anv_cmd_buffer_execbuf(struct anv_device *device,
          break;
 
       case ANV_SEMAPHORE_TYPE_SYNC_FILE:
+         assert(!pdevice->has_syncobj);
          if (in_fence == -1) {
             in_fence = impl->fd;
+            if (in_fence == -1)
+               return vk_error(VK_ERROR_OUT_OF_HOST_MEMORY);
+            impl->fd = -1;
          } else {
             int merge = anv_gem_sync_file_merge(device, in_fence, impl->fd);
             if (merge == -1)
@@ -1624,10 +1637,9 @@ anv_cmd_buffer_execbuf(struct anv_device *device,
 
             close(impl->fd);
             close(in_fence);
+            impl->fd = -1;
             in_fence = merge;
          }
-
-         impl->fd = -1;
          break;
 
       case ANV_SEMAPHORE_TYPE_DRM_SYNCOBJ:
@@ -1664,6 +1676,7 @@ anv_cmd_buffer_execbuf(struct anv_device *device,
 
       switch (impl->type) {
       case ANV_SEMAPHORE_TYPE_BO:
+         assert(!pdevice->has_syncobj);
          result = anv_execbuf_add_bo(&execbuf, impl->bo, NULL,
                                      EXEC_OBJECT_WRITE, &device->alloc);
          if (result != VK_SUCCESS)
@@ -1671,6 +1684,7 @@ anv_cmd_buffer_execbuf(struct anv_device *device,
          break;
 
       case ANV_SEMAPHORE_TYPE_SYNC_FILE:
+         assert(!pdevice->has_syncobj);
          need_out_fence = true;
          break;
 
@@ -1705,6 +1719,7 @@ anv_cmd_buffer_execbuf(struct anv_device *device,
 
       switch (impl->type) {
       case ANV_FENCE_TYPE_BO:
+         assert(!pdevice->has_syncobj_wait);
          result = anv_execbuf_add_bo(&execbuf, &impl->bo.bo, NULL,
                                      EXEC_OBJECT_WRITE, &device->alloc);
          if (result != VK_SUCCESS)
@@ -1726,7 +1741,7 @@ anv_cmd_buffer_execbuf(struct anv_device *device,
 
    if (cmd_buffer) {
       if (unlikely(INTEL_DEBUG & DEBUG_BATCH)) {
-         struct anv_batch_bo **bo = u_vector_head(&cmd_buffer->seen_bbos);
+         struct anv_batch_bo **bo = u_vector_tail(&cmd_buffer->seen_bbos);
 
          device->cmd_buffer_being_decoded = cmd_buffer;
          gen_print_batch(&device->decoder_ctx, (*bo)->bo.map,
@@ -1778,6 +1793,7 @@ anv_cmd_buffer_execbuf(struct anv_device *device,
    }
 
    if (fence && fence->permanent.type == ANV_FENCE_TYPE_BO) {
+      assert(!pdevice->has_syncobj_wait);
       /* BO fences can't be shared, so they can't be temporary. */
       assert(fence->temporary.type == ANV_FENCE_TYPE_NONE);
 
@@ -1795,6 +1811,7 @@ anv_cmd_buffer_execbuf(struct anv_device *device,
    }
 
    if (result == VK_SUCCESS && need_out_fence) {
+      assert(!pdevice->has_syncobj_wait);
       int out_fence = execbuf.execbuf.rsvd2 >> 32;
       for (uint32_t i = 0; i < num_out_semaphores; i++) {
          ANV_FROM_HANDLE(anv_semaphore, semaphore, out_semaphores[i]);

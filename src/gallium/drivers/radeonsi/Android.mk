@@ -36,10 +36,13 @@ LOCAL_MODULE_CLASS := STATIC_LIBRARIES
 
 LOCAL_C_INCLUDES := \
 	$(MESA_TOP)/src/amd/common \
+	$(MESA_TOP)/src/amd/llvm \
 	$(call generated-sources-dir-for,STATIC_LIBRARIES,libmesa_amd_common,,)/common \
 	$(call generated-sources-dir-for,STATIC_LIBRARIES,libmesa_nir,,)/nir
 
-LOCAL_STATIC_LIBRARIES := libmesa_amd_common
+LOCAL_STATIC_LIBRARIES := \
+	libmesa_amd_common \
+	libmesa_galliumvl
 
 LOCAL_SHARED_LIBRARIES := libdrm_radeon
 LOCAL_MODULE := libmesa_pipe_radeonsi
@@ -60,6 +63,22 @@ $(intermediates)/radeonsi/si_driinfo.h: $(MERGE_DRIINFO) $(GEN_DRIINFO_INPUTS)
 	@mkdir -p $(dir $@)
 	@echo "Gen Header: $(PRIVATE_MODULE) <= $(notdir $(@))"
 	$(hide) $(MESA_PYTHON2) $(MERGE_DRIINFO) $(GEN_DRIINFO_INPUTS) > $@ || ($(RM) $@; false)
+
+GEN10_FORMAT_TABLE_INPUTS := \
+	$(MESA_TOP)/src/gallium/auxiliary/util/u_format.csv \
+	$(MESA_TOP)/src/amd/registers/gfx10-rsrc.json
+
+GEN10_FORMAT_TABLE_DEP := \
+	$(MESA_TOP)/src/amd/registers/regdb.py
+
+GEN10_FORMAT_TABLE := $(LOCAL_PATH)/gfx10_format_table.py
+
+$(intermediates)/radeonsi/gfx10_format_table.h: $(GEN10_FORMAT_TABLE) $(GEN10_FORMAT_TABLE_INPUTS) $(GEN10_FORMAT_TABLE_DEP)
+	@mkdir -p $(dir $@)
+	@echo "Gen Header: $(PRIVATE_MODULE) <= $(notdir $(@))"
+	$(hide) $(MESA_PYTHON2) $(GEN10_FORMAT_TABLE) $(GEN10_FORMAT_TABLE_INPUTS) > $@ || ($(RM) $@; false)
+
+LOCAL_C_INCLUDES += $(intermediates)/radeonsi
 
 LOCAL_EXPORT_C_INCLUDE_DIRS := $(intermediates)
 

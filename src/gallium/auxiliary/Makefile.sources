@@ -301,8 +301,6 @@ C_SOURCES := \
 	util/u_rect.h \
 	util/u_resource.c \
 	util/u_resource.h \
-	util/u_ringbuffer.c \
-	util/u_ringbuffer.h \
 	util/u_sampler.c \
 	util/u_sampler.h \
 	util/u_screen.c \
@@ -414,6 +412,8 @@ GALLIVM_SOURCES := \
 	gallivm/lp_bld_const.h \
 	gallivm/lp_bld_conv.c \
 	gallivm/lp_bld_conv.h \
+	gallivm/lp_bld_coro.c \
+	gallivm/lp_bld_coro.h \
 	gallivm/lp_bld_debug.cpp \
 	gallivm/lp_bld_debug.h \
 	gallivm/lp_bld_flow.c \

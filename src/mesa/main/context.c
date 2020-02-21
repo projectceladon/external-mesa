@@ -149,6 +149,7 @@
 #endif
 
 #include "compiler/glsl_types.h"
+#include "compiler/glsl/builtin_functions.h"
 #include "compiler/glsl/glsl_parser_extras.h"
 #include <stdbool.h>
 
@@ -204,7 +205,6 @@ _mesa_notifySwapBuffers(struct gl_context *ctx)
  * \param stencilBits requested minimum bits per stencil buffer value
  * \param accumRedBits, accumGreenBits, accumBlueBits, accumAlphaBits number
  * of bits per color component in accum buffer.
- * \param indexBits number of bits per pixel if \p rgbFlag is GL_FALSE
  * \param redBits number of bits per color component in frame buffer for RGB(A)
  * mode.  We always use 8 in core Mesa though.
  * \param greenBits same as above.
@@ -287,7 +287,6 @@ _mesa_initialize_visual( struct gl_config *vis,
    assert(accumBlueBits >= 0);
    assert(accumAlphaBits >= 0);
 
-   vis->rgbMode          = GL_TRUE;
    vis->doubleBufferMode = dbFlag;
    vis->stereoMode       = stereoFlag;
 
@@ -297,7 +296,6 @@ _mesa_initialize_visual( struct gl_config *vis,
    vis->alphaBits        = alphaBits;
    vis->rgbBits          = redBits + greenBits + blueBits;
 
-   vis->indexBits      = 0;
    vis->depthBits      = depthBits;
    vis->stencilBits    = stencilBits;
 
@@ -305,10 +303,6 @@ _mesa_initialize_visual( struct gl_config *vis,
    vis->accumGreenBits = accumGreenBits;
    vis->accumBlueBits  = accumBlueBits;
    vis->accumAlphaBits = accumAlphaBits;
-
-   vis->haveAccumBuffer   = accumRedBits > 0;
-   vis->haveDepthBuffer   = depthBits > 0;
-   vis->haveStencilBuffer = stencilBits > 0;
 
    vis->numAuxBuffers = 0;
    vis->level = 0;
@@ -360,8 +354,7 @@ mtx_t OneTimeLock = _MTX_INITIALIZER_NP;
 static void
 one_time_fini(void)
 {
-   _mesa_destroy_shader_compiler();
-   _mesa_destroy_shader_compiler_types();
+   glsl_type_singleton_decref();
    _mesa_locale_fini();
 }
 
@@ -394,8 +387,6 @@ one_time_init( struct gl_context *ctx )
 
       _mesa_locale_init();
 
-      _mesa_init_shader_compiler_types();
-
       _mesa_one_time_init_extension_overrides(ctx);
 
       _mesa_get_cpu_features();
@@ -411,6 +402,11 @@ one_time_init( struct gl_context *ctx )
          _mesa_debug(ctx, "Mesa " PACKAGE_VERSION " DEBUG build" MESA_GIT_SHA1 "\n");
       }
 #endif
+
+      /* Take a glsl type reference for the duration of libGL's life to avoid
+       * unecessary creation/destruction of glsl types.
+       */
+      glsl_type_singleton_init_or_ref();
    }
 
    /* per-API one-time init */
@@ -558,7 +554,7 @@ _mesa_init_constants(struct gl_constants *consts, gl_api api)
 
    /* Constants, may be overriden (usually only reduced) by device drivers */
    consts->MaxTextureMbytes = MAX_TEXTURE_MBYTES;
-   consts->MaxTextureLevels = MAX_TEXTURE_LEVELS;
+   consts->MaxTextureSize = 1 << (MAX_TEXTURE_LEVELS - 1);
    consts->Max3DTextureLevels = MAX_3D_TEXTURE_LEVELS;
    consts->MaxCubeTextureLevels = MAX_CUBE_TEXTURE_LEVELS;
    consts->MaxTextureRectSize = MAX_TEXTURE_RECT_SIZE;
@@ -629,6 +625,8 @@ _mesa_init_constants(struct gl_constants *consts, gl_api api)
     */
    consts->GLSLVersion = api == API_OPENGL_CORE ? 130 : 120;
    consts->GLSLVersionCompat = consts->GLSLVersion;
+
+   consts->GLSLLowerConstArrays = true;
 
    /* Assume that if GLSL 1.30+ (or GLSL ES 3.00+) is supported that
     * gl_VertexID is implemented using a native hardware register with OpenGL
@@ -796,7 +794,7 @@ check_context_limits(struct gl_context *ctx)
 
 
    /* Texture size checks */
-   assert(ctx->Const.MaxTextureLevels <= MAX_TEXTURE_LEVELS);
+   assert(ctx->Const.MaxTextureSize <= (1 << (MAX_TEXTURE_LEVELS - 1)));
    assert(ctx->Const.Max3DTextureLevels <= MAX_3D_TEXTURE_LEVELS);
    assert(ctx->Const.MaxCubeTextureLevels <= MAX_CUBE_TEXTURE_LEVELS);
    assert(ctx->Const.MaxTextureRectSize <= MAX_TEXTURE_RECT_SIZE);
@@ -806,10 +804,8 @@ check_context_limits(struct gl_context *ctx)
    assert(MAX_TEXTURE_LEVELS >= MAX_CUBE_TEXTURE_LEVELS);
 
    /* Max texture size should be <= max viewport size (render to texture) */
-   assert((1U << (ctx->Const.MaxTextureLevels - 1))
-          <= ctx->Const.MaxViewportWidth);
-   assert((1U << (ctx->Const.MaxTextureLevels - 1))
-          <= ctx->Const.MaxViewportHeight);
+   assert(ctx->Const.MaxTextureSize <= ctx->Const.MaxViewportWidth);
+   assert(ctx->Const.MaxTextureSize <= ctx->Const.MaxViewportHeight);
 
    assert(ctx->Const.MaxDrawBuffers <= MAX_DRAW_BUFFERS);
 
@@ -955,7 +951,7 @@ nop_handler(const char *name)
    if (ctx) {
       _mesa_error(ctx, GL_INVALID_OPERATION, "%s(invalid call)", name);
    }
-#if defined(DEBUG)
+#ifndef NDEBUG
    else if (getenv("MESA_DEBUG") || getenv("LIBGL_DEBUG")) {
       fprintf(stderr,
               "GL User Error: gl%s called without a rendering context\n",
@@ -1210,8 +1206,6 @@ _mesa_initialize_context(struct gl_context *ctx,
    /* misc one-time initializations */
    one_time_init(ctx);
 
-   _mesa_init_shader_compiler_types();
-
    /* Plug in driver functions and context pointer here.
     * This is important because when we call alloc_shared_state() below
     * we'll call ctx->Driver.NewTextureObject() to create the default
@@ -1399,13 +1393,20 @@ _mesa_free_context_data(struct gl_context *ctx, bool destroy_compiler_types)
 
    free(ctx->VersionString);
 
-   if (destroy_compiler_types)
-      _mesa_destroy_shader_compiler_types();
+   ralloc_free(ctx->SoftFP64);
 
    /* unbind the context if it's currently bound */
    if (ctx == _mesa_get_current_context()) {
       _mesa_make_current(NULL, NULL, NULL);
    }
+
+   /* Do this after unbinding context to ensure any thread is finished. */
+   if (ctx->shader_builtin_ref) {
+      _mesa_glsl_builtin_functions_decref();
+      ctx->shader_builtin_ref = false;
+   }
+
+   free(ctx->Const.SpirVExtensions);
 }
 
 

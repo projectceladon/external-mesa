@@ -42,7 +42,8 @@ LOCAL_LDFLAGS := \
 LOCAL_SHARED_LIBRARIES := \
 	libdl \
 	libglapi \
-	libz
+	libz \
+	liblog
 
 # If Android version >=8 MESA should static link libexpat else should dynamic link
 ifeq ($(shell test $(PLATFORM_SDK_VERSION) -ge 27; echo $$?), 0)
@@ -55,7 +56,9 @@ endif
 
 LOCAL_STATIC_LIBRARIES += \
 	libfreedreno_drm \
-	libfreedreno_ir3
+	libfreedreno_ir3 \
+	libmesa_gallium \
+	libpanfrost_shared
 
 ifeq ($(USE_LIBBACKTRACE),true)
 	LOCAL_SHARED_LIBRARIES += libbacktrace
@@ -73,7 +76,6 @@ LOCAL_WHOLE_STATIC_LIBRARIES := \
 	libmesa_nir \
 	libmesa_dri_common \
 	libmesa_megadriver_stub \
-	libmesa_gallium \
 	libmesa_pipe_loader \
 	libmesa_util \
 	libmesa_loader

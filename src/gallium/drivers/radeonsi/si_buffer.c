@@ -155,7 +155,7 @@ void si_init_resource_fields(struct si_screen *sscreen,
 		 * persistent buffers into GTT to prevent VRAM CPU page faults.
 		 */
 		if (!sscreen->info.kernel_flushes_hdp_before_ib ||
-		    sscreen->info.drm_major == 2)
+		    !sscreen->info.is_amdgpu)
 			res->domains = RADEON_DOMAIN_GTT;
 	}
 
@@ -590,7 +590,7 @@ static void si_buffer_do_flush_region(struct pipe_context *ctx,
 			       box->x, src_offset, box->width);
 	}
 
-	util_range_add(&buf->valid_buffer_range, box->x,
+	util_range_add(&buf->b.b, &buf->valid_buffer_range, box->x,
 		       box->x + box->width);
 }
 
@@ -637,12 +637,13 @@ static void si_buffer_subdata(struct pipe_context *ctx,
 	struct pipe_box box;
 	uint8_t *map = NULL;
 
+	usage |= PIPE_TRANSFER_WRITE;
+
+	if (!(usage & PIPE_TRANSFER_MAP_DIRECTLY))
+		usage |= PIPE_TRANSFER_DISCARD_RANGE;
+
 	u_box_1d(offset, size, &box);
-	map = si_buffer_transfer_map(ctx, buffer, 0,
-				       PIPE_TRANSFER_WRITE |
-				       PIPE_TRANSFER_DISCARD_RANGE |
-				       usage,
-				       &box, &transfer);
+	map = si_buffer_transfer_map(ctx, buffer, 0, usage, &box, &transfer);
 	if (!map)
 		return;
 
@@ -743,8 +744,8 @@ si_buffer_from_user_memory(struct pipe_screen *screen,
 	buf->domains = RADEON_DOMAIN_GTT;
 	buf->flags = 0;
 	buf->b.is_user_ptr = true;
-	util_range_add(&buf->valid_buffer_range, 0, templ->width0);
-	util_range_add(&buf->b.valid_buffer_range, 0, templ->width0);
+	util_range_add(&buf->b.b, &buf->valid_buffer_range, 0, templ->width0);
+	util_range_add(&buf->b.b, &buf->b.valid_buffer_range, 0, templ->width0);
 
 	/* Convert a user pointer to a buffer. */
 	buf->buf = ws->buffer_from_ptr(ws, user_memory, templ->width0);
@@ -796,7 +797,8 @@ static bool si_resource_commit(struct pipe_context *pctx,
 		si_flush_dma_cs(ctx, PIPE_FLUSH_ASYNC, NULL);
 	}
 
-	ctx->ws->cs_sync_flush(ctx->dma_cs);
+	if (ctx->dma_cs)
+		ctx->ws->cs_sync_flush(ctx->dma_cs);
 	ctx->ws->cs_sync_flush(ctx->gfx_cs);
 
 	assert(resource->target == PIPE_BUFFER);

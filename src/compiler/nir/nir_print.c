@@ -62,6 +62,8 @@ typedef struct {
 static void
 print_annotation(print_state *state, void *obj)
 {
+   FILE *fp = state->fp;
+
    if (!state->annotations)
       return;
 
@@ -72,7 +74,7 @@ print_annotation(print_state *state, void *obj)
    const char *note = entry->data;
    _mesa_hash_table_remove(state->annotations, entry);
 
-   fprintf(stderr, "%s\n\n", note);
+   fprintf(fp, "%s\n\n", note);
 }
 
 static void
@@ -241,6 +243,10 @@ print_alu_instr(nir_alu_instr *instr, print_state *state)
       fprintf(fp, "!");
    if (instr->dest.saturate)
       fprintf(fp, ".sat");
+   if (instr->no_signed_wrap)
+      fprintf(fp, ".nsw");
+   if (instr->no_unsigned_wrap)
+      fprintf(fp, ".nuw");
    fprintf(fp, " ");
 
    for (unsigned i = 0; i < nir_op_infos[instr->op].num_inputs; i++) {
@@ -291,7 +297,7 @@ print_constant(nir_constant *c, const struct glsl_type *type, print_state *state
    FILE *fp = state->fp;
    const unsigned rows = glsl_get_vector_elements(type);
    const unsigned cols = glsl_get_matrix_columns(type);
-   unsigned i, j;
+   unsigned i;
 
    switch (glsl_get_base_type(type)) {
    case GLSL_TYPE_BOOL:
@@ -300,7 +306,7 @@ print_constant(nir_constant *c, const struct glsl_type *type, print_state *state
 
       for (i = 0; i < rows; i++) {
          if (i > 0) fprintf(fp, ", ");
-         fprintf(fp, "%s", c->values[0][i].b ? "true" : "false");
+         fprintf(fp, "%s", c->values[i].b ? "true" : "false");
       }
       break;
 
@@ -311,7 +317,7 @@ print_constant(nir_constant *c, const struct glsl_type *type, print_state *state
 
       for (i = 0; i < rows; i++) {
          if (i > 0) fprintf(fp, ", ");
-         fprintf(fp, "0x%02x", c->values[0][i].u8);
+         fprintf(fp, "0x%02x", c->values[i].u8);
       }
       break;
 
@@ -322,7 +328,7 @@ print_constant(nir_constant *c, const struct glsl_type *type, print_state *state
 
       for (i = 0; i < rows; i++) {
          if (i > 0) fprintf(fp, ", ");
-         fprintf(fp, "0x%04x", c->values[0][i].u16);
+         fprintf(fp, "0x%04x", c->values[i].u16);
       }
       break;
 
@@ -333,33 +339,43 @@ print_constant(nir_constant *c, const struct glsl_type *type, print_state *state
 
       for (i = 0; i < rows; i++) {
          if (i > 0) fprintf(fp, ", ");
-         fprintf(fp, "0x%08x", c->values[0][i].u32);
+         fprintf(fp, "0x%08x", c->values[i].u32);
       }
       break;
 
    case GLSL_TYPE_FLOAT16:
-      for (i = 0; i < cols; i++) {
-         for (j = 0; j < rows; j++) {
-            if (i + j > 0) fprintf(fp, ", ");
-            fprintf(fp, "%f", _mesa_half_to_float(c->values[i][j].u16));
-         }
-      }
-      break;
-
    case GLSL_TYPE_FLOAT:
-      for (i = 0; i < cols; i++) {
-         for (j = 0; j < rows; j++) {
-            if (i + j > 0) fprintf(fp, ", ");
-            fprintf(fp, "%f", c->values[i][j].f32);
-         }
-      }
-      break;
-
    case GLSL_TYPE_DOUBLE:
-      for (i = 0; i < cols; i++) {
-         for (j = 0; j < rows; j++) {
-            if (i + j > 0) fprintf(fp, ", ");
-            fprintf(fp, "%f", c->values[i][j].f64);
+      if (cols > 1) {
+         for (i = 0; i < cols; i++) {
+            if (i > 0) fprintf(fp, ", ");
+            print_constant(c->elements[i], glsl_get_column_type(type), state);
+         }
+      } else {
+         switch (glsl_get_base_type(type)) {
+         case GLSL_TYPE_FLOAT16:
+            for (i = 0; i < rows; i++) {
+               if (i > 0) fprintf(fp, ", ");
+               fprintf(fp, "%f", _mesa_half_to_float(c->values[i].u16));
+            }
+            break;
+
+         case GLSL_TYPE_FLOAT:
+            for (i = 0; i < rows; i++) {
+               if (i > 0) fprintf(fp, ", ");
+               fprintf(fp, "%f", c->values[i].f32);
+            }
+            break;
+
+         case GLSL_TYPE_DOUBLE:
+            for (i = 0; i < rows; i++) {
+               if (i > 0) fprintf(fp, ", ");
+               fprintf(fp, "%f", c->values[i].f64);
+            }
+            break;
+
+         default:
+            unreachable("Cannot get here from the first level switch");
          }
       }
       break;
@@ -371,7 +387,7 @@ print_constant(nir_constant *c, const struct glsl_type *type, print_state *state
 
       for (i = 0; i < cols; i++) {
          if (i > 0) fprintf(fp, ", ");
-         fprintf(fp, "0x%08" PRIx64, c->values[0][i].u64);
+         fprintf(fp, "0x%08" PRIx64, c->values[i].u64);
       }
       break;
 
@@ -448,9 +464,10 @@ print_var_decl(nir_variable *var, print_state *state)
    const char *const restr = (access & ACCESS_RESTRICT) ? "restrict " : "";
    const char *const ronly = (access & ACCESS_NON_WRITEABLE) ? "readonly " : "";
    const char *const wonly = (access & ACCESS_NON_READABLE) ? "writeonly " : "";
-   fprintf(fp, "%s%s%s%s%s", coher, volat, restr, ronly, wonly);
+   const char *const reorder = (access & ACCESS_CAN_REORDER) ? "reorderable " : "";
+   fprintf(fp, "%s%s%s%s%s%s", coher, volat, restr, ronly, wonly, reorder);
 
-#define FORMAT_CASE(x) case x: fprintf(stderr, #x " "); break
+#define FORMAT_CASE(x) case x: fprintf(fp, #x " "); break
    switch (var->data.image.format) {
    FORMAT_CASE(GL_RGBA32F);
    FORMAT_CASE(GL_RGBA32UI);
@@ -638,7 +655,7 @@ print_deref_link(const nir_deref_instr *instr, bool whole_chain, print_state *st
    case nir_deref_type_array:
    case nir_deref_type_ptr_as_array: {
       if (nir_src_is_const(instr->arr.index)) {
-         fprintf(fp, "[%"PRIx64"]", nir_src_as_int(instr->arr.index));
+         fprintf(fp, "[%"PRId64"]", nir_src_as_int(instr->arr.index));
       } else {
          fprintf(fp, "[");
          print_src(&instr->arr.index, state);
@@ -700,6 +717,10 @@ print_deref_instr(nir_deref_instr *instr, print_state *state)
       fprintf(fp, "/* &");
       print_deref_link(instr, true, state);
       fprintf(fp, " */");
+   }
+
+   if (instr->deref_type == nir_deref_type_cast) {
+      fprintf(fp, " /* ptr_stride=%u */", instr->cast.ptr_stride);
    }
 }
 
@@ -777,22 +798,35 @@ print_intrinsic_instr(nir_intrinsic_instr *instr, print_state *state)
       [NIR_INTRINSIC_ALIGN_MUL] = "align_mul",
       [NIR_INTRINSIC_ALIGN_OFFSET] = "align_offset",
       [NIR_INTRINSIC_DESC_TYPE] = "desc_type",
+      [NIR_INTRINSIC_TYPE] = "type",
+      [NIR_INTRINSIC_SWIZZLE_MASK] = "swizzle_mask",
+      [NIR_INTRINSIC_DRIVER_LOCATION] = "driver_location",
+      [NIR_INTRINSIC_MEMORY_SEMANTICS] = "mem_semantics",
+      [NIR_INTRINSIC_MEMORY_MODES] = "mem_modes",
+      [NIR_INTRINSIC_MEMORY_SCOPE] = "mem_scope",
    };
    for (unsigned idx = 1; idx < NIR_INTRINSIC_NUM_INDEX_FLAGS; idx++) {
       if (!info->index_map[idx])
          continue;
       fprintf(fp, " /*");
-      if (idx == NIR_INTRINSIC_WRMASK) {
+      switch (idx) {
+      case NIR_INTRINSIC_WRMASK: {
          /* special case wrmask to show it as a writemask.. */
          unsigned wrmask = nir_intrinsic_write_mask(instr);
          fprintf(fp, " wrmask=");
          for (unsigned i = 0; i < 4; i++)
             if ((wrmask >> i) & 1)
                fprintf(fp, "%c", "xyzw"[i]);
-      } else if (idx == NIR_INTRINSIC_REDUCTION_OP) {
+         break;
+      }
+
+      case NIR_INTRINSIC_REDUCTION_OP: {
          nir_op reduction_op = nir_intrinsic_reduction_op(instr);
          fprintf(fp, " reduction_op=%s", nir_op_infos[reduction_op].name);
-      } else if (idx == NIR_INTRINSIC_IMAGE_DIM) {
+         break;
+      }
+
+      case NIR_INTRINSIC_IMAGE_DIM: {
          static const char *dim_name[] = {
             [GLSL_SAMPLER_DIM_1D] = "1D",
             [GLSL_SAMPLER_DIM_2D] = "2D",
@@ -807,16 +841,97 @@ print_intrinsic_instr(nir_intrinsic_instr *instr, print_state *state)
          enum glsl_sampler_dim dim = nir_intrinsic_image_dim(instr);
          assert(dim < ARRAY_SIZE(dim_name) && dim_name[dim]);
          fprintf(fp, " image_dim=%s", dim_name[dim]);
-      } else if (idx == NIR_INTRINSIC_IMAGE_ARRAY) {
+         break;
+      }
+
+      case NIR_INTRINSIC_IMAGE_ARRAY: {
          bool array = nir_intrinsic_image_array(instr);
          fprintf(fp, " image_array=%s", array ? "true" : "false");
-      } else if (idx == NIR_INTRINSIC_DESC_TYPE) {
+         break;
+      }
+
+      case NIR_INTRINSIC_DESC_TYPE: {
          VkDescriptorType desc_type = nir_intrinsic_desc_type(instr);
          fprintf(fp, " desc_type=%s", vulkan_descriptor_type_name(desc_type));
-      } else {
+         break;
+      }
+
+      case NIR_INTRINSIC_TYPE: {
+         nir_alu_type type = nir_intrinsic_type(instr);
+         unsigned size = nir_alu_type_get_type_size(type);
+         const char *name;
+         switch (nir_alu_type_get_base_type(type)) {
+         case nir_type_int: name = "int"; break;
+         case nir_type_uint: name = "uint"; break;
+         case nir_type_bool: name = "bool"; break;
+         case nir_type_float: name = "float"; break;
+         default: name = "invalid";
+         }
+         if (size)
+            fprintf(fp, " type=%s%u", name, size);
+         else
+            fprintf(fp, " type=%s", name);
+         break;
+      }
+
+      case NIR_INTRINSIC_SWIZZLE_MASK: {
+         fprintf(fp, " swizzle_mask=");
+         unsigned mask = nir_intrinsic_swizzle_mask(instr);
+         if (instr->intrinsic == nir_intrinsic_quad_swizzle_amd) {
+            for (unsigned i = 0; i < 4; i++)
+               fprintf(fp, "%d", (mask >> (i * 2) & 3));
+         } else if (instr->intrinsic == nir_intrinsic_masked_swizzle_amd) {
+            fprintf(fp, "((id & %d) | %d) ^ %d", mask & 0x1F,
+                                                (mask >> 5) & 0x1F,
+                                                (mask >> 10) & 0x1F);
+         } else {
+            fprintf(fp, "%d", mask);
+         }
+         break;
+      }
+
+      case NIR_INTRINSIC_MEMORY_SEMANTICS: {
+         nir_memory_semantics semantics = nir_intrinsic_memory_semantics(instr);
+         fprintf(fp, " mem_semantics=");
+         switch (semantics & (NIR_MEMORY_ACQUIRE | NIR_MEMORY_RELEASE)) {
+         case 0:                  fprintf(fp, "NONE");    break;
+         case NIR_MEMORY_ACQUIRE: fprintf(fp, "ACQ");     break;
+         case NIR_MEMORY_RELEASE: fprintf(fp, "REL");     break;
+         default:                 fprintf(fp, "ACQ|REL"); break;
+         }
+         if (semantics & (NIR_MEMORY_MAKE_AVAILABLE)) fprintf(fp, "|AVAILABLE");
+         if (semantics & (NIR_MEMORY_MAKE_VISIBLE))   fprintf(fp, "|VISIBLE");
+         break;
+      }
+
+      case NIR_INTRINSIC_MEMORY_MODES: {
+         fprintf(fp, " mem_modes=");
+         unsigned int modes = nir_intrinsic_memory_modes(instr);
+         while (modes) {
+            nir_variable_mode m = u_bit_scan(&modes);
+            fprintf(fp, "%s%s", get_variable_mode_str(1 << m, true), modes ? "|" : "");
+         }
+         break;
+      }
+
+      case NIR_INTRINSIC_MEMORY_SCOPE: {
+         fprintf(fp, " mem_scope=");
+         switch (nir_intrinsic_memory_scope(instr)) {
+         case NIR_SCOPE_DEVICE:       fprintf(fp, "DEVICE");       break;
+         case NIR_SCOPE_QUEUE_FAMILY: fprintf(fp, "QUEUE_FAMILY"); break;
+         case NIR_SCOPE_WORKGROUP:    fprintf(fp, "WORKGROUP");    break;
+         case NIR_SCOPE_SUBGROUP:     fprintf(fp, "SUBGROUP");     break;
+         case NIR_SCOPE_INVOCATION:   fprintf(fp, "INVOCATION");   break;
+         }
+         break;
+      }
+
+      default: {
          unsigned off = info->index_map[idx] - 1;
          assert(index_name[idx]);  /* forgot to update index_name table? */
          fprintf(fp, " %s=%d", index_name[idx], instr->const_index[off]);
+         break;
+      }
       }
       fprintf(fp, " */");
    }
@@ -908,6 +1023,9 @@ print_tex_instr(nir_tex_instr *instr, print_state *state)
       break;
    case nir_texop_samples_identical:
       fprintf(fp, "samples_identical ");
+      break;
+   case nir_texop_tex_prefetch:
+      fprintf(fp, "tex (pre-dispatchable) ");
       break;
    default:
       unreachable("Invalid texture operation");

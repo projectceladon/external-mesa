@@ -293,7 +293,7 @@ driCreateConfigs(mesa_format format,
    green_bits = _mesa_get_format_bits(format, GL_GREEN_BITS);
    blue_bits = _mesa_get_format_bits(format, GL_BLUE_BITS);
    alpha_bits = _mesa_get_format_bits(format, GL_ALPHA_BITS);
-   is_srgb = _mesa_get_format_color_encoding(format) == GL_SRGB;
+   is_srgb = _mesa_is_format_srgb(format);
    is_float = _mesa_get_format_datatype(format) == GL_FLOAT;
 
    num_modes = num_depth_stencil_bits * num_db_modes * num_accum_bits * num_msaa_modes;
@@ -355,7 +355,6 @@ driCreateConfigs(mesa_format format,
 		    modes->transparentBlue = GLX_DONT_CARE;
 		    modes->transparentAlpha = GLX_DONT_CARE;
 		    modes->transparentIndex = GLX_DONT_CARE;
-		    modes->rgbMode = GL_TRUE;
 
 		    if (db_modes[i] == __DRI_ATTRIB_SWAP_NONE) {
 		    	modes->doubleBufferMode = GL_FALSE;
@@ -368,14 +367,6 @@ driCreateConfigs(mesa_format format,
 
 		    modes->samples = msaa_samples[h];
 		    modes->sampleBuffers = modes->samples ? 1 : 0;
-
-
-		    modes->haveAccumBuffer = ((modes->accumRedBits +
-					   modes->accumGreenBits +
-					   modes->accumBlueBits +
-					   modes->accumAlphaBits) > 0);
-		    modes->haveDepthBuffer = (modes->depthBits > 0);
-		    modes->haveStencilBuffer = (modes->stencilBits > 0);
 
 		    modes->bindToTextureRgb = GL_TRUE;
 		    modes->bindToTextureRgba = GL_TRUE;
