@@ -1416,7 +1416,6 @@ brw_bo_gem_create_from_prime_internal(struct brw_bufmgr *bufmgr, int prime_fd,
    bo->name = "prime";
    bo->reusable = false;
    bo->external = true;
-   bo->kflags = bufmgr->initial_kflags;
 
    if (bo->kflags & EXEC_OBJECT_PINNED) {
       assert(bo->size > 0);
@@ -1486,7 +1485,7 @@ brw_bo_gem_export_to_prime(struct brw_bo *bo, int *prime_fd)
    brw_bo_make_external(bo);
 
    if (drmPrimeHandleToFD(bufmgr->fd, bo->gem_handle,
-                          DRM_CLOEXEC, prime_fd) != 0)
+			  DRM_CLOEXEC | DRM_RDWR, prime_fd) != 0)
       return -errno;
 
    bo->reusable = false;

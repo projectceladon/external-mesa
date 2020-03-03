@@ -759,11 +759,18 @@ PhysReg get_reg_create_vector(ra_ctx& ctx,
 
       /* count variables to be moved and check war_hint */
       bool war_hint = false;
-      for (unsigned j = reg_lo; j <= reg_hi; j++) {
-         if (reg_file[j] != 0)
+      bool linear_vgpr = false;
+      for (unsigned j = reg_lo; j <= reg_hi && !linear_vgpr; j++) {
+         if (reg_file[j] != 0) {
             k++;
+            /* we cannot split live ranges of linear vgprs */
+            if (ctx.assignments[reg_file[j]].second & (1 << 6))
+               linear_vgpr = true;
+         }
          war_hint |= ctx.war_hint[j];
       }
+      if (linear_vgpr || (war_hint && !best_war_hint))
+         continue;
 
       /* count operands in wrong positions */
       for (unsigned j = 0, offset = 0; j < instr->operands.size(); offset += instr->operands[j].size(), j++) {
@@ -775,7 +782,7 @@ PhysReg get_reg_create_vector(ra_ctx& ctx,
             k += instr->operands[j].size();
       }
       bool aligned = rc == RegClass::v4 && reg_lo % 4 == 0;
-      if (k > num_moves || (!aligned && k == num_moves) || (war_hint && !best_war_hint))
+      if (k > num_moves || (!aligned && k == num_moves))
          continue;
 
       best_pos = reg_lo;
@@ -881,7 +888,15 @@ void handle_pseudo(ra_ctx& ctx,
          break;
       }
    }
-   if (!writes_sgpr)
+   /* if all operands are constant, no need to care either */
+   bool reads_sgpr = false;
+   for (Operand& op : instr->operands) {
+      if (op.isTemp() && op.getTemp().type() == RegType::sgpr) {
+         reads_sgpr = true;
+         break;
+      }
+   }
+   if (!(writes_sgpr && reads_sgpr))
       return;
 
    Pseudo_instruction *pi = (Pseudo_instruction *)instr;
@@ -953,7 +968,7 @@ void register_allocation(Program *program, std::vector<std::set<Temp>> live_out_
 
    handle_live_in = [&](Temp val, Block *block) -> Temp {
       std::vector<unsigned>& preds = val.is_linear() ? block->linear_preds : block->logical_preds;
-      if (preds.size() == 0 && block->index != 0) {
+      if (preds.size() == 0 || val.regClass() == val.regClass().as_linear()) {
          renames[block->index][val.id()] = val;
          return val;
       }
@@ -1332,7 +1347,7 @@ void register_allocation(Program *program, std::vector<std::set<Temp>> live_out_
       }
 
       /* fill in sgpr_live_in */
-      for (unsigned i = 0; i < ctx.max_used_sgpr; i++)
+      for (unsigned i = 0; i <= ctx.max_used_sgpr; i++)
          sgpr_live_in[block.index][i] = register_file[i];
       sgpr_live_in[block.index][127] = register_file[scc.reg];
 
@@ -1414,7 +1429,7 @@ void register_allocation(Program *program, std::vector<std::set<Temp>> live_out_
                      for (unsigned j = 0; j < i; j++) {
                         Operand& op = instr->operands[j];
                         if (op.isTemp() && op.tempId() == blocking_id) {
-                           op = Operand(pc_def.getTemp());
+                           op.setTemp(pc_def.getTemp());
                            op.setFixed(reg);
                         }
                      }

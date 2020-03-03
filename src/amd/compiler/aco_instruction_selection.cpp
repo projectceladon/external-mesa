@@ -134,10 +134,7 @@ Temp emit_wqm(isel_context *ctx, Temp src, Temp dst=Temp(0, s1), bool program_ne
       if (!dst.id())
          return src;
 
-      if (src.type() == RegType::vgpr || src.size() > 1)
-         bld.copy(Definition(dst), src);
-      else
-         bld.sop1(aco_opcode::s_mov_b32, Definition(dst), src);
+      bld.copy(Definition(dst), src);
       return dst;
    }
 
@@ -148,6 +145,9 @@ Temp emit_wqm(isel_context *ctx, Temp src, Temp dst=Temp(0, s1), bool program_ne
 
 static Temp emit_bpermute(isel_context *ctx, Builder &bld, Temp index, Temp data)
 {
+   if (index.regClass() == s1)
+      return bld.vop3(aco_opcode::v_readlane_b32, bld.def(s1), data, index);
+
    Temp index_x4 = bld.vop2(aco_opcode::v_lshlrev_b32, bld.def(v1), Operand(2u), index);
 
    /* Currently not implemented on GFX6-7 */
@@ -1647,7 +1647,7 @@ void visit_alu_instr(isel_context *ctx, nir_alu_instr *instr)
       } else if (dst.size() == 2) {
          Temp cond = bld.vopc(aco_opcode::v_cmp_nlt_f64, bld.hint_vcc(bld.def(s2)), Operand(0u), src);
          Temp tmp = bld.vop1(aco_opcode::v_mov_b32, bld.def(v1), Operand(0x3FF00000u));
-         Temp upper = bld.vop2_e64(aco_opcode::v_cndmask_b32, bld.def(v1), tmp, src, cond);
+         Temp upper = bld.vop2_e64(aco_opcode::v_cndmask_b32, bld.def(v1), tmp, emit_extract_vector(ctx, src, 1, v1), cond);
 
          cond = bld.vopc(aco_opcode::v_cmp_le_f64, bld.hint_vcc(bld.def(s2)), Operand(0u), src);
          tmp = bld.vop1(aco_opcode::v_mov_b32, bld.def(v1), Operand(0xBFF00000u));
@@ -1976,8 +1976,12 @@ void visit_alu_instr(isel_context *ctx, nir_alu_instr *instr)
    }
    case nir_op_i2i64: {
       Temp src = get_alu_src(ctx, instr->src[0]);
-      if (instr->src[0].src.ssa->bit_size == 32) {
-         bld.pseudo(aco_opcode::p_create_vector, Definition(dst), src, Operand(0u));
+      if (src.regClass() == s1) {
+         Temp high = bld.sop2(aco_opcode::s_ashr_i32, bld.def(s1), bld.def(s1, scc), src, Operand(31u));
+         bld.pseudo(aco_opcode::p_create_vector, Definition(dst), src, high);
+      } else if (src.regClass() == v1) {
+         Temp high = bld.vop2(aco_opcode::v_ashrrev_i32, bld.def(v1), Operand(31u), src);
+         bld.pseudo(aco_opcode::p_create_vector, Definition(dst), src, high);
       } else {
          fprintf(stderr, "Unimplemented NIR instr bit size: ");
          nir_print_instr(&instr->instr, stderr);
@@ -4260,31 +4264,27 @@ void visit_image_atomic(isel_context *ctx, nir_intrinsic_instr *instr)
 void get_buffer_size(isel_context *ctx, Temp desc, Temp dst, bool in_elements)
 {
    if (in_elements && ctx->options->chip_class == GFX8) {
+      /* we only have to divide by 1, 2, 4, 8, 12 or 16 */
       Builder bld(ctx->program, ctx->block);
+
+      Temp size = emit_extract_vector(ctx, desc, 2, s1);
+
+      Temp size_div3 = bld.vop3(aco_opcode::v_mul_hi_u32, bld.def(v1), bld.copy(bld.def(v1), Operand(0xaaaaaaabu)), size);
+      size_div3 = bld.sop2(aco_opcode::s_lshr_b32, bld.def(s1), bld.as_uniform(size_div3), Operand(1u));
 
       Temp stride = emit_extract_vector(ctx, desc, 1, s1);
       stride = bld.sop2(aco_opcode::s_bfe_u32, bld.def(s1), bld.def(s1, scc), stride, Operand((5u << 16) | 16u));
-      stride = bld.vop1(aco_opcode::v_cvt_f32_ubyte0, bld.def(v1), stride);
-      stride = bld.vop1(aco_opcode::v_rcp_iflag_f32, bld.def(v1), stride);
 
-      Temp size = emit_extract_vector(ctx, desc, 2, s1);
-      size = bld.vop1(aco_opcode::v_cvt_f32_u32, bld.def(v1), size);
+      Temp is12 = bld.sopc(aco_opcode::s_cmp_eq_i32, bld.def(s1, scc), stride, Operand(12u));
+      size = bld.sop2(aco_opcode::s_cselect_b32, bld.def(s1), size_div3, size, bld.scc(is12));
 
-      Temp res = bld.vop2(aco_opcode::v_mul_f32, bld.def(v1), size, stride);
-      res = bld.vop1(aco_opcode::v_cvt_u32_f32, bld.def(v1), res);
-      bld.pseudo(aco_opcode::p_as_uniform, Definition(dst), res);
+      Temp shr_dst = dst.type() == RegType::vgpr ? bld.tmp(s1) : dst;
+      bld.sop2(aco_opcode::s_lshr_b32, Definition(shr_dst), bld.def(s1, scc),
+               size, bld.sop1(aco_opcode::s_ff1_i32_b32, bld.def(s1), stride));
+      if (dst.type() == RegType::vgpr)
+         bld.copy(Definition(dst), shr_dst);
 
-      // TODO: we can probably calculate this faster on the scalar unit to do: size / stride{1,2,4,8,12,16}
-      /* idea
-       * for 1,2,4,8,16, the result is just (stride >> S_FF1_I32_B32)
-       * in case 12 (or 3?), we have to divide by 3:
-       * set v_skip in case it's 12 (if we also have to take care of 3, shift first)
-       * use v_mul_hi_u32 with magic number to divide
-       * we need some pseudo merge opcode to overwrite the original SALU result with readfirstlane
-       * disable v_skip
-       * total: 6 SALU + 2 VALU instructions vs 1 SALU + 6 VALU instructions
-       */
-
+      /* TODO: we can probably calculate this faster with v_skip when stride != 12 */
    } else {
       emit_extract_vector(ctx, desc, 2, dst);
    }
@@ -5557,11 +5557,11 @@ void visit_intrinsic(isel_context *ctx, nir_intrinsic_instr *instr)
    }
    case nir_intrinsic_shuffle: {
       Temp src = get_ssa_temp(ctx, instr->src[0].ssa);
-      if (!ctx->divergent_vals[instr->dest.ssa.index]) {
+      if (!ctx->divergent_vals[instr->dest.ssa.index] &&
+          !ctx->divergent_vals[instr->src[0].ssa->index]) {
          emit_uniform_subgroup(ctx, instr, src);
       } else {
          Temp tid = get_ssa_temp(ctx, instr->src[1].ssa);
-         assert(tid.regClass() == v1);
          Temp dst = get_ssa_temp(ctx, &instr->dest.ssa);
          if (src.regClass() == v1) {
             emit_wqm(ctx, emit_bpermute(ctx, bld, tid, src), dst);
@@ -5626,9 +5626,8 @@ void visit_intrinsic(isel_context *ctx, nir_intrinsic_instr *instr)
    }
    case nir_intrinsic_read_invocation: {
       Temp src = get_ssa_temp(ctx, instr->src[0].ssa);
-      Temp lane = get_ssa_temp(ctx, instr->src[1].ssa);
+      Temp lane = bld.as_uniform(get_ssa_temp(ctx, instr->src[1].ssa));
       Temp dst = get_ssa_temp(ctx, &instr->dest.ssa);
-      assert(lane.regClass() == s1);
       if (src.regClass() == v1) {
          emit_wqm(ctx, bld.vop3(aco_opcode::v_readlane_b32, bld.def(s1), src, lane), dst);
       } else if (src.regClass() == v2) {
@@ -5928,7 +5927,10 @@ void visit_intrinsic(isel_context *ctx, nir_intrinsic_instr *instr)
       break;
    }
    case nir_intrinsic_demote:
-      bld.pseudo(aco_opcode::p_demote_to_helper);
+      bld.pseudo(aco_opcode::p_demote_to_helper, Operand(-1u));
+
+      if (ctx->cf_info.loop_nest_depth || ctx->cf_info.parent_if.is_divergent)
+         ctx->cf_info.exec_potentially_empty = true;
       ctx->block->kind |= block_kind_uses_demote;
       ctx->program->needs_exact = true;
       break;
@@ -5937,6 +5939,9 @@ void visit_intrinsic(isel_context *ctx, nir_intrinsic_instr *instr)
                            as_divergent_bool(ctx, get_ssa_temp(ctx, instr->src[0].ssa), false),
                            Operand(exec, s2));
       bld.pseudo(aco_opcode::p_demote_to_helper, cond);
+
+      if (ctx->cf_info.loop_nest_depth || ctx->cf_info.parent_if.is_divergent)
+         ctx->cf_info.exec_potentially_empty = true;
       ctx->block->kind |= block_kind_uses_demote;
       ctx->program->needs_exact = true;
       break;
@@ -6573,11 +6578,6 @@ void visit_tex(isel_context *ctx, nir_tex_instr *instr)
       }
    }
 
-   if (!(has_ddx && has_ddy) && !has_lod && !level_zero &&
-       instr->sampler_dim != GLSL_SAMPLER_DIM_MS &&
-       instr->sampler_dim != GLSL_SAMPLER_DIM_SUBPASS_MS)
-      coords = emit_wqm(ctx, coords, bld.tmp(coords.regClass()), true);
-
    std::vector<Operand> args;
    if (has_offset)
       args.emplace_back(Operand(offset));
@@ -6593,7 +6593,7 @@ void visit_tex(isel_context *ctx, nir_tex_instr *instr)
    if (has_lod)
       args.emplace_back(lod);
 
-   Operand arg;
+   Temp arg;
    if (args.size() > 1) {
       aco_ptr<Pseudo_instruction> vec{create_instruction<Pseudo_instruction>(aco_opcode::p_create_vector, Format::PSEUDO, args.size(), 1)};
       unsigned size = 0;
@@ -6605,11 +6605,19 @@ void visit_tex(isel_context *ctx, nir_tex_instr *instr)
       Temp tmp = bld.tmp(rc);
       vec->definitions[0] = Definition(tmp);
       ctx->block->instructions.emplace_back(std::move(vec));
-      arg = Operand(tmp);
+      arg = tmp;
    } else {
       assert(args[0].isTemp());
-      arg = Operand(as_vgpr(ctx, args[0].getTemp()));
+      arg = as_vgpr(ctx, args[0].getTemp());
    }
+
+   /* we don't need the bias, sample index, compare value or offset to be
+    * computed in WQM but if the p_create_vector copies the coordinates, then it
+    * needs to be in WQM */
+   if (!(has_ddx && has_ddy) && !has_lod && !level_zero &&
+       instr->sampler_dim != GLSL_SAMPLER_DIM_MS &&
+       instr->sampler_dim != GLSL_SAMPLER_DIM_SUBPASS_MS)
+      arg = emit_wqm(ctx, arg, bld.tmp(arg.regClass()), true);
 
    if (instr->sampler_dim == GLSL_SAMPLER_DIM_BUF) {
       //FIXME: if (ctx->abi->gfx9_stride_size_workaround) return ac_build_buffer_load_format_gfx9_safe()
@@ -6742,7 +6750,7 @@ void visit_tex(isel_context *ctx, nir_tex_instr *instr)
    }
 
    tex.reset(create_instruction<MIMG_instruction>(opcode, Format::MIMG, 3, 1));
-   tex->operands[0] = arg;
+   tex->operands[0] = Operand(arg);
    tex->operands[1] = Operand(resource);
    tex->operands[2] = Operand(sampler);
    tex->dim = dim;
@@ -7427,7 +7435,10 @@ static void export_vs_varying(isel_context *ctx, int slot, bool is_pos, int *nex
       else
          exp->operands[i] = Operand(v1);
    }
-   exp->valid_mask = false;
+   /* Navi10-14 skip POS0 exports if EXEC=0 and DONE=0, causing a hang.
+    * Setting valid_mask=1 prevents it and has no other effect.
+    */
+   exp->valid_mask = ctx->options->chip_class >= GFX10 && is_pos && *next_pos == 0;
    exp->done = false;
    exp->compressed = false;
    if (is_pos)
@@ -7467,7 +7478,7 @@ static void export_vs_psiz_layer_viewport(isel_context *ctx, int *next_pos)
          exp->enabled_mask |= 0x4;
       }
    }
-   exp->valid_mask = false;
+   exp->valid_mask = ctx->options->chip_class >= GFX10 && *next_pos == 0;
    exp->done = false;
    exp->compressed = false;
    exp->dest = V_008DFC_SQ_EXP_POS + (*next_pos)++;

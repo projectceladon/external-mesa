@@ -31,6 +31,7 @@ LOCAL_C_INCLUDES += \
 
 MESA_VERSION := $(shell cat $(MESA_TOP)/VERSION)
 LOCAL_CFLAGS += \
+	-O3 \
 	-Wno-error \
 	-Werror=incompatible-pointer-types \
 	-Wno-unused-parameter \
@@ -68,6 +69,7 @@ LOCAL_CFLAGS += \
 	-DHAVE___BUILTIN_CLZLL \
 	-DHAVE___BUILTIN_UNREACHABLE \
 	-DHAVE_PTHREAD=1 \
+	-DGLX_USE_TLS \
 	-DHAVE_DLADDR \
 	-DHAVE_DL_ITERATE_PHDR \
 	-DHAVE_LINUX_FUTEX_H \
@@ -78,14 +80,24 @@ LOCAL_CFLAGS += \
 	-fvisibility=hidden \
 	-fno-math-errno \
 	-fno-trapping-math \
-	-Wno-sign-compare
+	-Wno-sign-compare \
+	-Wno-self-assign \
+	-Wno-constant-logical-operand \
+	-Wno-format \
+	-Wno-incompatible-pointer-types \
+	-Wno-enum-conversion
 
 LOCAL_CPPFLAGS += \
+	-DGLX_USE_TLS \
 	-D__STDC_CONSTANT_MACROS \
 	-D__STDC_FORMAT_MACROS \
 	-D__STDC_LIMIT_MACROS \
 	-Wno-error=non-virtual-dtor \
-	-Wno-non-virtual-dtor
+	-Wno-non-virtual-dtor	\
+	-Wno-delete-non-virtual-dtor \
+	-Wno-overloaded-virtual \
+	-Wno-missing-braces \
+	-Wno-deprecated-register
 
 # mesa requires at least c99 compiler
 LOCAL_CONLYFLAGS += \

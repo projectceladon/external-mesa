@@ -41,6 +41,7 @@ LOCAL_SRC_FILES := \
 
 LOCAL_CFLAGS := \
 	-D_EGL_NATIVE_PLATFORM=_EGL_PLATFORM_ANDROID \
+	-DGLX_USE_TLS \
 	-DHAVE_ANDROID_PLATFORM
 
 LOCAL_C_INCLUDES := \
@@ -72,6 +73,10 @@ ifeq ($(BOARD_USES_DRM_GRALLOC),true)
 	LOCAL_SHARED_LIBRARIES += libgralloc_drm
 endif
 
+ifeq ($(strip $(BOARD_USES_GRALLOC1)),true)
+	LOCAL_CFLAGS += -DHAVE_GRALLOC1
+endif
+
 ifeq ($(filter $(MESA_ANDROID_MAJOR_VERSION), 4 5 6 7),)
 LOCAL_SHARED_LIBRARIES += libnativewindow
 endif
@@ -89,6 +94,6 @@ endif
 
 LOCAL_MODULE := libGLES_mesa
 LOCAL_MODULE_RELATIVE_PATH := egl
-
+LOCAL_CFLAGS += -Wno-error
 include $(MESA_COMMON_MK)
 include $(BUILD_SHARED_LIBRARY)

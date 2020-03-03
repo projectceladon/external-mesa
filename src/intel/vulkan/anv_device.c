@@ -1095,26 +1095,28 @@ void anv_GetPhysicalDeviceFeatures2(
       case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DESCRIPTOR_INDEXING_FEATURES_EXT: {
          VkPhysicalDeviceDescriptorIndexingFeaturesEXT *features =
             (VkPhysicalDeviceDescriptorIndexingFeaturesEXT *)ext;
+         bool descIndexing = pdevice->has_a64_buffer_access &&
+                             pdevice->has_bindless_images;
          features->shaderInputAttachmentArrayDynamicIndexing = false;
-         features->shaderUniformTexelBufferArrayDynamicIndexing = true;
-         features->shaderStorageTexelBufferArrayDynamicIndexing = true;
+         features->shaderUniformTexelBufferArrayDynamicIndexing = descIndexing;
+         features->shaderStorageTexelBufferArrayDynamicIndexing = descIndexing;
          features->shaderUniformBufferArrayNonUniformIndexing = false;
-         features->shaderSampledImageArrayNonUniformIndexing = true;
-         features->shaderStorageBufferArrayNonUniformIndexing = true;
-         features->shaderStorageImageArrayNonUniformIndexing = true;
+         features->shaderSampledImageArrayNonUniformIndexing = descIndexing;
+         features->shaderStorageBufferArrayNonUniformIndexing = descIndexing;
+         features->shaderStorageImageArrayNonUniformIndexing = descIndexing;
          features->shaderInputAttachmentArrayNonUniformIndexing = false;
-         features->shaderUniformTexelBufferArrayNonUniformIndexing = true;
-         features->shaderStorageTexelBufferArrayNonUniformIndexing = true;
+         features->shaderUniformTexelBufferArrayNonUniformIndexing = descIndexing;
+         features->shaderStorageTexelBufferArrayNonUniformIndexing = descIndexing;
          features->descriptorBindingUniformBufferUpdateAfterBind = false;
-         features->descriptorBindingSampledImageUpdateAfterBind = true;
-         features->descriptorBindingStorageImageUpdateAfterBind = true;
-         features->descriptorBindingStorageBufferUpdateAfterBind = true;
-         features->descriptorBindingUniformTexelBufferUpdateAfterBind = true;
-         features->descriptorBindingStorageTexelBufferUpdateAfterBind = true;
-         features->descriptorBindingUpdateUnusedWhilePending = true;
-         features->descriptorBindingPartiallyBound = true;
+         features->descriptorBindingSampledImageUpdateAfterBind = descIndexing;
+         features->descriptorBindingStorageImageUpdateAfterBind = descIndexing;
+         features->descriptorBindingStorageBufferUpdateAfterBind = descIndexing;
+         features->descriptorBindingUniformTexelBufferUpdateAfterBind = descIndexing;
+         features->descriptorBindingStorageTexelBufferUpdateAfterBind = descIndexing;
+         features->descriptorBindingUpdateUnusedWhilePending = descIndexing;
+         features->descriptorBindingPartiallyBound = descIndexing;
          features->descriptorBindingVariableDescriptorCount = false;
-         features->runtimeDescriptorArray = true;
+         features->runtimeDescriptorArray = descIndexing;
          break;
       }
 
@@ -1423,7 +1425,7 @@ void anv_GetPhysicalDeviceProperties(
       .framebufferNoAttachmentsSampleCounts     = sample_counts,
       .maxColorAttachments                      = MAX_RTS,
       .sampledImageColorSampleCounts            = sample_counts,
-      .sampledImageIntegerSampleCounts          = VK_SAMPLE_COUNT_1_BIT,
+      .sampledImageIntegerSampleCounts          = sample_counts,
       .sampledImageDepthSampleCounts            = sample_counts,
       .sampledImageStencilSampleCounts          = sample_counts,
       .storageImageSampleCounts                 = VK_SAMPLE_COUNT_1_BIT,
@@ -1551,9 +1553,13 @@ void anv_GetPhysicalDeviceProperties2(
             (VkPhysicalDeviceDriverPropertiesKHR *) ext;
 
          driver_props->driverID = VK_DRIVER_ID_INTEL_OPEN_SOURCE_MESA_KHR;
+         memset(driver_props->driverName, 0,
+                sizeof(driver_props->driverName));
          snprintf(driver_props->driverName, VK_MAX_DRIVER_NAME_SIZE_KHR,
                   "Intel open-source Mesa driver");
 
+         memset(driver_props->driverInfo, 0,
+                sizeof(driver_props->driverInfo));
          snprintf(driver_props->driverInfo, VK_MAX_DRIVER_INFO_SIZE_KHR,
                   "Mesa " PACKAGE_VERSION MESA_GIT_SHA1);
 
@@ -1580,6 +1586,7 @@ void anv_GetPhysicalDeviceProperties2(
          memcpy(id_props->deviceUUID, pdevice->device_uuid, VK_UUID_SIZE);
          memcpy(id_props->driverUUID, pdevice->driver_uuid, VK_UUID_SIZE);
          /* The LUID is for Windows. */
+         memset(id_props->deviceLUID, 0, VK_UUID_SIZE);
          id_props->deviceLUIDValid = false;
          break;
       }
@@ -1683,7 +1690,7 @@ void anv_GetPhysicalDeviceProperties2(
          VkPhysicalDeviceSamplerFilterMinmaxPropertiesEXT *properties =
             (VkPhysicalDeviceSamplerFilterMinmaxPropertiesEXT *)ext;
          properties->filterMinmaxImageComponentMapping = pdevice->info.gen >= 9;
-         properties->filterMinmaxSingleComponentFormats = true;
+         properties->filterMinmaxSingleComponentFormats = pdevice->info.gen >= 9;
          break;
       }
 
@@ -3000,6 +3007,14 @@ VkResult anv_DeviceWaitIdle(
 bool
 anv_vma_alloc(struct anv_device *device, struct anv_bo *bo)
 {
+   const struct anv_physical_device *pdevice = &device->instance->physicalDevice;
+   const struct gen_device_info *devinfo = &pdevice->info;
+   /* Gen12 CCS surface addresses need to be 64K aligned. We have no way of
+    * telling what this allocation is for so pick the largest alignment.
+    */
+   const uint32_t vma_alignment =
+      devinfo->gen >= 12 ? (64 * 1024) : (4 * 1024);
+
    if (!(bo->flags & EXEC_OBJECT_PINNED))
       return true;
 
@@ -3009,7 +3024,8 @@ anv_vma_alloc(struct anv_device *device, struct anv_bo *bo)
 
    if (bo->flags & EXEC_OBJECT_SUPPORTS_48B_ADDRESS &&
        device->vma_hi_available >= bo->size) {
-      uint64_t addr = util_vma_heap_alloc(&device->vma_hi, bo->size, 4096);
+      uint64_t addr =
+         util_vma_heap_alloc(&device->vma_hi, bo->size, vma_alignment);
       if (addr) {
          bo->offset = gen_canonical_address(addr);
          assert(addr == gen_48b_address(bo->offset));
@@ -3018,7 +3034,8 @@ anv_vma_alloc(struct anv_device *device, struct anv_bo *bo)
    }
 
    if (bo->offset == 0 && device->vma_lo_available >= bo->size) {
-      uint64_t addr = util_vma_heap_alloc(&device->vma_lo, bo->size, 4096);
+      uint64_t addr =
+         util_vma_heap_alloc(&device->vma_lo, bo->size, vma_alignment);
       if (addr) {
          bo->offset = gen_canonical_address(addr);
          assert(addr == gen_48b_address(bo->offset));
@@ -3267,9 +3284,10 @@ VkResult anv_AllocateMemory(
                                       i915_tiling);
          if (ret) {
             anv_bo_cache_release(device, &device->bo_cache, mem->bo);
-            return vk_errorf(device->instance, NULL,
-                             VK_ERROR_OUT_OF_DEVICE_MEMORY,
-                             "failed to set BO tiling: %m");
+            result = vk_errorf(device->instance, NULL,
+                               VK_ERROR_OUT_OF_DEVICE_MEMORY,
+                               "failed to set BO tiling: %m");
+            goto fail;
          }
       }
    }

@@ -131,6 +131,7 @@ enum radv_secure_compile_type {
 	RADV_SC_TYPE_COMPILE_PIPELINE_FINISHED,
 	RADV_SC_TYPE_READ_DISK_CACHE,
 	RADV_SC_TYPE_WRITE_DISK_CACHE,
+	RADV_SC_TYPE_FORK_DEVICE,
 	RADV_SC_TYPE_DESTROY_DEVICE,
 	RADV_SC_TYPE_COUNT
 };
@@ -265,7 +266,7 @@ void radv_logi_v(const char *format, va_list va);
 				fprintf(stderr, "%s:%d ASSERT: %s\n", __FILE__, __LINE__, #x); \
 		})
 #else
-#define radv_assert(x)
+#define radv_assert(x) do {} while(0)
 #endif
 
 #define stub_return(v)					\
@@ -703,8 +704,10 @@ struct radv_queue {
 	int queue_idx;
 	VkDeviceQueueCreateFlags flags;
 
-	uint32_t scratch_size;
-	uint32_t compute_scratch_size;
+	uint32_t scratch_size_per_wave;
+	uint32_t scratch_waves;
+	uint32_t compute_scratch_size_per_wave;
+	uint32_t compute_scratch_waves;
 	uint32_t esgs_ring_size;
 	uint32_t gsvs_ring_size;
 	bool has_tess_rings;
@@ -734,9 +737,18 @@ struct radv_bo_list {
 };
 
 struct radv_secure_compile_process {
-	/* Secure process file descriptors */
+	/* Secure process file descriptors. Used to communicate between the
+	 * user facing device and the idle forked device used to fork a clean
+	 * process for each new pipeline compile.
+	 */
 	int fd_secure_input;
 	int fd_secure_output;
+
+	/* FIFO file descriptors used to communicate between the user facing
+	 * device and the secure process that does the actual secure compile.
+	 */
+	int fd_server;
+	int fd_client;
 
 	/* Secure compile process id */
 	pid_t sc_pid;
@@ -749,6 +761,9 @@ struct radv_secure_compile_state {
 	struct radv_secure_compile_process *secure_compile_processes;
 	uint32_t secure_compile_thread_counter;
 	mtx_t secure_compile_mutex;
+
+	/* Unique process ID used to build name for FIFO file descriptor */
+	char *uid;
 };
 
 struct radv_device {
@@ -1300,8 +1315,10 @@ struct radv_cmd_buffer {
 
 	struct radv_cmd_buffer_upload upload;
 
-	uint32_t scratch_size_needed;
-	uint32_t compute_scratch_size_needed;
+	uint32_t scratch_size_per_wave_needed;
+	uint32_t scratch_waves_wanted;
+	uint32_t compute_scratch_size_per_wave_needed;
+	uint32_t compute_scratch_waves_wanted;
 	uint32_t esgs_ring_size_needed;
 	uint32_t gsvs_ring_size_needed;
 	bool tess_rings_needed;
@@ -1658,6 +1675,15 @@ radv_graphics_pipeline_create(VkDevice device,
 			      const struct radv_graphics_pipeline_create_info *extra,
 			      const VkAllocationCallbacks *alloc,
 			      VkPipeline *pPipeline);
+
+struct radv_binning_settings {
+	unsigned context_states_per_bin; /* allowed range: [1, 6] */
+	unsigned persistent_states_per_bin; /* allowed range: [1, 32] */
+	unsigned fpovs_per_batch; /* allowed range: [0, 255], 0 = unlimited */
+};
+
+struct radv_binning_settings
+radv_get_binning_settings(const struct radv_physical_device *pdev);
 
 struct vk_format_description;
 uint32_t radv_translate_buffer_dataformat(const struct vk_format_description *desc,

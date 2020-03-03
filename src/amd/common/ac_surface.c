@@ -207,6 +207,17 @@ static int gfx6_compute_level(ADDR_HANDLE addrlib,
 		AddrSurfInfoIn->width = align(AddrSurfInfoIn->width, alignment);
 	}
 
+	/* addrlib assumes the bytes/pixel is a divisor of 64, which is not
+	 * true for r32g32b32 formats. */
+	if (AddrSurfInfoIn->bpp == 96) {
+		assert(config->info.levels == 1);
+		assert(AddrSurfInfoIn->tileMode == ADDR_TM_LINEAR_ALIGNED);
+
+		/* The least common multiple of 64 bytes and 12 bytes/pixel is
+		 * 192 bytes, or 16 pixels. */
+		AddrSurfInfoIn->width = align(AddrSurfInfoIn->width, 16);
+	}
+
 	if (config->is_3d)
 		AddrSurfInfoIn->numSlices = u_minify(config->info.depth, level);
 	else if (config->is_cube)
@@ -344,7 +355,7 @@ static int gfx6_compute_level(ADDR_HANDLE addrlib,
 	    surf_level->mode == RADEON_SURF_MODE_2D &&
 	    level == 0 &&
 	    !(surf->flags & RADEON_SURF_NO_HTILE)) {
-		AddrHtileIn->flags.tcCompatible = AddrSurfInfoIn->flags.tcCompatible;
+		AddrHtileIn->flags.tcCompatible = AddrSurfInfoOut->tcCompatible;
 		AddrHtileIn->pitch = AddrSurfInfoOut->pitch;
 		AddrHtileIn->height = AddrSurfInfoOut->height;
 		AddrHtileIn->numSlices = AddrSurfInfoOut->depth;
@@ -779,19 +790,12 @@ static int gfx6_compute_surface(ADDR_HANDLE addrlib,
 			if (level > 0)
 				continue;
 
-			/* Check that we actually got a TC-compatible HTILE if
-			 * we requested it (only for level 0, since we're not
-			 * supporting HTILE on higher mip levels anyway). */
-			assert(AddrSurfInfoOut.tcCompatible ||
-			       !AddrSurfInfoIn.flags.tcCompatible ||
-			       AddrSurfInfoIn.flags.matchStencilTileCfg);
+			if (!AddrSurfInfoOut.tcCompatible) {
+				AddrSurfInfoIn.flags.tcCompatible = 0;
+				surf->flags &= ~RADEON_SURF_TC_COMPATIBLE_HTILE;
+			}
 
 			if (AddrSurfInfoIn.flags.matchStencilTileCfg) {
-				if (!AddrSurfInfoOut.tcCompatible) {
-					AddrSurfInfoIn.flags.tcCompatible = 0;
-					surf->flags &= ~RADEON_SURF_TC_COMPATIBLE_HTILE;
-				}
-
 				AddrSurfInfoIn.flags.matchStencilTileCfg = 0;
 				AddrSurfInfoIn.tileIndex = AddrSurfInfoOut.tileIndex;
 				stencil_tile_idx = AddrSurfInfoOut.stencilTileIdx;
@@ -1059,8 +1063,10 @@ static int gfx9_compute_miptree(ADDR_HANDLE addrlib,
 	surf->surf_alignment = out.baseAlign;
 
 	if (in->swizzleMode == ADDR_SW_LINEAR) {
-		for (unsigned i = 0; i < in->numMipLevels; i++)
+		for (unsigned i = 0; i < in->numMipLevels; i++) {
 			surf->u.gfx9.offset[i] = mip_info[i].offset;
+			surf->u.gfx9.pitch[i] = mip_info[i].pitch;
+		}
 	}
 
 	if (in->flags.depth) {
