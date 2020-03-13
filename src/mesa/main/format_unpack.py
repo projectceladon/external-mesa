@@ -1,4 +1,4 @@
-from __future__ import print_function
+
 
 from mako.template import Template
 from sys import argv

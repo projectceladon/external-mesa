@@ -24,7 +24,7 @@
 # Authors:
 #    Ian Romanick <idr@us.ibm.com>
 
-from __future__ import print_function
+
 
 import argparse
 import sys, string

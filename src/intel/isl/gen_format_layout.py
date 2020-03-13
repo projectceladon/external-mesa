@@ -21,7 +21,7 @@
 
 """Generates isl_format_layout.c."""
 
-from __future__ import absolute_import, division, print_function
+
 import argparse
 import csv
 import re
