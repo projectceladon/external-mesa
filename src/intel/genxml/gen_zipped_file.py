@@ -22,7 +22,7 @@
 # IN THE SOFTWARE.
 #
 
-from __future__ import print_function
+
 import sys
 import zlib
 import xml.etree.cElementTree as et

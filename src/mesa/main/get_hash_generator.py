@@ -28,7 +28,7 @@
 # Generate a C header file containing hash tables of glGet parameter
 # names for each GL API. The generated file is to be included by glGet.c
 
-from __future__ import print_function
+
 
 import os, sys, imp, getopt
 from collections import defaultdict
@@ -117,8 +117,7 @@ def print_tables(tables):
 def merge_tables(tables):
    merged_tables = []
    for api, indices in sorted(tables.items()):
-      matching_table = list(filter(lambda mt:mt["indices"] == indices,
-                              merged_tables))
+      matching_table = list([mt for mt in merged_tables if mt["indices"] == indices])
       if matching_table:
          matching_table[0]["apis"].append(api)
       else:
@@ -185,7 +184,7 @@ def generate_hash_tables(enum_list, enabled_apis, param_descriptors):
          params.append(["GL_" + enum_name, param[1]])
 
    sorted_tables={}
-   for api, indices in tables.items():
+   for api, indices in list(tables.items()):
       sorted_tables[api] = sorted(indices.items())
 
    return params, merge_tables(sorted_tables)

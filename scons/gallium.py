@@ -29,7 +29,7 @@ Frontend-tool for Gallium3D architecture.
 # SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #
 
-from __future__ import print_function
+
 
 import distutils.version
 import os

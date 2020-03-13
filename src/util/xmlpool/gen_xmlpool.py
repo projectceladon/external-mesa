@@ -7,7 +7,7 @@
 # `{localedir}/{language}/LC_MESSAGES/options.mo`.
 #
 
-from __future__ import print_function, unicode_literals
+
 import argparse
 import gettext
 import io
@@ -57,7 +57,7 @@ def expandCString(s):
     octa = False
     num = 0
     digits = 0
-    r = u''
+    r = ''
     for c in s:
         if not escape:
             if c == '\\':

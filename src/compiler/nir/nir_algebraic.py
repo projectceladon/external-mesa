@@ -23,7 +23,7 @@
 # Authors:
 #    Jason Ekstrand (jason@jlekstrand.net)
 
-from __future__ import print_function
+
 import ast
 from collections import OrderedDict
 import itertools
@@ -36,8 +36,8 @@ import traceback
 from nir_opcodes import opcodes
 
 if sys.version_info < (3, 0):
-    integer_types = (int, long)
-    string_type = unicode
+    integer_types = (int, int)
+    string_type = str
 
 else:
     integer_types = (int, )

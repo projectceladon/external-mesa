@@ -29,7 +29,7 @@ its supported state trackers, based on the merged information from the input
 files.
 """
 
-from __future__ import print_function
+
 
 import mako.template
 import re

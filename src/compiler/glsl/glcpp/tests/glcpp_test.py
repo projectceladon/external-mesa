@@ -21,7 +21,7 @@
 
 """Run glcpp tests with various line endings."""
 
-from __future__ import print_function
+
 import argparse
 import difflib
 import io
