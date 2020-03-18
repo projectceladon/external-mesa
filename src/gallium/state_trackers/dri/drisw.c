@@ -26,7 +26,7 @@
  *
  **************************************************************************/
 
-#include "util/u_format.h"
+#include "util/format/u_format.h"
 #include "util/u_memory.h"
 #include "util/u_inlines.h"
 #include "util/u_box.h"
@@ -138,6 +138,9 @@ get_image_shm(__DRIdrawable *dPriv, int x, int y, int width, int height,
    if (!res->screen->resource_get_handle(res->screen, NULL, res, &whandle, PIPE_HANDLE_USAGE_FRAMEBUFFER_WRITE))
       return FALSE;
 
+   if (loader->base.version > 5 && loader->getImageShm2)
+      return loader->getImageShm2(dPriv, x, y, width, height, whandle.handle, dPriv->loaderPrivate);
+
    loader->getImageShm(dPriv, x, y, width, height, whandle.handle, dPriv->loaderPrivate);
    return TRUE;
 }
@@ -246,7 +249,10 @@ drisw_swap_buffers(__DRIdrawable *dPriv)
       if (ctx->pp)
          pp_run(ctx->pp, ptex, ptex, drawable->textures[ST_ATTACHMENT_DEPTH_STENCIL]);
 
-      ctx->st->flush(ctx->st, ST_FLUSH_FRONT, NULL);
+      if (ctx->hud)
+         hud_run(ctx->hud, ctx->st->cso_context, ptex);
+
+      ctx->st->flush(ctx->st, ST_FLUSH_FRONT, NULL, NULL, NULL);
 
       drisw_copy_to_front(dPriv, ptex);
    }
@@ -269,7 +275,7 @@ drisw_copy_sub_buffer(__DRIdrawable *dPriv, int x, int y,
       if (ctx->pp && drawable->textures[ST_ATTACHMENT_DEPTH_STENCIL])
          pp_run(ctx->pp, ptex, ptex, drawable->textures[ST_ATTACHMENT_DEPTH_STENCIL]);
 
-      ctx->st->flush(ctx->st, ST_FLUSH_FRONT, NULL);
+      ctx->st->flush(ctx->st, ST_FLUSH_FRONT, NULL, NULL, NULL);
 
       u_box_2d(x, dPriv->h - y - h, w, h, &box);
       drisw_present_texture(dPriv, ptex, &box);
