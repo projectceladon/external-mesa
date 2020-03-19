@@ -149,8 +149,6 @@ MAIN_FILES = \
 	main/matrix.h \
 	main/mipmap.c \
 	main/mipmap.h \
-	main/mm.c \
-	main/mm.h \
 	main/menums.h \
 	main/mtypes.h \
 	main/multisample.c \
@@ -209,6 +207,8 @@ MAIN_FILES = \
 	main/shader_query.cpp \
 	main/shared.c \
 	main/shared.h \
+	main/spirv_extensions.c \
+	main/spirv_extensions.h \
 	main/state.c \
 	main/state.h \
 	main/stencil.c \
@@ -483,6 +483,8 @@ STATETRACKER_FILES = \
 	state_tracker/st_cb_msaa.h \
 	state_tracker/st_cb_perfmon.c \
 	state_tracker/st_cb_perfmon.h \
+	state_tracker/st_cb_perfquery.c \
+	state_tracker/st_cb_perfquery.h \
 	state_tracker/st_cb_program.c \
 	state_tracker/st_cb_program.h \
 	state_tracker/st_cb_queryobj.c \
@@ -532,8 +534,6 @@ STATETRACKER_FILES = \
 	state_tracker/st_glsl_to_tgsi_private.h \
 	state_tracker/st_glsl_to_tgsi_temprename.cpp \
 	state_tracker/st_glsl_to_tgsi_temprename.h \
-	state_tracker/st_glsl_types.cpp \
-	state_tracker/st_glsl_types.h \
 	state_tracker/st_manager.c \
 	state_tracker/st_manager.h \
 	state_tracker/st_mesa_to_tgsi.c \
@@ -554,6 +554,8 @@ STATETRACKER_FILES = \
 	state_tracker/st_shader_cache.h \
 	state_tracker/st_texture.c \
 	state_tracker/st_texture.h \
+	state_tracker/st_tgsi_lower_depth_clamp.c \
+	state_tracker/st_tgsi_lower_depth_clamp.h \
 	state_tracker/st_tgsi_lower_yuv.c \
 	state_tracker/st_tgsi_lower_yuv.h \
 	state_tracker/st_util.h \

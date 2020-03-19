@@ -19,6 +19,7 @@
 # SOFTWARE.
 
 vk_api_xml = files('registry/vk.xml')
+vulkan_icd_symbols = files('vulkan-icd-symbols.txt')
 
 inc_vulkan_wsi = include_directories('wsi')
 
@@ -58,6 +59,6 @@ endif
 
 subdir('util')
 subdir('wsi')
-if get_option('vulkan-overlay-layer')
+if with_vulkan_overlay_layer
   subdir('overlay-layer')
 endif

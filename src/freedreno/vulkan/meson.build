@@ -39,18 +39,12 @@ tu_extensions_c = custom_target(
   ],
 )
 
-tu_format_table_c = custom_target(
-  'tu_format_table.c',
-  input : ['vk_format_table.py', 'vk_format_layout.csv'],
-  output : 'vk_format_table.c',
-  command : [prog_python, '@INPUT@'],
-  depend_files : files('vk_format_parse.py'),
-  capture : true,
-)
-
 libtu_files = files(
+  'tu_blit.c',
+  'tu_blit.h',
   'tu_cmd_buffer.c',
   'tu_cs.c',
+  'tu_cs.h',
   'tu_device.c',
   'tu_descriptor_set.c',
   'tu_descriptor_set.h',
@@ -78,15 +72,34 @@ libtu_files = files(
 tu_deps = []
 tu_flags = []
 
+if with_platform_x11
+  tu_deps += dep_xcb_dri3
+  tu_flags += [
+    '-DVK_USE_PLATFORM_XCB_KHR',
+    '-DVK_USE_PLATFORM_XLIB_KHR',
+  ]
+  libtu_files += files('tu_wsi_x11.c')
+endif
+
 if with_platform_wayland
   tu_deps += dep_wayland_client
   tu_flags += '-DVK_USE_PLATFORM_WAYLAND_KHR'
   libtu_files += files('tu_wsi_wayland.c')
 endif
 
+if with_platform_drm
+  tu_flags += '-DVK_USE_PLATFORM_DISPLAY_KHR'
+  libtu_files += files('tu_wsi_display.c')
+endif
+
+if with_xlib_lease
+  tu_deps += [dep_xcb_xrandr, dep_xlib_xrandr]
+  tu_flags += '-DVK_USE_PLATFORM_XLIB_XRANDR_EXT'
+endif
+
 libvulkan_freedreno = shared_library(
   'vulkan_freedreno',
-  [libtu_files, tu_entrypoints, tu_extensions_c, tu_format_table_c],
+  [libtu_files, tu_entrypoints, tu_extensions_c, freedreno_xml_header_files],
   include_directories : [
     inc_common,
     inc_compiler,
@@ -95,9 +108,9 @@ libvulkan_freedreno = shared_library(
   ],
   link_with : [
     libvulkan_wsi,
-    libmesa_util,
     libfreedreno_drm, # required by ir3_shader_get_variant, which we don't use
     libfreedreno_ir3,
+    libfreedreno_layout,
   ],
   dependencies : [
     dep_dl,
@@ -110,11 +123,25 @@ libvulkan_freedreno = shared_library(
     idep_nir,
     tu_deps,
     idep_vulkan_util,
+    idep_mesautil,
   ],
   c_args : [c_vis_args, no_override_init_args, tu_flags],
   link_args : [ld_args_bsymbolic, ld_args_gc_sections],
   install : true,
 )
+
+if with_symbols_check
+  test(
+    'tu symbols check',
+    symbols_check,
+    args : [
+      '--lib', libvulkan_freedreno,
+      '--symbols-file', vulkan_icd_symbols,
+      symbols_check_args,
+    ],
+    suite : ['freedreno'],
+  )
+endif
 
 freedreno_icd = custom_target(
   'freedreno_icd',
@@ -129,17 +156,4 @@ freedreno_icd = custom_target(
   build_by_default : true,
   install_dir : with_vulkan_icd_dir,
   install : true,
-)
-
-tu_dev_icd = custom_target(
-  'tu_dev_icd',
-  input : 'tu_icd.py',
-  output : 'dev_icd.json',
-  command : [
-    prog_python, '@INPUT@', '--lib-path', meson.current_build_dir(),
-    '--out', '@OUTPUT@'
-  ],
-  depend_files : files('tu_extensions.py'),
-  build_by_default : true,
-  install : false,
 )
