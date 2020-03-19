@@ -49,11 +49,19 @@ fd_context_flush(struct pipe_context *pctx, struct pipe_fence_handle **fencep,
 
 	DBG("%p: flush: flags=%x\n", ctx->batch, flags);
 
+	/* In some sequence of events, we can end up with a last_fence that is
+	 * not an "fd" fence, which results in eglDupNativeFenceFDANDROID()
+	 * errors.
+	 *
+	 */
+	if (flags & PIPE_FLUSH_FENCE_FD)
+		fd_fence_ref(&ctx->last_fence, NULL);
+
 	/* if no rendering since last flush, ie. app just decided it needed
 	 * a fence, re-use the last one:
 	 */
 	if (ctx->last_fence) {
-		fd_fence_ref(pctx->screen, &fence, ctx->last_fence);
+		fd_fence_ref(&fence, ctx->last_fence);
 		goto out;
 	}
 
@@ -61,15 +69,13 @@ fd_context_flush(struct pipe_context *pctx, struct pipe_fence_handle **fencep,
 		return;
 
 	/* Take a ref to the batch's fence (batch can be unref'd when flushed: */
-	fd_fence_ref(pctx->screen, &fence, batch->fence);
+	fd_fence_ref(&fence, batch->fence);
 
-	/* TODO is it worth trying to figure out if app is using fence-fd's, to
-	 * avoid requesting one every batch?
-	 */
-	batch->needs_out_fence_fd = true;
+	if (flags & PIPE_FLUSH_FENCE_FD)
+		batch->needs_out_fence_fd = true;
 
 	if (!ctx->screen->reorder) {
-		fd_batch_flush(batch, true, false);
+		fd_batch_flush(batch);
 	} else if (flags & PIPE_FLUSH_DEFERRED) {
 		fd_bc_flush_deferred(&ctx->screen->batch_cache, ctx);
 	} else {
@@ -78,11 +84,11 @@ fd_context_flush(struct pipe_context *pctx, struct pipe_fence_handle **fencep,
 
 out:
 	if (fencep)
-		fd_fence_ref(pctx->screen, fencep, fence);
+		fd_fence_ref(fencep, fence);
 
-	fd_fence_ref(pctx->screen, &ctx->last_fence, fence);
+	fd_fence_ref(&ctx->last_fence, fence);
 
-	fd_fence_ref(pctx->screen, &fence, NULL);
+	fd_fence_ref(&fence, NULL);
 }
 
 static void
@@ -162,10 +168,7 @@ fd_context_destroy(struct pipe_context *pctx)
 
 	DBG("");
 
-	fd_fence_ref(pctx->screen, &ctx->last_fence, NULL);
-
-	if (ctx->screen->reorder && util_queue_is_initialized(&ctx->flush_queue))
-		util_queue_destroy(&ctx->flush_queue);
+	fd_fence_ref(&ctx->last_fence, NULL);
 
 	util_copy_framebuffer_state(&ctx->framebuffer, NULL);
 	fd_batch_reference(&ctx->batch, NULL);  /* unref current batch */
@@ -187,15 +190,16 @@ fd_context_destroy(struct pipe_context *pctx)
 
 	slab_destroy_child(&ctx->transfer_pool);
 
-	for (i = 0; i < ARRAY_SIZE(ctx->vsc_pipe); i++) {
-		struct fd_vsc_pipe *pipe = &ctx->vsc_pipe[i];
-		if (!pipe->bo)
+	for (i = 0; i < ARRAY_SIZE(ctx->vsc_pipe_bo); i++) {
+		if (!ctx->vsc_pipe_bo[i])
 			break;
-		fd_bo_del(pipe->bo);
+		fd_bo_del(ctx->vsc_pipe_bo[i]);
 	}
 
 	fd_device_del(ctx->dev);
 	fd_pipe_del(ctx->pipe);
+
+	mtx_destroy(&ctx->gmem_lock);
 
 	if (fd_mesa_debug & (FD_DBG_BSTAT | FD_DBG_MSGS)) {
 		printf("batch_total=%u, batch_sysmem=%u, batch_gmem=%u, batch_nondraw=%u, batch_restore=%u\n",
@@ -357,6 +361,8 @@ fd_context_init(struct fd_context *ctx, struct pipe_screen *pscreen,
 		if (primtypes[i])
 			ctx->primtype_mask |= (1 << i);
 
+	(void) mtx_init(&ctx->gmem_lock, mtx_plain);
+
 	/* need some sane default in case state tracker doesn't
 	 * set some state:
 	 */
@@ -378,9 +384,6 @@ fd_context_init(struct fd_context *ctx, struct pipe_screen *pscreen,
 	if (!pctx->stream_uploader)
 		goto fail;
 	pctx->const_uploader = pctx->stream_uploader;
-
-	if (!ctx->screen->reorder)
-		ctx->batch = fd_bc_alloc_batch(&screen->batch_cache, ctx, false);
 
 	slab_create_child(&ctx->transfer_pool, &screen->transfer_pool);
 

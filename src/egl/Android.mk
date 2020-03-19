@@ -36,6 +36,7 @@ include $(CLEAR_VARS)
 LOCAL_SRC_FILES := \
 	$(LIBEGL_C_FILES) \
 	$(dri2_backend_core_FILES) \
+	drivers/dri2/platform_device.c \
 	drivers/dri2/platform_android.c
 
 LOCAL_CFLAGS := \
@@ -72,8 +73,6 @@ ifeq ($(BOARD_USES_DRM_GRALLOC),true)
 endif
 
 ifeq ($(filter $(MESA_ANDROID_MAJOR_VERSION), 4 5 6 7),)
-LOCAL_HEADER_LIBRARIES += libnativebase_headers
-LOCAL_STATIC_LIBRARIES += libarect
 LOCAL_SHARED_LIBRARIES += libnativewindow
 endif
 

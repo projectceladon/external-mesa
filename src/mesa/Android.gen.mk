@@ -48,13 +48,6 @@ LOCAL_SRC_FILES := $(filter-out $(sources), $(LOCAL_SRC_FILES))
 
 LOCAL_C_INCLUDES += $(intermediates)/main
 
-ifeq ($(strip $(MESA_ENABLE_ASM)),true)
-ifeq ($(TARGET_ARCH),x86)
-sources += x86/matypes.h
-LOCAL_C_INCLUDES += $(intermediates)/x86
-endif
-endif
-
 sources := $(addprefix $(intermediates)/, $(sources))
 
 LOCAL_GENERATED_SOURCES += $(sources)
@@ -75,10 +68,9 @@ matypes_deps := \
 	$(LOCAL_PATH)/main/mtypes.h \
 	$(LOCAL_PATH)/tnl/t_context.h
 
-$(intermediates)/x86/matypes.h: $(matypes_deps) 
+$(intermediates)/x86/matypes.h: $(prebuilt_intermediates)/x86/matypes.h
 	@mkdir -p $(dir $@)
-	@echo "MATYPES: $(PRIVATE_MODULE) <= $(notdir $@)"
-	$(hide) $< > $@
+	cp -a $< $@
 
 $(intermediates)/main/dispatch.h: PRIVATE_SCRIPT := $(MESA_PYTHON2) $(glapi)/gl_table.py
 $(intermediates)/main/dispatch.h: PRIVATE_XML := -f $(glapi)/gl_and_es_API.xml
@@ -103,12 +95,6 @@ $(intermediates)/main/api_exec.c: PRIVATE_XML := -f $(glapi)/gl_and_es_API.xml
 
 $(intermediates)/main/api_exec.c: $(dispatch_deps)
 	$(call es-gen)
-
-$(intermediates)/main/format_pack.c: $(prebuilt_intermediates)/main/format_pack.c
-	cp -a $< $@
-
-$(intermediates)/main/format_unpack.c: $(prebuilt_intermediates)/main/format_unpack.c
-	cp -a $< $@
 
 $(intermediates)/main/marshal_generated.c: PRIVATE_SCRIPT := $(MESA_PYTHON2) $(glapi)/gl_marshal.py
 $(intermediates)/main/marshal_generated.c: PRIVATE_XML := -f $(glapi)/gl_and_es_API.xml
@@ -143,3 +129,11 @@ $(intermediates)/main/format_info.h: PRIVATE_SCRIPT := $(MESA_PYTHON2) $(FORMAT_
 $(intermediates)/main/format_info.h: PRIVATE_XML :=
 $(intermediates)/main/format_info.h: $(format_info_deps)
 	$(call es-gen, $<)
+
+$(intermediates)/main/format_pack.c: $(prebuilt_intermediates)/main/format_pack.c
+	cp -a $< $@
+
+$(intermediates)/main/format_unpack.c: $(prebuilt_intermediates)/main/format_unpack.c
+	cp -a $< $@
+
+
