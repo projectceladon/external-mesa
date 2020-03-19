@@ -39,7 +39,8 @@ LOCAL_C_INCLUDES := \
 	$(MESA_TOP)/src/mesa \
 	$(MESA_TOP)/src/mapi \
 	$(MESA_TOP)/src/gallium/include \
-	$(MESA_TOP)/src/gallium/auxiliary
+	$(MESA_TOP)/src/gallium/auxiliary \
+	$(MESA_TOP)/src/util/format
 
 # If Android version >=8 MESA should static link libexpat else should dynamic link
 ifeq ($(shell test $(PLATFORM_SDK_VERSION) -ge 27; echo $$?), 0)
@@ -49,6 +50,8 @@ else
 LOCAL_SHARED_LIBRARIES := \
 	libexpat
 endif
+
+LOCAL_SHARED_LIBRARIES += liblog
 
 LOCAL_MODULE := libmesa_util
 
@@ -64,19 +67,25 @@ LOCAL_EXPORT_C_INCLUDE_DIRS := $(intermediates)
 UTIL_GENERATED_SOURCES := $(addprefix $(intermediates)/,$(MESA_UTIL_GENERATED_FILES))
 LOCAL_GENERATED_SOURCES := $(UTIL_GENERATED_SOURCES)
 
+MESA_DRI_OPTIONS_H := $(intermediates)/xmlpool/options.h
+LOCAL_GENERATED_SOURCES += $(MESA_DRI_OPTIONS_H)
+
 $(intermediates)/xmlpool/options.h: $(prebuilt_intermediates)/xmlpool/options.h
 	@mkdir -p $(dir $@)
 	@cp -f $< $@
 
-MESA_DRI_OPTIONS_H := $(intermediates)/xmlpool/options.h
-LOCAL_GENERATED_SOURCES := $(MESA_DRI_OPTIONS_H)
+PRIVATE_SCRIPT := $(LOCAL_PATH)/xmlpool/gen_xmlpool.py
+PRIVATE_LOCALEDIR := $(intermediates)/xmlpool
+PRIVATE_TEMPLATE_HEADER := $(LOCAL_PATH)/xmlpool/t_options.h
+PRIVATE_MO_FILES := $(MESA_DRI_OPTIONS_LANGS:%=$(intermediates)/xmlpool/%.gmo)
 
-$(intermediates)/format_srgb.c: $(prebuilt_intermediates)/util/format_srgb.c
-	@mkdir -p $(dir $@)
-	@cp -f $< $@
+LOCAL_GENERATED_SOURCES += $(PRIVATE_MO_FILES)
 
-MESA_FORMAT_SRGB_C := $(intermediates)/format_srgb.c
-LOCAL_GENERATED_SOURCES += $(MESA_FORMAT_SRGB_C)
+$(LOCAL_GENERATED_SOURCES): PRIVATE_PYTHON := $(MESA_PYTHON2)
+
+$(UTIL_GENERATED_SOURCES): PRIVATE_CUSTOM_TOOL = $(PRIVATE_PYTHON) $^ > $@
+$(UTIL_GENERATED_SOURCES): $(intermediates)/%.c: $(LOCAL_PATH)/%.py $(LOCAL_PATH)/format/u_format.csv
+	$(transform-generated-source)
 
 include $(MESA_COMMON_MK)
 include $(BUILD_STATIC_LIBRARY)

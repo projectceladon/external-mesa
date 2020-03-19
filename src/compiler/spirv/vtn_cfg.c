@@ -248,7 +248,7 @@ vtn_cfg_handle_prepass_instruction(struct vtn_builder *b, SpvOp opcode,
       list_inithead(&b->func->body);
       b->func->control = w[3];
 
-      MAYBE_UNUSED const struct glsl_type *result_type =
+      UNUSED const struct glsl_type *result_type =
          vtn_value(b, w[1], vtn_value_type_type)->type->type;
       struct vtn_value *val = vtn_push_value(b, w[2], vtn_value_type_function);
       val->func = b->func;
@@ -274,9 +274,12 @@ vtn_cfg_handle_prepass_instruction(struct vtn_builder *b, SpvOp opcode,
 
       unsigned idx = 0;
       if (func_type->return_type->base_type != vtn_base_type_void) {
+         nir_address_format addr_format =
+            vtn_mode_to_address_format(b, vtn_variable_mode_function);
          /* The return value is a regular pointer */
          func->params[idx++] = (nir_parameter) {
-            .num_components = 1, .bit_size = 32,
+            .num_components = nir_address_format_num_components(addr_format),
+            .bit_size = nir_address_format_bit_size(addr_format),
          };
       }
 
@@ -315,7 +318,6 @@ vtn_cfg_handle_prepass_instruction(struct vtn_builder *b, SpvOp opcode,
             vtn_push_value(b, w[2], vtn_value_type_sampled_image);
 
          val->sampled_image = ralloc(b, struct vtn_sampled_image);
-         val->sampled_image->type = type;
 
          struct vtn_type *sampler_type = rzalloc(b, struct vtn_type);
          sampler_type->base_type = vtn_base_type_sampler;
@@ -328,17 +330,12 @@ vtn_cfg_handle_prepass_instruction(struct vtn_builder *b, SpvOp opcode,
       } else if (type->base_type == vtn_base_type_pointer &&
                  type->type != NULL) {
          /* This is a pointer with an actual storage type */
-         struct vtn_value *val =
-            vtn_push_value(b, w[2], vtn_value_type_pointer);
          nir_ssa_def *ssa_ptr = nir_load_param(&b->nb, b->func_param_idx++);
-         val->pointer = vtn_pointer_from_ssa(b, ssa_ptr, type);
+         vtn_push_value_pointer(b, w[2], vtn_pointer_from_ssa(b, ssa_ptr, type));
       } else if (type->base_type == vtn_base_type_pointer ||
                  type->base_type == vtn_base_type_image ||
                  type->base_type == vtn_base_type_sampler) {
-         struct vtn_value *val =
-            vtn_push_value(b, w[2], vtn_value_type_pointer);
-         val->pointer =
-            vtn_load_param_pointer(b, type, b->func_param_idx++);
+         vtn_push_value_pointer(b, w[2], vtn_load_param_pointer(b, type, b->func_param_idx++));
       } else {
          /* We're a regular SSA value. */
          struct vtn_ssa_value *value = vtn_create_ssa_value(b, type->type);
@@ -814,6 +811,11 @@ vtn_handle_phi_second_pass(struct vtn_builder *b, SpvOp opcode,
       struct vtn_block *pred =
          vtn_value(b, w[i + 1], vtn_value_type_block)->block;
 
+      /* If block does not have end_nop, that is because it is an unreacheable
+       * block, and hence it is not worth to handle it */
+      if (!pred->end_nop)
+         continue;
+
       b->nb.cursor = nir_after_instr(&pred->end_nop->instr);
 
       struct vtn_ssa_value *src = vtn_ssa_value(b, w[i]);
@@ -889,7 +891,12 @@ vtn_loop_control(struct vtn_builder *b, struct vtn_loop *vtn_loop)
    else if (vtn_loop->control & SpvLoopControlUnrollMask)
       return nir_loop_control_unroll;
    else if (vtn_loop->control & SpvLoopControlDependencyInfiniteMask ||
-            vtn_loop->control & SpvLoopControlDependencyLengthMask) {
+            vtn_loop->control & SpvLoopControlDependencyLengthMask ||
+            vtn_loop->control & SpvLoopControlMinIterationsMask ||
+            vtn_loop->control & SpvLoopControlMaxIterationsMask ||
+            vtn_loop->control & SpvLoopControlIterationMultipleMask ||
+            vtn_loop->control & SpvLoopControlPeelCountMask ||
+            vtn_loop->control & SpvLoopControlPartialCountMask) {
       /* We do not do anything special with these yet. */
       return nir_loop_control_none;
    } else {
@@ -1002,7 +1009,7 @@ vtn_emit_cf_list(struct vtn_builder *b, struct list_head *cf_list,
 
          vtn_emit_cf_list(b, &vtn_loop->body, NULL, NULL, handler);
 
-         if (!list_empty(&vtn_loop->cont_body)) {
+         if (!list_is_empty(&vtn_loop->cont_body)) {
             /* If we have a non-trivial continue body then we need to put
              * it at the beginning of the loop with a flag to ensure that
              * it doesn't get executed in the first iteration.

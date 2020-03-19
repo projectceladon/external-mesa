@@ -49,7 +49,6 @@
 #include "tgsi/tgsi_info.h"
 #include "util/u_math.h"
 #include "util/u_memory.h"
-#include "st_glsl_types.h"
 #include "st_program.h"
 #include "st_mesa_to_tgsi.h"
 #include "st_format.h"
@@ -246,6 +245,7 @@ public:
    bool has_tex_txf_lz;
    bool precise;
    bool need_uarl;
+   bool tg4_component_in_swizzle;
 
    variable_storage *find_variable_storage(ir_variable *var);
 
@@ -284,6 +284,7 @@ public:
    virtual void visit(ir_call *);
    virtual void visit(ir_return *);
    virtual void visit(ir_discard *);
+   virtual void visit(ir_demote *);
    virtual void visit(ir_texture *);
    virtual void visit(ir_if *);
    virtual void visit(ir_emit_vertex *);
@@ -2236,11 +2237,9 @@ glsl_to_tgsi_visitor::visit_expression(ir_expression* ir, st_src_reg *op)
 
    case ir_unop_get_buffer_size: {
       ir_constant *const_offset = ir->operands[0]->as_constant();
-      int buf_base = ctx->st->has_hw_atomics
-         ? 0 : ctx->Const.Program[shader->Stage].MaxAtomicBuffers;
       st_src_reg buffer(
             PROGRAM_BUFFER,
-            buf_base + (const_offset ? const_offset->value.u[0] : 0),
+            const_offset ? const_offset->value.u[0] : 0,
             GLSL_TYPE_UINT);
       if (!const_offset) {
          buffer.reladdr = ralloc(mem_ctx, st_src_reg);
@@ -2387,6 +2386,15 @@ glsl_to_tgsi_visitor::visit_expression(ir_expression* ir, st_src_reg *op)
    case ir_binop_carry:
    case ir_binop_borrow:
    case ir_unop_ssbo_unsized_array_length:
+   case ir_unop_atan:
+   case ir_binop_atan2:
+   case ir_unop_clz:
+   case ir_binop_add_sat:
+   case ir_binop_sub_sat:
+   case ir_binop_abs_sub:
+   case ir_binop_avg:
+   case ir_binop_avg_round:
+   case ir_binop_mul_32x16:
       /* This operation is not supported, or should have already been handled.
        */
       assert(!"Invalid ir opcode in glsl_to_tgsi_visitor::visit()");
@@ -2762,12 +2770,12 @@ glsl_to_tgsi_visitor::visit(ir_dereference_array *ir)
    if (handle_bound_deref(ir->as_dereference()))
       return;
 
-   /* We only need the logic provided by st_glsl_storage_type_size()
+   /* We only need the logic provided by count_vec4_slots()
     * for arrays of structs. Indirect sampler and image indexing is handled
     * elsewhere.
     */
    int element_size = ir->type->without_array()->is_struct() ?
-      st_glsl_storage_type_size(ir->type, var->data.bindless) :
+      ir->type->count_vec4_slots(false, var->data.bindless) :
       type_size(ir->type);
 
    index = ir->array_index->constant_expression_value(ralloc_parent(ir));
@@ -2872,7 +2880,7 @@ glsl_to_tgsi_visitor::visit(ir_dereference_record *ir)
       if (i == (unsigned) ir->field_idx)
          break;
       const glsl_type *member_type = struct_type->fields.structure[i].type;
-      offset += st_glsl_storage_type_size(member_type, var->data.bindless);
+      offset += member_type->count_vec4_slots(false, var->data.bindless);
    }
 
    /* If the type is smaller than a vec4, replicate the last channel out. */
@@ -3446,7 +3454,9 @@ glsl_to_tgsi_visitor::visit_atomic_counter_intrinsic(ir_call *ir)
 
       resource = buffer;
    } else {
-      st_src_reg buffer(PROGRAM_BUFFER, location->data.binding,
+      st_src_reg buffer(PROGRAM_BUFFER,
+                        prog->info.num_ssbos +
+                        location->data.binding,
                         GLSL_TYPE_ATOMIC_UINT);
 
       if (offset.file != PROGRAM_UNDEFINED) {
@@ -3534,11 +3544,9 @@ glsl_to_tgsi_visitor::visit_ssbo_intrinsic(ir_call *ir)
    ir_rvalue *offset = ((ir_instruction *)param)->as_rvalue();
 
    ir_constant *const_block = block->as_constant();
-   int buf_base = st_context(ctx)->has_hw_atomics
-      ? 0 : ctx->Const.Program[shader->Stage].MaxAtomicBuffers;
    st_src_reg buffer(
          PROGRAM_BUFFER,
-         buf_base + (const_block ? const_block->value.u[0] : 0),
+         const_block ? const_block->value.u[0] : 0,
          GLSL_TYPE_UINT);
 
    if (!const_block) {
@@ -3938,6 +3946,21 @@ glsl_to_tgsi_visitor::visit_image_intrinsic(ir_call *ir)
       case ir_intrinsic_image_atomic_comp_swap:
          opcode = TGSI_OPCODE_ATOMCAS;
          break;
+      case ir_intrinsic_image_atomic_inc_wrap: {
+         /* There's a bit of disagreement between GLSL and the hardware. The
+          * hardware wants to wrap after the given wrap value, while GLSL
+          * wants to wrap at the value. Subtract 1 to make up the difference.
+          */
+         st_src_reg wrap = get_temp(glsl_type::uint_type);
+         emit_asm(ir, TGSI_OPCODE_ADD, st_dst_reg(wrap),
+                  arg1, st_src_reg_for_int(-1));
+         arg1 = wrap;
+         opcode = TGSI_OPCODE_ATOMINC_WRAP;
+         break;
+      }
+      case ir_intrinsic_image_atomic_dec_wrap:
+         opcode = TGSI_OPCODE_ATOMDEC_WRAP;
+         break;
       default:
          assert(!"Unexpected intrinsic");
          return;
@@ -4063,6 +4086,8 @@ glsl_to_tgsi_visitor::visit(ir_call *ir)
    case ir_intrinsic_image_atomic_comp_swap:
    case ir_intrinsic_image_size:
    case ir_intrinsic_image_samples:
+   case ir_intrinsic_image_atomic_inc_wrap:
+   case ir_intrinsic_image_atomic_dec_wrap:
       visit_image_intrinsic(ir);
       return;
 
@@ -4087,6 +4112,10 @@ glsl_to_tgsi_visitor::visit(ir_call *ir)
       return;
    case ir_intrinsic_read_invocation:
       visit_generic_intrinsic(ir, TGSI_OPCODE_READ_INVOC);
+      return;
+
+   case ir_intrinsic_helper_invocation:
+      visit_generic_intrinsic(ir, TGSI_OPCODE_READ_HELPER);
       return;
 
    case ir_intrinsic_invalid:
@@ -4543,7 +4572,20 @@ glsl_to_tgsi_visitor::visit(ir_texture *ir)
       if (is_cube_array && ir->shadow_comparator) {
          inst = emit_asm(ir, opcode, result_dst, coord, cube_sc);
       } else {
-         inst = emit_asm(ir, opcode, result_dst, coord, component);
+         if (this->tg4_component_in_swizzle) {
+            inst = emit_asm(ir, opcode, result_dst, coord);
+            int idx = 0;
+            foreach_in_list(immediate_storage, entry, &this->immediates) {
+               if (component.index == idx) {
+                  gl_constant_value value = entry->values[component.swizzle];
+                  inst->gather_component = value.i;
+                  break;
+               }
+               idx++;
+            }
+         } else {
+            inst = emit_asm(ir, opcode, result_dst, coord, component);
+         }
       }
    } else
       inst = emit_asm(ir, opcode, result_dst, coord);
@@ -4607,6 +4649,12 @@ glsl_to_tgsi_visitor::visit(ir_discard *ir)
       /* unconditional kil */
       emit_asm(ir, TGSI_OPCODE_KILL);
    }
+}
+
+void
+glsl_to_tgsi_visitor::visit(ir_demote *ir)
+{
+   emit_asm(ir, TGSI_OPCODE_DEMOTE);
 }
 
 void
@@ -4689,6 +4737,7 @@ glsl_to_tgsi_visitor::glsl_to_tgsi_visitor()
    prog = NULL;
    precise = 0;
    need_uarl = false;
+   tg4_component_in_swizzle = false;
    shader_program = NULL;
    shader = NULL;
    options = NULL;
@@ -5746,6 +5795,7 @@ struct st_translate {
 
    enum pipe_shader_type procType;  /**< PIPE_SHADER_VERTEX/FRAGMENT */
    bool need_uarl;
+   bool tg4_component_in_swizzle;
 };
 
 /** Map Mesa's SYSTEM_VALUE_x to TGSI_SEMANTIC_x */
@@ -5774,6 +5824,8 @@ _mesa_sysval_to_semantic(unsigned sysval)
    /* Fragment shader */
    case SYSTEM_VALUE_FRAG_COORD:
       return TGSI_SEMANTIC_POSITION;
+   case SYSTEM_VALUE_POINT_COORD:
+      return TGSI_SEMANTIC_PCOORD;
    case SYSTEM_VALUE_FRONT_FACE:
       return TGSI_SEMANTIC_FACE;
    case SYSTEM_VALUE_SAMPLE_ID:
@@ -5827,10 +5879,10 @@ _mesa_sysval_to_semantic(unsigned sysval)
    case SYSTEM_VALUE_LOCAL_INVOCATION_INDEX:
    case SYSTEM_VALUE_GLOBAL_INVOCATION_ID:
    case SYSTEM_VALUE_VERTEX_CNT:
-   case SYSTEM_VALUE_BARYCENTRIC_PIXEL:
-   case SYSTEM_VALUE_BARYCENTRIC_SAMPLE:
-   case SYSTEM_VALUE_BARYCENTRIC_CENTROID:
-   case SYSTEM_VALUE_BARYCENTRIC_SIZE:
+   case SYSTEM_VALUE_BARYCENTRIC_PERSP_PIXEL:
+   case SYSTEM_VALUE_BARYCENTRIC_PERSP_SAMPLE:
+   case SYSTEM_VALUE_BARYCENTRIC_PERSP_CENTROID:
+   case SYSTEM_VALUE_BARYCENTRIC_PERSP_SIZE:
    default:
       assert(!"Unexpected SYSTEM_VALUE_ enum");
       return TGSI_SEMANTIC_COUNT;
@@ -6201,6 +6253,8 @@ compile_tgsi_instruction(struct st_translate *t,
    case TGSI_OPCODE_SAMP2HND:
       if (inst->resource.file == PROGRAM_SAMPLER) {
          src[num_src] = t->samplers[inst->resource.index];
+         if (t->tg4_component_in_swizzle && inst->op == TGSI_OPCODE_TG4)
+            src[num_src].SwizzleX = inst->gather_component;
       } else {
          /* Bindless samplers. */
          src[num_src] = translate_src(t, &inst->resource);
@@ -6239,6 +6293,8 @@ compile_tgsi_instruction(struct st_translate *t,
    case TGSI_OPCODE_ATOMIMAX:
    case TGSI_OPCODE_ATOMFADD:
    case TGSI_OPCODE_IMG2HND:
+   case TGSI_OPCODE_ATOMINC_WRAP:
+   case TGSI_OPCODE_ATOMDEC_WRAP:
       for (i = num_src - 1; i >= 0; i--)
          src[i + 1] = src[i];
       num_src++;
@@ -6663,6 +6719,7 @@ st_translate_program(
 
    t->procType = procType;
    t->need_uarl = !screen->get_param(screen, PIPE_CAP_TGSI_ANY_REG_AS_ADDRESS);
+   t->tg4_component_in_swizzle = screen->get_param(screen, PIPE_CAP_TGSI_TG4_COMPONENT_IN_SWIZZLE);
    t->inputMapping = inputMapping;
    t->outputMapping = outputMapping;
    t->ureg = ureg;
@@ -7001,8 +7058,10 @@ st_translate_program(
 
       if (!st_context(ctx)->has_hw_atomics) {
          for (i = 0; i < prog->info.num_abos; i++) {
-            unsigned index = prog->sh.AtomicBuffers[i]->Binding;
-            assert(index < frag_const->MaxAtomicBuffers);
+            unsigned index = (prog->info.num_ssbos +
+                              prog->sh.AtomicBuffers[i]->Binding);
+            assert(prog->sh.AtomicBuffers[i]->Binding <
+                   frag_const->MaxAtomicBuffers);
             t->buffers[index] = ureg_DECL_buffer(ureg, index, true);
          }
       } else {
@@ -7017,11 +7076,7 @@ st_translate_program(
 
       assert(prog->info.num_ssbos <= frag_const->MaxShaderStorageBlocks);
       for (i = 0; i < prog->info.num_ssbos; i++) {
-         unsigned index = i;
-         if (!st_context(ctx)->has_hw_atomics)
-            index += frag_const->MaxAtomicBuffers;
-
-         t->buffers[index] = ureg_DECL_buffer(ureg, index, false);
+         t->buffers[i] = ureg_DECL_buffer(ureg, i, false);
       }
    }
 
@@ -7116,6 +7171,7 @@ get_mesa_program_tgsi(struct gl_context *ctx,
                                           PIPE_CAP_TGSI_TEX_TXF_LZ);
    v->need_uarl = !pscreen->get_param(pscreen, PIPE_CAP_TGSI_ANY_REG_AS_ADDRESS);
 
+   v->tg4_component_in_swizzle = pscreen->get_param(pscreen, PIPE_CAP_TGSI_TG4_COMPONENT_IN_SWIZZLE);
    v->variables = _mesa_hash_table_create(v->mem_ctx, _mesa_hash_pointer,
                                           _mesa_key_pointer_equal);
    skip_merge_registers =
@@ -7254,34 +7310,7 @@ get_mesa_program_tgsi(struct gl_context *ctx,
       return NULL;
    }
 
-   struct st_vertex_program *stvp;
-   struct st_fragment_program *stfp;
-   struct st_common_program *stp;
-   struct st_compute_program *stcp;
-
-   switch (shader->Stage) {
-   case MESA_SHADER_VERTEX:
-      stvp = (struct st_vertex_program *)prog;
-      stvp->glsl_to_tgsi = v;
-      break;
-   case MESA_SHADER_FRAGMENT:
-      stfp = (struct st_fragment_program *)prog;
-      stfp->glsl_to_tgsi = v;
-      break;
-   case MESA_SHADER_TESS_CTRL:
-   case MESA_SHADER_TESS_EVAL:
-   case MESA_SHADER_GEOMETRY:
-      stp = st_common_program(prog);
-      stp->glsl_to_tgsi = v;
-      break;
-   case MESA_SHADER_COMPUTE:
-      stcp = (struct st_compute_program *)prog;
-      stcp->glsl_to_tgsi = v;
-      break;
-   default:
-      assert(!"should not be reached");
-      return NULL;
-   }
+   st_program(prog)->glsl_to_tgsi = v;
 
    PRINT_STATS(v->print_stats());
 
@@ -7403,35 +7432,3 @@ st_link_tgsi(struct gl_context *ctx, struct gl_shader_program *prog)
 
    return GL_TRUE;
 }
-
-extern "C" {
-
-void
-st_translate_stream_output_info(struct gl_transform_feedback_info *info,
-                                const ubyte outputMapping[],
-                                struct pipe_stream_output_info *so)
-{
-   unsigned i;
-
-   if (!info) {
-      so->num_outputs = 0;
-      return;
-   }
-
-   for (i = 0; i < info->NumOutputs; i++) {
-      so->output[i].register_index =
-         outputMapping[info->Outputs[i].OutputRegister];
-      so->output[i].start_component = info->Outputs[i].ComponentOffset;
-      so->output[i].num_components = info->Outputs[i].NumComponents;
-      so->output[i].output_buffer = info->Outputs[i].OutputBuffer;
-      so->output[i].dst_offset = info->Outputs[i].DstOffset;
-      so->output[i].stream = info->Outputs[i].StreamId;
-   }
-
-   for (i = 0; i < PIPE_MAX_SO_BUFFERS; i++) {
-      so->stride[i] = info->Buffers[i].Stride;
-   }
-   so->num_outputs = info->NumOutputs;
-}
-
-} /* extern "C" */
