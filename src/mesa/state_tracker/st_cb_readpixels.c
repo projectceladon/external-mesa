@@ -33,7 +33,7 @@
 #include "main/enums.h"
 #include "main/framebuffer.h"
 #include "util/u_inlines.h"
-#include "util/u_format.h"
+#include "util/format/u_format.h"
 #include "cso_cache/cso_context.h"
 
 #include "st_cb_fbo.h"
@@ -141,7 +141,7 @@ try_pbo_readpixels(struct st_context *st, struct st_renderbuffer *strb,
                         CSO_BIT_RASTERIZER |
                         CSO_BIT_DEPTH_STENCIL_ALPHA |
                         CSO_BIT_STREAM_OUTPUTS |
-                        CSO_BIT_PAUSE_QUERIES |
+                        (st->active_queries ? CSO_BIT_PAUSE_QUERIES : 0) |
                         CSO_BIT_SAMPLE_MASK |
                         CSO_BIT_MIN_SAMPLES |
                         CSO_BIT_RENDER_CONDITION |

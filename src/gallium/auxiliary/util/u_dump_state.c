@@ -29,7 +29,7 @@
 #include "pipe/p_compiler.h"
 #include "util/u_memory.h"
 #include "util/u_string.h"
-#include "util/u_format.h"
+#include "util/format/u_format.h"
 #include "tgsi/tgsi_dump.h"
 
 #include <inttypes.h>
@@ -48,7 +48,7 @@ util_stream_writef(FILE *stream, const char *format, ...)
    unsigned len;
    va_list ap;
    va_start(ap, format);
-   len = util_vsnprintf(buf, sizeof(buf), format, ap);
+   len = vsnprintf(buf, sizeof(buf), format, ap);
    va_end(ap);
    fwrite(buf, len, 1, stream);
 }

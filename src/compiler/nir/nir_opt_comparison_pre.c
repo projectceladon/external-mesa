@@ -107,8 +107,10 @@ push_block(struct block_queue *bq)
 
    if (!u_vector_init(&bi->instructions,
                       sizeof(nir_alu_instr *),
-                      8 * sizeof(nir_alu_instr *)))
+                      8 * sizeof(nir_alu_instr *))) {
+      free(bi);
       return NULL;
+   }
 
    exec_list_push_tail(&bq->blocks, &bi->node);
 
@@ -172,7 +174,7 @@ rewrite_compare_instruction(nir_builder *bld, nir_alu_instr *orig_cmp,
     * will clean these up.  This is similar to nir_replace_instr (in
     * nir_search.c).
     */
-   nir_alu_instr *mov_add = nir_alu_instr_create(mem_ctx, nir_op_imov);
+   nir_alu_instr *mov_add = nir_alu_instr_create(mem_ctx, nir_op_mov);
    mov_add->dest.write_mask = orig_add->dest.write_mask;
    nir_ssa_dest_init(&mov_add->instr, &mov_add->dest.dest,
                      orig_add->dest.dest.ssa.num_components,
@@ -181,7 +183,7 @@ rewrite_compare_instruction(nir_builder *bld, nir_alu_instr *orig_cmp,
 
    nir_builder_instr_insert(bld, &mov_add->instr);
 
-   nir_alu_instr *mov_cmp = nir_alu_instr_create(mem_ctx, nir_op_imov);
+   nir_alu_instr *mov_cmp = nir_alu_instr_create(mem_ctx, nir_op_mov);
    mov_cmp->dest.write_mask = orig_cmp->dest.write_mask;
    nir_ssa_dest_init(&mov_cmp->instr, &mov_cmp->dest.dest,
                      orig_cmp->dest.dest.ssa.num_components,
@@ -323,8 +325,8 @@ comparison_pre_block(nir_block *block, struct block_queue *bq, nir_builder *bld)
           * and neither operand is immediate value 0, add it to the set.
           */
          if (is_used_by_if(alu) &&
-             is_not_const_zero(alu, 0, 1, swizzle) &&
-             is_not_const_zero(alu, 1, 1, swizzle))
+             is_not_const_zero(NULL, alu, 0, 1, swizzle) &&
+             is_not_const_zero(NULL, alu, 1, 1, swizzle))
             add_instruction_for_block(bi, alu);
 
          break;
