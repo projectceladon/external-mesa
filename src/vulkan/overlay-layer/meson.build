@@ -41,14 +41,20 @@ vklayer_mesa_overlay = shared_library(
   vklayer_files, overlay_spv,
   c_args : [c_vis_args, no_override_init_args, vulkan_wsi_args],
   cpp_args : [cpp_vis_args, vulkan_wsi_args],
-  dependencies : [idep_vulkan_util, vulkan_wsi_deps, libimgui_core_dep, dep_dl],
+  dependencies : [idep_vulkan_util, idep_mesautil, vulkan_wsi_deps, libimgui_core_dep, dep_dl],
   include_directories : inc_common,
   link_args : cc.get_supported_link_arguments(['-Wl,-Bsymbolic-functions', '-Wl,-z,relro']),
-  link_with : libmesa_util,
   install : true
 )
 
 install_data(
   files('VkLayer_MESA_overlay.json'),
   install_dir : join_paths(get_option('datadir'), 'vulkan', 'explicit_layer.d'),
+)
+
+configure_file(
+  input : files('mesa-overlay-control.py'),
+  output : '@PLAINNAME@',
+  configuration : configuration_data(), # only copy the file
+  install_dir: get_option('bindir'),
 )

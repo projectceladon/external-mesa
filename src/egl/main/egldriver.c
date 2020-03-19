@@ -56,9 +56,10 @@ _eglGetDriver(void)
 
    if (!_eglDriver) {
       _eglDriver = calloc(1, sizeof(*_eglDriver));
-      if (!_eglDriver)
+      if (!_eglDriver) {
+         mtx_unlock(&_eglModuleMutex);
          return NULL;
-      _eglInitDriverFallbacks(_eglDriver);
+      }
       _eglInitDriver(_eglDriver);
    }
 
@@ -91,6 +92,8 @@ _eglMatchDriver(_EGLDisplay *disp)
    /* set options */
    disp->Options.ForceSoftware =
       env_var_as_boolean("LIBGL_ALWAYS_SOFTWARE", false);
+   if (disp->Options.ForceSoftware)
+      _eglLog(_EGL_DEBUG, "Found 'LIBGL_ALWAYS_SOFTWARE' set, will use a CPU renderer");
 
    best_drv = _eglMatchAndInitialize(disp);
    if (!best_drv && !disp->Options.ForceSoftware) {
@@ -109,7 +112,7 @@ _eglMatchDriver(_EGLDisplay *disp)
 __eglMustCastToProperFunctionPointerType
 _eglGetDriverProc(const char *procname)
 {
-   if (_eglGetDriver())
+   if (_eglGetDriver() && _eglDriver->API.GetProcAddress)
       return _eglDriver->API.GetProcAddress(_eglDriver, procname);
 
    return NULL;

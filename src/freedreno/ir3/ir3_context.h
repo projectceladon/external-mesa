@@ -52,6 +52,18 @@ struct ir3_context {
 	struct ir3 *ir;
 	struct ir3_shader_variant *so;
 
+	/* Tables of scalar inputs/outputs.  Because of the way varying packing
+	 * works, we could have inputs w/ fractional location, which is a bit
+	 * awkward to deal with unless we keep track of the split scalar in/
+	 * out components.
+	 *
+	 * These *only* have inputs/outputs that are touched by load_*input and
+	 * store_output.
+	 */
+	unsigned ninputs, noutputs;
+	struct ir3_instruction **inputs;
+	struct ir3_instruction **outputs;
+
 	struct ir3_block *block;      /* the current block */
 	struct ir3_block *in_block;   /* block created for shader inputs */
 
@@ -71,10 +83,19 @@ struct ir3_context {
 	struct ir3_instruction *frag_face, *frag_coord;
 
 	/* For vertex shaders, keep track of the system values sources */
-	struct ir3_instruction *vertex_id, *basevertex, *instance_id;
+	struct ir3_instruction *vertex_id, *basevertex, *instance_id, *base_instance;
 
 	/* For fragment shaders: */
 	struct ir3_instruction *samp_id, *samp_mask_in;
+
+	/* For geometry shaders: */
+	struct ir3_instruction *primitive_id;
+	struct ir3_instruction *gs_header;
+
+	/* For tessellation shaders: */
+	struct ir3_instruction *patch_vertices_in;
+	struct ir3_instruction *tcs_header;
+	struct ir3_instruction *tess_coord;
 
 	/* Compute shader inputs: */
 	struct ir3_instruction *local_invocation_id, *work_group_id;
@@ -140,13 +161,6 @@ struct ir3_context * ir3_context_init(struct ir3_compiler *compiler,
 		struct ir3_shader_variant *so);
 void ir3_context_free(struct ir3_context *ctx);
 
-/* gpu pointer size in units of 32bit registers/slots */
-static inline
-unsigned ir3_pointer_size(struct ir3_context *ctx)
-{
-	return (ctx->compiler->gpu_id >= 500) ? 2 : 1;
-}
-
 struct ir3_instruction ** ir3_get_dst_ssa(struct ir3_context *ctx, nir_ssa_def *dst, unsigned n);
 struct ir3_instruction ** ir3_get_dst(struct ir3_context *ctx, nir_dest *dst, unsigned n);
 struct ir3_instruction * const * ir3_get_src(struct ir3_context *ctx, nir_src *src);
@@ -170,7 +184,8 @@ struct ir3_instruction * ir3_get_predicate(struct ir3_context *ctx,
 void ir3_declare_array(struct ir3_context *ctx, nir_register *reg);
 struct ir3_array * ir3_get_array(struct ir3_context *ctx, nir_register *reg);
 struct ir3_instruction *ir3_create_array_load(struct ir3_context *ctx,
-		struct ir3_array *arr, int n, struct ir3_instruction *address);
+		struct ir3_array *arr, int n, struct ir3_instruction *address,
+		unsigned bitsize);
 void ir3_create_array_store(struct ir3_context *ctx, struct ir3_array *arr, int n,
 		struct ir3_instruction *src, struct ir3_instruction *address);
 

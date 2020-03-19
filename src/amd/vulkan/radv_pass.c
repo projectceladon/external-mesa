@@ -30,7 +30,7 @@
 
 static void
 radv_render_pass_add_subpass_dep(struct radv_render_pass *pass,
-				 const VkSubpassDependency2KHR *dep)
+				 const VkSubpassDependency2 *dep)
 {
 	uint32_t src = dep->srcSubpass;
 	uint32_t dst = dep->dstSubpass;
@@ -60,8 +60,108 @@ radv_render_pass_add_subpass_dep(struct radv_render_pass *pass,
 }
 
 static void
+radv_render_pass_add_implicit_deps(struct radv_render_pass *pass,
+				   bool has_ingoing_dep, bool has_outgoing_dep)
+{
+	/* From the Vulkan 1.0.39 spec:
+	*
+	*    If there is no subpass dependency from VK_SUBPASS_EXTERNAL to the
+	*    first subpass that uses an attachment, then an implicit subpass
+	*    dependency exists from VK_SUBPASS_EXTERNAL to the first subpass it is
+	*    used in. The subpass dependency operates as if defined with the
+	*    following parameters:
+	*
+	*    VkSubpassDependency implicitDependency = {
+	*        .srcSubpass = VK_SUBPASS_EXTERNAL;
+	*        .dstSubpass = firstSubpass; // First subpass attachment is used in
+	*        .srcStageMask = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
+	*        .dstStageMask = VK_PIPELINE_STAGE_ALL_COMMANDS_BIT;
+	*        .srcAccessMask = 0;
+	*        .dstAccessMask = VK_ACCESS_INPUT_ATTACHMENT_READ_BIT |
+	*                         VK_ACCESS_COLOR_ATTACHMENT_READ_BIT |
+	*                         VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT |
+	*                         VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT |
+	*                         VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
+	*        .dependencyFlags = 0;
+	*    };
+	*
+	*    Similarly, if there is no subpass dependency from the last subpass
+	*    that uses an attachment to VK_SUBPASS_EXTERNAL, then an implicit
+	*    subpass dependency exists from the last subpass it is used in to
+	*    VK_SUBPASS_EXTERNAL. The subpass dependency operates as if defined
+	*    with the following parameters:
+	*
+	*    VkSubpassDependency implicitDependency = {
+	*        .srcSubpass = lastSubpass; // Last subpass attachment is used in
+	*        .dstSubpass = VK_SUBPASS_EXTERNAL;
+	*        .srcStageMask = VK_PIPELINE_STAGE_ALL_COMMANDS_BIT;
+	*        .dstStageMask = VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT;
+	*        .srcAccessMask = VK_ACCESS_INPUT_ATTACHMENT_READ_BIT |
+	*                         VK_ACCESS_COLOR_ATTACHMENT_READ_BIT |
+	*                         VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT |
+	*                         VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT |
+	*                         VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
+	*        .dstAccessMask = 0;
+	*        .dependencyFlags = 0;
+	*    };
+	*/
+
+	if (!has_ingoing_dep) {
+		const VkSubpassDependency2KHR implicit_ingoing_dep = {
+			.srcSubpass = VK_SUBPASS_EXTERNAL,
+			.dstSubpass = 0,
+			.srcStageMask = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
+			.dstStageMask = VK_PIPELINE_STAGE_ALL_COMMANDS_BIT,
+			.srcAccessMask = 0,
+			.dstAccessMask = VK_ACCESS_INPUT_ATTACHMENT_READ_BIT |
+					 VK_ACCESS_COLOR_ATTACHMENT_READ_BIT |
+					 VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT |
+					 VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT |
+					 VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT,
+			.dependencyFlags = 0,
+		};
+
+		radv_render_pass_add_subpass_dep(pass, &implicit_ingoing_dep);
+	}
+
+	if (!has_outgoing_dep) {
+		const VkSubpassDependency2KHR implicit_outgoing_dep = {
+			.srcSubpass = 0,
+			.dstSubpass = VK_SUBPASS_EXTERNAL,
+			.srcStageMask = VK_PIPELINE_STAGE_ALL_COMMANDS_BIT,
+			.dstStageMask = VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT,
+			.srcAccessMask = VK_ACCESS_INPUT_ATTACHMENT_READ_BIT |
+					 VK_ACCESS_COLOR_ATTACHMENT_READ_BIT |
+					 VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT |
+					 VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT |
+					 VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT,
+			.dstAccessMask = 0,
+			.dependencyFlags = 0,
+		};
+
+		radv_render_pass_add_subpass_dep(pass, &implicit_outgoing_dep);
+	}
+}
+
+static void
 radv_render_pass_compile(struct radv_render_pass *pass)
 {
+	for (uint32_t i = 0; i < pass->subpass_count; i++) {
+		struct radv_subpass *subpass = &pass->subpasses[i];
+
+		for (uint32_t j = 0; j < subpass->attachment_count; j++) {
+			struct radv_subpass_attachment *subpass_att =
+				&subpass->attachments[j];
+			if (subpass_att->attachment == VK_ATTACHMENT_UNUSED)
+				continue;
+
+			struct radv_render_pass_attachment *pass_att =
+				&pass->attachments[subpass_att->attachment];
+
+			pass_att->first_subpass_idx = UINT32_MAX;
+		}
+	}
+
 	for (uint32_t i = 0; i < pass->subpass_count; i++) {
 		struct radv_subpass *subpass = &pass->subpasses[i];
 		uint32_t color_sample_count = 1, depth_sample_count = 1;
@@ -75,6 +175,10 @@ radv_render_pass_compile(struct radv_render_pass *pass)
 		    subpass->depth_stencil_attachment->attachment == VK_ATTACHMENT_UNUSED)
 			subpass->depth_stencil_attachment = NULL;
 
+		if (subpass->ds_resolve_attachment &&
+		    subpass->ds_resolve_attachment->attachment == VK_ATTACHMENT_UNUSED)
+			subpass->ds_resolve_attachment = NULL;
+
 		for (uint32_t j = 0; j < subpass->attachment_count; j++) {
 			struct radv_subpass_attachment *subpass_att =
 				&subpass->attachments[j];
@@ -84,6 +188,8 @@ radv_render_pass_compile(struct radv_render_pass *pass)
 			struct radv_render_pass_attachment *pass_att =
 				&pass->attachments[subpass_att->attachment];
 
+			if (i < pass_att->first_subpass_idx)
+				pass_att->first_subpass_idx = i;
 			pass_att->last_subpass_idx = i;
 		}
 
@@ -112,9 +218,11 @@ radv_render_pass_compile(struct radv_render_pass *pass)
 
 		subpass->max_sample_count = MAX2(color_sample_count,
 						 depth_sample_count);
+		subpass->color_sample_count = color_sample_count;
+		subpass->depth_sample_count = depth_sample_count;
 
 		/* We have to handle resolve attachments specially */
-		subpass->has_resolve = false;
+		subpass->has_color_resolve = false;
 		if (subpass->resolve_attachments) {
 			for (uint32_t j = 0; j < subpass->color_count; j++) {
 				struct radv_subpass_attachment *resolve_att =
@@ -123,7 +231,25 @@ radv_render_pass_compile(struct radv_render_pass *pass)
 				if (resolve_att->attachment == VK_ATTACHMENT_UNUSED)
 					continue;
 
-				subpass->has_resolve = true;
+				subpass->has_color_resolve = true;
+			}
+		}
+
+		for (uint32_t j = 0; j < subpass->input_count; ++j) {
+			if (subpass->input_attachments[j].attachment == VK_ATTACHMENT_UNUSED)
+				continue;
+
+			for (uint32_t k = 0; k < subpass->color_count; ++k) {
+				if (subpass->color_attachments[k].attachment == subpass->input_attachments[j].attachment) {
+					subpass->input_attachments[j].in_render_loop = true;
+					subpass->color_attachments[k].in_render_loop = true;
+				}
+			}
+
+			if (subpass->depth_stencil_attachment &&
+			    subpass->depth_stencil_attachment->attachment == subpass->input_attachments[j].attachment) {
+				subpass->input_attachments[j].in_render_loop = true;
+				subpass->depth_stencil_attachment->in_render_loop = true;
 			}
 		}
 	}
@@ -186,6 +312,8 @@ VkResult radv_CreateRenderPass(
 		att->stencil_load_op = pCreateInfo->pAttachments[i].stencilLoadOp;
 		att->initial_layout =  pCreateInfo->pAttachments[i].initialLayout;
 		att->final_layout =  pCreateInfo->pAttachments[i].finalLayout;
+		att->stencil_initial_layout = pCreateInfo->pAttachments[i].initialLayout;
+		att->stencil_final_layout = pCreateInfo->pAttachments[i].finalLayout;
 		// att->store_op = pCreateInfo->pAttachments[i].storeOp;
 		// att->stencil_store_op = pCreateInfo->pAttachments[i].stencilStoreOp;
 	}
@@ -229,6 +357,7 @@ VkResult radv_CreateRenderPass(
 				subpass->input_attachments[j] = (struct radv_subpass_attachment) {
 					.attachment = desc->pInputAttachments[j].attachment,
 					.layout = desc->pInputAttachments[j].layout,
+					.stencil_layout = desc->pInputAttachments[j].layout,
 				};
 			}
 		}
@@ -253,6 +382,7 @@ VkResult radv_CreateRenderPass(
 				subpass->resolve_attachments[j] = (struct radv_subpass_attachment) {
 					.attachment = desc->pResolveAttachments[j].attachment,
 					.layout = desc->pResolveAttachments[j].layout,
+					.stencil_layout = desc->pResolveAttachments[j].layout,
 				};
 			}
 		}
@@ -263,13 +393,17 @@ VkResult radv_CreateRenderPass(
 			*subpass->depth_stencil_attachment = (struct radv_subpass_attachment) {
 				.attachment = desc->pDepthStencilAttachment->attachment,
 				.layout = desc->pDepthStencilAttachment->layout,
+				.stencil_layout = desc->pDepthStencilAttachment->layout,
 			};
 		}
 	}
 
+	bool has_ingoing_dep = false;
+	bool has_outgoing_dep = false;
+
 	for (unsigned i = 0; i < pCreateInfo->dependencyCount; ++i) {
-		/* Convert to a Dependency2KHR */
-		struct VkSubpassDependency2KHR dep2 = {
+		/* Convert to a Dependency2 */
+		struct VkSubpassDependency2 dep2 = {
 			.srcSubpass       = pCreateInfo->pDependencies[i].srcSubpass,
 			.dstSubpass       = pCreateInfo->pDependencies[i].dstSubpass,
 			.srcStageMask     = pCreateInfo->pDependencies[i].srcStageMask,
@@ -279,7 +413,18 @@ VkResult radv_CreateRenderPass(
 			.dependencyFlags  = pCreateInfo->pDependencies[i].dependencyFlags,
 		};
 		radv_render_pass_add_subpass_dep(pass, &dep2);
+
+		/* Determine if the subpass has explicit dependencies from/to
+		 * VK_SUBPASS_EXTERNAL.
+		 */
+		if (pCreateInfo->pDependencies[i].srcSubpass == VK_SUBPASS_EXTERNAL)
+			has_ingoing_dep = true;
+		if (pCreateInfo->pDependencies[i].dstSubpass == VK_SUBPASS_EXTERNAL)
+			has_outgoing_dep = true;
 	}
+
+	radv_render_pass_add_implicit_deps(pass,
+					   has_ingoing_dep, has_outgoing_dep);
 
 	radv_render_pass_compile(pass);
 
@@ -289,17 +434,22 @@ VkResult radv_CreateRenderPass(
 }
 
 static unsigned
-radv_num_subpass_attachments2(const VkSubpassDescription2KHR *desc)
+radv_num_subpass_attachments2(const VkSubpassDescription2 *desc)
 {
+	const VkSubpassDescriptionDepthStencilResolve *ds_resolve =
+		vk_find_struct_const(desc->pNext,
+				     SUBPASS_DESCRIPTION_DEPTH_STENCIL_RESOLVE);
+
 	return desc->inputAttachmentCount +
 	       desc->colorAttachmentCount +
 	       (desc->pResolveAttachments ? desc->colorAttachmentCount : 0) +
-	       (desc->pDepthStencilAttachment != NULL);
+	       (desc->pDepthStencilAttachment != NULL) +
+	       (ds_resolve && ds_resolve->pDepthStencilResolveAttachment);
 }
 
-VkResult radv_CreateRenderPass2KHR(
+VkResult radv_CreateRenderPass2(
     VkDevice                                    _device,
-    const VkRenderPassCreateInfo2KHR*           pCreateInfo,
+    const VkRenderPassCreateInfo2*              pCreateInfo,
     const VkAllocationCallbacks*                pAllocator,
     VkRenderPass*                               pRenderPass)
 {
@@ -308,7 +458,7 @@ VkResult radv_CreateRenderPass2KHR(
 	size_t size;
 	size_t attachments_offset;
 
-	assert(pCreateInfo->sType == VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO_2_KHR);
+	assert(pCreateInfo->sType == VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO_2);
 
 	size = sizeof(*pass);
 	size += pCreateInfo->subpassCount * sizeof(pass->subpasses[0]);
@@ -327,6 +477,9 @@ VkResult radv_CreateRenderPass2KHR(
 
 	for (uint32_t i = 0; i < pCreateInfo->attachmentCount; i++) {
 		struct radv_render_pass_attachment *att = &pass->attachments[i];
+		const VkAttachmentDescriptionStencilLayoutKHR *stencil_layout =
+			vk_find_struct_const(pCreateInfo->pAttachments[i].pNext,
+					     ATTACHMENT_DESCRIPTION_STENCIL_LAYOUT_KHR);
 
 		att->format = pCreateInfo->pAttachments[i].format;
 		att->samples = pCreateInfo->pAttachments[i].samples;
@@ -334,6 +487,12 @@ VkResult radv_CreateRenderPass2KHR(
 		att->stencil_load_op = pCreateInfo->pAttachments[i].stencilLoadOp;
 		att->initial_layout =  pCreateInfo->pAttachments[i].initialLayout;
 		att->final_layout =  pCreateInfo->pAttachments[i].finalLayout;
+		att->stencil_initial_layout = (stencil_layout ?
+					       stencil_layout->stencilInitialLayout :
+					       pCreateInfo->pAttachments[i].initialLayout);
+		att->stencil_final_layout = (stencil_layout ?
+					     stencil_layout->stencilFinalLayout :
+					     pCreateInfo->pAttachments[i].finalLayout);
 		// att->store_op = pCreateInfo->pAttachments[i].storeOp;
 		// att->stencil_store_op = pCreateInfo->pAttachments[i].stencilStoreOp;
 	}
@@ -358,7 +517,7 @@ VkResult radv_CreateRenderPass2KHR(
 
 	p = pass->subpass_attachments;
 	for (uint32_t i = 0; i < pCreateInfo->subpassCount; i++) {
-		const VkSubpassDescription2KHR *desc = &pCreateInfo->pSubpasses[i];
+		const VkSubpassDescription2 *desc = &pCreateInfo->pSubpasses[i];
 		struct radv_subpass *subpass = &pass->subpasses[i];
 
 		subpass->input_count = desc->inputAttachmentCount;
@@ -372,9 +531,16 @@ VkResult radv_CreateRenderPass2KHR(
 			p += desc->inputAttachmentCount;
 
 			for (uint32_t j = 0; j < desc->inputAttachmentCount; j++) {
+				const VkAttachmentReferenceStencilLayoutKHR *stencil_attachment =
+			            vk_find_struct_const(desc->pInputAttachments[j].pNext,
+							 ATTACHMENT_REFERENCE_STENCIL_LAYOUT_KHR);
+
 				subpass->input_attachments[j] = (struct radv_subpass_attachment) {
 					.attachment = desc->pInputAttachments[j].attachment,
 					.layout = desc->pInputAttachments[j].layout,
+					.stencil_layout = (stencil_attachment ?
+							   stencil_attachment->stencilLayout :
+							   desc->pInputAttachments[j].layout),
 				};
 			}
 		}
@@ -406,17 +572,61 @@ VkResult radv_CreateRenderPass2KHR(
 		if (desc->pDepthStencilAttachment) {
 			subpass->depth_stencil_attachment = p++;
 
+			const VkAttachmentReferenceStencilLayoutKHR *stencil_attachment =
+		            vk_find_struct_const(desc->pDepthStencilAttachment->pNext,
+						 ATTACHMENT_REFERENCE_STENCIL_LAYOUT_KHR);
+
 			*subpass->depth_stencil_attachment = (struct radv_subpass_attachment) {
 				.attachment = desc->pDepthStencilAttachment->attachment,
 				.layout = desc->pDepthStencilAttachment->layout,
+				.stencil_layout = (stencil_attachment ?
+						   stencil_attachment->stencilLayout :
+						   desc->pDepthStencilAttachment->layout),
 			};
 		}
+
+		const VkSubpassDescriptionDepthStencilResolve *ds_resolve =
+			vk_find_struct_const(desc->pNext,
+					     SUBPASS_DESCRIPTION_DEPTH_STENCIL_RESOLVE);
+
+		if (ds_resolve && ds_resolve->pDepthStencilResolveAttachment) {
+			subpass->ds_resolve_attachment = p++;
+
+			const VkAttachmentReferenceStencilLayoutKHR *stencil_resolve_attachment =
+		            vk_find_struct_const(ds_resolve->pDepthStencilResolveAttachment->pNext,
+						 ATTACHMENT_REFERENCE_STENCIL_LAYOUT_KHR);
+
+			*subpass->ds_resolve_attachment = (struct radv_subpass_attachment) {
+				.attachment =  ds_resolve->pDepthStencilResolveAttachment->attachment,
+				.layout =      ds_resolve->pDepthStencilResolveAttachment->layout,
+				.stencil_layout = (stencil_resolve_attachment ?
+						   stencil_resolve_attachment->stencilLayout :
+						   ds_resolve->pDepthStencilResolveAttachment->layout),
+			};
+
+			subpass->depth_resolve_mode = ds_resolve->depthResolveMode;
+			subpass->stencil_resolve_mode = ds_resolve->stencilResolveMode;
+		}
 	}
+
+	bool has_ingoing_dep = false;
+	bool has_outgoing_dep = false;
 
 	for (unsigned i = 0; i < pCreateInfo->dependencyCount; ++i) {
 		radv_render_pass_add_subpass_dep(pass,
 						 &pCreateInfo->pDependencies[i]);
+
+		/* Determine if the subpass has explicit dependencies from/to
+		 * VK_SUBPASS_EXTERNAL.
+		 */
+		if (pCreateInfo->pDependencies[i].srcSubpass == VK_SUBPASS_EXTERNAL)
+			has_ingoing_dep = true;
+		if (pCreateInfo->pDependencies[i].dstSubpass == VK_SUBPASS_EXTERNAL)
+			has_outgoing_dep = true;
 	}
+
+	radv_render_pass_add_implicit_deps(pass,
+					   has_ingoing_dep, has_outgoing_dep);
 
 	radv_render_pass_compile(pass);
 

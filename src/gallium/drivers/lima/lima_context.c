@@ -29,7 +29,6 @@
 #include "util/u_debug.h"
 #include "util/ralloc.h"
 #include "util/u_inlines.h"
-#include "util/u_suballoc.h"
 #include "util/hash_table.h"
 
 #include "lima_screen.h"
@@ -70,19 +69,15 @@ lima_ctx_buff_map(struct lima_context *ctx, enum lima_ctx_buff buff)
 
 void *
 lima_ctx_buff_alloc(struct lima_context *ctx, enum lima_ctx_buff buff,
-                    unsigned size, bool uploader)
+                    unsigned size)
 {
    struct lima_ctx_buff_state *cbs = ctx->buffer_state + buff;
    void *ret = NULL;
 
    cbs->size = align(size, 0x40);
 
-   if (uploader)
-      u_upload_alloc(ctx->uploader, 0, cbs->size, 0x40, &cbs->offset,
-                     &cbs->res, &ret);
-   else
-      u_suballocator_alloc(ctx->suballocator, cbs->size, 0x10,
-                           &cbs->offset, &cbs->res);
+   u_upload_alloc(ctx->uploader, 0, cbs->size, 0x40, &cbs->offset,
+                  &cbs->res, &ret);
 
    return ret;
 }
@@ -110,6 +105,19 @@ lima_context_free_drm_ctx(struct lima_screen *screen, int id)
 }
 
 static void
+lima_invalidate_resource(struct pipe_context *pctx, struct pipe_resource *prsc)
+{
+   struct lima_context *ctx = lima_context(pctx);
+
+   if (ctx->framebuffer.base.zsbuf && (ctx->framebuffer.base.zsbuf->texture == prsc))
+      ctx->resolve &= ~(PIPE_CLEAR_DEPTH | PIPE_CLEAR_STENCIL);
+
+   if (ctx->framebuffer.base.nr_cbufs &&
+       (ctx->framebuffer.base.cbufs[0]->texture == prsc))
+      ctx->resolve &= ~PIPE_CLEAR_COLOR0;
+}
+
+static void
 lima_context_destroy(struct pipe_context *pctx)
 {
    struct lima_context *ctx = lima_context(pctx);
@@ -128,9 +136,6 @@ lima_context_destroy(struct pipe_context *pctx)
    if (ctx->blitter)
       util_blitter_destroy(ctx->blitter);
 
-   if (ctx->suballocator)
-      u_suballocator_destroy(ctx->suballocator);
-
    if (ctx->uploader)
       u_upload_destroy(ctx->uploader);
 
@@ -138,13 +143,16 @@ lima_context_destroy(struct pipe_context *pctx)
 
    for (int i = 0; i < LIMA_CTX_PLB_MAX_NUM; i++) {
       if (ctx->plb[i])
-         lima_bo_free(ctx->plb[i]);
+         lima_bo_unreference(ctx->plb[i]);
       if (ctx->gp_tile_heap[i])
-         lima_bo_free(ctx->gp_tile_heap[i]);
+         lima_bo_unreference(ctx->gp_tile_heap[i]);
    }
 
    if (ctx->plb_gp_stream)
-      lima_bo_free(ctx->plb_gp_stream);
+      lima_bo_unreference(ctx->plb_gp_stream);
+
+   if (ctx->gp_output)
+      lima_bo_unreference(ctx->gp_output);
 
    if (ctx->plb_pp_stream)
       assert(!_mesa_hash_table_num_entries(ctx->plb_pp_stream));
@@ -166,6 +174,18 @@ plb_pp_stream_compare(const void *key1, const void *key2)
    return memcmp(key1, key2, sizeof(struct lima_ctx_plb_pp_stream_key)) == 0;
 }
 
+static void
+lima_set_debug_callback(struct pipe_context *pctx,
+                        const struct pipe_debug_callback *cb)
+{
+   struct lima_context *ctx = lima_context(pctx);
+
+   if (cb)
+      ctx->debug = *cb;
+   else
+      memset(&ctx->debug, 0, sizeof(ctx->debug));
+}
+
 struct pipe_context *
 lima_context_create(struct pipe_screen *pscreen, void *priv, unsigned flags)
 {
@@ -184,6 +204,8 @@ lima_context_create(struct pipe_screen *pscreen, void *priv, unsigned flags)
 
    ctx->base.screen = pscreen;
    ctx->base.destroy = lima_context_destroy;
+   ctx->base.set_debug_callback = lima_set_debug_callback;
+   ctx->base.invalidate_resource = lima_invalidate_resource;
 
    lima_resource_context_init(ctx);
    lima_fence_context_init(ctx);
@@ -204,28 +226,34 @@ lima_context_create(struct pipe_screen *pscreen, void *priv, unsigned flags)
    ctx->base.stream_uploader = ctx->uploader;
    ctx->base.const_uploader = ctx->uploader;
 
-   /* for varying output which need not mmap */
-   ctx->suballocator =
-      u_suballocator_create(&ctx->base, 1024 * 1024, 0,
-                            PIPE_USAGE_STREAM, 0, false);
-   if (!ctx->suballocator)
-      goto err_out;
+   ctx->damage_rect.minx = ctx->damage_rect.miny = 0xffff;
+   ctx->damage_rect.maxx = ctx->damage_rect.maxy = 0;
 
    util_dynarray_init(&ctx->vs_cmd_array, ctx);
    util_dynarray_init(&ctx->plbu_cmd_array, ctx);
 
-   if (screen->gpu_type == DRM_LIMA_PARAM_GPU_ID_MALI450)
-      ctx->plb_max_blk = 4096;
-   else
-      ctx->plb_max_blk = 512;
-   ctx->plb_size = ctx->plb_max_blk * LIMA_CTX_PLB_BLK_SIZE;
-   ctx->plb_gp_size = ctx->plb_max_blk * 4;
+   ctx->plb_size = screen->plb_max_blk * LIMA_CTX_PLB_BLK_SIZE;
+   ctx->plb_gp_size = screen->plb_max_blk * 4;
+
+   uint32_t heap_flags;
+   if (screen->has_growable_heap_buffer) {
+      /* growable size buffer, initially will allocate 32K (by default)
+       * backup memory in kernel driver, and will allocate more when GP
+       * get out of memory interrupt. Max to 16M set here.
+       */
+      ctx->gp_tile_heap_size = 0x1000000;
+      heap_flags = LIMA_BO_FLAG_HEAP;
+   } else {
+      /* fix size buffer */
+      ctx->gp_tile_heap_size = 0x100000;
+      heap_flags = 0;
+   }
 
    for (int i = 0; i < lima_ctx_num_plb; i++) {
       ctx->plb[i] = lima_bo_create(screen, ctx->plb_size, 0);
       if (!ctx->plb[i])
          goto err_out;
-      ctx->gp_tile_heap[i] = lima_bo_create(screen, gp_tile_heap_size, 0);
+      ctx->gp_tile_heap[i] = lima_bo_create(screen, ctx->gp_tile_heap_size, heap_flags);
       if (!ctx->gp_tile_heap[i])
          goto err_out;
    }
@@ -241,7 +269,7 @@ lima_context_create(struct pipe_screen *pscreen, void *priv, unsigned flags)
    /* plb gp stream is static for any framebuffer */
    for (int i = 0; i < lima_ctx_num_plb; i++) {
       uint32_t *plb_gp_stream = ctx->plb_gp_stream->map + i * ctx->plb_gp_size;
-      for (int j = 0; j < ctx->plb_max_blk; j++)
+      for (int j = 0; j < screen->plb_max_blk; j++)
          plb_gp_stream[j] = ctx->plb[i]->va + LIMA_CTX_PLB_BLK_SIZE * j;
    }
 
@@ -272,16 +300,4 @@ lima_need_flush(struct lima_context *ctx, struct lima_bo *bo, bool write)
 {
    return lima_submit_has_bo(ctx->gp_submit, bo, write) ||
       lima_submit_has_bo(ctx->pp_submit, bo, write);
-}
-
-bool
-lima_is_scanout(struct lima_context *ctx)
-{
-        /* If there is no color buffer, it's an FBO */
-        if (!ctx->framebuffer.base.nr_cbufs)
-                return false;
-
-        return ctx->framebuffer.base.cbufs[0]->texture->bind & PIPE_BIND_DISPLAY_TARGET ||
-               ctx->framebuffer.base.cbufs[0]->texture->bind & PIPE_BIND_SCANOUT ||
-               ctx->framebuffer.base.cbufs[0]->texture->bind & PIPE_BIND_SHARED;
 }

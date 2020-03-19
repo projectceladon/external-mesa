@@ -26,6 +26,7 @@ inc_src = include_directories('.')
 inc_gallium = include_directories('gallium/include')
 inc_gallium_aux = include_directories('gallium/auxiliary')
 inc_amd_common = include_directories('amd/common')
+inc_amd_common_llvm = include_directories('amd/llvm')
 
 libglsl_util = static_library(
   'glsl_util',
@@ -47,11 +48,21 @@ sha1_h = custom_target(
 )
 
 subdir('gtest')
+if cc.get_id() == 'msvc'
+  subdir('getopt')
+else
+  idep_getopt = null_dep
+endif
 subdir('util')
 subdir('mapi')
 # TODO: opengl
 subdir('compiler')
-subdir('imgui')
+if with_tools.contains('drm-shim')
+  subdir('drm-shim')
+endif
+if with_imgui
+  subdir('imgui')
+endif
 if with_platform_wayland
   subdir('egl/wayland/wayland-drm')
 endif
@@ -64,8 +75,14 @@ endif
 if with_gallium_vc4 or with_gallium_v3d
   subdir('broadcom')
 endif
+if with_gallium_etnaviv
+  subdir('etnaviv')
+endif
 if with_gallium_freedreno or with_freedreno_vk
   subdir('freedreno')
+endif
+if with_gallium_panfrost or with_gallium_lima
+  subdir('panfrost')
 endif
 if with_dri_i965 or with_intel_vk or with_gallium_iris
   subdir('intel')
@@ -97,22 +114,12 @@ endif
 
 # This must be after at least mesa, glx, and gallium, since libgl will be
 # defined in one of those subdirs depending on the glx provider.
-if with_glx != 'disabled'
-  # If using glvnd the pkg-config header should not point to GL_mesa, it should
-  # point to GL. glvnd is only available on unix like platforms so adding -l
-  # should be safe here
-  # TODO: in the glvnd case glvnd itself should really be providing this.
-  if with_glvnd
-    _gl = '-L${libdir} -lGL'
-  else
-    _gl = libgl
-  endif
-
+if with_glx != 'disabled' and not with_glvnd
   pkg.generate(
     name : 'gl',
     description : 'Mesa OpenGL Library',
     version : meson.project_version(),
-    libraries : _gl,
+    libraries : libgl,
     libraries_private : gl_priv_libs,
     requires_private : gl_priv_reqs,
     variables : ['glx_tls=yes'],
