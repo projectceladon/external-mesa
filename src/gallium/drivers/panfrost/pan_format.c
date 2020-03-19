@@ -53,8 +53,7 @@ panfrost_translate_swizzle(enum pipe_swizzle s)
                 return MALI_CHANNEL_ONE;
 
         default:
-                assert(0);
-                return 0;
+                unreachable("INvalid swizzle");
         }
 }
 
@@ -91,45 +90,43 @@ static unsigned
 panfrost_translate_channel_width(unsigned size)
 {
         switch (size) {
-                case 4:
-                        return MALI_CHANNEL_4;
-                case 8:
-                        return MALI_CHANNEL_8;
-                case 16:
-                        return MALI_CHANNEL_16;
-                case 32:
-                        return MALI_CHANNEL_32;
-                default:
-                        fprintf(stderr, "Unknown width %d\n", size);
-                        assert(0);
-                        return 0;
+        case 4:
+                return MALI_CHANNEL_4;
+        case 8:
+                return MALI_CHANNEL_8;
+        case 16:
+                return MALI_CHANNEL_16;
+        case 32:
+                return MALI_CHANNEL_32;
+        default:
+                unreachable("Invalid width");
         }
 }
 
 static unsigned
-panfrost_translate_channel_type(unsigned type, unsigned size, bool norm) {
+panfrost_translate_channel_type(unsigned type, unsigned size, bool norm)
+{
         switch (type) {
-                case UTIL_FORMAT_TYPE_UNSIGNED:
-                        return norm ? MALI_FORMAT_UNORM : MALI_FORMAT_UINT;
+        case UTIL_FORMAT_TYPE_UNSIGNED:
+                return norm ? MALI_FORMAT_UNORM : MALI_FORMAT_UINT;
 
-                case UTIL_FORMAT_TYPE_SIGNED:
-                        return norm ? MALI_FORMAT_SNORM : MALI_FORMAT_SINT;
+        case UTIL_FORMAT_TYPE_SIGNED:
+                return norm ? MALI_FORMAT_SNORM : MALI_FORMAT_SINT;
 
-                case UTIL_FORMAT_TYPE_FLOAT:
-                        if (size == 16) {
-                                /* With FLOAT, fp16 */
-                                return MALI_FORMAT_SINT;
-                        } else if (size == 32) {
-                                /* With FLOAT< fp32 */
-                                return MALI_FORMAT_UNORM;
-                        } else {
-                                assert(0);
-                                return 0;
-                        }
-
-                default:
+        case UTIL_FORMAT_TYPE_FLOAT:
+                if (size == 16) {
+                        /* With FLOAT, fp16 */
+                        return MALI_FORMAT_SINT;
+                } else if (size == 32) {
+                        /* With FLOAT< fp32 */
+                        return MALI_FORMAT_UNORM;
+                } else {
                         assert(0);
                         return 0;
+                }
+
+        default:
+                unreachable("Invalid type");
         }
 }
 
@@ -137,12 +134,12 @@ panfrost_translate_channel_type(unsigned type, unsigned size, bool norm) {
  * description */
 
 enum mali_format
-panfrost_find_format(const struct util_format_description *desc)
-{
+panfrost_find_format(const struct util_format_description *desc) {
         /* Find first non-VOID channel */
         struct util_format_channel_description chan = desc->channel[0];
 
-        for (unsigned c = 0; c < 4; ++c) {
+        for (unsigned c = 0; c < 4; ++c)
+        {
                 if (desc->channel[c].type == UTIL_FORMAT_TYPE_VOID)
                         continue;
 
@@ -151,93 +148,175 @@ panfrost_find_format(const struct util_format_description *desc)
         }
 
         /* Check for special formats */
-        switch (desc->format) {
-		case PIPE_FORMAT_YV12:
-		case PIPE_FORMAT_YV16:
-		case PIPE_FORMAT_IYUV:
-		case PIPE_FORMAT_NV21:
-			fprintf(stderr, "YUV format type %s (%d) is not yet supported, but it's probably close to NV12!\n", desc->name, desc->format);
-			assert(0);
-			break;
+        switch (desc->format)
+        {
+        case PIPE_FORMAT_YV12:
+        case PIPE_FORMAT_YV16:
+        case PIPE_FORMAT_IYUV:
+        case PIPE_FORMAT_NV21:
+                fprintf(stderr, "YUV format type %s (%d) is not yet supported, but it's probably close to NV12!\n", desc->name, desc->format);
+                assert(0);
+                break;
 
-		case PIPE_FORMAT_NV12:
-			return MALI_NV12;
+        case PIPE_FORMAT_NV12:
+                return MALI_NV12;
 
-                case PIPE_FORMAT_R10G10B10X2_UNORM:
-                case PIPE_FORMAT_B10G10R10X2_UNORM:
-                case PIPE_FORMAT_R10G10B10A2_UNORM:
-                case PIPE_FORMAT_B10G10R10A2_UNORM:
-                        return MALI_RGB10_A2_UNORM;
+        case PIPE_FORMAT_R10G10B10X2_UNORM:
+        case PIPE_FORMAT_B10G10R10X2_UNORM:
+        case PIPE_FORMAT_R10G10B10A2_UNORM:
+        case PIPE_FORMAT_B10G10R10A2_UNORM:
+                return MALI_RGB10_A2_UNORM;
 
-                case PIPE_FORMAT_R10G10B10X2_SNORM:
-                case PIPE_FORMAT_R10G10B10A2_SNORM:
-                case PIPE_FORMAT_B10G10R10A2_SNORM:
-                        return MALI_RGB10_A2_SNORM;
+        case PIPE_FORMAT_R10G10B10X2_SNORM:
+        case PIPE_FORMAT_R10G10B10A2_SNORM:
+        case PIPE_FORMAT_B10G10R10A2_SNORM:
+                return MALI_RGB10_A2_SNORM;
 
-                case PIPE_FORMAT_R10G10B10A2_UINT:
-                case PIPE_FORMAT_B10G10R10A2_UINT:
-                        return MALI_RGB10_A2UI;
+        case PIPE_FORMAT_R10G10B10A2_UINT:
+        case PIPE_FORMAT_B10G10R10A2_UINT:
+        case PIPE_FORMAT_R10G10B10A2_USCALED:
+        case PIPE_FORMAT_B10G10R10A2_USCALED:
+                return MALI_RGB10_A2UI;
 
-                /* TODO: ZS isn't really special case */
-                case PIPE_FORMAT_Z32_UNORM:
-                        return MALI_Z32_UNORM;
+        case PIPE_FORMAT_R10G10B10A2_SSCALED:
+        case PIPE_FORMAT_B10G10R10A2_SSCALED:
+                return MALI_RGB10_A2I;
 
-                case PIPE_FORMAT_B5G6R5_UNORM:
-                        return MALI_RGB565;
+        case PIPE_FORMAT_Z32_UNORM:
+        case PIPE_FORMAT_Z24X8_UNORM:
+        case PIPE_FORMAT_Z24_UNORM_S8_UINT:
+                return MALI_Z32_UNORM;
 
-                case PIPE_FORMAT_B5G5R5A1_UNORM:
-                        return MALI_RGB5_A1_UNORM;
+        case PIPE_FORMAT_Z32_FLOAT_S8X24_UINT:
+                /* Z32F = R32F to the hardware */
+                return MALI_R32F;
 
-                case PIPE_FORMAT_A1B5G5R5_UNORM:
-                case PIPE_FORMAT_X1B5G5R5_UNORM:
-                        /* Not supported - this is backwards from OpenGL! */
-                        assert(0);
-                        break;
+        case PIPE_FORMAT_B5G6R5_UNORM:
+                return MALI_RGB565;
 
-                case PIPE_FORMAT_R32_FIXED:
-                        return MALI_R32_FIXED;
-                case PIPE_FORMAT_R32G32_FIXED:
-                        return MALI_RG32_FIXED;
-                case PIPE_FORMAT_R32G32B32_FIXED:
-                        return MALI_RGB32_FIXED;
-                case PIPE_FORMAT_R32G32B32A32_FIXED:
-                        return MALI_RGBA32_FIXED;
+        case PIPE_FORMAT_B5G5R5A1_UNORM:
+                return MALI_RGB5_A1_UNORM;
 
-                default:
-                        /* Fallthrough to default */
-                        break;
+        case PIPE_FORMAT_A1B5G5R5_UNORM:
+        case PIPE_FORMAT_X1B5G5R5_UNORM:
+                /* Not supported - this is backwards from OpenGL! */
+                assert(0);
+                break;
+
+        case PIPE_FORMAT_R32_FIXED:
+                return MALI_R32_FIXED;
+        case PIPE_FORMAT_R32G32_FIXED:
+                return MALI_RG32_FIXED;
+        case PIPE_FORMAT_R32G32B32_FIXED:
+                return MALI_RGB32_FIXED;
+        case PIPE_FORMAT_R32G32B32A32_FIXED:
+                return MALI_RGBA32_FIXED;
+
+        case PIPE_FORMAT_R11G11B10_FLOAT:
+                return MALI_R11F_G11F_B10F;
+        case PIPE_FORMAT_R9G9B9E5_FLOAT:
+                return MALI_R9F_G9F_B9F_E5F;
+
+        case PIPE_FORMAT_ETC1_RGB8:
+        case PIPE_FORMAT_ETC2_RGB8:
+        case PIPE_FORMAT_ETC2_SRGB8:
+                return MALI_ETC2_RGB8;
+
+        case PIPE_FORMAT_ETC2_RGB8A1:
+        case PIPE_FORMAT_ETC2_SRGB8A1:
+                return MALI_ETC2_RGB8A1;
+
+        case PIPE_FORMAT_ETC2_RGBA8:
+        case PIPE_FORMAT_ETC2_SRGBA8:
+                return MALI_ETC2_RGBA8;
+
+        case PIPE_FORMAT_ETC2_R11_UNORM:
+                return MALI_ETC2_R11_UNORM;
+        case PIPE_FORMAT_ETC2_R11_SNORM:
+                return MALI_ETC2_R11_SNORM;
+
+        case PIPE_FORMAT_ETC2_RG11_UNORM:
+                return MALI_ETC2_RG11_UNORM;
+        case PIPE_FORMAT_ETC2_RG11_SNORM:
+                return MALI_ETC2_RG11_SNORM;
+
+        default:
+                /* Fallthrough to default */
+                break;
+        }
+
+        if (desc->layout == UTIL_FORMAT_LAYOUT_ASTC) {
+                if (desc->colorspace == UTIL_FORMAT_COLORSPACE_SRGB)
+                        return MALI_ASTC_SRGB_SUPP;
+                else
+                        return MALI_ASTC_HDR_SUPP;
         }
 
         /* Formats must match in channel count */
         assert(desc->nr_channels >= 1 && desc->nr_channels <= 4);
         unsigned format = MALI_NR_CHANNELS(desc->nr_channels);
 
-        switch (chan.type) {
-                case UTIL_FORMAT_TYPE_UNSIGNED:
-                case UTIL_FORMAT_TYPE_SIGNED:
-                case UTIL_FORMAT_TYPE_FIXED:
-                        /* Channel width */
-                        format |= panfrost_translate_channel_width(chan.size);
+        switch (chan.type)
+        {
+        case UTIL_FORMAT_TYPE_UNSIGNED:
+        case UTIL_FORMAT_TYPE_SIGNED:
+        case UTIL_FORMAT_TYPE_FIXED:
+                /* Channel width */
+                format |= panfrost_translate_channel_width(chan.size);
 
-                        /* Channel type */
-                        format |= panfrost_translate_channel_type(chan.type, chan.size, chan.normalized);
-                        break;
+                /* Channel type */
+                format |= panfrost_translate_channel_type(chan.type, chan.size, chan.normalized);
+                break;
 
-                case UTIL_FORMAT_TYPE_FLOAT:
-                        /* Float formats use a special width and encode width
-                         * with type mixed */
+        case UTIL_FORMAT_TYPE_FLOAT:
+                /* Float formats use a special width and encode width
+                 * with type mixed */
 
-                        format |= MALI_CHANNEL_FLOAT;
-                        format |= panfrost_translate_channel_type(chan.type, chan.size, chan.normalized);
-                        break;
+                format |= MALI_CHANNEL_FLOAT;
+                format |= panfrost_translate_channel_type(chan.type, chan.size, chan.normalized);
+                break;
 
-                default:
-                        fprintf(stderr, "Unknown format type in %s\n", desc->name);
-                        assert(0);
-                        break;
+        default:
+                printf("%s\n", util_format_name(desc->format));
+                unreachable("Invalid format type");
         }
 
         return (enum mali_format) format;
 }
 
+void
+panfrost_invert_swizzle(const unsigned char *in, unsigned char *out)
+{
+        /* First, default to all zeroes to prevent uninitialized junk */
 
+        for (unsigned c = 0; c < 4; ++c)
+                out[c] = PIPE_SWIZZLE_0;
+
+        /* Now "do" what the swizzle says */
+
+        for (unsigned c = 0; c < 4; ++c) {
+                unsigned char i = in[c];
+
+                /* Who cares? */
+                assert(PIPE_SWIZZLE_X == 0);
+                if (i > PIPE_SWIZZLE_W)
+                        continue;
+
+                /* Invert */
+                unsigned idx = i - PIPE_SWIZZLE_X;
+                out[idx] = PIPE_SWIZZLE_X + c;
+        }
+}
+
+/* Is a format encoded like Z24S8 and therefore compatible for render? */
+bool
+panfrost_is_z24s8_variant(enum pipe_format fmt)
+{
+        switch (fmt) {
+                case PIPE_FORMAT_Z24_UNORM_S8_UINT:
+                case PIPE_FORMAT_Z24X8_UNORM:
+                        return true;
+                default:
+                        return false;
+        }
+}
