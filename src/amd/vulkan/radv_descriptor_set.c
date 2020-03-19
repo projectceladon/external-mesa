@@ -78,8 +78,8 @@ VkResult radv_CreateDescriptorSetLayout(
 	struct radv_descriptor_set_layout *set_layout;
 
 	assert(pCreateInfo->sType == VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO);
-	const VkDescriptorSetLayoutBindingFlagsCreateInfoEXT *variable_flags =
-		vk_find_struct_const(pCreateInfo->pNext, DESCRIPTOR_SET_LAYOUT_BINDING_FLAGS_CREATE_INFO_EXT);
+	const VkDescriptorSetLayoutBindingFlagsCreateInfo *variable_flags =
+		vk_find_struct_const(pCreateInfo->pNext, DESCRIPTOR_SET_LAYOUT_BINDING_FLAGS_CREATE_INFO);
 
 	uint32_t max_binding = 0;
 	uint32_t immutable_sampler_count = 0;
@@ -310,10 +310,10 @@ void radv_GetDescriptorSetLayoutSupport(VkDevice device,
 		return;
 	}
 
-	const VkDescriptorSetLayoutBindingFlagsCreateInfoEXT *variable_flags =
-		vk_find_struct_const(pCreateInfo->pNext, DESCRIPTOR_SET_LAYOUT_BINDING_FLAGS_CREATE_INFO_EXT);
-	VkDescriptorSetVariableDescriptorCountLayoutSupportEXT *variable_count =
-		vk_find_struct((void*)pCreateInfo->pNext, DESCRIPTOR_SET_VARIABLE_DESCRIPTOR_COUNT_LAYOUT_SUPPORT_EXT);
+	const VkDescriptorSetLayoutBindingFlagsCreateInfo *variable_flags =
+		vk_find_struct_const(pCreateInfo->pNext, DESCRIPTOR_SET_LAYOUT_BINDING_FLAGS_CREATE_INFO);
+	VkDescriptorSetVariableDescriptorCountLayoutSupport *variable_count =
+		vk_find_struct((void*)pCreateInfo->pNext, DESCRIPTOR_SET_VARIABLE_DESCRIPTOR_COUNT_LAYOUT_SUPPORT);
 	if (variable_count) {
 		variable_count->maxVariableDescriptorCount = 0;
 	}
@@ -477,8 +477,17 @@ radv_descriptor_set_create(struct radv_device *device,
 			   struct radv_descriptor_set **out_set)
 {
 	struct radv_descriptor_set *set;
+	uint32_t buffer_count = layout->buffer_count;
+	if (variable_count) {
+		unsigned stride = 1;
+		if (layout->binding[layout->binding_count - 1].type == VK_DESCRIPTOR_TYPE_SAMPLER ||
+		    layout->binding[layout->binding_count - 1].type == VK_DESCRIPTOR_TYPE_INLINE_UNIFORM_BLOCK_EXT)
+			stride = 0;
+		buffer_count = layout->binding[layout->binding_count - 1].buffer_offset +
+		               *variable_count * stride;
+	}
 	unsigned range_offset = sizeof(struct radv_descriptor_set) +
-		sizeof(struct radeon_winsys_bo *) * layout->buffer_count;
+		sizeof(struct radeon_winsys_bo *) * buffer_count;
 	unsigned mem_size = range_offset +
 		sizeof(struct radv_descriptor_range) * layout->dynamic_offset_count;
 
@@ -761,8 +770,8 @@ VkResult radv_AllocateDescriptorSets(
 	uint32_t i;
 	struct radv_descriptor_set *set = NULL;
 
-	const VkDescriptorSetVariableDescriptorCountAllocateInfoEXT *variable_counts =
-		vk_find_struct_const(pAllocateInfo->pNext, DESCRIPTOR_SET_VARIABLE_DESCRIPTOR_COUNT_ALLOCATE_INFO_EXT);
+	const VkDescriptorSetVariableDescriptorCountAllocateInfo *variable_counts =
+		vk_find_struct_const(pAllocateInfo->pNext, DESCRIPTOR_SET_VARIABLE_DESCRIPTOR_COUNT_ALLOCATE_INFO);
 	const uint32_t zero = 0;
 
 	/* allocate a set of buffers for each shader to contain descriptors */
@@ -787,9 +796,13 @@ VkResult radv_AllocateDescriptorSets(
 		pDescriptorSets[i] = radv_descriptor_set_to_handle(set);
 	}
 
-	if (result != VK_SUCCESS)
+	if (result != VK_SUCCESS) {
 		radv_FreeDescriptorSets(_device, pAllocateInfo->descriptorPool,
 					i, pDescriptorSets);
+		for (i = 0; i < pAllocateInfo->descriptorSetCount; i++) {
+			pDescriptorSets[i] = VK_NULL_HANDLE;
+		}
+	}
 	return result;
 }
 
@@ -847,9 +860,16 @@ static void write_buffer_descriptor(struct radv_device *device,
 	dst[3] = S_008F0C_DST_SEL_X(V_008F0C_SQ_SEL_X) |
 		S_008F0C_DST_SEL_Y(V_008F0C_SQ_SEL_Y) |
 		S_008F0C_DST_SEL_Z(V_008F0C_SQ_SEL_Z) |
-		S_008F0C_DST_SEL_W(V_008F0C_SQ_SEL_W) |
-		S_008F0C_NUM_FORMAT(V_008F0C_BUF_NUM_FORMAT_FLOAT) |
-		S_008F0C_DATA_FORMAT(V_008F0C_BUF_DATA_FORMAT_32);
+		S_008F0C_DST_SEL_W(V_008F0C_SQ_SEL_W);
+
+	if (device->physical_device->rad_info.chip_class >= GFX10) {
+		dst[3] |= S_008F0C_FORMAT(V_008F0C_IMG_FORMAT_32_FLOAT) |
+			  S_008F0C_OOB_SELECT(V_008F0C_OOB_SELECT_RAW) |
+			  S_008F0C_RESOURCE_LEVEL(1);
+	} else {
+		dst[3] |= S_008F0C_NUM_FORMAT(V_008F0C_BUF_NUM_FORMAT_FLOAT) |
+			  S_008F0C_DATA_FORMAT(V_008F0C_BUF_DATA_FORMAT_32);
+	}
 
 	if (cmd_buffer)
 		radv_cs_add_buffer(device->ws, cmd_buffer->cs, buffer->bo);
@@ -1056,6 +1076,14 @@ void radv_update_descriptor_sets(
 		src_ptr += src_binding_layout->offset / 4;
 		dst_ptr += dst_binding_layout->offset / 4;
 
+		if (src_binding_layout->type == VK_DESCRIPTOR_TYPE_INLINE_UNIFORM_BLOCK_EXT) {
+			src_ptr += copyset->srcArrayElement / 4;
+			dst_ptr += copyset->dstArrayElement / 4;
+
+			memcpy(dst_ptr, src_ptr, copyset->descriptorCount);
+			continue;
+		}
+
 		src_ptr += src_binding_layout->size * copyset->srcArrayElement / 4;
 		dst_ptr += dst_binding_layout->size * copyset->dstArrayElement / 4;
 
@@ -1125,7 +1153,18 @@ VkResult radv_CreateDescriptorUpdateTemplate(VkDevice _device,
 		return vk_error(device->instance, VK_ERROR_OUT_OF_HOST_MEMORY);
 
 	templ->entry_count = entry_count;
-	templ->bind_point = pCreateInfo->pipelineBindPoint;
+
+	if (pCreateInfo->templateType == VK_DESCRIPTOR_UPDATE_TEMPLATE_TYPE_PUSH_DESCRIPTORS_KHR) {
+		RADV_FROM_HANDLE(radv_pipeline_layout, pipeline_layout, pCreateInfo->pipelineLayout);
+
+		/* descriptorSetLayout should be ignored for push descriptors
+		 * and instead it refers to pipelineLayout and set.
+		 */
+		assert(pCreateInfo->set < MAX_SETS);
+		set_layout = pipeline_layout->set[pCreateInfo->set].layout;
+
+		templ->bind_point = pCreateInfo->pipelineBindPoint;
+	}
 
 	for (i = 0; i < entry_count; i++) {
 		const VkDescriptorUpdateTemplateEntry *entry = &pCreateInfo->pDescriptorUpdateEntries[i];

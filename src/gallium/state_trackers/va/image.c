@@ -236,10 +236,12 @@ vlVaDeriveImage(VADriverContextP ctx, VASurfaceID surface, VAImage *image)
 
    img->format.fourcc = PipeFormatToVaFourcc(surf->buffer->buffer_format);
    img->buf = VA_INVALID_ID;
-   img->width = surf->buffer->width;
-   img->height = surf->buffer->height;
+   /* Use the visible dimensions. */
+   img->width = surf->templat.width;
+   img->height = surf->templat.height;
    img->num_palette_entries = 0;
    img->entry_bytes = 0;
+   /* Image data size is computed using internal dimensions. */
    w = align(surf->buffer->width, 2);
    h = align(surf->buffer->height, 2);
 
@@ -403,13 +405,20 @@ vlVaGetImage(VADriverContextP ctx, VASurfaceID surface, int x, int y,
       return VA_STATUS_ERROR_OPERATION_FAILED;
    }
 
+
    if (format != surf->buffer->buffer_format) {
       /* support NV12 to YV12 and IYUV conversion now only */
       if ((format == PIPE_FORMAT_YV12 &&
-          surf->buffer->buffer_format == PIPE_FORMAT_NV12) ||
-          (format == PIPE_FORMAT_IYUV &&
-          surf->buffer->buffer_format == PIPE_FORMAT_NV12))
+         surf->buffer->buffer_format == PIPE_FORMAT_NV12) ||
+         (format == PIPE_FORMAT_IYUV &&
+         surf->buffer->buffer_format == PIPE_FORMAT_NV12))
          convert = true;
+      else if (format == PIPE_FORMAT_NV12 &&
+         (surf->buffer->buffer_format == PIPE_FORMAT_P010 ||
+          surf->buffer->buffer_format == PIPE_FORMAT_P016)) {
+         mtx_unlock(&drv->mutex);
+         return VA_STATUS_ERROR_OPERATION_FAILED;
+      }
       else {
          mtx_unlock(&drv->mutex);
          return VA_STATUS_ERROR_OPERATION_FAILED;

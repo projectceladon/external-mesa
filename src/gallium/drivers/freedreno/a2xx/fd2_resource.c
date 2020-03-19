@@ -37,7 +37,7 @@ fd2_setup_slices(struct fd_resource *rsc)
 	uint32_t depth = prsc->depth0;
 
 	for (level = 0; level <= prsc->last_level; level++) {
-		struct fd_resource_slice *slice = fd_resource_slice(rsc, level);
+		struct fdl_slice *slice = fd_resource_slice(rsc, level);
 		uint32_t blocks;
 
 		/* 32 * 32 block alignment */
@@ -67,7 +67,7 @@ fd2_setup_slices(struct fd_resource *rsc)
 		blocks = util_format_get_nblocks(format, width, height);
 
 		/* 4k aligned size */
-		slice->size0 = align(blocks * rsc->cpp, 4096);
+		slice->size0 = align(blocks * rsc->layout.cpp, 4096);
 
 		size += slice->size0 * depth * prsc->array_size;
 
@@ -76,4 +76,16 @@ fd2_setup_slices(struct fd_resource *rsc)
 		depth = u_minify(depth, 1);
 	}
 	return size;
+}
+
+unsigned
+fd2_tile_mode(const struct pipe_resource *tmpl)
+{
+	/* disable tiling for cube maps, freedreno uses a 2D array for the staging texture,
+	* (a2xx supports 2D arrays but it is not implemented)
+	*/
+	if (tmpl->target == PIPE_TEXTURE_CUBE)
+		return 0;
+	/* we can enable tiling for any resource we can render to */
+	return (tmpl->bind & PIPE_BIND_RENDER_TARGET) ? 1 : 0;
 }
