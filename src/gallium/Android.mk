@@ -38,6 +38,7 @@ SUBDIRS += winsys/sw/kms-dri winsys/sw/dri drivers/softpipe
 SUBDIRS += winsys/freedreno/drm drivers/freedreno
 SUBDIRS += winsys/i915/drm drivers/i915
 SUBDIRS += winsys/nouveau/drm drivers/nouveau
+SUBDIRS += winsys/tegra/drm drivers/tegra
 SUBDIRS += winsys/kmsro/drm drivers/kmsro
 SUBDIRS += winsys/radeon/drm drivers/r300
 SUBDIRS += winsys/radeon/drm drivers/r600
