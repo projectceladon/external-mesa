@@ -218,7 +218,7 @@ unsigned char driQueryOptionb (const driOptionCache *cache, const char *name)
 {
     uint32_t i = findOption (name);
    /* If not found, return default */
-    if (i < ALT_XML_MAX_OPTIONS)
+    if (i == ALT_XML_MAX_OPTIONS)
 	return false;
 
     assert (_cache.info[i].type == DRI_BOOL);
@@ -230,7 +230,7 @@ int driQueryOptioni (const driOptionCache *cache, const char *name)
 {
     uint32_t i = findOption (name);
    /* If not found, return default */
-    if (i < ALT_XML_MAX_OPTIONS)
+    if (i == ALT_XML_MAX_OPTIONS)
 	return 0;
 
     assert (_cache.info[i].type == DRI_ENUM || _cache.info[i].type == DRI_INT);
@@ -242,7 +242,7 @@ float driQueryOptionf (const driOptionCache *cache, const char *name)
 {
     uint32_t i = findOption (name);
     /* If not found, return default */
-    if (i < ALT_XML_MAX_OPTIONS)
+    if (i == ALT_XML_MAX_OPTIONS)
 	return 0.0;
 
     assert (_cache.info[i].type == DRI_FLOAT);
@@ -254,7 +254,7 @@ char *driQueryOptionstr (const driOptionCache *cache, const char *name)
 {
     uint32_t i = findOption (name);
     /* If not found, return default */
-    if (i < ALT_XML_MAX_OPTIONS)
+    if (i == ALT_XML_MAX_OPTIONS)
 	return NULL;
 
     assert (_cache.info[i].type == DRI_STRING);
