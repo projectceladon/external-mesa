@@ -90,6 +90,7 @@ static struct driOptionInfo _info [ALT_XML_MAX_OPTIONS] = {
 		{"allow_glsl_builtin_const_expression", DRI_BOOL, NULL, 0},
 		{"allow_glsl_relaxed_es", DRI_BOOL, NULL, 0},
 		{"force_compat_profile", DRI_BOOL, NULL, 0},
+		{"force_gl_vendor", DRI_STRING, NULL, 0 },
 		{"glx_disable_sgi_video_sync", DRI_BOOL, NULL, 0} //,
 };
 
@@ -124,6 +125,7 @@ static union driOptionValue _values [ALT_XML_MAX_OPTIONS] = {
 		{false}, // allow_glsl_builtin_const_expression
 		{false}, // allow_glsl_relaxed_es
 		{false}, // force_compat_profile
+		{._string = ""}, // force_gl_vendor
 		{false}, // glx_disable_sgi_video_sync
 };
 
