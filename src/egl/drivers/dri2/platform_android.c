@@ -461,8 +461,11 @@ droid_create_surface(_EGLDriver *drv, _EGLDisplay *disp, EGLint type,
       }
 
       /* Clamp preferred between minimum (min undequeued + 1 dequeued)
-       * and maximum.
+       * and maximum. And we also need confirm min_buffer_count less
+       * than max_buffer_count
        */
+      if (min_buffer_count == max_buffer_count)
+         max_buffer_count++;
       buffer_count = CLAMP(preferred_buffer_count, min_buffer_count + 1,
                            max_buffer_count);
 
