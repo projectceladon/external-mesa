@@ -90,6 +90,7 @@ static struct driOptionInfo _info [ALT_XML_MAX_OPTIONS] = {
 		{"allow_glsl_builtin_const_expression", DRI_BOOL, NULL, 0},
 		{"allow_glsl_relaxed_es", DRI_BOOL, NULL, 0},
 		{"force_compat_profile", DRI_BOOL, NULL, 0},
+		{"force_gl_vendor", DRI_STRING, NULL, 0 },
 		{"glx_disable_sgi_video_sync", DRI_BOOL, NULL, 0} //,
 };
 
@@ -124,6 +125,7 @@ static union driOptionValue _values [ALT_XML_MAX_OPTIONS] = {
 		{false}, // allow_glsl_builtin_const_expression
 		{false}, // allow_glsl_relaxed_es
 		{false}, // force_compat_profile
+		{._string = ""}, // force_gl_vendor
 		{false}, // glx_disable_sgi_video_sync
 };
 
@@ -218,7 +220,7 @@ unsigned char driQueryOptionb (const driOptionCache *cache, const char *name)
 {
     uint32_t i = findOption (name);
    /* If not found, return default */
-    if (i < ALT_XML_MAX_OPTIONS)
+    if (i == ALT_XML_MAX_OPTIONS)
 	return false;
 
     assert (_cache.info[i].type == DRI_BOOL);
@@ -230,7 +232,7 @@ int driQueryOptioni (const driOptionCache *cache, const char *name)
 {
     uint32_t i = findOption (name);
    /* If not found, return default */
-    if (i < ALT_XML_MAX_OPTIONS)
+    if (i == ALT_XML_MAX_OPTIONS)
 	return 0;
 
     assert (_cache.info[i].type == DRI_ENUM || _cache.info[i].type == DRI_INT);
@@ -242,7 +244,7 @@ float driQueryOptionf (const driOptionCache *cache, const char *name)
 {
     uint32_t i = findOption (name);
     /* If not found, return default */
-    if (i < ALT_XML_MAX_OPTIONS)
+    if (i == ALT_XML_MAX_OPTIONS)
 	return 0.0;
 
     assert (_cache.info[i].type == DRI_FLOAT);
@@ -254,7 +256,7 @@ char *driQueryOptionstr (const driOptionCache *cache, const char *name)
 {
     uint32_t i = findOption (name);
     /* If not found, return default */
-    if (i < ALT_XML_MAX_OPTIONS)
+    if (i == ALT_XML_MAX_OPTIONS)
 	return NULL;
 
     assert (_cache.info[i].type == DRI_STRING);
