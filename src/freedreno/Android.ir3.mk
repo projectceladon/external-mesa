@@ -72,10 +72,11 @@ ir3_nir_trig_deps := \
 ir3_parser_deps := \
 	$(MESA_TOP)/src/freedreno/ir3/ir3_parser.y
 
-$(intermediates)/ir3/ir3_lexer.c: $(ir3_lexer_deps)
+$(intermediates)/ir3/ir3_lexer.c: $(ir3_lexer_deps) $(LEX) $(M4)
 	@mkdir -p $(dir $@)
 	@echo "Gen Header: $(PRIVATE_MODULE) <= $(notdir $(@))"
 	$(hide) $(MESA_LEX) -o $@ $<
+	$(hide) M4=$(M4) $(LEX) --nounistd -o$@ $<
 
 $(intermediates)/ir3/ir3_nir_imul.c: $(prebuilt_intermediates)/ir3/ir3_nir_imul.c
 	cp -a $< $@
@@ -83,15 +84,17 @@ $(intermediates)/ir3/ir3_nir_imul.c: $(prebuilt_intermediates)/ir3/ir3_nir_imul.
 $(intermediates)/ir3/ir3_nir_trig.c: $(prebuilt_intermediates)/ir3/ir3_nir_trig.c
 	cp -a $< $@
 
-$(intermediates)/ir3/ir3_parser.c: $(ir3_parser_deps)
+$(intermediates)/ir3/ir3_parser.c: $(ir3_parser_deps) $(BISON) $(BISON_DATA) $(M4)
 	@mkdir -p $(dir $@)
 	@echo "Gen Header: $(PRIVATE_MODULE) <= $(notdir $(@))"
 	$(hide) $(BISON) $< --name-prefix=ir3_yy --output=$@
+	$(hide) M4=$(M4) $(BISON) $< --name-prefix=ir3_yy --output=$@
 
-$(intermediates)/ir3/ir3_parser.h: $(ir3_parser_deps)
+$(intermediates)/ir3/ir3_parser.h: $(ir3_parser_deps) $(BISON) $(BISON_DATA) $(M4)
 	@mkdir -p $(dir $@)
 	@echo "Gen Header: $(PRIVATE_MODULE) <= $(notdir $(@))"
 	$(hide) $(BISON) $< --name-prefix=ir3_yy --defines=$@
+	$(hide) M4=$(M4) $(BISON) $< --name-prefix=ir3_yy --defines=$@
 
 include $(MESA_COMMON_MK)
 include $(BUILD_STATIC_LIBRARY)
