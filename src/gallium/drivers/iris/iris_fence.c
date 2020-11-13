@@ -27,6 +27,7 @@
  */
 
 #include "util/u_inlines.h"
+#include "intel/common/gen_gem.h"
 
 #include "iris_batch.h"
 #include "iris_bufmgr.h"
@@ -41,7 +42,7 @@ gem_syncobj_create(int fd, uint32_t flags)
       .flags = flags,
    };
 
-   drm_ioctl(fd, DRM_IOCTL_SYNCOBJ_CREATE, &args);
+   gen_ioctl(fd, DRM_IOCTL_SYNCOBJ_CREATE, &args);
 
    return args.handle;
 }
@@ -53,7 +54,7 @@ gem_syncobj_destroy(int fd, uint32_t handle)
       .handle = handle,
    };
 
-   drm_ioctl(fd, DRM_IOCTL_SYNCOBJ_DESTROY, &args);
+   gen_ioctl(fd, DRM_IOCTL_SYNCOBJ_DESTROY, &args);
 }
 
 /**
@@ -93,7 +94,7 @@ iris_batch_add_syncpt(struct iris_batch *batch,
                       unsigned flags)
 {
    struct drm_i915_gem_exec_fence *fence =
-      util_dynarray_grow(&batch->exec_fences, sizeof(*fence));
+      util_dynarray_grow(&batch->exec_fences, struct drm_i915_gem_exec_fence, 1);
 
    *fence = (struct drm_i915_gem_exec_fence) {
       .handle = syncpt->handle,
@@ -101,7 +102,7 @@ iris_batch_add_syncpt(struct iris_batch *batch,
    };
 
    struct iris_syncpt **store =
-      util_dynarray_grow(&batch->syncpts, sizeof(*store));
+      util_dynarray_grow(&batch->syncpts, struct iris_syncpt *, 1);
 
    *store = NULL;
    iris_syncpt_reference(batch->screen, store, syncpt);
@@ -152,7 +153,7 @@ iris_wait_syncpt(struct pipe_screen *p_screen,
       .count_handles = 1,
       .timeout_nsec = timeout_nsec,
    };
-   return drm_ioctl(screen->fd, DRM_IOCTL_SYNCOBJ_WAIT, &args);
+   return gen_ioctl(screen->fd, DRM_IOCTL_SYNCOBJ_WAIT, &args);
 }
 
 static void
@@ -183,6 +184,8 @@ iris_fence_flush(struct pipe_context *ctx,
       iris_syncpt_reference(screen, &fence->syncpt[fence->count++],
                             ice->batches[b].last_syncpt);
    }
+
+   iris_fence_reference(ctx->screen, out_fence, NULL);
    *out_fence = fence;
 }
 
@@ -205,27 +208,28 @@ iris_fence_await(struct pipe_context *ctx,
 #define MSEC_PER_SEC (1000)
 
 static uint64_t
-rel2abs(uint64_t timeout)
+gettime_ns(void)
 {
-   struct timespec ts;
-   uint64_t now;
-
-   if (!timeout)
-      return 0;
-
-   if (timeout == PIPE_TIMEOUT_INFINITE)
-      return INT64_MAX;
-
-   clock_gettime(CLOCK_MONOTONIC, &ts);
-   now = ts.tv_sec * NSEC_PER_SEC + ts.tv_nsec;
-
-   if (now > INT64_MAX - timeout)
-      return INT64_MAX;
-
-   return now + timeout;
+   struct timespec current;
+   clock_gettime(CLOCK_MONOTONIC, &current);
+   return (uint64_t)current.tv_sec * NSEC_PER_SEC + current.tv_nsec;
 }
 
-static boolean
+static uint64_t
+rel2abs(uint64_t timeout)
+{
+   if (timeout == 0)
+      return 0;
+
+   uint64_t current_time = gettime_ns();
+   uint64_t max_timeout = (uint64_t) INT64_MAX - current_time;
+
+   timeout = MIN2(max_timeout, timeout);
+
+   return current_time + timeout;
+}
+
+static bool
 iris_fence_finish(struct pipe_screen *p_screen,
                   struct pipe_context *ctx,
                   struct pipe_fence_handle *fence,
@@ -243,10 +247,10 @@ iris_fence_finish(struct pipe_screen *p_screen,
    struct drm_syncobj_wait args = {
       .handles = (uintptr_t)handles,
       .count_handles = fence->count,
-      .timeout_nsec = rel2abs(timeout), /* XXX */
+      .timeout_nsec = rel2abs(timeout),
       .flags = DRM_SYNCOBJ_WAIT_FLAGS_WAIT_ALL
    };
-   return drm_ioctl(screen->fd, DRM_IOCTL_SYNCOBJ_WAIT, &args) == 0;
+   return gen_ioctl(screen->fd, DRM_IOCTL_SYNCOBJ_WAIT, &args) == 0;
 }
 
 #ifndef SYNC_IOC_MAGIC
@@ -282,7 +286,7 @@ sync_merge_fd(int sync_fd, int new_fd)
       .fence = -1,
    };
 
-   drm_ioctl(sync_fd, SYNC_IOC_MERGE, &args);
+   gen_ioctl(sync_fd, SYNC_IOC_MERGE, &args);
    close(new_fd);
    close(sync_fd);
 
@@ -296,6 +300,22 @@ iris_fence_get_fd(struct pipe_screen *p_screen,
    struct iris_screen *screen = (struct iris_screen *)p_screen;
    int fd = -1;
 
+   if (fence->count == 0) {
+      /* Our fence has no syncobj's recorded.  This means that all of the
+       * batches had already completed, their syncobj's had been signalled,
+       * and so we didn't bother to record them.  But we're being asked to
+       * export such a fence.  So export a dummy already-signalled syncobj.
+       */
+      struct drm_syncobj_handle args = {
+         .flags = DRM_SYNCOBJ_HANDLE_TO_FD_FLAGS_EXPORT_SYNC_FILE, .fd = -1,
+      };
+
+      args.handle = gem_syncobj_create(screen->fd, DRM_SYNCOBJ_CREATE_SIGNALED);
+      gen_ioctl(screen->fd, DRM_IOCTL_SYNCOBJ_HANDLE_TO_FD, &args);
+      gem_syncobj_destroy(screen->fd, args.handle);
+      return args.fd;
+   }
+
    for (unsigned i = 0; i < fence->count; i++) {
       struct drm_syncobj_handle args = {
          .handle = fence->syncpt[i]->handle,
@@ -303,7 +323,7 @@ iris_fence_get_fd(struct pipe_screen *p_screen,
          .fd = -1,
       };
 
-      drm_ioctl(screen->fd, DRM_IOCTL_SYNCOBJ_HANDLE_TO_FD, &args);
+      gen_ioctl(screen->fd, DRM_IOCTL_SYNCOBJ_HANDLE_TO_FD, &args);
       fd = sync_merge_fd(fd, args.fd);
    }
 
@@ -320,10 +340,17 @@ iris_fence_create_fd(struct pipe_context *ctx,
 
    struct iris_screen *screen = (struct iris_screen *)ctx->screen;
    struct drm_syncobj_handle args = {
+      .handle = gem_syncobj_create(screen->fd, DRM_SYNCOBJ_CREATE_SIGNALED),
       .flags = DRM_SYNCOBJ_FD_TO_HANDLE_FLAGS_IMPORT_SYNC_FILE,
       .fd = fd,
    };
-   drm_ioctl(screen->fd, DRM_IOCTL_SYNCOBJ_FD_TO_HANDLE, &args);
+   if (gen_ioctl(screen->fd, DRM_IOCTL_SYNCOBJ_FD_TO_HANDLE, &args) == -1) {
+      fprintf(stderr, "DRM_IOCTL_SYNCOBJ_FD_TO_HANDLE failed: %s\n",
+              strerror(errno));
+      gem_syncobj_destroy(screen->fd, args.handle);
+      *out = NULL;
+      return;
+   }
 
    struct iris_syncpt *syncpt = malloc(sizeof(*syncpt));
    syncpt->handle = args.handle;

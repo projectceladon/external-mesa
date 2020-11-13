@@ -57,6 +57,7 @@
 #include "st_cb_memoryobjects.h"
 #include "st_cb_msaa.h"
 #include "st_cb_perfmon.h"
+#include "st_cb_perfquery.h"
 #include "st_cb_program.h"
 #include "st_cb_queryobj.h"
 #include "st_cb_readpixels.h"
@@ -137,18 +138,18 @@ st_query_memory_info(struct gl_context *ctx, struct gl_memory_info *out)
 static uint64_t
 st_get_active_states(struct gl_context *ctx)
 {
-   struct st_vertex_program *vp =
-      st_vertex_program(ctx->VertexProgram._Current);
-   struct st_common_program *tcp =
-      st_common_program(ctx->TessCtrlProgram._Current);
-   struct st_common_program *tep =
-      st_common_program(ctx->TessEvalProgram._Current);
-   struct st_common_program *gp =
-      st_common_program(ctx->GeometryProgram._Current);
-   struct st_fragment_program *fp =
-      st_fragment_program(ctx->FragmentProgram._Current);
-   struct st_compute_program *cp =
-      st_compute_program(ctx->ComputeProgram._Current);
+   struct st_program *vp =
+      st_program(ctx->VertexProgram._Current);
+   struct st_program *tcp =
+      st_program(ctx->TessCtrlProgram._Current);
+   struct st_program *tep =
+      st_program(ctx->TessEvalProgram._Current);
+   struct st_program *gp =
+      st_program(ctx->GeometryProgram._Current);
+   struct st_program *fp =
+      st_program(ctx->FragmentProgram._Current);
+   struct st_program *cp =
+      st_program(ctx->ComputeProgram._Current);
    uint64_t active_shader_states = 0;
 
    if (vp)
@@ -227,6 +228,10 @@ st_invalidate_state(struct gl_context *ctx)
                     _NEW_POINT))
       st->dirty |= ST_NEW_RASTERIZER;
 
+   if ((new_state & _NEW_LIGHT) &&
+       (st->lower_flatshade || st->lower_two_sided_color))
+      st->dirty |= ST_NEW_FS_STATE;
+
    if (new_state & _NEW_PROJECTION &&
        st_user_clip_planes_enabled(ctx))
       st->dirty |= ST_NEW_CLIP_STATE;
@@ -237,9 +242,23 @@ st_invalidate_state(struct gl_context *ctx)
    if (new_state & _NEW_CURRENT_ATTRIB && st_vp_uses_current_values(ctx))
       st->dirty |= ST_NEW_VERTEX_ARRAYS;
 
+   if (st->clamp_frag_depth_in_shader && (new_state & _NEW_VIEWPORT)) {
+      if (ctx->GeometryProgram._Current)
+         st->dirty |= ST_NEW_GS_CONSTANTS;
+      else if (ctx->TessEvalProgram._Current)
+         st->dirty |= ST_NEW_TES_CONSTANTS;
+      else
+         st->dirty |= ST_NEW_VS_CONSTANTS;
+      st->dirty |= ST_NEW_FS_CONSTANTS;
+   }
+
    /* Update the vertex shader if ctx->Light._ClampVertexColor was changed. */
-   if (st->clamp_vert_color_in_shader && (new_state & _NEW_LIGHT))
+   if (st->clamp_vert_color_in_shader && (new_state & _NEW_LIGHT)) {
       st->dirty |= ST_NEW_VS_STATE;
+      if (st->ctx->API == API_OPENGL_COMPAT && ctx->Version >= 32) {
+         st->dirty |= ST_NEW_GS_STATE | ST_NEW_TES_STATE;
+      }
+   }
 
    /* Which shaders are dirty will be determined manually. */
    if (new_state & _NEW_PROGRAM) {
@@ -288,9 +307,9 @@ st_save_zombie_sampler_view(struct st_context *st,
    /* We need a mutex since this function may be called from one thread
     * while free_zombie_resource_views() is called from another.
     */
-   mtx_lock(&st->zombie_sampler_views.mutex);
-   LIST_ADDTAIL(&entry->node, &st->zombie_sampler_views.list.node);
-   mtx_unlock(&st->zombie_sampler_views.mutex);
+   simple_mtx_lock(&st->zombie_sampler_views.mutex);
+   list_addtail(&entry->node, &st->zombie_sampler_views.list.node);
+   simple_mtx_unlock(&st->zombie_sampler_views.mutex);
 }
 
 
@@ -321,9 +340,9 @@ st_save_zombie_shader(struct st_context *st,
    /* We need a mutex since this function may be called from one thread
     * while free_zombie_shaders() is called from another.
     */
-   mtx_lock(&st->zombie_shaders.mutex);
-   LIST_ADDTAIL(&entry->node, &st->zombie_shaders.list.node);
-   mtx_unlock(&st->zombie_shaders.mutex);
+   simple_mtx_lock(&st->zombie_shaders.mutex);
+   list_addtail(&entry->node, &st->zombie_shaders.list.node);
+   simple_mtx_unlock(&st->zombie_shaders.mutex);
 }
 
 
@@ -335,15 +354,15 @@ free_zombie_sampler_views(struct st_context *st)
 {
    struct st_zombie_sampler_view_node *entry, *next;
 
-   if (LIST_IS_EMPTY(&st->zombie_sampler_views.list.node)) {
+   if (list_is_empty(&st->zombie_sampler_views.list.node)) {
       return;
    }
 
-   mtx_lock(&st->zombie_sampler_views.mutex);
+   simple_mtx_lock(&st->zombie_sampler_views.mutex);
 
    LIST_FOR_EACH_ENTRY_SAFE(entry, next,
                             &st->zombie_sampler_views.list.node, node) {
-      LIST_DEL(&entry->node);  // remove this entry from the list
+      list_del(&entry->node);  // remove this entry from the list
 
       assert(entry->view->context == st->pipe);
       pipe_sampler_view_reference(&entry->view, NULL);
@@ -351,9 +370,9 @@ free_zombie_sampler_views(struct st_context *st)
       free(entry);
    }
 
-   assert(LIST_IS_EMPTY(&st->zombie_sampler_views.list.node));
+   assert(list_is_empty(&st->zombie_sampler_views.list.node));
 
-   mtx_unlock(&st->zombie_sampler_views.mutex);
+   simple_mtx_unlock(&st->zombie_sampler_views.mutex);
 }
 
 
@@ -365,15 +384,15 @@ free_zombie_shaders(struct st_context *st)
 {
    struct st_zombie_shader_node *entry, *next;
 
-   if (LIST_IS_EMPTY(&st->zombie_shaders.list.node)) {
+   if (list_is_empty(&st->zombie_shaders.list.node)) {
       return;
    }
 
-   mtx_lock(&st->zombie_shaders.mutex);
+   simple_mtx_lock(&st->zombie_shaders.mutex);
 
    LIST_FOR_EACH_ENTRY_SAFE(entry, next,
                             &st->zombie_shaders.list.node, node) {
-      LIST_DEL(&entry->node);  // remove this entry from the list
+      list_del(&entry->node);  // remove this entry from the list
 
       switch (entry->type) {
       case PIPE_SHADER_VERTEX:
@@ -400,9 +419,9 @@ free_zombie_shaders(struct st_context *st)
       free(entry);
    }
 
-   assert(LIST_IS_EMPTY(&st->zombie_shaders.list.node));
+   assert(list_is_empty(&st->zombie_shaders.list.node));
 
-   mtx_unlock(&st->zombie_shaders.mutex);
+   simple_mtx_unlock(&st->zombie_shaders.mutex);
 }
 
 
@@ -435,6 +454,7 @@ st_destroy_context_priv(struct st_context *st, bool destroy_pipe)
    st_destroy_bound_image_handles(st);
 
    for (i = 0; i < ARRAY_SIZE(st->state.frag_sampler_views); i++) {
+      pipe_sampler_view_reference(&st->state.vert_sampler_views[i], NULL);
       pipe_sampler_view_reference(&st->state.frag_sampler_views[i], NULL);
    }
 
@@ -482,7 +502,12 @@ st_init_driver_flags(struct st_context *st)
    f->NewFramebufferSRGB = ST_NEW_FB_STATE;
    f->NewScissorRect = ST_NEW_SCISSOR;
    f->NewScissorTest = ST_NEW_SCISSOR | ST_NEW_RASTERIZER;
-   f->NewAlphaTest = ST_NEW_DSA;
+
+   if (st->lower_alpha_test)
+      f->NewAlphaTest = ST_NEW_FS_STATE;
+   else
+      f->NewAlphaTest = ST_NEW_DSA;
+
    f->NewBlend = ST_NEW_BLEND;
    f->NewBlendColor = ST_NEW_BLEND_COLOR;
    f->NewColorMask = ST_NEW_BLEND;
@@ -506,8 +531,22 @@ st_init_driver_flags(struct st_context *st)
 
    f->NewClipControl = ST_NEW_VIEWPORT | ST_NEW_RASTERIZER;
    f->NewClipPlane = ST_NEW_CLIP_STATE;
-   f->NewClipPlaneEnable = ST_NEW_RASTERIZER;
-   f->NewDepthClamp = ST_NEW_RASTERIZER;
+
+   if (st->clamp_frag_depth_in_shader) {
+      f->NewClipControl |= ST_NEW_VS_STATE | ST_NEW_GS_STATE |
+                           ST_NEW_TES_STATE;
+
+      f->NewDepthClamp = ST_NEW_FS_STATE | ST_NEW_VS_STATE |
+                         ST_NEW_GS_STATE | ST_NEW_TES_STATE;
+   } else {
+      f->NewDepthClamp = ST_NEW_RASTERIZER;
+   }
+
+   if (st->lower_ucp)
+      f->NewClipPlaneEnable = ST_NEW_VS_STATE;
+   else
+      f->NewClipPlaneEnable = ST_NEW_RASTERIZER;
+
    f->NewLineState = ST_NEW_RASTERIZER;
    f->NewPolygonState = ST_NEW_RASTERIZER;
    f->NewPolygonStipple = ST_NEW_POLY_STIPPLE;
@@ -547,9 +586,9 @@ st_create_context_priv(struct gl_context *ctx, struct pipe_context *pipe,
     * profile, so that u_vbuf is bypassed completely if there is nothing else
     * to do.
     */
-   unsigned vbuf_flags =
-      ctx->API == API_OPENGL_CORE ? U_VBUF_FLAG_NO_USER_VBOS : 0;
-   st->cso_context = cso_create_context(pipe, vbuf_flags);
+   unsigned cso_flags =
+      ctx->API == API_OPENGL_CORE ? CSO_NO_USER_VERTEX_BUFFERS : 0;
+   st->cso_context = cso_create_context(pipe, cso_flags);
 
    st_init_atoms(st);
    st_init_clear(st);
@@ -597,9 +636,13 @@ st_create_context_priv(struct gl_context *ctx, struct pipe_context *pipe,
    ctx->Const.PackedDriverUniformStorage =
       screen->get_param(screen, PIPE_CAP_PACKED_UNIFORMS);
 
+   ctx->Const.BitmapUsesRed =
+      screen->is_format_supported(screen, PIPE_FORMAT_R8_UNORM,
+                                  PIPE_TEXTURE_2D, 0, 0,
+                                  PIPE_BIND_SAMPLER_VIEW);
+
    st->has_stencil_export =
       screen->get_param(screen, PIPE_CAP_SHADER_STENCIL_EXPORT);
-   st->has_shader_model3 = screen->get_param(screen, PIPE_CAP_SM3);
    st->has_etc1 = screen->is_format_supported(screen, PIPE_FORMAT_ETC1_RGB8,
                                               PIPE_TEXTURE_2D, 0, 0,
                                               PIPE_BIND_SAMPLER_VIEW);
@@ -608,6 +651,9 @@ st_create_context_priv(struct gl_context *ctx, struct pipe_context *pipe,
                                               PIPE_BIND_SAMPLER_VIEW);
    st->has_astc_2d_ldr =
       screen->is_format_supported(screen, PIPE_FORMAT_ASTC_4x4_SRGB,
+                                  PIPE_TEXTURE_2D, 0, 0, PIPE_BIND_SAMPLER_VIEW);
+   st->has_astc_5x5_ldr =
+      screen->is_format_supported(screen, PIPE_FORMAT_ASTC_5x5_SRGB,
                                   PIPE_TEXTURE_2D, 0, 0, PIPE_BIND_SAMPLER_VIEW);
    st->prefer_blit_based_texture_transfer = screen->get_param(screen,
                               PIPE_CAP_PREFER_BLIT_BASED_TEXTURE_TRANSFER);
@@ -634,6 +680,19 @@ st_create_context_priv(struct gl_context *ctx, struct pipe_context *pipe,
       screen->get_param(screen, PIPE_CAP_INDEP_BLEND_FUNC);
    st->needs_rgb_dst_alpha_override =
       screen->get_param(screen, PIPE_CAP_RGB_OVERRIDE_DST_ALPHA_BLEND);
+   st->has_signed_vertex_buffer_offset =
+      screen->get_param(screen, PIPE_CAP_SIGNED_VERTEX_BUFFER_OFFSET);
+   st->lower_flatshade =
+      !screen->get_param(screen, PIPE_CAP_FLATSHADE);
+   st->lower_alpha_test =
+      !screen->get_param(screen, PIPE_CAP_ALPHA_TEST);
+   st->lower_point_size =
+      !screen->get_param(screen, PIPE_CAP_POINT_SIZE_FIXED);
+   st->lower_two_sided_color =
+      !screen->get_param(screen, PIPE_CAP_TWO_SIDED_COLOR);
+   st->lower_ucp =
+      !screen->get_param(screen, PIPE_CAP_CLIP_PLANES);
+   st->allow_st_finalize_nir_twice = screen->finalize_nir != NULL;
 
    st->has_hw_atomics =
       screen->get_shader_param(screen, PIPE_SHADER_FRAGMENT,
@@ -649,8 +708,24 @@ st_create_context_priv(struct gl_context *ctx, struct pipe_context *pipe,
    st_init_extensions(pipe->screen, &ctx->Const,
                       &ctx->Extensions, &st->options, ctx->API);
 
+   /* FIXME: add support for geometry and tessellation shaders for
+    * lower_point_size
+    */
+   assert(!ctx->Extensions.OES_geometry_shader || !st->lower_point_size);
+   assert(!ctx->Extensions.ARB_tessellation_shader || !st->lower_point_size);
+
+   /* FIXME: add support for geometry and tessellation shaders for
+    * lower_ucp
+    */
+   assert(!ctx->Extensions.OES_geometry_shader || !st->lower_ucp);
+   assert(!ctx->Extensions.ARB_tessellation_shader || !st->lower_ucp);
+
    if (st_have_perfmon(st)) {
       ctx->Extensions.AMD_performance_monitor = GL_TRUE;
+   }
+
+   if (st_have_perfquery(st)) {
+      ctx->Extensions.INTEL_performance_query = GL_TRUE;
    }
 
    /* Enable shader-based fallbacks for ARB_color_buffer_float if needed. */
@@ -674,6 +749,9 @@ st_create_context_priv(struct gl_context *ctx, struct pipe_context *pipe,
       }
    }
 
+   if (screen->get_param(screen, PIPE_CAP_DEPTH_CLIP_DISABLE) == 2)
+      st->clamp_frag_depth_in_shader = true;
+
    /* called after _mesa_create_context/_mesa_init_point, fix default user
     * settable max point size up
     */
@@ -683,9 +761,16 @@ st_create_context_priv(struct gl_context *ctx, struct pipe_context *pipe,
     * is not supported
     */
    ctx->Const.ShaderCompilerOptions[MESA_SHADER_VERTEX].EmitNoSat =
-      !st->has_shader_model3;
+      !screen->get_param(screen, PIPE_CAP_VERTEX_SHADER_SATURATE);
 
-   if (!ctx->Extensions.ARB_gpu_shader5) {
+   ctx->Const.ShaderCompilerOptions[MESA_SHADER_VERTEX].PositionAlwaysInvariant = options->vs_position_always_invariant;
+
+   enum pipe_shader_ir preferred_ir = (enum pipe_shader_ir)
+      screen->get_shader_param(screen, PIPE_SHADER_VERTEX,
+                               PIPE_SHADER_CAP_PREFERRED_IR);
+   ctx->Const.UseNIRGLSLLinker = preferred_ir == PIPE_SHADER_IR_NIR;
+
+   if (ctx->Const.GLSLVersion < 400) {
       for (i = 0; i < MESA_SHADER_STAGES; i++)
          ctx->Const.ShaderCompilerOptions[i].EmitNoIndirectSampler = true;
    }
@@ -693,16 +778,29 @@ st_create_context_priv(struct gl_context *ctx, struct pipe_context *pipe,
    /* Set which shader types can be compiled at link time. */
    st->shader_has_one_variant[MESA_SHADER_VERTEX] =
          st->has_shareable_shaders &&
-         !st->clamp_vert_color_in_shader;
+         !st->clamp_frag_depth_in_shader &&
+         !st->clamp_vert_color_in_shader &&
+         !st->lower_point_size &&
+         !st->lower_ucp;
 
    st->shader_has_one_variant[MESA_SHADER_FRAGMENT] =
          st->has_shareable_shaders &&
+         !st->lower_flatshade &&
+         !st->lower_alpha_test &&
          !st->clamp_frag_color_in_shader &&
-         !st->force_persample_in_shader;
+         !st->clamp_frag_depth_in_shader &&
+         !st->force_persample_in_shader &&
+         !st->lower_two_sided_color;
 
    st->shader_has_one_variant[MESA_SHADER_TESS_CTRL] = st->has_shareable_shaders;
-   st->shader_has_one_variant[MESA_SHADER_TESS_EVAL] = st->has_shareable_shaders;
-   st->shader_has_one_variant[MESA_SHADER_GEOMETRY] = st->has_shareable_shaders;
+   st->shader_has_one_variant[MESA_SHADER_TESS_EVAL] =
+         st->has_shareable_shaders &&
+         !st->clamp_frag_depth_in_shader &&
+         !st->clamp_vert_color_in_shader;
+   st->shader_has_one_variant[MESA_SHADER_GEOMETRY] =
+         st->has_shareable_shaders &&
+         !st->clamp_frag_depth_in_shader &&
+         !st->clamp_vert_color_in_shader;
    st->shader_has_one_variant[MESA_SHADER_COMPUTE] = st->has_shareable_shaders;
 
    st->bitmap.cache.empty = true;
@@ -723,12 +821,12 @@ st_create_context_priv(struct gl_context *ctx, struct pipe_context *pipe,
    st_init_driver_flags(st);
 
    /* Initialize context's winsys buffers list */
-   LIST_INITHEAD(&st->winsys_buffers);
+   list_inithead(&st->winsys_buffers);
 
-   LIST_INITHEAD(&st->zombie_sampler_views.list.node);
-   mtx_init(&st->zombie_sampler_views.mutex, mtx_plain);
-   LIST_INITHEAD(&st->zombie_shaders.list.node);
-   mtx_init(&st->zombie_shaders.mutex, mtx_plain);
+   list_inithead(&st->zombie_sampler_views.list.node);
+   simple_mtx_init(&st->zombie_sampler_views.mutex, mtx_plain);
+   list_inithead(&st->zombie_shaders.list.node);
+   simple_mtx_init(&st->zombie_shaders.mutex, mtx_plain);
 
    return st;
 }
@@ -801,6 +899,7 @@ st_init_driver_functions(struct pipe_screen *screen,
    st_init_memoryobject_functions(functions);
    st_init_msaa_functions(functions);
    st_init_perfmon_functions(functions);
+   st_init_perfquery_functions(functions);
    st_init_program_functions(functions);
    st_init_query_functions(functions);
    st_init_cond_render_functions(functions);
@@ -878,8 +977,7 @@ st_create_context(gl_api api, struct pipe_context *pipe,
 
    st_debug_init();
 
-   if (pipe->screen->get_disk_shader_cache &&
-       !(ST_DEBUG & DEBUG_TGSI))
+   if (pipe->screen->get_disk_shader_cache)
       ctx->Cache = pipe->screen->get_disk_shader_cache(pipe->screen);
 
    /* XXX: need a capability bit in gallium to query if the pipe
@@ -969,15 +1067,15 @@ st_destroy_context(struct st_context *st)
 
    st_context_free_zombie_objects(st);
 
-   mtx_destroy(&st->zombie_sampler_views.mutex);
-   mtx_destroy(&st->zombie_shaders.mutex);
+   simple_mtx_destroy(&st->zombie_sampler_views.mutex);
+   simple_mtx_destroy(&st->zombie_shaders.mutex);
 
-   st_reference_fragprog(st, &st->fp, NULL);
+   st_reference_prog(st, &st->fp, NULL);
    st_reference_prog(st, &st->gp, NULL);
-   st_reference_vertprog(st, &st->vp, NULL);
+   st_reference_prog(st, &st->vp, NULL);
    st_reference_prog(st, &st->tcp, NULL);
    st_reference_prog(st, &st->tep, NULL);
-   st_reference_compprog(st, &st->cp, NULL);
+   st_reference_prog(st, &st->cp, NULL);
 
    /* release framebuffer in the winsys buffers list */
    LIST_FOR_EACH_ENTRY_SAFE_REV(stfb, next, &st->winsys_buffers, head) {
@@ -993,17 +1091,12 @@ st_destroy_context(struct st_context *st)
 
    st_destroy_program_variants(st);
 
-   _mesa_free_context_data(ctx, false);
+   _mesa_free_context_data(ctx);
 
    /* This will free the st_context too, so 'st' must not be accessed
     * afterwards. */
    st_destroy_context_priv(st, true);
    st = NULL;
-
-   /* This must be called after st_destroy_context_priv() to avoid a race
-    * condition between any shader compiler threads and context destruction.
-    */
-   _mesa_destroy_shader_compiler_types();
 
    free(ctx);
 

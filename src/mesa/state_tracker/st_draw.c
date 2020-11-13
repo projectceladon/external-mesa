@@ -61,7 +61,7 @@
 #include "pipe/p_defines.h"
 #include "util/u_cpu_detect.h"
 #include "util/u_inlines.h"
-#include "util/u_format.h"
+#include "util/format/u_format.h"
 #include "util/u_prim.h"
 #include "util/u_draw.h"
 #include "util/u_upload_mgr.h"
@@ -89,7 +89,7 @@ setup_primitive_restart(struct gl_context *ctx, struct pipe_draw_info *info)
          _mesa_primitive_restart_index(ctx, index_size);
 
       /* Enable primitive restart only when the restart index can have an
-       * effect. This is required for correctness in radeonsi VI support.
+       * effect. This is required for correctness in radeonsi GFX8 support.
        * Other hardware may also benefit from taking a faster, non-restart path
        * when possible.
        */
