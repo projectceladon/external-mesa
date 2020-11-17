@@ -36,7 +36,7 @@ LOCAL_STATIC_LIBRARIES := \
 	libmesa_util \
 	libmesa_loader
 
-LOCAL_MODULE := libgbm
+LOCAL_MODULE := libgbm_mesa
 
 LOCAL_SRC_FILES := \
 	$(gbm_core_FILES) \

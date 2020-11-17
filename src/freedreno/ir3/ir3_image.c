@@ -35,20 +35,14 @@ void
 ir3_ibo_mapping_init(struct ir3_ibo_mapping *mapping, unsigned num_textures)
 {
 	memset(mapping, IBO_INVALID, sizeof(*mapping));
-	mapping->num_ibo = 0;
 	mapping->num_tex = 0;
 	mapping->tex_base = num_textures;
 }
 
 unsigned
-ir3_ssbo_to_ibo(struct ir3_ibo_mapping *mapping, unsigned ssbo)
+ir3_ssbo_to_ibo(struct ir3_shader *shader, unsigned ssbo)
 {
-	if (mapping->ssbo_to_ibo[ssbo] == IBO_INVALID) {
-		unsigned ibo = mapping->num_ibo++;
-		mapping->ssbo_to_ibo[ssbo] = ibo;
-		mapping->ibo_to_image[ibo] = IBO_SSBO | ssbo;
-	}
-	return mapping->ssbo_to_ibo[ssbo];
+	return ssbo;
 }
 
 unsigned
@@ -63,14 +57,9 @@ ir3_ssbo_to_tex(struct ir3_ibo_mapping *mapping, unsigned ssbo)
 }
 
 unsigned
-ir3_image_to_ibo(struct ir3_ibo_mapping *mapping, unsigned image)
+ir3_image_to_ibo(struct ir3_shader *shader, unsigned image)
 {
-	if (mapping->image_to_ibo[image] == IBO_INVALID) {
-		unsigned ibo = mapping->num_ibo++;
-		mapping->image_to_ibo[image] = ibo;
-		mapping->ibo_to_image[ibo] = image;
-	}
-	return mapping->image_to_ibo[image];
+	return shader->nir->info.num_ssbos + image;
 }
 
 unsigned
@@ -120,34 +109,14 @@ unsigned
 ir3_get_image_coords(const nir_variable *var, unsigned *flagsp)
 {
 	const struct glsl_type *type = glsl_without_array(var->type);
-	unsigned coords, flags = 0;
+	unsigned coords = glsl_get_sampler_coordinate_components(type);
+	unsigned flags = 0;
 
-	switch (glsl_get_sampler_dim(type)) {
-	case GLSL_SAMPLER_DIM_1D:
-	case GLSL_SAMPLER_DIM_BUF:
-		coords = 1;
-		break;
-	case GLSL_SAMPLER_DIM_2D:
-	case GLSL_SAMPLER_DIM_RECT:
-	case GLSL_SAMPLER_DIM_EXTERNAL:
-	case GLSL_SAMPLER_DIM_MS:
-		coords = 2;
-		break;
-	case GLSL_SAMPLER_DIM_3D:
-	case GLSL_SAMPLER_DIM_CUBE:
+	if (coords == 3)
 		flags |= IR3_INSTR_3D;
-		coords = 3;
-		break;
-	default:
-		unreachable("bad sampler dim");
-		return 0;
-	}
 
-	if (glsl_sampler_type_is_array(type)) {
-		/* note: unlike tex_info(), adjust # of coords to include array idx: */
-		coords++;
+	if (glsl_sampler_type_is_array(type))
 		flags |= IR3_INSTR_A;
-	}
 
 	if (flagsp)
 		*flagsp = flags;
@@ -165,6 +134,12 @@ ir3_get_image_type(const nir_variable *var)
 		return TYPE_S32;
 	case GLSL_TYPE_FLOAT:
 		return TYPE_F32;
+	case GLSL_TYPE_UINT16:
+		return TYPE_U16;
+	case GLSL_TYPE_INT16:
+		return TYPE_S16;
+	case GLSL_TYPE_FLOAT16:
+		return TYPE_F16;
 	default:
 		unreachable("bad sampler type.");
 		return 0;

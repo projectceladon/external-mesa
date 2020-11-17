@@ -32,6 +32,8 @@
     const char *
     vk_AccelerationStructureMemoryRequirementsTypeNV_to_str(VkAccelerationStructureMemoryRequirementsTypeNV input)
     {
+        #pragma GCC diagnostic push
+        #pragma GCC diagnostic ignored "-Wswitch"
         switch(input) {
             case 0:
                 return "VK_ACCELERATION_STRUCTURE_MEMORY_REQUIREMENTS_TYPE_OBJECT_NV";
@@ -39,29 +41,33 @@
                 return "VK_ACCELERATION_STRUCTURE_MEMORY_REQUIREMENTS_TYPE_BUILD_SCRATCH_NV";
             case 2:
                 return "VK_ACCELERATION_STRUCTURE_MEMORY_REQUIREMENTS_TYPE_UPDATE_SCRATCH_NV";
-        default:
-            unreachable("Undefined enum value.");
         }
+        #pragma GCC diagnostic pop
+        unreachable("Undefined enum value.");
     }
 
 
     const char *
     vk_AccelerationStructureTypeNV_to_str(VkAccelerationStructureTypeNV input)
     {
+        #pragma GCC diagnostic push
+        #pragma GCC diagnostic ignored "-Wswitch"
         switch(input) {
             case 0:
                 return "VK_ACCELERATION_STRUCTURE_TYPE_TOP_LEVEL_NV";
             case 1:
                 return "VK_ACCELERATION_STRUCTURE_TYPE_BOTTOM_LEVEL_NV";
-        default:
-            unreachable("Undefined enum value.");
         }
+        #pragma GCC diagnostic pop
+        unreachable("Undefined enum value.");
     }
 
 
     const char *
     vk_AttachmentLoadOp_to_str(VkAttachmentLoadOp input)
     {
+        #pragma GCC diagnostic push
+        #pragma GCC diagnostic ignored "-Wswitch"
         switch(input) {
             case 0:
                 return "VK_ATTACHMENT_LOAD_OP_LOAD";
@@ -69,29 +75,33 @@
                 return "VK_ATTACHMENT_LOAD_OP_CLEAR";
             case 2:
                 return "VK_ATTACHMENT_LOAD_OP_DONT_CARE";
-        default:
-            unreachable("Undefined enum value.");
         }
+        #pragma GCC diagnostic pop
+        unreachable("Undefined enum value.");
     }
 
 
     const char *
     vk_AttachmentStoreOp_to_str(VkAttachmentStoreOp input)
     {
+        #pragma GCC diagnostic push
+        #pragma GCC diagnostic ignored "-Wswitch"
         switch(input) {
             case 0:
                 return "VK_ATTACHMENT_STORE_OP_STORE";
             case 1:
                 return "VK_ATTACHMENT_STORE_OP_DONT_CARE";
-        default:
-            unreachable("Undefined enum value.");
         }
+        #pragma GCC diagnostic pop
+        unreachable("Undefined enum value.");
     }
 
 
     const char *
     vk_BlendFactor_to_str(VkBlendFactor input)
     {
+        #pragma GCC diagnostic push
+        #pragma GCC diagnostic ignored "-Wswitch"
         switch(input) {
             case 0:
                 return "VK_BLEND_FACTOR_ZERO";
@@ -131,15 +141,17 @@
                 return "VK_BLEND_FACTOR_SRC1_ALPHA";
             case 18:
                 return "VK_BLEND_FACTOR_ONE_MINUS_SRC1_ALPHA";
-        default:
-            unreachable("Undefined enum value.");
         }
+        #pragma GCC diagnostic pop
+        unreachable("Undefined enum value.");
     }
 
 
     const char *
     vk_BlendOp_to_str(VkBlendOp input)
     {
+        #pragma GCC diagnostic push
+        #pragma GCC diagnostic ignored "-Wswitch"
         switch(input) {
             case 0:
                 return "VK_BLEND_OP_ADD";
@@ -243,15 +255,17 @@
                 return "VK_BLEND_OP_GREEN_EXT";
             case 1000148045:
                 return "VK_BLEND_OP_BLUE_EXT";
-        default:
-            unreachable("Undefined enum value.");
         }
+        #pragma GCC diagnostic pop
+        unreachable("Undefined enum value.");
     }
 
 
     const char *
     vk_BlendOverlapEXT_to_str(VkBlendOverlapEXT input)
     {
+        #pragma GCC diagnostic push
+        #pragma GCC diagnostic ignored "-Wswitch"
         switch(input) {
             case 0:
                 return "VK_BLEND_OVERLAP_UNCORRELATED_EXT";
@@ -259,15 +273,17 @@
                 return "VK_BLEND_OVERLAP_DISJOINT_EXT";
             case 2:
                 return "VK_BLEND_OVERLAP_CONJOINT_EXT";
-        default:
-            unreachable("Undefined enum value.");
         }
+        #pragma GCC diagnostic pop
+        unreachable("Undefined enum value.");
     }
 
 
     const char *
     vk_BorderColor_to_str(VkBorderColor input)
     {
+        #pragma GCC diagnostic push
+        #pragma GCC diagnostic ignored "-Wswitch"
         switch(input) {
             case 0:
                 return "VK_BORDER_COLOR_FLOAT_TRANSPARENT_BLACK";
@@ -281,29 +297,33 @@
                 return "VK_BORDER_COLOR_FLOAT_OPAQUE_WHITE";
             case 5:
                 return "VK_BORDER_COLOR_INT_OPAQUE_WHITE";
-        default:
-            unreachable("Undefined enum value.");
         }
+        #pragma GCC diagnostic pop
+        unreachable("Undefined enum value.");
     }
 
 
     const char *
     vk_ChromaLocation_to_str(VkChromaLocation input)
     {
+        #pragma GCC diagnostic push
+        #pragma GCC diagnostic ignored "-Wswitch"
         switch(input) {
             case 0:
                 return "VK_CHROMA_LOCATION_COSITED_EVEN";
             case 1:
                 return "VK_CHROMA_LOCATION_MIDPOINT";
-        default:
-            unreachable("Undefined enum value.");
         }
+        #pragma GCC diagnostic pop
+        unreachable("Undefined enum value.");
     }
 
 
     const char *
     vk_CoarseSampleOrderTypeNV_to_str(VkCoarseSampleOrderTypeNV input)
     {
+        #pragma GCC diagnostic push
+        #pragma GCC diagnostic ignored "-Wswitch"
         switch(input) {
             case 0:
                 return "VK_COARSE_SAMPLE_ORDER_TYPE_DEFAULT_NV";
@@ -313,15 +333,17 @@
                 return "VK_COARSE_SAMPLE_ORDER_TYPE_PIXEL_MAJOR_NV";
             case 3:
                 return "VK_COARSE_SAMPLE_ORDER_TYPE_SAMPLE_MAJOR_NV";
-        default:
-            unreachable("Undefined enum value.");
         }
+        #pragma GCC diagnostic pop
+        unreachable("Undefined enum value.");
     }
 
 
     const char *
     vk_ColorSpaceKHR_to_str(VkColorSpaceKHR input)
     {
+        #pragma GCC diagnostic push
+        #pragma GCC diagnostic ignored "-Wswitch"
         switch(input) {
             case 0:
                 return "VK_COLORSPACE_SRGB_NONLINEAR_KHR";
@@ -355,29 +377,33 @@
                 return "VK_COLOR_SPACE_EXTENDED_SRGB_NONLINEAR_EXT";
             case 1000213000:
                 return "VK_COLOR_SPACE_DISPLAY_NATIVE_AMD";
-        default:
-            unreachable("Undefined enum value.");
         }
+        #pragma GCC diagnostic pop
+        unreachable("Undefined enum value.");
     }
 
 
     const char *
     vk_CommandBufferLevel_to_str(VkCommandBufferLevel input)
     {
+        #pragma GCC diagnostic push
+        #pragma GCC diagnostic ignored "-Wswitch"
         switch(input) {
             case 0:
                 return "VK_COMMAND_BUFFER_LEVEL_PRIMARY";
             case 1:
                 return "VK_COMMAND_BUFFER_LEVEL_SECONDARY";
-        default:
-            unreachable("Undefined enum value.");
         }
+        #pragma GCC diagnostic pop
+        unreachable("Undefined enum value.");
     }
 
 
     const char *
     vk_CompareOp_to_str(VkCompareOp input)
     {
+        #pragma GCC diagnostic push
+        #pragma GCC diagnostic ignored "-Wswitch"
         switch(input) {
             case 0:
                 return "VK_COMPARE_OP_NEVER";
@@ -395,15 +421,17 @@
                 return "VK_COMPARE_OP_GREATER_OR_EQUAL";
             case 7:
                 return "VK_COMPARE_OP_ALWAYS";
-        default:
-            unreachable("Undefined enum value.");
         }
+        #pragma GCC diagnostic pop
+        unreachable("Undefined enum value.");
     }
 
 
     const char *
     vk_ComponentSwizzle_to_str(VkComponentSwizzle input)
     {
+        #pragma GCC diagnostic push
+        #pragma GCC diagnostic ignored "-Wswitch"
         switch(input) {
             case 0:
                 return "VK_COMPONENT_SWIZZLE_IDENTITY";
@@ -419,15 +447,17 @@
                 return "VK_COMPONENT_SWIZZLE_B";
             case 6:
                 return "VK_COMPONENT_SWIZZLE_A";
-        default:
-            unreachable("Undefined enum value.");
         }
+        #pragma GCC diagnostic pop
+        unreachable("Undefined enum value.");
     }
 
 
     const char *
     vk_ComponentTypeNV_to_str(VkComponentTypeNV input)
     {
+        #pragma GCC diagnostic push
+        #pragma GCC diagnostic ignored "-Wswitch"
         switch(input) {
             case 0:
                 return "VK_COMPONENT_TYPE_FLOAT16_NV";
@@ -451,15 +481,17 @@
                 return "VK_COMPONENT_TYPE_UINT32_NV";
             case 10:
                 return "VK_COMPONENT_TYPE_UINT64_NV";
-        default:
-            unreachable("Undefined enum value.");
         }
+        #pragma GCC diagnostic pop
+        unreachable("Undefined enum value.");
     }
 
 
     const char *
     vk_ConservativeRasterizationModeEXT_to_str(VkConservativeRasterizationModeEXT input)
     {
+        #pragma GCC diagnostic push
+        #pragma GCC diagnostic ignored "-Wswitch"
         switch(input) {
             case 0:
                 return "VK_CONSERVATIVE_RASTERIZATION_MODE_DISABLED_EXT";
@@ -467,29 +499,33 @@
                 return "VK_CONSERVATIVE_RASTERIZATION_MODE_OVERESTIMATE_EXT";
             case 2:
                 return "VK_CONSERVATIVE_RASTERIZATION_MODE_UNDERESTIMATE_EXT";
-        default:
-            unreachable("Undefined enum value.");
         }
+        #pragma GCC diagnostic pop
+        unreachable("Undefined enum value.");
     }
 
 
     const char *
     vk_CopyAccelerationStructureModeNV_to_str(VkCopyAccelerationStructureModeNV input)
     {
+        #pragma GCC diagnostic push
+        #pragma GCC diagnostic ignored "-Wswitch"
         switch(input) {
             case 0:
                 return "VK_COPY_ACCELERATION_STRUCTURE_MODE_CLONE_NV";
             case 1:
                 return "VK_COPY_ACCELERATION_STRUCTURE_MODE_COMPACT_NV";
-        default:
-            unreachable("Undefined enum value.");
         }
+        #pragma GCC diagnostic pop
+        unreachable("Undefined enum value.");
     }
 
 
     const char *
     vk_CoverageModulationModeNV_to_str(VkCoverageModulationModeNV input)
     {
+        #pragma GCC diagnostic push
+        #pragma GCC diagnostic ignored "-Wswitch"
         switch(input) {
             case 0:
                 return "VK_COVERAGE_MODULATION_MODE_NONE_NV";
@@ -499,15 +535,33 @@
                 return "VK_COVERAGE_MODULATION_MODE_ALPHA_NV";
             case 3:
                 return "VK_COVERAGE_MODULATION_MODE_RGBA_NV";
-        default:
-            unreachable("Undefined enum value.");
         }
+        #pragma GCC diagnostic pop
+        unreachable("Undefined enum value.");
+    }
+
+
+    const char *
+    vk_CoverageReductionModeNV_to_str(VkCoverageReductionModeNV input)
+    {
+        #pragma GCC diagnostic push
+        #pragma GCC diagnostic ignored "-Wswitch"
+        switch(input) {
+            case 0:
+                return "VK_COVERAGE_REDUCTION_MODE_MERGE_NV";
+            case 1:
+                return "VK_COVERAGE_REDUCTION_MODE_TRUNCATE_NV";
+        }
+        #pragma GCC diagnostic pop
+        unreachable("Undefined enum value.");
     }
 
 
     const char *
     vk_DebugReportObjectTypeEXT_to_str(VkDebugReportObjectTypeEXT input)
     {
+        #pragma GCC diagnostic push
+        #pragma GCC diagnostic ignored "-Wswitch"
         switch(input) {
             case 0:
                 return "VK_DEBUG_REPORT_OBJECT_TYPE_UNKNOWN_EXT";
@@ -583,15 +637,17 @@
                 return "VK_DEBUG_REPORT_OBJECT_TYPE_SAMPLER_YCBCR_CONVERSION_EXT";
             case 1000165000:
                 return "VK_DEBUG_REPORT_OBJECT_TYPE_ACCELERATION_STRUCTURE_NV_EXT";
-        default:
-            unreachable("Undefined enum value.");
         }
+        #pragma GCC diagnostic pop
+        unreachable("Undefined enum value.");
     }
 
 
     const char *
     vk_DescriptorType_to_str(VkDescriptorType input)
     {
+        #pragma GCC diagnostic push
+        #pragma GCC diagnostic ignored "-Wswitch"
         switch(input) {
             case 0:
                 return "VK_DESCRIPTOR_TYPE_SAMPLER";
@@ -619,67 +675,77 @@
                 return "VK_DESCRIPTOR_TYPE_INLINE_UNIFORM_BLOCK_EXT";
             case 1000165000:
                 return "VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_NV";
-        default:
-            unreachable("Undefined enum value.");
         }
+        #pragma GCC diagnostic pop
+        unreachable("Undefined enum value.");
     }
 
 
     const char *
     vk_DescriptorUpdateTemplateType_to_str(VkDescriptorUpdateTemplateType input)
     {
+        #pragma GCC diagnostic push
+        #pragma GCC diagnostic ignored "-Wswitch"
         switch(input) {
             case 0:
                 return "VK_DESCRIPTOR_UPDATE_TEMPLATE_TYPE_DESCRIPTOR_SET";
             case 1:
                 return "VK_DESCRIPTOR_UPDATE_TEMPLATE_TYPE_PUSH_DESCRIPTORS_KHR";
-        default:
-            unreachable("Undefined enum value.");
         }
+        #pragma GCC diagnostic pop
+        unreachable("Undefined enum value.");
     }
 
 
     const char *
     vk_DeviceEventTypeEXT_to_str(VkDeviceEventTypeEXT input)
     {
+        #pragma GCC diagnostic push
+        #pragma GCC diagnostic ignored "-Wswitch"
         switch(input) {
             case 0:
                 return "VK_DEVICE_EVENT_TYPE_DISPLAY_HOTPLUG_EXT";
-        default:
-            unreachable("Undefined enum value.");
         }
+        #pragma GCC diagnostic pop
+        unreachable("Undefined enum value.");
     }
 
 
     const char *
     vk_DiscardRectangleModeEXT_to_str(VkDiscardRectangleModeEXT input)
     {
+        #pragma GCC diagnostic push
+        #pragma GCC diagnostic ignored "-Wswitch"
         switch(input) {
             case 0:
                 return "VK_DISCARD_RECTANGLE_MODE_INCLUSIVE_EXT";
             case 1:
                 return "VK_DISCARD_RECTANGLE_MODE_EXCLUSIVE_EXT";
-        default:
-            unreachable("Undefined enum value.");
         }
+        #pragma GCC diagnostic pop
+        unreachable("Undefined enum value.");
     }
 
 
     const char *
     vk_DisplayEventTypeEXT_to_str(VkDisplayEventTypeEXT input)
     {
+        #pragma GCC diagnostic push
+        #pragma GCC diagnostic ignored "-Wswitch"
         switch(input) {
             case 0:
                 return "VK_DISPLAY_EVENT_TYPE_FIRST_PIXEL_OUT_EXT";
-        default:
-            unreachable("Undefined enum value.");
         }
+        #pragma GCC diagnostic pop
+        unreachable("Undefined enum value.");
     }
 
 
     const char *
     vk_DisplayPowerStateEXT_to_str(VkDisplayPowerStateEXT input)
     {
+        #pragma GCC diagnostic push
+        #pragma GCC diagnostic ignored "-Wswitch"
         switch(input) {
             case 0:
                 return "VK_DISPLAY_POWER_STATE_OFF_EXT";
@@ -687,47 +753,53 @@
                 return "VK_DISPLAY_POWER_STATE_SUSPEND_EXT";
             case 2:
                 return "VK_DISPLAY_POWER_STATE_ON_EXT";
-        default:
-            unreachable("Undefined enum value.");
         }
+        #pragma GCC diagnostic pop
+        unreachable("Undefined enum value.");
     }
 
 
     const char *
-    vk_DriverIdKHR_to_str(VkDriverIdKHR input)
+    vk_DriverId_to_str(VkDriverId input)
     {
+        #pragma GCC diagnostic push
+        #pragma GCC diagnostic ignored "-Wswitch"
         switch(input) {
             case 1:
-                return "VK_DRIVER_ID_AMD_PROPRIETARY_KHR";
+                return "VK_DRIVER_ID_AMD_PROPRIETARY";
             case 2:
-                return "VK_DRIVER_ID_AMD_OPEN_SOURCE_KHR";
+                return "VK_DRIVER_ID_AMD_OPEN_SOURCE";
             case 3:
-                return "VK_DRIVER_ID_MESA_RADV_KHR";
+                return "VK_DRIVER_ID_MESA_RADV";
             case 4:
-                return "VK_DRIVER_ID_NVIDIA_PROPRIETARY_KHR";
+                return "VK_DRIVER_ID_NVIDIA_PROPRIETARY";
             case 5:
-                return "VK_DRIVER_ID_INTEL_PROPRIETARY_WINDOWS_KHR";
+                return "VK_DRIVER_ID_INTEL_PROPRIETARY_WINDOWS";
             case 6:
-                return "VK_DRIVER_ID_INTEL_OPEN_SOURCE_MESA_KHR";
+                return "VK_DRIVER_ID_INTEL_OPEN_SOURCE_MESA";
             case 7:
-                return "VK_DRIVER_ID_IMAGINATION_PROPRIETARY_KHR";
+                return "VK_DRIVER_ID_IMAGINATION_PROPRIETARY";
             case 8:
-                return "VK_DRIVER_ID_QUALCOMM_PROPRIETARY_KHR";
+                return "VK_DRIVER_ID_QUALCOMM_PROPRIETARY";
             case 9:
-                return "VK_DRIVER_ID_ARM_PROPRIETARY_KHR";
+                return "VK_DRIVER_ID_ARM_PROPRIETARY";
             case 10:
-                return "VK_DRIVER_ID_GOOGLE_PASTEL_KHR";
+                return "VK_DRIVER_ID_GOOGLE_SWIFTSHADER";
             case 11:
-                return "VK_DRIVER_ID_GGP_PROPRIETARY_KHR";
-        default:
-            unreachable("Undefined enum value.");
+                return "VK_DRIVER_ID_GGP_PROPRIETARY";
+            case 12:
+                return "VK_DRIVER_ID_BROADCOM_PROPRIETARY";
         }
+        #pragma GCC diagnostic pop
+        unreachable("Undefined enum value.");
     }
 
 
     const char *
     vk_DynamicState_to_str(VkDynamicState input)
     {
+        #pragma GCC diagnostic push
+        #pragma GCC diagnostic ignored "-Wswitch"
         switch(input) {
             case 0:
                 return "VK_DYNAMIC_STATE_VIEWPORT";
@@ -759,15 +831,19 @@
                 return "VK_DYNAMIC_STATE_VIEWPORT_COARSE_SAMPLE_ORDER_NV";
             case 1000205001:
                 return "VK_DYNAMIC_STATE_EXCLUSIVE_SCISSOR_NV";
-        default:
-            unreachable("Undefined enum value.");
+            case 1000259000:
+                return "VK_DYNAMIC_STATE_LINE_STIPPLE_EXT";
         }
+        #pragma GCC diagnostic pop
+        unreachable("Undefined enum value.");
     }
 
 
     const char *
     vk_Filter_to_str(VkFilter input)
     {
+        #pragma GCC diagnostic push
+        #pragma GCC diagnostic ignored "-Wswitch"
         switch(input) {
             case 0:
                 return "VK_FILTER_NEAREST";
@@ -775,15 +851,17 @@
                 return "VK_FILTER_LINEAR";
             case 1000015000:
                 return "VK_FILTER_CUBIC_IMG";
-        default:
-            unreachable("Undefined enum value.");
         }
+        #pragma GCC diagnostic pop
+        unreachable("Undefined enum value.");
     }
 
 
     const char *
     vk_Format_to_str(VkFormat input)
     {
+        #pragma GCC diagnostic push
+        #pragma GCC diagnostic ignored "-Wswitch"
         switch(input) {
             case 0:
                 return "VK_FORMAT_UNDEFINED";
@@ -1171,6 +1249,34 @@
                 return "VK_FORMAT_PVRTC2_2BPP_SRGB_BLOCK_IMG";
             case 1000054007:
                 return "VK_FORMAT_PVRTC2_4BPP_SRGB_BLOCK_IMG";
+            case 1000066000:
+                return "VK_FORMAT_ASTC_4x4_SFLOAT_BLOCK_EXT";
+            case 1000066001:
+                return "VK_FORMAT_ASTC_5x4_SFLOAT_BLOCK_EXT";
+            case 1000066002:
+                return "VK_FORMAT_ASTC_5x5_SFLOAT_BLOCK_EXT";
+            case 1000066003:
+                return "VK_FORMAT_ASTC_6x5_SFLOAT_BLOCK_EXT";
+            case 1000066004:
+                return "VK_FORMAT_ASTC_6x6_SFLOAT_BLOCK_EXT";
+            case 1000066005:
+                return "VK_FORMAT_ASTC_8x5_SFLOAT_BLOCK_EXT";
+            case 1000066006:
+                return "VK_FORMAT_ASTC_8x6_SFLOAT_BLOCK_EXT";
+            case 1000066007:
+                return "VK_FORMAT_ASTC_8x8_SFLOAT_BLOCK_EXT";
+            case 1000066008:
+                return "VK_FORMAT_ASTC_10x5_SFLOAT_BLOCK_EXT";
+            case 1000066009:
+                return "VK_FORMAT_ASTC_10x6_SFLOAT_BLOCK_EXT";
+            case 1000066010:
+                return "VK_FORMAT_ASTC_10x8_SFLOAT_BLOCK_EXT";
+            case 1000066011:
+                return "VK_FORMAT_ASTC_10x10_SFLOAT_BLOCK_EXT";
+            case 1000066012:
+                return "VK_FORMAT_ASTC_12x10_SFLOAT_BLOCK_EXT";
+            case 1000066013:
+                return "VK_FORMAT_ASTC_12x12_SFLOAT_BLOCK_EXT";
             case 1000156000:
                 return "VK_FORMAT_G8B8G8R8_422_UNORM";
             case 1000156001:
@@ -1239,23 +1345,25 @@
                 return "VK_FORMAT_G16_B16R16_2PLANE_422_UNORM";
             case 1000156033:
                 return "VK_FORMAT_G16_B16_R16_3PLANE_444_UNORM";
-        default:
-            unreachable("Undefined enum value.");
         }
+        #pragma GCC diagnostic pop
+        unreachable("Undefined enum value.");
     }
 
 
     const char *
     vk_FrontFace_to_str(VkFrontFace input)
     {
+        #pragma GCC diagnostic push
+        #pragma GCC diagnostic ignored "-Wswitch"
         switch(input) {
             case 0:
                 return "VK_FRONT_FACE_COUNTER_CLOCKWISE";
             case 1:
                 return "VK_FRONT_FACE_CLOCKWISE";
-        default:
-            unreachable("Undefined enum value.");
         }
+        #pragma GCC diagnostic pop
+        unreachable("Undefined enum value.");
     }
 
 
@@ -1263,6 +1371,8 @@
     const char *
     vk_FullScreenExclusiveEXT_to_str(VkFullScreenExclusiveEXT input)
     {
+        #pragma GCC diagnostic push
+        #pragma GCC diagnostic ignored "-Wswitch"
         switch(input) {
             case 0:
                 return "VK_FULL_SCREEN_EXCLUSIVE_DEFAULT_EXT";
@@ -1272,9 +1382,9 @@
                 return "VK_FULL_SCREEN_EXCLUSIVE_DISALLOWED_EXT";
             case 3:
                 return "VK_FULL_SCREEN_EXCLUSIVE_APPLICATION_CONTROLLED_EXT";
-        default:
-            unreachable("Undefined enum value.");
         }
+        #pragma GCC diagnostic pop
+        unreachable("Undefined enum value.");
     }
 
 #endif
@@ -1282,20 +1392,24 @@
     const char *
     vk_GeometryTypeNV_to_str(VkGeometryTypeNV input)
     {
+        #pragma GCC diagnostic push
+        #pragma GCC diagnostic ignored "-Wswitch"
         switch(input) {
             case 0:
                 return "VK_GEOMETRY_TYPE_TRIANGLES_NV";
             case 1:
                 return "VK_GEOMETRY_TYPE_AABBS_NV";
-        default:
-            unreachable("Undefined enum value.");
         }
+        #pragma GCC diagnostic pop
+        unreachable("Undefined enum value.");
     }
 
 
     const char *
     vk_ImageLayout_to_str(VkImageLayout input)
     {
+        #pragma GCC diagnostic push
+        #pragma GCC diagnostic ignored "-Wswitch"
         switch(input) {
             case 0:
                 return "VK_IMAGE_LAYOUT_UNDEFINED";
@@ -1327,15 +1441,25 @@
                 return "VK_IMAGE_LAYOUT_SHADING_RATE_OPTIMAL_NV";
             case 1000218000:
                 return "VK_IMAGE_LAYOUT_FRAGMENT_DENSITY_MAP_OPTIMAL_EXT";
-        default:
-            unreachable("Undefined enum value.");
+            case 1000241000:
+                return "VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL";
+            case 1000241001:
+                return "VK_IMAGE_LAYOUT_DEPTH_READ_ONLY_OPTIMAL";
+            case 1000241002:
+                return "VK_IMAGE_LAYOUT_STENCIL_ATTACHMENT_OPTIMAL";
+            case 1000241003:
+                return "VK_IMAGE_LAYOUT_STENCIL_READ_ONLY_OPTIMAL";
         }
+        #pragma GCC diagnostic pop
+        unreachable("Undefined enum value.");
     }
 
 
     const char *
     vk_ImageTiling_to_str(VkImageTiling input)
     {
+        #pragma GCC diagnostic push
+        #pragma GCC diagnostic ignored "-Wswitch"
         switch(input) {
             case 0:
                 return "VK_IMAGE_TILING_OPTIMAL";
@@ -1343,15 +1467,17 @@
                 return "VK_IMAGE_TILING_LINEAR";
             case 1000158000:
                 return "VK_IMAGE_TILING_DRM_FORMAT_MODIFIER_EXT";
-        default:
-            unreachable("Undefined enum value.");
         }
+        #pragma GCC diagnostic pop
+        unreachable("Undefined enum value.");
     }
 
 
     const char *
     vk_ImageType_to_str(VkImageType input)
     {
+        #pragma GCC diagnostic push
+        #pragma GCC diagnostic ignored "-Wswitch"
         switch(input) {
             case 0:
                 return "VK_IMAGE_TYPE_1D";
@@ -1359,15 +1485,17 @@
                 return "VK_IMAGE_TYPE_2D";
             case 2:
                 return "VK_IMAGE_TYPE_3D";
-        default:
-            unreachable("Undefined enum value.");
         }
+        #pragma GCC diagnostic pop
+        unreachable("Undefined enum value.");
     }
 
 
     const char *
     vk_ImageViewType_to_str(VkImageViewType input)
     {
+        #pragma GCC diagnostic push
+        #pragma GCC diagnostic ignored "-Wswitch"
         switch(input) {
             case 0:
                 return "VK_IMAGE_VIEW_TYPE_1D";
@@ -1383,15 +1511,17 @@
                 return "VK_IMAGE_VIEW_TYPE_2D_ARRAY";
             case 6:
                 return "VK_IMAGE_VIEW_TYPE_CUBE_ARRAY";
-        default:
-            unreachable("Undefined enum value.");
         }
+        #pragma GCC diagnostic pop
+        unreachable("Undefined enum value.");
     }
 
 
     const char *
     vk_IndexType_to_str(VkIndexType input)
     {
+        #pragma GCC diagnostic push
+        #pragma GCC diagnostic ignored "-Wswitch"
         switch(input) {
             case 0:
                 return "VK_INDEX_TYPE_UINT16";
@@ -1399,15 +1529,19 @@
                 return "VK_INDEX_TYPE_UINT32";
             case 1000165000:
                 return "VK_INDEX_TYPE_NONE_NV";
-        default:
-            unreachable("Undefined enum value.");
+            case 1000265000:
+                return "VK_INDEX_TYPE_UINT8_EXT";
         }
+        #pragma GCC diagnostic pop
+        unreachable("Undefined enum value.");
     }
 
 
     const char *
     vk_IndirectCommandsTokenTypeNVX_to_str(VkIndirectCommandsTokenTypeNVX input)
     {
+        #pragma GCC diagnostic push
+        #pragma GCC diagnostic ignored "-Wswitch"
         switch(input) {
             case 0:
                 return "VK_INDIRECT_COMMANDS_TOKEN_TYPE_PIPELINE_NVX";
@@ -1425,27 +1559,51 @@
                 return "VK_INDIRECT_COMMANDS_TOKEN_TYPE_DRAW_NVX";
             case 7:
                 return "VK_INDIRECT_COMMANDS_TOKEN_TYPE_DISPATCH_NVX";
-        default:
-            unreachable("Undefined enum value.");
         }
+        #pragma GCC diagnostic pop
+        unreachable("Undefined enum value.");
     }
 
 
     const char *
     vk_InternalAllocationType_to_str(VkInternalAllocationType input)
     {
+        #pragma GCC diagnostic push
+        #pragma GCC diagnostic ignored "-Wswitch"
         switch(input) {
             case 0:
                 return "VK_INTERNAL_ALLOCATION_TYPE_EXECUTABLE";
-        default:
-            unreachable("Undefined enum value.");
         }
+        #pragma GCC diagnostic pop
+        unreachable("Undefined enum value.");
+    }
+
+
+    const char *
+    vk_LineRasterizationModeEXT_to_str(VkLineRasterizationModeEXT input)
+    {
+        #pragma GCC diagnostic push
+        #pragma GCC diagnostic ignored "-Wswitch"
+        switch(input) {
+            case 0:
+                return "VK_LINE_RASTERIZATION_MODE_DEFAULT_EXT";
+            case 1:
+                return "VK_LINE_RASTERIZATION_MODE_RECTANGULAR_EXT";
+            case 2:
+                return "VK_LINE_RASTERIZATION_MODE_BRESENHAM_EXT";
+            case 3:
+                return "VK_LINE_RASTERIZATION_MODE_RECTANGULAR_SMOOTH_EXT";
+        }
+        #pragma GCC diagnostic pop
+        unreachable("Undefined enum value.");
     }
 
 
     const char *
     vk_LogicOp_to_str(VkLogicOp input)
     {
+        #pragma GCC diagnostic push
+        #pragma GCC diagnostic ignored "-Wswitch"
         switch(input) {
             case 0:
                 return "VK_LOGIC_OP_CLEAR";
@@ -1479,15 +1637,17 @@
                 return "VK_LOGIC_OP_NAND";
             case 15:
                 return "VK_LOGIC_OP_SET";
-        default:
-            unreachable("Undefined enum value.");
         }
+        #pragma GCC diagnostic pop
+        unreachable("Undefined enum value.");
     }
 
 
     const char *
     vk_MemoryOverallocationBehaviorAMD_to_str(VkMemoryOverallocationBehaviorAMD input)
     {
+        #pragma GCC diagnostic push
+        #pragma GCC diagnostic ignored "-Wswitch"
         switch(input) {
             case 0:
                 return "VK_MEMORY_OVERALLOCATION_BEHAVIOR_DEFAULT_AMD";
@@ -1495,15 +1655,17 @@
                 return "VK_MEMORY_OVERALLOCATION_BEHAVIOR_ALLOWED_AMD";
             case 2:
                 return "VK_MEMORY_OVERALLOCATION_BEHAVIOR_DISALLOWED_AMD";
-        default:
-            unreachable("Undefined enum value.");
         }
+        #pragma GCC diagnostic pop
+        unreachable("Undefined enum value.");
     }
 
 
     const char *
     vk_ObjectEntryTypeNVX_to_str(VkObjectEntryTypeNVX input)
     {
+        #pragma GCC diagnostic push
+        #pragma GCC diagnostic ignored "-Wswitch"
         switch(input) {
             case 0:
                 return "VK_OBJECT_ENTRY_TYPE_DESCRIPTOR_SET_NVX";
@@ -1515,15 +1677,17 @@
                 return "VK_OBJECT_ENTRY_TYPE_VERTEX_BUFFER_NVX";
             case 4:
                 return "VK_OBJECT_ENTRY_TYPE_PUSH_CONSTANT_NVX";
-        default:
-            unreachable("Undefined enum value.");
         }
+        #pragma GCC diagnostic pop
+        unreachable("Undefined enum value.");
     }
 
 
     const char *
     vk_ObjectType_to_str(VkObjectType input)
     {
+        #pragma GCC diagnostic push
+        #pragma GCC diagnostic ignored "-Wswitch"
         switch(input) {
             case 0:
                 return "VK_OBJECT_TYPE_UNKNOWN";
@@ -1601,15 +1765,163 @@
                 return "VK_OBJECT_TYPE_VALIDATION_CACHE_EXT";
             case 1000165000:
                 return "VK_OBJECT_TYPE_ACCELERATION_STRUCTURE_NV";
-        default:
-            unreachable("Undefined enum value.");
+            case 1000210000:
+                return "VK_OBJECT_TYPE_PERFORMANCE_CONFIGURATION_INTEL";
         }
+        #pragma GCC diagnostic pop
+        unreachable("Undefined enum value.");
+    }
+
+
+    const char *
+    vk_PerformanceConfigurationTypeINTEL_to_str(VkPerformanceConfigurationTypeINTEL input)
+    {
+        #pragma GCC diagnostic push
+        #pragma GCC diagnostic ignored "-Wswitch"
+        switch(input) {
+            case 0:
+                return "VK_PERFORMANCE_CONFIGURATION_TYPE_COMMAND_QUEUE_METRICS_DISCOVERY_ACTIVATED_INTEL";
+        }
+        #pragma GCC diagnostic pop
+        unreachable("Undefined enum value.");
+    }
+
+
+    const char *
+    vk_PerformanceCounterScopeKHR_to_str(VkPerformanceCounterScopeKHR input)
+    {
+        #pragma GCC diagnostic push
+        #pragma GCC diagnostic ignored "-Wswitch"
+        switch(input) {
+            case 0:
+                return "VK_QUERY_SCOPE_COMMAND_BUFFER_KHR";
+            case 1:
+                return "VK_QUERY_SCOPE_RENDER_PASS_KHR";
+            case 2:
+                return "VK_QUERY_SCOPE_COMMAND_KHR";
+        }
+        #pragma GCC diagnostic pop
+        unreachable("Undefined enum value.");
+    }
+
+
+    const char *
+    vk_PerformanceCounterStorageKHR_to_str(VkPerformanceCounterStorageKHR input)
+    {
+        #pragma GCC diagnostic push
+        #pragma GCC diagnostic ignored "-Wswitch"
+        switch(input) {
+            case 0:
+                return "VK_PERFORMANCE_COUNTER_STORAGE_INT32_KHR";
+            case 1:
+                return "VK_PERFORMANCE_COUNTER_STORAGE_INT64_KHR";
+            case 2:
+                return "VK_PERFORMANCE_COUNTER_STORAGE_UINT32_KHR";
+            case 3:
+                return "VK_PERFORMANCE_COUNTER_STORAGE_UINT64_KHR";
+            case 4:
+                return "VK_PERFORMANCE_COUNTER_STORAGE_FLOAT32_KHR";
+            case 5:
+                return "VK_PERFORMANCE_COUNTER_STORAGE_FLOAT64_KHR";
+        }
+        #pragma GCC diagnostic pop
+        unreachable("Undefined enum value.");
+    }
+
+
+    const char *
+    vk_PerformanceCounterUnitKHR_to_str(VkPerformanceCounterUnitKHR input)
+    {
+        #pragma GCC diagnostic push
+        #pragma GCC diagnostic ignored "-Wswitch"
+        switch(input) {
+            case 0:
+                return "VK_PERFORMANCE_COUNTER_UNIT_GENERIC_KHR";
+            case 1:
+                return "VK_PERFORMANCE_COUNTER_UNIT_PERCENTAGE_KHR";
+            case 2:
+                return "VK_PERFORMANCE_COUNTER_UNIT_NANOSECONDS_KHR";
+            case 3:
+                return "VK_PERFORMANCE_COUNTER_UNIT_BYTES_KHR";
+            case 4:
+                return "VK_PERFORMANCE_COUNTER_UNIT_BYTES_PER_SECOND_KHR";
+            case 5:
+                return "VK_PERFORMANCE_COUNTER_UNIT_KELVIN_KHR";
+            case 6:
+                return "VK_PERFORMANCE_COUNTER_UNIT_WATTS_KHR";
+            case 7:
+                return "VK_PERFORMANCE_COUNTER_UNIT_VOLTS_KHR";
+            case 8:
+                return "VK_PERFORMANCE_COUNTER_UNIT_AMPS_KHR";
+            case 9:
+                return "VK_PERFORMANCE_COUNTER_UNIT_HERTZ_KHR";
+            case 10:
+                return "VK_PERFORMANCE_COUNTER_UNIT_CYCLES_KHR";
+        }
+        #pragma GCC diagnostic pop
+        unreachable("Undefined enum value.");
+    }
+
+
+    const char *
+    vk_PerformanceOverrideTypeINTEL_to_str(VkPerformanceOverrideTypeINTEL input)
+    {
+        #pragma GCC diagnostic push
+        #pragma GCC diagnostic ignored "-Wswitch"
+        switch(input) {
+            case 0:
+                return "VK_PERFORMANCE_OVERRIDE_TYPE_NULL_HARDWARE_INTEL";
+            case 1:
+                return "VK_PERFORMANCE_OVERRIDE_TYPE_FLUSH_GPU_CACHES_INTEL";
+        }
+        #pragma GCC diagnostic pop
+        unreachable("Undefined enum value.");
+    }
+
+
+    const char *
+    vk_PerformanceParameterTypeINTEL_to_str(VkPerformanceParameterTypeINTEL input)
+    {
+        #pragma GCC diagnostic push
+        #pragma GCC diagnostic ignored "-Wswitch"
+        switch(input) {
+            case 0:
+                return "VK_PERFORMANCE_PARAMETER_TYPE_HW_COUNTERS_SUPPORTED_INTEL";
+            case 1:
+                return "VK_PERFORMANCE_PARAMETER_TYPE_STREAM_MARKER_VALID_BITS_INTEL";
+        }
+        #pragma GCC diagnostic pop
+        unreachable("Undefined enum value.");
+    }
+
+
+    const char *
+    vk_PerformanceValueTypeINTEL_to_str(VkPerformanceValueTypeINTEL input)
+    {
+        #pragma GCC diagnostic push
+        #pragma GCC diagnostic ignored "-Wswitch"
+        switch(input) {
+            case 0:
+                return "VK_PERFORMANCE_VALUE_TYPE_UINT32_INTEL";
+            case 1:
+                return "VK_PERFORMANCE_VALUE_TYPE_UINT64_INTEL";
+            case 2:
+                return "VK_PERFORMANCE_VALUE_TYPE_FLOAT_INTEL";
+            case 3:
+                return "VK_PERFORMANCE_VALUE_TYPE_BOOL_INTEL";
+            case 4:
+                return "VK_PERFORMANCE_VALUE_TYPE_STRING_INTEL";
+        }
+        #pragma GCC diagnostic pop
+        unreachable("Undefined enum value.");
     }
 
 
     const char *
     vk_PhysicalDeviceType_to_str(VkPhysicalDeviceType input)
     {
+        #pragma GCC diagnostic push
+        #pragma GCC diagnostic ignored "-Wswitch"
         switch(input) {
             case 0:
                 return "VK_PHYSICAL_DEVICE_TYPE_OTHER";
@@ -1621,15 +1933,17 @@
                 return "VK_PHYSICAL_DEVICE_TYPE_VIRTUAL_GPU";
             case 4:
                 return "VK_PHYSICAL_DEVICE_TYPE_CPU";
-        default:
-            unreachable("Undefined enum value.");
         }
+        #pragma GCC diagnostic pop
+        unreachable("Undefined enum value.");
     }
 
 
     const char *
     vk_PipelineBindPoint_to_str(VkPipelineBindPoint input)
     {
+        #pragma GCC diagnostic push
+        #pragma GCC diagnostic ignored "-Wswitch"
         switch(input) {
             case 0:
                 return "VK_PIPELINE_BIND_POINT_GRAPHICS";
@@ -1637,41 +1951,67 @@
                 return "VK_PIPELINE_BIND_POINT_COMPUTE";
             case 1000165000:
                 return "VK_PIPELINE_BIND_POINT_RAY_TRACING_NV";
-        default:
-            unreachable("Undefined enum value.");
         }
+        #pragma GCC diagnostic pop
+        unreachable("Undefined enum value.");
     }
 
 
     const char *
     vk_PipelineCacheHeaderVersion_to_str(VkPipelineCacheHeaderVersion input)
     {
+        #pragma GCC diagnostic push
+        #pragma GCC diagnostic ignored "-Wswitch"
         switch(input) {
             case 1:
                 return "VK_PIPELINE_CACHE_HEADER_VERSION_ONE";
-        default:
-            unreachable("Undefined enum value.");
         }
+        #pragma GCC diagnostic pop
+        unreachable("Undefined enum value.");
+    }
+
+
+    const char *
+    vk_PipelineExecutableStatisticFormatKHR_to_str(VkPipelineExecutableStatisticFormatKHR input)
+    {
+        #pragma GCC diagnostic push
+        #pragma GCC diagnostic ignored "-Wswitch"
+        switch(input) {
+            case 0:
+                return "VK_PIPELINE_EXECUTABLE_STATISTIC_FORMAT_BOOL32_KHR";
+            case 1:
+                return "VK_PIPELINE_EXECUTABLE_STATISTIC_FORMAT_INT64_KHR";
+            case 2:
+                return "VK_PIPELINE_EXECUTABLE_STATISTIC_FORMAT_UINT64_KHR";
+            case 3:
+                return "VK_PIPELINE_EXECUTABLE_STATISTIC_FORMAT_FLOAT64_KHR";
+        }
+        #pragma GCC diagnostic pop
+        unreachable("Undefined enum value.");
     }
 
 
     const char *
     vk_PointClippingBehavior_to_str(VkPointClippingBehavior input)
     {
+        #pragma GCC diagnostic push
+        #pragma GCC diagnostic ignored "-Wswitch"
         switch(input) {
             case 0:
                 return "VK_POINT_CLIPPING_BEHAVIOR_ALL_CLIP_PLANES";
             case 1:
                 return "VK_POINT_CLIPPING_BEHAVIOR_USER_CLIP_PLANES_ONLY";
-        default:
-            unreachable("Undefined enum value.");
         }
+        #pragma GCC diagnostic pop
+        unreachable("Undefined enum value.");
     }
 
 
     const char *
     vk_PolygonMode_to_str(VkPolygonMode input)
     {
+        #pragma GCC diagnostic push
+        #pragma GCC diagnostic ignored "-Wswitch"
         switch(input) {
             case 0:
                 return "VK_POLYGON_MODE_FILL";
@@ -1681,15 +2021,17 @@
                 return "VK_POLYGON_MODE_POINT";
             case 1000153000:
                 return "VK_POLYGON_MODE_FILL_RECTANGLE_NV";
-        default:
-            unreachable("Undefined enum value.");
         }
+        #pragma GCC diagnostic pop
+        unreachable("Undefined enum value.");
     }
 
 
     const char *
     vk_PresentModeKHR_to_str(VkPresentModeKHR input)
     {
+        #pragma GCC diagnostic push
+        #pragma GCC diagnostic ignored "-Wswitch"
         switch(input) {
             case 0:
                 return "VK_PRESENT_MODE_IMMEDIATE_KHR";
@@ -1703,15 +2045,17 @@
                 return "VK_PRESENT_MODE_SHARED_DEMAND_REFRESH_KHR";
             case 1000111001:
                 return "VK_PRESENT_MODE_SHARED_CONTINUOUS_REFRESH_KHR";
-        default:
-            unreachable("Undefined enum value.");
         }
+        #pragma GCC diagnostic pop
+        unreachable("Undefined enum value.");
     }
 
 
     const char *
     vk_PrimitiveTopology_to_str(VkPrimitiveTopology input)
     {
+        #pragma GCC diagnostic push
+        #pragma GCC diagnostic ignored "-Wswitch"
         switch(input) {
             case 0:
                 return "VK_PRIMITIVE_TOPOLOGY_POINT_LIST";
@@ -1735,15 +2079,31 @@
                 return "VK_PRIMITIVE_TOPOLOGY_TRIANGLE_STRIP_WITH_ADJACENCY";
             case 10:
                 return "VK_PRIMITIVE_TOPOLOGY_PATCH_LIST";
-        default:
-            unreachable("Undefined enum value.");
         }
+        #pragma GCC diagnostic pop
+        unreachable("Undefined enum value.");
+    }
+
+
+    const char *
+    vk_QueryPoolSamplingModeINTEL_to_str(VkQueryPoolSamplingModeINTEL input)
+    {
+        #pragma GCC diagnostic push
+        #pragma GCC diagnostic ignored "-Wswitch"
+        switch(input) {
+            case 0:
+                return "VK_QUERY_POOL_SAMPLING_MODE_MANUAL_INTEL";
+        }
+        #pragma GCC diagnostic pop
+        unreachable("Undefined enum value.");
     }
 
 
     const char *
     vk_QueryType_to_str(VkQueryType input)
     {
+        #pragma GCC diagnostic push
+        #pragma GCC diagnostic ignored "-Wswitch"
         switch(input) {
             case 0:
                 return "VK_QUERY_TYPE_OCCLUSION";
@@ -1753,17 +2113,23 @@
                 return "VK_QUERY_TYPE_TIMESTAMP";
             case 1000028004:
                 return "VK_QUERY_TYPE_TRANSFORM_FEEDBACK_STREAM_EXT";
+            case 1000116000:
+                return "VK_QUERY_TYPE_PERFORMANCE_QUERY_KHR";
             case 1000165000:
                 return "VK_QUERY_TYPE_ACCELERATION_STRUCTURE_COMPACTED_SIZE_NV";
-        default:
-            unreachable("Undefined enum value.");
+            case 1000210000:
+                return "VK_QUERY_TYPE_PERFORMANCE_QUERY_INTEL";
         }
+        #pragma GCC diagnostic pop
+        unreachable("Undefined enum value.");
     }
 
 
     const char *
     vk_QueueGlobalPriorityEXT_to_str(VkQueueGlobalPriorityEXT input)
     {
+        #pragma GCC diagnostic push
+        #pragma GCC diagnostic ignored "-Wswitch"
         switch(input) {
             case 128:
                 return "VK_QUEUE_GLOBAL_PRIORITY_LOW_EXT";
@@ -1773,29 +2139,33 @@
                 return "VK_QUEUE_GLOBAL_PRIORITY_HIGH_EXT";
             case 1024:
                 return "VK_QUEUE_GLOBAL_PRIORITY_REALTIME_EXT";
-        default:
-            unreachable("Undefined enum value.");
         }
+        #pragma GCC diagnostic pop
+        unreachable("Undefined enum value.");
     }
 
 
     const char *
     vk_RasterizationOrderAMD_to_str(VkRasterizationOrderAMD input)
     {
+        #pragma GCC diagnostic push
+        #pragma GCC diagnostic ignored "-Wswitch"
         switch(input) {
             case 0:
                 return "VK_RASTERIZATION_ORDER_STRICT_AMD";
             case 1:
                 return "VK_RASTERIZATION_ORDER_RELAXED_AMD";
-        default:
-            unreachable("Undefined enum value.");
         }
+        #pragma GCC diagnostic pop
+        unreachable("Undefined enum value.");
     }
 
 
     const char *
     vk_RayTracingShaderGroupTypeNV_to_str(VkRayTracingShaderGroupTypeNV input)
     {
+        #pragma GCC diagnostic push
+        #pragma GCC diagnostic ignored "-Wswitch"
         switch(input) {
             case 0:
                 return "VK_RAY_TRACING_SHADER_GROUP_TYPE_GENERAL_NV";
@@ -1803,24 +2173,26 @@
                 return "VK_RAY_TRACING_SHADER_GROUP_TYPE_TRIANGLES_HIT_GROUP_NV";
             case 2:
                 return "VK_RAY_TRACING_SHADER_GROUP_TYPE_PROCEDURAL_HIT_GROUP_NV";
-        default:
-            unreachable("Undefined enum value.");
         }
+        #pragma GCC diagnostic pop
+        unreachable("Undefined enum value.");
     }
 
 
     const char *
     vk_Result_to_str(VkResult input)
     {
+        #pragma GCC diagnostic push
+        #pragma GCC diagnostic ignored "-Wswitch"
         switch(input) {
+            case -1000257000:
+                return "VK_ERROR_INVALID_DEVICE_ADDRESS_EXT";
             case -1000255000:
                 return "VK_ERROR_FULL_SCREEN_EXCLUSIVE_MODE_LOST_EXT";
-            case -1000244000:
-                return "VK_ERROR_INVALID_DEVICE_ADDRESS_EXT";
             case -1000174001:
                 return "VK_ERROR_NOT_PERMITTED_EXT";
             case -1000161000:
-                return "VK_ERROR_FRAGMENTATION_EXT";
+                return "VK_ERROR_FRAGMENTATION";
             case -1000158000:
                 return "VK_ERROR_INVALID_DRM_FORMAT_MODIFIER_PLANE_LAYOUT_EXT";
             case -1000072003:
@@ -1839,6 +2211,8 @@
                 return "VK_ERROR_NATIVE_WINDOW_IN_USE_KHR";
             case -1000000000:
                 return "VK_ERROR_SURFACE_LOST_KHR";
+            case -13:
+                return "VK_ERROR_UNKNOWN";
             case -12:
                 return "VK_ERROR_FRAGMENTED_POOL";
             case -11:
@@ -1877,15 +2251,17 @@
                 return "VK_INCOMPLETE";
             case 1000001003:
                 return "VK_SUBOPTIMAL_KHR";
-        default:
-            unreachable("Undefined enum value.");
         }
+        #pragma GCC diagnostic pop
+        unreachable("Undefined enum value.");
     }
 
 
     const char *
     vk_SamplerAddressMode_to_str(VkSamplerAddressMode input)
     {
+        #pragma GCC diagnostic push
+        #pragma GCC diagnostic ignored "-Wswitch"
         switch(input) {
             case 0:
                 return "VK_SAMPLER_ADDRESS_MODE_REPEAT";
@@ -1897,45 +2273,51 @@
                 return "VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_BORDER";
             case 4:
                 return "VK_SAMPLER_ADDRESS_MODE_MIRROR_CLAMP_TO_EDGE";
-        default:
-            unreachable("Undefined enum value.");
         }
+        #pragma GCC diagnostic pop
+        unreachable("Undefined enum value.");
     }
 
 
     const char *
     vk_SamplerMipmapMode_to_str(VkSamplerMipmapMode input)
     {
+        #pragma GCC diagnostic push
+        #pragma GCC diagnostic ignored "-Wswitch"
         switch(input) {
             case 0:
                 return "VK_SAMPLER_MIPMAP_MODE_NEAREST";
             case 1:
                 return "VK_SAMPLER_MIPMAP_MODE_LINEAR";
-        default:
-            unreachable("Undefined enum value.");
         }
+        #pragma GCC diagnostic pop
+        unreachable("Undefined enum value.");
     }
 
 
     const char *
-    vk_SamplerReductionModeEXT_to_str(VkSamplerReductionModeEXT input)
+    vk_SamplerReductionMode_to_str(VkSamplerReductionMode input)
     {
+        #pragma GCC diagnostic push
+        #pragma GCC diagnostic ignored "-Wswitch"
         switch(input) {
             case 0:
-                return "VK_SAMPLER_REDUCTION_MODE_WEIGHTED_AVERAGE_EXT";
+                return "VK_SAMPLER_REDUCTION_MODE_WEIGHTED_AVERAGE";
             case 1:
-                return "VK_SAMPLER_REDUCTION_MODE_MIN_EXT";
+                return "VK_SAMPLER_REDUCTION_MODE_MIN";
             case 2:
-                return "VK_SAMPLER_REDUCTION_MODE_MAX_EXT";
-        default:
-            unreachable("Undefined enum value.");
+                return "VK_SAMPLER_REDUCTION_MODE_MAX";
         }
+        #pragma GCC diagnostic pop
+        unreachable("Undefined enum value.");
     }
 
 
     const char *
     vk_SamplerYcbcrModelConversion_to_str(VkSamplerYcbcrModelConversion input)
     {
+        #pragma GCC diagnostic push
+        #pragma GCC diagnostic ignored "-Wswitch"
         switch(input) {
             case 0:
                 return "VK_SAMPLER_YCBCR_MODEL_CONVERSION_RGB_IDENTITY";
@@ -1947,29 +2329,33 @@
                 return "VK_SAMPLER_YCBCR_MODEL_CONVERSION_YCBCR_601";
             case 4:
                 return "VK_SAMPLER_YCBCR_MODEL_CONVERSION_YCBCR_2020";
-        default:
-            unreachable("Undefined enum value.");
         }
+        #pragma GCC diagnostic pop
+        unreachable("Undefined enum value.");
     }
 
 
     const char *
     vk_SamplerYcbcrRange_to_str(VkSamplerYcbcrRange input)
     {
+        #pragma GCC diagnostic push
+        #pragma GCC diagnostic ignored "-Wswitch"
         switch(input) {
             case 0:
                 return "VK_SAMPLER_YCBCR_RANGE_ITU_FULL";
             case 1:
                 return "VK_SAMPLER_YCBCR_RANGE_ITU_NARROW";
-        default:
-            unreachable("Undefined enum value.");
         }
+        #pragma GCC diagnostic pop
+        unreachable("Undefined enum value.");
     }
 
 
     const char *
     vk_ScopeNV_to_str(VkScopeNV input)
     {
+        #pragma GCC diagnostic push
+        #pragma GCC diagnostic ignored "-Wswitch"
         switch(input) {
             case 1:
                 return "VK_SCOPE_DEVICE_NV";
@@ -1979,15 +2365,51 @@
                 return "VK_SCOPE_SUBGROUP_NV";
             case 5:
                 return "VK_SCOPE_QUEUE_FAMILY_NV";
-        default:
-            unreachable("Undefined enum value.");
         }
+        #pragma GCC diagnostic pop
+        unreachable("Undefined enum value.");
+    }
+
+
+    const char *
+    vk_SemaphoreType_to_str(VkSemaphoreType input)
+    {
+        #pragma GCC diagnostic push
+        #pragma GCC diagnostic ignored "-Wswitch"
+        switch(input) {
+            case 0:
+                return "VK_SEMAPHORE_TYPE_BINARY";
+            case 1:
+                return "VK_SEMAPHORE_TYPE_TIMELINE";
+        }
+        #pragma GCC diagnostic pop
+        unreachable("Undefined enum value.");
+    }
+
+
+    const char *
+    vk_ShaderFloatControlsIndependence_to_str(VkShaderFloatControlsIndependence input)
+    {
+        #pragma GCC diagnostic push
+        #pragma GCC diagnostic ignored "-Wswitch"
+        switch(input) {
+            case 0:
+                return "VK_SHADER_FLOAT_CONTROLS_INDEPENDENCE_32_BIT_ONLY";
+            case 1:
+                return "VK_SHADER_FLOAT_CONTROLS_INDEPENDENCE_ALL";
+            case 2:
+                return "VK_SHADER_FLOAT_CONTROLS_INDEPENDENCE_NONE";
+        }
+        #pragma GCC diagnostic pop
+        unreachable("Undefined enum value.");
     }
 
 
     const char *
     vk_ShaderInfoTypeAMD_to_str(VkShaderInfoTypeAMD input)
     {
+        #pragma GCC diagnostic push
+        #pragma GCC diagnostic ignored "-Wswitch"
         switch(input) {
             case 0:
                 return "VK_SHADER_INFO_TYPE_STATISTICS_AMD";
@@ -1995,15 +2417,17 @@
                 return "VK_SHADER_INFO_TYPE_BINARY_AMD";
             case 2:
                 return "VK_SHADER_INFO_TYPE_DISASSEMBLY_AMD";
-        default:
-            unreachable("Undefined enum value.");
         }
+        #pragma GCC diagnostic pop
+        unreachable("Undefined enum value.");
     }
 
 
     const char *
     vk_ShadingRatePaletteEntryNV_to_str(VkShadingRatePaletteEntryNV input)
     {
+        #pragma GCC diagnostic push
+        #pragma GCC diagnostic ignored "-Wswitch"
         switch(input) {
             case 0:
                 return "VK_SHADING_RATE_PALETTE_ENTRY_NO_INVOCATIONS_NV";
@@ -2029,29 +2453,33 @@
                 return "VK_SHADING_RATE_PALETTE_ENTRY_1_INVOCATION_PER_2X4_PIXELS_NV";
             case 11:
                 return "VK_SHADING_RATE_PALETTE_ENTRY_1_INVOCATION_PER_4X4_PIXELS_NV";
-        default:
-            unreachable("Undefined enum value.");
         }
+        #pragma GCC diagnostic pop
+        unreachable("Undefined enum value.");
     }
 
 
     const char *
     vk_SharingMode_to_str(VkSharingMode input)
     {
+        #pragma GCC diagnostic push
+        #pragma GCC diagnostic ignored "-Wswitch"
         switch(input) {
             case 0:
                 return "VK_SHARING_MODE_EXCLUSIVE";
             case 1:
                 return "VK_SHARING_MODE_CONCURRENT";
-        default:
-            unreachable("Undefined enum value.");
         }
+        #pragma GCC diagnostic pop
+        unreachable("Undefined enum value.");
     }
 
 
     const char *
     vk_StencilOp_to_str(VkStencilOp input)
     {
+        #pragma GCC diagnostic push
+        #pragma GCC diagnostic ignored "-Wswitch"
         switch(input) {
             case 0:
                 return "VK_STENCIL_OP_KEEP";
@@ -2069,15 +2497,17 @@
                 return "VK_STENCIL_OP_INCREMENT_AND_WRAP";
             case 7:
                 return "VK_STENCIL_OP_DECREMENT_AND_WRAP";
-        default:
-            unreachable("Undefined enum value.");
         }
+        #pragma GCC diagnostic pop
+        unreachable("Undefined enum value.");
     }
 
 
     const char *
     vk_StructureType_to_str(VkStructureType input)
     {
+        #pragma GCC diagnostic push
+        #pragma GCC diagnostic ignored "-Wswitch"
         switch(input) {
             case 0:
                 return "VK_STRUCTURE_TYPE_APPLICATION_INFO";
@@ -2177,6 +2607,14 @@
                 return "VK_STRUCTURE_TYPE_LOADER_INSTANCE_CREATE_INFO";
             case 48:
                 return "VK_STRUCTURE_TYPE_LOADER_DEVICE_CREATE_INFO";
+            case 49:
+                return "VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_1_FEATURES";
+            case 50:
+                return "VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_1_PROPERTIES";
+            case 51:
+                return "VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES";
+            case 52:
+                return "VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_PROPERTIES";
             case 1000001000:
                 return "VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR";
             case 1000001001:
@@ -2293,6 +2731,8 @@
                 return "VK_STRUCTURE_TYPE_VI_SURFACE_CREATE_INFO_NN";
             case 1000063000:
                 return "VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SHADER_DRAW_PARAMETER_FEATURES";
+            case 1000066000:
+                return "VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_TEXTURE_COMPRESSION_ASTC_HDR_FEATURES_EXT";
             case 1000067000:
                 return "VK_STRUCTURE_TYPE_IMAGE_VIEW_ASTC_DECODE_MODE_EXT";
             case 1000067001:
@@ -2413,20 +2853,28 @@
                 return "VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_DEPTH_CLIP_STATE_CREATE_INFO_EXT";
             case 1000105000:
                 return "VK_STRUCTURE_TYPE_HDR_METADATA_EXT";
+            case 1000108000:
+                return "VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_IMAGELESS_FRAMEBUFFER_FEATURES";
+            case 1000108001:
+                return "VK_STRUCTURE_TYPE_FRAMEBUFFER_ATTACHMENTS_CREATE_INFO";
+            case 1000108002:
+                return "VK_STRUCTURE_TYPE_FRAMEBUFFER_ATTACHMENT_IMAGE_INFO";
+            case 1000108003:
+                return "VK_STRUCTURE_TYPE_RENDER_PASS_ATTACHMENT_BEGIN_INFO";
             case 1000109000:
-                return "VK_STRUCTURE_TYPE_ATTACHMENT_DESCRIPTION_2_KHR";
+                return "VK_STRUCTURE_TYPE_ATTACHMENT_DESCRIPTION_2";
             case 1000109001:
-                return "VK_STRUCTURE_TYPE_ATTACHMENT_REFERENCE_2_KHR";
+                return "VK_STRUCTURE_TYPE_ATTACHMENT_REFERENCE_2";
             case 1000109002:
-                return "VK_STRUCTURE_TYPE_SUBPASS_DESCRIPTION_2_KHR";
+                return "VK_STRUCTURE_TYPE_SUBPASS_DESCRIPTION_2";
             case 1000109003:
-                return "VK_STRUCTURE_TYPE_SUBPASS_DEPENDENCY_2_KHR";
+                return "VK_STRUCTURE_TYPE_SUBPASS_DEPENDENCY_2";
             case 1000109004:
-                return "VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO_2_KHR";
+                return "VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO_2";
             case 1000109005:
-                return "VK_STRUCTURE_TYPE_SUBPASS_BEGIN_INFO_KHR";
+                return "VK_STRUCTURE_TYPE_SUBPASS_BEGIN_INFO";
             case 1000109006:
-                return "VK_STRUCTURE_TYPE_SUBPASS_END_INFO_KHR";
+                return "VK_STRUCTURE_TYPE_SUBPASS_END_INFO";
             case 1000111000:
                 return "VK_STRUCTURE_TYPE_SHARED_PRESENT_SURFACE_CAPABILITIES_KHR";
             case 1000112000:
@@ -2445,6 +2893,20 @@
                 return "VK_STRUCTURE_TYPE_IMPORT_FENCE_FD_INFO_KHR";
             case 1000115001:
                 return "VK_STRUCTURE_TYPE_FENCE_GET_FD_INFO_KHR";
+            case 1000116000:
+                return "VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PERFORMANCE_QUERY_FEATURES_KHR";
+            case 1000116001:
+                return "VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PERFORMANCE_QUERY_PROPERTIES_KHR";
+            case 1000116002:
+                return "VK_STRUCTURE_TYPE_QUERY_POOL_PERFORMANCE_CREATE_INFO_KHR";
+            case 1000116003:
+                return "VK_STRUCTURE_TYPE_PERFORMANCE_QUERY_SUBMIT_INFO_KHR";
+            case 1000116004:
+                return "VK_STRUCTURE_TYPE_ACQUIRE_PROFILING_LOCK_INFO_KHR";
+            case 1000116005:
+                return "VK_STRUCTURE_TYPE_PERFORMANCE_COUNTER_KHR";
+            case 1000116006:
+                return "VK_STRUCTURE_TYPE_PERFORMANCE_COUNTER_DESCRIPTION_KHR";
             case 1000117000:
                 return "VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_POINT_CLIPPING_PROPERTIES";
             case 1000117001:
@@ -2502,9 +2964,9 @@
             case 1000129005:
                 return "VK_STRUCTURE_TYPE_EXTERNAL_FORMAT_ANDROID";
             case 1000130000:
-                return "VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SAMPLER_FILTER_MINMAX_PROPERTIES_EXT";
+                return "VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SAMPLER_FILTER_MINMAX_PROPERTIES";
             case 1000130001:
-                return "VK_STRUCTURE_TYPE_SAMPLER_REDUCTION_MODE_CREATE_INFO_EXT";
+                return "VK_STRUCTURE_TYPE_SAMPLER_REDUCTION_MODE_CREATE_INFO";
             case 1000138000:
                 return "VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_INLINE_UNIFORM_BLOCK_FEATURES_EXT";
             case 1000138001:
@@ -2542,7 +3004,7 @@
             case 1000146004:
                 return "VK_STRUCTURE_TYPE_SPARSE_IMAGE_MEMORY_REQUIREMENTS_2";
             case 1000147000:
-                return "VK_STRUCTURE_TYPE_IMAGE_FORMAT_LIST_CREATE_INFO_KHR";
+                return "VK_STRUCTURE_TYPE_IMAGE_FORMAT_LIST_CREATE_INFO";
             case 1000148000:
                 return "VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_BLEND_OPERATION_ADVANCED_FEATURES_EXT";
             case 1000148001:
@@ -2553,6 +3015,10 @@
                 return "VK_STRUCTURE_TYPE_PIPELINE_COVERAGE_TO_COLOR_STATE_CREATE_INFO_NV";
             case 1000152000:
                 return "VK_STRUCTURE_TYPE_PIPELINE_COVERAGE_MODULATION_STATE_CREATE_INFO_NV";
+            case 1000154000:
+                return "VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SHADER_SM_BUILTINS_FEATURES_NV";
+            case 1000154001:
+                return "VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SHADER_SM_BUILTINS_PROPERTIES_NV";
             case 1000156000:
                 return "VK_STRUCTURE_TYPE_SAMPLER_YCBCR_CONVERSION_CREATE_INFO";
             case 1000156001:
@@ -2586,15 +3052,15 @@
             case 1000160001:
                 return "VK_STRUCTURE_TYPE_SHADER_MODULE_VALIDATION_CACHE_CREATE_INFO_EXT";
             case 1000161000:
-                return "VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_BINDING_FLAGS_CREATE_INFO_EXT";
+                return "VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_BINDING_FLAGS_CREATE_INFO";
             case 1000161001:
-                return "VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DESCRIPTOR_INDEXING_FEATURES_EXT";
+                return "VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DESCRIPTOR_INDEXING_FEATURES";
             case 1000161002:
-                return "VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DESCRIPTOR_INDEXING_PROPERTIES_EXT";
+                return "VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DESCRIPTOR_INDEXING_PROPERTIES";
             case 1000161003:
-                return "VK_STRUCTURE_TYPE_DESCRIPTOR_SET_VARIABLE_DESCRIPTOR_COUNT_ALLOCATE_INFO_EXT";
+                return "VK_STRUCTURE_TYPE_DESCRIPTOR_SET_VARIABLE_DESCRIPTOR_COUNT_ALLOCATE_INFO";
             case 1000161004:
-                return "VK_STRUCTURE_TYPE_DESCRIPTOR_SET_VARIABLE_DESCRIPTOR_COUNT_LAYOUT_SUPPORT_EXT";
+                return "VK_STRUCTURE_TYPE_DESCRIPTOR_SET_VARIABLE_DESCRIPTOR_COUNT_LAYOUT_SUPPORT";
             case 1000164000:
                 return "VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_SHADING_RATE_IMAGE_STATE_CREATE_INFO_NV";
             case 1000164001:
@@ -2639,8 +3105,10 @@
                 return "VK_STRUCTURE_TYPE_FILTER_CUBIC_IMAGE_VIEW_IMAGE_FORMAT_PROPERTIES_EXT";
             case 1000174000:
                 return "VK_STRUCTURE_TYPE_DEVICE_QUEUE_GLOBAL_PRIORITY_CREATE_INFO_EXT";
+            case 1000175000:
+                return "VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SHADER_SUBGROUP_EXTENDED_TYPES_FEATURES";
             case 1000177000:
-                return "VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_8BIT_STORAGE_FEATURES_KHR";
+                return "VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_8BIT_STORAGE_FEATURES";
             case 1000178000:
                 return "VK_STRUCTURE_TYPE_IMPORT_MEMORY_HOST_POINTER_INFO_EXT";
             case 1000178001:
@@ -2648,7 +3116,11 @@
             case 1000178002:
                 return "VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_EXTERNAL_MEMORY_HOST_PROPERTIES_EXT";
             case 1000180000:
-                return "VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SHADER_ATOMIC_INT64_FEATURES_KHR";
+                return "VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SHADER_ATOMIC_INT64_FEATURES";
+            case 1000181000:
+                return "VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SHADER_CLOCK_FEATURES_KHR";
+            case 1000183000:
+                return "VK_STRUCTURE_TYPE_PIPELINE_COMPILER_CONTROL_CREATE_INFO_AMD";
             case 1000184000:
                 return "VK_STRUCTURE_TYPE_CALIBRATED_TIMESTAMP_INFO_EXT";
             case 1000185000:
@@ -2666,13 +3138,13 @@
             case 1000192000:
                 return "VK_STRUCTURE_TYPE_PIPELINE_CREATION_FEEDBACK_CREATE_INFO_EXT";
             case 1000196000:
-                return "VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DRIVER_PROPERTIES_KHR";
+                return "VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DRIVER_PROPERTIES";
             case 1000197000:
-                return "VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FLOAT_CONTROLS_PROPERTIES_KHR";
+                return "VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FLOAT_CONTROLS_PROPERTIES";
             case 1000199000:
-                return "VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DEPTH_STENCIL_RESOLVE_PROPERTIES_KHR";
+                return "VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DEPTH_STENCIL_RESOLVE_PROPERTIES";
             case 1000199001:
-                return "VK_STRUCTURE_TYPE_SUBPASS_DESCRIPTION_DEPTH_STENCIL_RESOLVE_KHR";
+                return "VK_STRUCTURE_TYPE_SUBPASS_DESCRIPTION_DEPTH_STENCIL_RESOLVE";
             case 1000201000:
                 return "VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_COMPUTE_SHADER_DERIVATIVES_FEATURES_NV";
             case 1000202000:
@@ -2691,8 +3163,34 @@
                 return "VK_STRUCTURE_TYPE_CHECKPOINT_DATA_NV";
             case 1000206001:
                 return "VK_STRUCTURE_TYPE_QUEUE_FAMILY_CHECKPOINT_PROPERTIES_NV";
+            case 1000207000:
+                return "VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_TIMELINE_SEMAPHORE_FEATURES";
+            case 1000207001:
+                return "VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_TIMELINE_SEMAPHORE_PROPERTIES";
+            case 1000207002:
+                return "VK_STRUCTURE_TYPE_SEMAPHORE_TYPE_CREATE_INFO";
+            case 1000207003:
+                return "VK_STRUCTURE_TYPE_TIMELINE_SEMAPHORE_SUBMIT_INFO";
+            case 1000207004:
+                return "VK_STRUCTURE_TYPE_SEMAPHORE_WAIT_INFO";
+            case 1000207005:
+                return "VK_STRUCTURE_TYPE_SEMAPHORE_SIGNAL_INFO";
+            case 1000209000:
+                return "VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SHADER_INTEGER_FUNCTIONS_2_FEATURES_INTEL";
+            case 1000210000:
+                return "VK_STRUCTURE_TYPE_QUERY_POOL_CREATE_INFO_INTEL";
+            case 1000210001:
+                return "VK_STRUCTURE_TYPE_INITIALIZE_PERFORMANCE_API_INFO_INTEL";
+            case 1000210002:
+                return "VK_STRUCTURE_TYPE_PERFORMANCE_MARKER_INFO_INTEL";
+            case 1000210003:
+                return "VK_STRUCTURE_TYPE_PERFORMANCE_STREAM_MARKER_INFO_INTEL";
+            case 1000210004:
+                return "VK_STRUCTURE_TYPE_PERFORMANCE_OVERRIDE_INFO_INTEL";
+            case 1000210005:
+                return "VK_STRUCTURE_TYPE_PERFORMANCE_CONFIGURATION_ACQUIRE_INFO_INTEL";
             case 1000211000:
-                return "VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_MEMORY_MODEL_FEATURES_KHR";
+                return "VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_MEMORY_MODEL_FEATURES";
             case 1000212000:
                 return "VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PCI_BUS_INFO_PROPERTIES_EXT";
             case 1000213000:
@@ -2710,7 +3208,17 @@
             case 1000218002:
                 return "VK_STRUCTURE_TYPE_RENDER_PASS_FRAGMENT_DENSITY_MAP_CREATE_INFO_EXT";
             case 1000221000:
-                return "VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SCALAR_BLOCK_LAYOUT_FEATURES_EXT";
+                return "VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SCALAR_BLOCK_LAYOUT_FEATURES";
+            case 1000225000:
+                return "VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SUBGROUP_SIZE_CONTROL_PROPERTIES_EXT";
+            case 1000225001:
+                return "VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_REQUIRED_SUBGROUP_SIZE_CREATE_INFO_EXT";
+            case 1000225002:
+                return "VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SUBGROUP_SIZE_CONTROL_FEATURES_EXT";
+            case 1000227000:
+                return "VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SHADER_CORE_PROPERTIES_2_AMD";
+            case 1000229000:
+                return "VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_COHERENT_MEMORY_FEATURES_AMD";
             case 1000237000:
                 return "VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MEMORY_BUDGET_PROPERTIES_EXT";
             case 1000238000:
@@ -2721,14 +3229,22 @@
                 return "VK_STRUCTURE_TYPE_SURFACE_PROTECTED_CAPABILITIES_KHR";
             case 1000240000:
                 return "VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DEDICATED_ALLOCATION_IMAGE_ALIASING_FEATURES_NV";
+            case 1000241000:
+                return "VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SEPARATE_DEPTH_STENCIL_LAYOUTS_FEATURES";
+            case 1000241001:
+                return "VK_STRUCTURE_TYPE_ATTACHMENT_REFERENCE_STENCIL_LAYOUT";
+            case 1000241002:
+                return "VK_STRUCTURE_TYPE_ATTACHMENT_DESCRIPTION_STENCIL_LAYOUT";
             case 1000244000:
                 return "VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_BUFFER_ADDRESS_FEATURES_EXT";
             case 1000244001:
-                return "VK_STRUCTURE_TYPE_BUFFER_DEVICE_ADDRESS_INFO_EXT";
+                return "VK_STRUCTURE_TYPE_BUFFER_DEVICE_ADDRESS_INFO";
             case 1000244002:
                 return "VK_STRUCTURE_TYPE_BUFFER_DEVICE_ADDRESS_CREATE_INFO_EXT";
+            case 1000245000:
+                return "VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_TOOL_PROPERTIES_EXT";
             case 1000246000:
-                return "VK_STRUCTURE_TYPE_IMAGE_STENCIL_USAGE_CREATE_INFO_EXT";
+                return "VK_STRUCTURE_TYPE_IMAGE_STENCIL_USAGE_CREATE_INFO";
             case 1000247000:
                 return "VK_STRUCTURE_TYPE_VALIDATION_FEATURES_EXT";
             case 1000249000:
@@ -2737,39 +3253,89 @@
                 return "VK_STRUCTURE_TYPE_COOPERATIVE_MATRIX_PROPERTIES_NV";
             case 1000249002:
                 return "VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_COOPERATIVE_MATRIX_PROPERTIES_NV";
+            case 1000250000:
+                return "VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_COVERAGE_REDUCTION_MODE_FEATURES_NV";
+            case 1000250001:
+                return "VK_STRUCTURE_TYPE_PIPELINE_COVERAGE_REDUCTION_STATE_CREATE_INFO_NV";
+            case 1000250002:
+                return "VK_STRUCTURE_TYPE_FRAMEBUFFER_MIXED_SAMPLES_COMBINATION_NV";
+            case 1000251000:
+                return "VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FRAGMENT_SHADER_INTERLOCK_FEATURES_EXT";
             case 1000252000:
                 return "VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_YCBCR_IMAGE_ARRAYS_FEATURES_EXT";
+            case 1000253000:
+                return "VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_UNIFORM_BUFFER_STANDARD_LAYOUT_FEATURES";
             case 1000255000:
                 return "VK_STRUCTURE_TYPE_SURFACE_FULL_SCREEN_EXCLUSIVE_INFO_EXT";
             case 1000255001:
                 return "VK_STRUCTURE_TYPE_SURFACE_FULL_SCREEN_EXCLUSIVE_WIN32_INFO_EXT";
             case 1000255002:
                 return "VK_STRUCTURE_TYPE_SURFACE_CAPABILITIES_FULL_SCREEN_EXCLUSIVE_EXT";
+            case 1000256000:
+                return "VK_STRUCTURE_TYPE_HEADLESS_SURFACE_CREATE_INFO_EXT";
+            case 1000257000:
+                return "VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_BUFFER_DEVICE_ADDRESS_FEATURES";
+            case 1000257002:
+                return "VK_STRUCTURE_TYPE_BUFFER_OPAQUE_CAPTURE_ADDRESS_CREATE_INFO";
+            case 1000257003:
+                return "VK_STRUCTURE_TYPE_MEMORY_OPAQUE_CAPTURE_ADDRESS_ALLOCATE_INFO";
+            case 1000257004:
+                return "VK_STRUCTURE_TYPE_DEVICE_MEMORY_OPAQUE_CAPTURE_ADDRESS_INFO";
+            case 1000259000:
+                return "VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_LINE_RASTERIZATION_FEATURES_EXT";
+            case 1000259001:
+                return "VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_LINE_STATE_CREATE_INFO_EXT";
+            case 1000259002:
+                return "VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_LINE_RASTERIZATION_PROPERTIES_EXT";
             case 1000261000:
-                return "VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_HOST_QUERY_RESET_FEATURES_EXT";
-        default:
-            unreachable("Undefined enum value.");
+                return "VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_HOST_QUERY_RESET_FEATURES";
+            case 1000265000:
+                return "VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_INDEX_TYPE_UINT8_FEATURES_EXT";
+            case 1000269000:
+                return "VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PIPELINE_EXECUTABLE_PROPERTIES_FEATURES_KHR";
+            case 1000269001:
+                return "VK_STRUCTURE_TYPE_PIPELINE_INFO_KHR";
+            case 1000269002:
+                return "VK_STRUCTURE_TYPE_PIPELINE_EXECUTABLE_PROPERTIES_KHR";
+            case 1000269003:
+                return "VK_STRUCTURE_TYPE_PIPELINE_EXECUTABLE_INFO_KHR";
+            case 1000269004:
+                return "VK_STRUCTURE_TYPE_PIPELINE_EXECUTABLE_STATISTIC_KHR";
+            case 1000269005:
+                return "VK_STRUCTURE_TYPE_PIPELINE_EXECUTABLE_INTERNAL_REPRESENTATION_KHR";
+            case 1000276000:
+                return "VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SHADER_DEMOTE_TO_HELPER_INVOCATION_FEATURES_EXT";
+            case 1000281000:
+                return "VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_TEXEL_BUFFER_ALIGNMENT_FEATURES_EXT";
+            case 1000281001:
+                return "VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_TEXEL_BUFFER_ALIGNMENT_PROPERTIES_EXT";
         }
+        #pragma GCC diagnostic pop
+        unreachable("Undefined enum value.");
     }
 
 
     const char *
     vk_SubpassContents_to_str(VkSubpassContents input)
     {
+        #pragma GCC diagnostic push
+        #pragma GCC diagnostic ignored "-Wswitch"
         switch(input) {
             case 0:
                 return "VK_SUBPASS_CONTENTS_INLINE";
             case 1:
                 return "VK_SUBPASS_CONTENTS_SECONDARY_COMMAND_BUFFERS";
-        default:
-            unreachable("Undefined enum value.");
         }
+        #pragma GCC diagnostic pop
+        unreachable("Undefined enum value.");
     }
 
 
     const char *
     vk_SystemAllocationScope_to_str(VkSystemAllocationScope input)
     {
+        #pragma GCC diagnostic push
+        #pragma GCC diagnostic ignored "-Wswitch"
         switch(input) {
             case 0:
                 return "VK_SYSTEM_ALLOCATION_SCOPE_COMMAND";
@@ -2781,29 +3347,33 @@
                 return "VK_SYSTEM_ALLOCATION_SCOPE_DEVICE";
             case 4:
                 return "VK_SYSTEM_ALLOCATION_SCOPE_INSTANCE";
-        default:
-            unreachable("Undefined enum value.");
         }
+        #pragma GCC diagnostic pop
+        unreachable("Undefined enum value.");
     }
 
 
     const char *
     vk_TessellationDomainOrigin_to_str(VkTessellationDomainOrigin input)
     {
+        #pragma GCC diagnostic push
+        #pragma GCC diagnostic ignored "-Wswitch"
         switch(input) {
             case 0:
                 return "VK_TESSELLATION_DOMAIN_ORIGIN_UPPER_LEFT";
             case 1:
                 return "VK_TESSELLATION_DOMAIN_ORIGIN_LOWER_LEFT";
-        default:
-            unreachable("Undefined enum value.");
         }
+        #pragma GCC diagnostic pop
+        unreachable("Undefined enum value.");
     }
 
 
     const char *
     vk_TimeDomainEXT_to_str(VkTimeDomainEXT input)
     {
+        #pragma GCC diagnostic push
+        #pragma GCC diagnostic ignored "-Wswitch"
         switch(input) {
             case 0:
                 return "VK_TIME_DOMAIN_DEVICE_EXT";
@@ -2813,41 +3383,47 @@
                 return "VK_TIME_DOMAIN_CLOCK_MONOTONIC_RAW_EXT";
             case 3:
                 return "VK_TIME_DOMAIN_QUERY_PERFORMANCE_COUNTER_EXT";
-        default:
-            unreachable("Undefined enum value.");
         }
+        #pragma GCC diagnostic pop
+        unreachable("Undefined enum value.");
     }
 
 
     const char *
     vk_ValidationCacheHeaderVersionEXT_to_str(VkValidationCacheHeaderVersionEXT input)
     {
+        #pragma GCC diagnostic push
+        #pragma GCC diagnostic ignored "-Wswitch"
         switch(input) {
             case 1:
                 return "VK_VALIDATION_CACHE_HEADER_VERSION_ONE_EXT";
-        default:
-            unreachable("Undefined enum value.");
         }
+        #pragma GCC diagnostic pop
+        unreachable("Undefined enum value.");
     }
 
 
     const char *
     vk_ValidationCheckEXT_to_str(VkValidationCheckEXT input)
     {
+        #pragma GCC diagnostic push
+        #pragma GCC diagnostic ignored "-Wswitch"
         switch(input) {
             case 0:
                 return "VK_VALIDATION_CHECK_ALL_EXT";
             case 1:
                 return "VK_VALIDATION_CHECK_SHADERS_EXT";
-        default:
-            unreachable("Undefined enum value.");
         }
+        #pragma GCC diagnostic pop
+        unreachable("Undefined enum value.");
     }
 
 
     const char *
     vk_ValidationFeatureDisableEXT_to_str(VkValidationFeatureDisableEXT input)
     {
+        #pragma GCC diagnostic push
+        #pragma GCC diagnostic ignored "-Wswitch"
         switch(input) {
             case 0:
                 return "VK_VALIDATION_FEATURE_DISABLE_ALL_EXT";
@@ -2863,29 +3439,35 @@
                 return "VK_VALIDATION_FEATURE_DISABLE_CORE_CHECKS_EXT";
             case 6:
                 return "VK_VALIDATION_FEATURE_DISABLE_UNIQUE_HANDLES_EXT";
-        default:
-            unreachable("Undefined enum value.");
         }
+        #pragma GCC diagnostic pop
+        unreachable("Undefined enum value.");
     }
 
 
     const char *
     vk_ValidationFeatureEnableEXT_to_str(VkValidationFeatureEnableEXT input)
     {
+        #pragma GCC diagnostic push
+        #pragma GCC diagnostic ignored "-Wswitch"
         switch(input) {
             case 0:
                 return "VK_VALIDATION_FEATURE_ENABLE_GPU_ASSISTED_EXT";
             case 1:
                 return "VK_VALIDATION_FEATURE_ENABLE_GPU_ASSISTED_RESERVE_BINDING_SLOT_EXT";
-        default:
-            unreachable("Undefined enum value.");
+            case 2:
+                return "VK_VALIDATION_FEATURE_ENABLE_BEST_PRACTICES_EXT";
         }
+        #pragma GCC diagnostic pop
+        unreachable("Undefined enum value.");
     }
 
 
     const char *
     vk_VendorId_to_str(VkVendorId input)
     {
+        #pragma GCC diagnostic push
+        #pragma GCC diagnostic ignored "-Wswitch"
         switch(input) {
             case 65537:
                 return "VK_VENDOR_ID_VIV";
@@ -2893,29 +3475,33 @@
                 return "VK_VENDOR_ID_VSI";
             case 65539:
                 return "VK_VENDOR_ID_KAZAN";
-        default:
-            unreachable("Undefined enum value.");
         }
+        #pragma GCC diagnostic pop
+        unreachable("Undefined enum value.");
     }
 
 
     const char *
     vk_VertexInputRate_to_str(VkVertexInputRate input)
     {
+        #pragma GCC diagnostic push
+        #pragma GCC diagnostic ignored "-Wswitch"
         switch(input) {
             case 0:
                 return "VK_VERTEX_INPUT_RATE_VERTEX";
             case 1:
                 return "VK_VERTEX_INPUT_RATE_INSTANCE";
-        default:
-            unreachable("Undefined enum value.");
         }
+        #pragma GCC diagnostic pop
+        unreachable("Undefined enum value.");
     }
 
 
     const char *
     vk_ViewportCoordinateSwizzleNV_to_str(VkViewportCoordinateSwizzleNV input)
     {
+        #pragma GCC diagnostic push
+        #pragma GCC diagnostic ignored "-Wswitch"
         switch(input) {
             case 0:
                 return "VK_VIEWPORT_COORDINATE_SWIZZLE_POSITIVE_X_NV";
@@ -2933,19 +3519,22 @@
                 return "VK_VIEWPORT_COORDINATE_SWIZZLE_POSITIVE_W_NV";
             case 7:
                 return "VK_VIEWPORT_COORDINATE_SWIZZLE_NEGATIVE_W_NV";
-        default:
-            unreachable("Undefined enum value.");
         }
+        #pragma GCC diagnostic pop
+        unreachable("Undefined enum value.");
     }
 
 
     size_t vk_structure_type_size(const struct VkBaseInStructure *item)
     {
+        #pragma GCC diagnostic push
+        #pragma GCC diagnostic ignored "-Wswitch"
         switch(item->sType) {
         case VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_CREATE_INFO_NV: return sizeof(VkAccelerationStructureCreateInfoNV);
         case VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_INFO_NV: return sizeof(VkAccelerationStructureInfoNV);
         case VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_MEMORY_REQUIREMENTS_INFO_NV: return sizeof(VkAccelerationStructureMemoryRequirementsInfoNV);
         case VK_STRUCTURE_TYPE_ACQUIRE_NEXT_IMAGE_INFO_KHR: return sizeof(VkAcquireNextImageInfoKHR);
+        case VK_STRUCTURE_TYPE_ACQUIRE_PROFILING_LOCK_INFO_KHR: return sizeof(VkAcquireProfilingLockInfoKHR);
     #ifdef VK_USE_PLATFORM_ANDROID_KHR
         case VK_STRUCTURE_TYPE_ANDROID_HARDWARE_BUFFER_FORMAT_PROPERTIES_ANDROID: return sizeof(VkAndroidHardwareBufferFormatPropertiesANDROID);
     #endif
@@ -2959,8 +3548,10 @@
         case VK_STRUCTURE_TYPE_ANDROID_SURFACE_CREATE_INFO_KHR: return sizeof(VkAndroidSurfaceCreateInfoKHR);
     #endif
         case VK_STRUCTURE_TYPE_APPLICATION_INFO: return sizeof(VkApplicationInfo);
-        case VK_STRUCTURE_TYPE_ATTACHMENT_DESCRIPTION_2_KHR: return sizeof(VkAttachmentDescription2KHR);
-        case VK_STRUCTURE_TYPE_ATTACHMENT_REFERENCE_2_KHR: return sizeof(VkAttachmentReference2KHR);
+        case VK_STRUCTURE_TYPE_ATTACHMENT_DESCRIPTION_2: return sizeof(VkAttachmentDescription2);
+        case VK_STRUCTURE_TYPE_ATTACHMENT_DESCRIPTION_STENCIL_LAYOUT: return sizeof(VkAttachmentDescriptionStencilLayout);
+        case VK_STRUCTURE_TYPE_ATTACHMENT_REFERENCE_2: return sizeof(VkAttachmentReference2);
+        case VK_STRUCTURE_TYPE_ATTACHMENT_REFERENCE_STENCIL_LAYOUT: return sizeof(VkAttachmentReferenceStencilLayout);
         case VK_STRUCTURE_TYPE_BIND_ACCELERATION_STRUCTURE_MEMORY_INFO_NV: return sizeof(VkBindAccelerationStructureMemoryInfoNV);
         case VK_STRUCTURE_TYPE_BIND_BUFFER_MEMORY_DEVICE_GROUP_INFO: return sizeof(VkBindBufferMemoryDeviceGroupInfo);
         case VK_STRUCTURE_TYPE_BIND_BUFFER_MEMORY_INFO: return sizeof(VkBindBufferMemoryInfo);
@@ -2971,9 +3562,10 @@
         case VK_STRUCTURE_TYPE_BIND_SPARSE_INFO: return sizeof(VkBindSparseInfo);
         case VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO: return sizeof(VkBufferCreateInfo);
         case VK_STRUCTURE_TYPE_BUFFER_DEVICE_ADDRESS_CREATE_INFO_EXT: return sizeof(VkBufferDeviceAddressCreateInfoEXT);
-        case VK_STRUCTURE_TYPE_BUFFER_DEVICE_ADDRESS_INFO_EXT: return sizeof(VkBufferDeviceAddressInfoEXT);
+        case VK_STRUCTURE_TYPE_BUFFER_DEVICE_ADDRESS_INFO: return sizeof(VkBufferDeviceAddressInfo);
         case VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER: return sizeof(VkBufferMemoryBarrier);
         case VK_STRUCTURE_TYPE_BUFFER_MEMORY_REQUIREMENTS_INFO_2: return sizeof(VkBufferMemoryRequirementsInfo2);
+        case VK_STRUCTURE_TYPE_BUFFER_OPAQUE_CAPTURE_ADDRESS_CREATE_INFO: return sizeof(VkBufferOpaqueCaptureAddressCreateInfo);
         case VK_STRUCTURE_TYPE_BUFFER_VIEW_CREATE_INFO: return sizeof(VkBufferViewCreateInfo);
         case VK_STRUCTURE_TYPE_CALIBRATED_TIMESTAMP_INFO_EXT: return sizeof(VkCalibratedTimestampInfoEXT);
         case VK_STRUCTURE_TYPE_CHECKPOINT_DATA_NV: return sizeof(VkCheckpointDataNV);
@@ -3006,11 +3598,11 @@
         case VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO: return sizeof(VkDescriptorPoolCreateInfo);
         case VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_INLINE_UNIFORM_BLOCK_CREATE_INFO_EXT: return sizeof(VkDescriptorPoolInlineUniformBlockCreateInfoEXT);
         case VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO: return sizeof(VkDescriptorSetAllocateInfo);
-        case VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_BINDING_FLAGS_CREATE_INFO_EXT: return sizeof(VkDescriptorSetLayoutBindingFlagsCreateInfoEXT);
+        case VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_BINDING_FLAGS_CREATE_INFO: return sizeof(VkDescriptorSetLayoutBindingFlagsCreateInfo);
         case VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO: return sizeof(VkDescriptorSetLayoutCreateInfo);
         case VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_SUPPORT: return sizeof(VkDescriptorSetLayoutSupport);
-        case VK_STRUCTURE_TYPE_DESCRIPTOR_SET_VARIABLE_DESCRIPTOR_COUNT_ALLOCATE_INFO_EXT: return sizeof(VkDescriptorSetVariableDescriptorCountAllocateInfoEXT);
-        case VK_STRUCTURE_TYPE_DESCRIPTOR_SET_VARIABLE_DESCRIPTOR_COUNT_LAYOUT_SUPPORT_EXT: return sizeof(VkDescriptorSetVariableDescriptorCountLayoutSupportEXT);
+        case VK_STRUCTURE_TYPE_DESCRIPTOR_SET_VARIABLE_DESCRIPTOR_COUNT_ALLOCATE_INFO: return sizeof(VkDescriptorSetVariableDescriptorCountAllocateInfo);
+        case VK_STRUCTURE_TYPE_DESCRIPTOR_SET_VARIABLE_DESCRIPTOR_COUNT_LAYOUT_SUPPORT: return sizeof(VkDescriptorSetVariableDescriptorCountLayoutSupport);
         case VK_STRUCTURE_TYPE_DESCRIPTOR_UPDATE_TEMPLATE_CREATE_INFO: return sizeof(VkDescriptorUpdateTemplateCreateInfo);
         case VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO: return sizeof(VkDeviceCreateInfo);
         case VK_STRUCTURE_TYPE_DEVICE_EVENT_INFO_EXT: return sizeof(VkDeviceEventInfoEXT);
@@ -3024,6 +3616,7 @@
         case VK_STRUCTURE_TYPE_DEVICE_GROUP_RENDER_PASS_BEGIN_INFO: return sizeof(VkDeviceGroupRenderPassBeginInfo);
         case VK_STRUCTURE_TYPE_DEVICE_GROUP_SUBMIT_INFO: return sizeof(VkDeviceGroupSubmitInfo);
         case VK_STRUCTURE_TYPE_DEVICE_GROUP_SWAPCHAIN_CREATE_INFO_KHR: return sizeof(VkDeviceGroupSwapchainCreateInfoKHR);
+        case VK_STRUCTURE_TYPE_DEVICE_MEMORY_OPAQUE_CAPTURE_ADDRESS_INFO: return sizeof(VkDeviceMemoryOpaqueCaptureAddressInfo);
         case VK_STRUCTURE_TYPE_DEVICE_MEMORY_OVERALLOCATION_CREATE_INFO_AMD: return sizeof(VkDeviceMemoryOverallocationCreateInfoAMD);
         case VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO: return sizeof(VkDeviceQueueCreateInfo);
         case VK_STRUCTURE_TYPE_DEVICE_QUEUE_GLOBAL_PRIORITY_CREATE_INFO_EXT: return sizeof(VkDeviceQueueGlobalPriorityCreateInfoEXT);
@@ -3074,12 +3667,16 @@
     #endif
         case VK_STRUCTURE_TYPE_FILTER_CUBIC_IMAGE_VIEW_IMAGE_FORMAT_PROPERTIES_EXT: return sizeof(VkFilterCubicImageViewImageFormatPropertiesEXT);
         case VK_STRUCTURE_TYPE_FORMAT_PROPERTIES_2: return sizeof(VkFormatProperties2);
+        case VK_STRUCTURE_TYPE_FRAMEBUFFER_ATTACHMENT_IMAGE_INFO: return sizeof(VkFramebufferAttachmentImageInfo);
+        case VK_STRUCTURE_TYPE_FRAMEBUFFER_ATTACHMENTS_CREATE_INFO: return sizeof(VkFramebufferAttachmentsCreateInfo);
         case VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO: return sizeof(VkFramebufferCreateInfo);
+        case VK_STRUCTURE_TYPE_FRAMEBUFFER_MIXED_SAMPLES_COMBINATION_NV: return sizeof(VkFramebufferMixedSamplesCombinationNV);
         case VK_STRUCTURE_TYPE_GEOMETRY_AABB_NV: return sizeof(VkGeometryAABBNV);
         case VK_STRUCTURE_TYPE_GEOMETRY_NV: return sizeof(VkGeometryNV);
         case VK_STRUCTURE_TYPE_GEOMETRY_TRIANGLES_NV: return sizeof(VkGeometryTrianglesNV);
         case VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO: return sizeof(VkGraphicsPipelineCreateInfo);
         case VK_STRUCTURE_TYPE_HDR_METADATA_EXT: return sizeof(VkHdrMetadataEXT);
+        case VK_STRUCTURE_TYPE_HEADLESS_SURFACE_CREATE_INFO_EXT: return sizeof(VkHeadlessSurfaceCreateInfoEXT);
     #ifdef VK_USE_PLATFORM_IOS_MVK
         case VK_STRUCTURE_TYPE_IOS_SURFACE_CREATE_INFO_MVK: return sizeof(VkIOSSurfaceCreateInfoMVK);
     #endif
@@ -3087,7 +3684,7 @@
         case VK_STRUCTURE_TYPE_IMAGE_DRM_FORMAT_MODIFIER_EXPLICIT_CREATE_INFO_EXT: return sizeof(VkImageDrmFormatModifierExplicitCreateInfoEXT);
         case VK_STRUCTURE_TYPE_IMAGE_DRM_FORMAT_MODIFIER_LIST_CREATE_INFO_EXT: return sizeof(VkImageDrmFormatModifierListCreateInfoEXT);
         case VK_STRUCTURE_TYPE_IMAGE_DRM_FORMAT_MODIFIER_PROPERTIES_EXT: return sizeof(VkImageDrmFormatModifierPropertiesEXT);
-        case VK_STRUCTURE_TYPE_IMAGE_FORMAT_LIST_CREATE_INFO_KHR: return sizeof(VkImageFormatListCreateInfoKHR);
+        case VK_STRUCTURE_TYPE_IMAGE_FORMAT_LIST_CREATE_INFO: return sizeof(VkImageFormatListCreateInfo);
         case VK_STRUCTURE_TYPE_IMAGE_FORMAT_PROPERTIES_2: return sizeof(VkImageFormatProperties2);
         case VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER: return sizeof(VkImageMemoryBarrier);
         case VK_STRUCTURE_TYPE_IMAGE_MEMORY_REQUIREMENTS_INFO_2: return sizeof(VkImageMemoryRequirementsInfo2);
@@ -3096,7 +3693,7 @@
     #endif
         case VK_STRUCTURE_TYPE_IMAGE_PLANE_MEMORY_REQUIREMENTS_INFO: return sizeof(VkImagePlaneMemoryRequirementsInfo);
         case VK_STRUCTURE_TYPE_IMAGE_SPARSE_MEMORY_REQUIREMENTS_INFO_2: return sizeof(VkImageSparseMemoryRequirementsInfo2);
-        case VK_STRUCTURE_TYPE_IMAGE_STENCIL_USAGE_CREATE_INFO_EXT: return sizeof(VkImageStencilUsageCreateInfoEXT);
+        case VK_STRUCTURE_TYPE_IMAGE_STENCIL_USAGE_CREATE_INFO: return sizeof(VkImageStencilUsageCreateInfo);
         case VK_STRUCTURE_TYPE_IMAGE_SWAPCHAIN_CREATE_INFO_KHR: return sizeof(VkImageSwapchainCreateInfoKHR);
         case VK_STRUCTURE_TYPE_IMAGE_VIEW_ASTC_DECODE_MODE_EXT: return sizeof(VkImageViewASTCDecodeModeEXT);
         case VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO: return sizeof(VkImageViewCreateInfo);
@@ -3122,6 +3719,7 @@
         case VK_STRUCTURE_TYPE_IMPORT_SEMAPHORE_WIN32_HANDLE_INFO_KHR: return sizeof(VkImportSemaphoreWin32HandleInfoKHR);
     #endif
         case VK_STRUCTURE_TYPE_INDIRECT_COMMANDS_LAYOUT_CREATE_INFO_NVX: return sizeof(VkIndirectCommandsLayoutCreateInfoNVX);
+        case VK_STRUCTURE_TYPE_INITIALIZE_PERFORMANCE_API_INFO_INTEL: return sizeof(VkInitializePerformanceApiInfoINTEL);
         case VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO: return sizeof(VkInstanceCreateInfo);
     #ifdef VK_USE_PLATFORM_MACOS_MVK
         case VK_STRUCTURE_TYPE_MACOS_SURFACE_CREATE_INFO_MVK: return sizeof(VkMacOSSurfaceCreateInfoMVK);
@@ -3141,6 +3739,7 @@
         case VK_STRUCTURE_TYPE_MEMORY_GET_WIN32_HANDLE_INFO_KHR: return sizeof(VkMemoryGetWin32HandleInfoKHR);
     #endif
         case VK_STRUCTURE_TYPE_MEMORY_HOST_POINTER_PROPERTIES_EXT: return sizeof(VkMemoryHostPointerPropertiesEXT);
+        case VK_STRUCTURE_TYPE_MEMORY_OPAQUE_CAPTURE_ADDRESS_ALLOCATE_INFO: return sizeof(VkMemoryOpaqueCaptureAddressAllocateInfo);
         case VK_STRUCTURE_TYPE_MEMORY_PRIORITY_ALLOCATE_INFO_EXT: return sizeof(VkMemoryPriorityAllocateInfoEXT);
         case VK_STRUCTURE_TYPE_MEMORY_REQUIREMENTS_2: return sizeof(VkMemoryRequirements2);
     #ifdef VK_USE_PLATFORM_WIN32_KHR
@@ -3152,25 +3751,35 @@
         case VK_STRUCTURE_TYPE_MULTISAMPLE_PROPERTIES_EXT: return sizeof(VkMultisamplePropertiesEXT);
         case VK_STRUCTURE_TYPE_NATIVE_BUFFER_ANDROID: return sizeof(VkNativeBufferANDROID);
         case VK_STRUCTURE_TYPE_OBJECT_TABLE_CREATE_INFO_NVX: return sizeof(VkObjectTableCreateInfoNVX);
+        case VK_STRUCTURE_TYPE_PERFORMANCE_CONFIGURATION_ACQUIRE_INFO_INTEL: return sizeof(VkPerformanceConfigurationAcquireInfoINTEL);
+        case VK_STRUCTURE_TYPE_PERFORMANCE_COUNTER_DESCRIPTION_KHR: return sizeof(VkPerformanceCounterDescriptionKHR);
+        case VK_STRUCTURE_TYPE_PERFORMANCE_COUNTER_KHR: return sizeof(VkPerformanceCounterKHR);
+        case VK_STRUCTURE_TYPE_PERFORMANCE_MARKER_INFO_INTEL: return sizeof(VkPerformanceMarkerInfoINTEL);
+        case VK_STRUCTURE_TYPE_PERFORMANCE_OVERRIDE_INFO_INTEL: return sizeof(VkPerformanceOverrideInfoINTEL);
+        case VK_STRUCTURE_TYPE_PERFORMANCE_QUERY_SUBMIT_INFO_KHR: return sizeof(VkPerformanceQuerySubmitInfoKHR);
+        case VK_STRUCTURE_TYPE_PERFORMANCE_STREAM_MARKER_INFO_INTEL: return sizeof(VkPerformanceStreamMarkerInfoINTEL);
         case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_16BIT_STORAGE_FEATURES: return sizeof(VkPhysicalDevice16BitStorageFeatures);
-        case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_8BIT_STORAGE_FEATURES_KHR: return sizeof(VkPhysicalDevice8BitStorageFeaturesKHR);
+        case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_8BIT_STORAGE_FEATURES: return sizeof(VkPhysicalDevice8BitStorageFeatures);
         case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_ASTC_DECODE_FEATURES_EXT: return sizeof(VkPhysicalDeviceASTCDecodeFeaturesEXT);
         case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_BLEND_OPERATION_ADVANCED_FEATURES_EXT: return sizeof(VkPhysicalDeviceBlendOperationAdvancedFeaturesEXT);
         case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_BLEND_OPERATION_ADVANCED_PROPERTIES_EXT: return sizeof(VkPhysicalDeviceBlendOperationAdvancedPropertiesEXT);
+        case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_BUFFER_DEVICE_ADDRESS_FEATURES: return sizeof(VkPhysicalDeviceBufferDeviceAddressFeatures);
         case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_BUFFER_DEVICE_ADDRESS_FEATURES_EXT: return sizeof(VkPhysicalDeviceBufferDeviceAddressFeaturesEXT);
+        case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_COHERENT_MEMORY_FEATURES_AMD: return sizeof(VkPhysicalDeviceCoherentMemoryFeaturesAMD);
         case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_COMPUTE_SHADER_DERIVATIVES_FEATURES_NV: return sizeof(VkPhysicalDeviceComputeShaderDerivativesFeaturesNV);
         case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_CONDITIONAL_RENDERING_FEATURES_EXT: return sizeof(VkPhysicalDeviceConditionalRenderingFeaturesEXT);
         case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_CONSERVATIVE_RASTERIZATION_PROPERTIES_EXT: return sizeof(VkPhysicalDeviceConservativeRasterizationPropertiesEXT);
         case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_COOPERATIVE_MATRIX_FEATURES_NV: return sizeof(VkPhysicalDeviceCooperativeMatrixFeaturesNV);
         case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_COOPERATIVE_MATRIX_PROPERTIES_NV: return sizeof(VkPhysicalDeviceCooperativeMatrixPropertiesNV);
         case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_CORNER_SAMPLED_IMAGE_FEATURES_NV: return sizeof(VkPhysicalDeviceCornerSampledImageFeaturesNV);
+        case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_COVERAGE_REDUCTION_MODE_FEATURES_NV: return sizeof(VkPhysicalDeviceCoverageReductionModeFeaturesNV);
         case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DEDICATED_ALLOCATION_IMAGE_ALIASING_FEATURES_NV: return sizeof(VkPhysicalDeviceDedicatedAllocationImageAliasingFeaturesNV);
         case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DEPTH_CLIP_ENABLE_FEATURES_EXT: return sizeof(VkPhysicalDeviceDepthClipEnableFeaturesEXT);
-        case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DEPTH_STENCIL_RESOLVE_PROPERTIES_KHR: return sizeof(VkPhysicalDeviceDepthStencilResolvePropertiesKHR);
-        case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DESCRIPTOR_INDEXING_FEATURES_EXT: return sizeof(VkPhysicalDeviceDescriptorIndexingFeaturesEXT);
-        case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DESCRIPTOR_INDEXING_PROPERTIES_EXT: return sizeof(VkPhysicalDeviceDescriptorIndexingPropertiesEXT);
+        case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DEPTH_STENCIL_RESOLVE_PROPERTIES: return sizeof(VkPhysicalDeviceDepthStencilResolveProperties);
+        case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DESCRIPTOR_INDEXING_FEATURES: return sizeof(VkPhysicalDeviceDescriptorIndexingFeatures);
+        case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DESCRIPTOR_INDEXING_PROPERTIES: return sizeof(VkPhysicalDeviceDescriptorIndexingProperties);
         case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DISCARD_RECTANGLE_PROPERTIES_EXT: return sizeof(VkPhysicalDeviceDiscardRectanglePropertiesEXT);
-        case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DRIVER_PROPERTIES_KHR: return sizeof(VkPhysicalDeviceDriverPropertiesKHR);
+        case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DRIVER_PROPERTIES: return sizeof(VkPhysicalDeviceDriverProperties);
         case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_EXCLUSIVE_SCISSOR_FEATURES_NV: return sizeof(VkPhysicalDeviceExclusiveScissorFeaturesNV);
         case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_EXTERNAL_BUFFER_INFO: return sizeof(VkPhysicalDeviceExternalBufferInfo);
         case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_EXTERNAL_FENCE_INFO: return sizeof(VkPhysicalDeviceExternalFenceInfo);
@@ -3178,19 +3787,23 @@
         case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_EXTERNAL_MEMORY_HOST_PROPERTIES_EXT: return sizeof(VkPhysicalDeviceExternalMemoryHostPropertiesEXT);
         case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_EXTERNAL_SEMAPHORE_INFO: return sizeof(VkPhysicalDeviceExternalSemaphoreInfo);
         case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2: return sizeof(VkPhysicalDeviceFeatures2);
-        case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FLOAT16_INT8_FEATURES_KHR: return sizeof(VkPhysicalDeviceFloat16Int8FeaturesKHR);
-        case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FLOAT_CONTROLS_PROPERTIES_KHR: return sizeof(VkPhysicalDeviceFloatControlsPropertiesKHR);
+        case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FLOAT_CONTROLS_PROPERTIES: return sizeof(VkPhysicalDeviceFloatControlsProperties);
         case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FRAGMENT_DENSITY_MAP_FEATURES_EXT: return sizeof(VkPhysicalDeviceFragmentDensityMapFeaturesEXT);
         case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FRAGMENT_DENSITY_MAP_PROPERTIES_EXT: return sizeof(VkPhysicalDeviceFragmentDensityMapPropertiesEXT);
         case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FRAGMENT_SHADER_BARYCENTRIC_FEATURES_NV: return sizeof(VkPhysicalDeviceFragmentShaderBarycentricFeaturesNV);
+        case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FRAGMENT_SHADER_INTERLOCK_FEATURES_EXT: return sizeof(VkPhysicalDeviceFragmentShaderInterlockFeaturesEXT);
         case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_GROUP_PROPERTIES: return sizeof(VkPhysicalDeviceGroupProperties);
-        case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_HOST_QUERY_RESET_FEATURES_EXT: return sizeof(VkPhysicalDeviceHostQueryResetFeaturesEXT);
+        case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_HOST_QUERY_RESET_FEATURES: return sizeof(VkPhysicalDeviceHostQueryResetFeatures);
         case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_ID_PROPERTIES: return sizeof(VkPhysicalDeviceIDProperties);
         case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_IMAGE_DRM_FORMAT_MODIFIER_INFO_EXT: return sizeof(VkPhysicalDeviceImageDrmFormatModifierInfoEXT);
         case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_IMAGE_FORMAT_INFO_2: return sizeof(VkPhysicalDeviceImageFormatInfo2);
         case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_IMAGE_VIEW_IMAGE_FORMAT_INFO_EXT: return sizeof(VkPhysicalDeviceImageViewImageFormatInfoEXT);
+        case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_IMAGELESS_FRAMEBUFFER_FEATURES: return sizeof(VkPhysicalDeviceImagelessFramebufferFeatures);
+        case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_INDEX_TYPE_UINT8_FEATURES_EXT: return sizeof(VkPhysicalDeviceIndexTypeUint8FeaturesEXT);
         case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_INLINE_UNIFORM_BLOCK_FEATURES_EXT: return sizeof(VkPhysicalDeviceInlineUniformBlockFeaturesEXT);
         case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_INLINE_UNIFORM_BLOCK_PROPERTIES_EXT: return sizeof(VkPhysicalDeviceInlineUniformBlockPropertiesEXT);
+        case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_LINE_RASTERIZATION_FEATURES_EXT: return sizeof(VkPhysicalDeviceLineRasterizationFeaturesEXT);
+        case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_LINE_RASTERIZATION_PROPERTIES_EXT: return sizeof(VkPhysicalDeviceLineRasterizationPropertiesEXT);
         case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MAINTENANCE_3_PROPERTIES: return sizeof(VkPhysicalDeviceMaintenance3Properties);
         case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MEMORY_BUDGET_PROPERTIES_EXT: return sizeof(VkPhysicalDeviceMemoryBudgetPropertiesEXT);
         case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MEMORY_PRIORITY_FEATURES_EXT: return sizeof(VkPhysicalDeviceMemoryPriorityFeaturesEXT);
@@ -3201,7 +3814,11 @@
         case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MULTIVIEW_PER_VIEW_ATTRIBUTES_PROPERTIES_NVX: return sizeof(VkPhysicalDeviceMultiviewPerViewAttributesPropertiesNVX);
         case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MULTIVIEW_PROPERTIES: return sizeof(VkPhysicalDeviceMultiviewProperties);
         case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PCI_BUS_INFO_PROPERTIES_EXT: return sizeof(VkPhysicalDevicePCIBusInfoPropertiesEXT);
+        case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PERFORMANCE_QUERY_FEATURES_KHR: return sizeof(VkPhysicalDevicePerformanceQueryFeaturesKHR);
+        case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PERFORMANCE_QUERY_PROPERTIES_KHR: return sizeof(VkPhysicalDevicePerformanceQueryPropertiesKHR);
+        case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PIPELINE_EXECUTABLE_PROPERTIES_FEATURES_KHR: return sizeof(VkPhysicalDevicePipelineExecutablePropertiesFeaturesKHR);
         case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_POINT_CLIPPING_PROPERTIES: return sizeof(VkPhysicalDevicePointClippingProperties);
+        case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PRESENTATION_PROPERTIES_ANDROID: return sizeof(VkPhysicalDevicePresentationPropertiesANDROID);
         case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2: return sizeof(VkPhysicalDeviceProperties2);
         case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROTECTED_MEMORY_FEATURES: return sizeof(VkPhysicalDeviceProtectedMemoryFeatures);
         case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROTECTED_MEMORY_PROPERTIES: return sizeof(VkPhysicalDeviceProtectedMemoryProperties);
@@ -3209,45 +3826,76 @@
         case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_RAY_TRACING_PROPERTIES_NV: return sizeof(VkPhysicalDeviceRayTracingPropertiesNV);
         case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_REPRESENTATIVE_FRAGMENT_TEST_FEATURES_NV: return sizeof(VkPhysicalDeviceRepresentativeFragmentTestFeaturesNV);
         case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SAMPLE_LOCATIONS_PROPERTIES_EXT: return sizeof(VkPhysicalDeviceSampleLocationsPropertiesEXT);
-        case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SAMPLER_FILTER_MINMAX_PROPERTIES_EXT: return sizeof(VkPhysicalDeviceSamplerFilterMinmaxPropertiesEXT);
+        case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SAMPLER_FILTER_MINMAX_PROPERTIES: return sizeof(VkPhysicalDeviceSamplerFilterMinmaxProperties);
         case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SAMPLER_YCBCR_CONVERSION_FEATURES: return sizeof(VkPhysicalDeviceSamplerYcbcrConversionFeatures);
-        case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SCALAR_BLOCK_LAYOUT_FEATURES_EXT: return sizeof(VkPhysicalDeviceScalarBlockLayoutFeaturesEXT);
-        case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SHADER_ATOMIC_INT64_FEATURES_KHR: return sizeof(VkPhysicalDeviceShaderAtomicInt64FeaturesKHR);
+        case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SCALAR_BLOCK_LAYOUT_FEATURES: return sizeof(VkPhysicalDeviceScalarBlockLayoutFeatures);
+        case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SEPARATE_DEPTH_STENCIL_LAYOUTS_FEATURES: return sizeof(VkPhysicalDeviceSeparateDepthStencilLayoutsFeatures);
+        case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SHADER_ATOMIC_INT64_FEATURES: return sizeof(VkPhysicalDeviceShaderAtomicInt64Features);
+        case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SHADER_CLOCK_FEATURES_KHR: return sizeof(VkPhysicalDeviceShaderClockFeaturesKHR);
+        case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SHADER_CORE_PROPERTIES_2_AMD: return sizeof(VkPhysicalDeviceShaderCoreProperties2AMD);
         case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SHADER_CORE_PROPERTIES_AMD: return sizeof(VkPhysicalDeviceShaderCorePropertiesAMD);
+        case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SHADER_DEMOTE_TO_HELPER_INVOCATION_FEATURES_EXT: return sizeof(VkPhysicalDeviceShaderDemoteToHelperInvocationFeaturesEXT);
         case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SHADER_DRAW_PARAMETERS_FEATURES: return sizeof(VkPhysicalDeviceShaderDrawParametersFeatures);
+        case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SHADER_FLOAT16_INT8_FEATURES: return sizeof(VkPhysicalDeviceShaderFloat16Int8Features);
         case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SHADER_IMAGE_FOOTPRINT_FEATURES_NV: return sizeof(VkPhysicalDeviceShaderImageFootprintFeaturesNV);
+        case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SHADER_INTEGER_FUNCTIONS_2_FEATURES_INTEL: return sizeof(VkPhysicalDeviceShaderIntegerFunctions2FeaturesINTEL);
+        case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SHADER_SM_BUILTINS_FEATURES_NV: return sizeof(VkPhysicalDeviceShaderSMBuiltinsFeaturesNV);
+        case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SHADER_SM_BUILTINS_PROPERTIES_NV: return sizeof(VkPhysicalDeviceShaderSMBuiltinsPropertiesNV);
+        case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SHADER_SUBGROUP_EXTENDED_TYPES_FEATURES: return sizeof(VkPhysicalDeviceShaderSubgroupExtendedTypesFeatures);
         case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SHADING_RATE_IMAGE_FEATURES_NV: return sizeof(VkPhysicalDeviceShadingRateImageFeaturesNV);
         case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SHADING_RATE_IMAGE_PROPERTIES_NV: return sizeof(VkPhysicalDeviceShadingRateImagePropertiesNV);
         case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SPARSE_IMAGE_FORMAT_INFO_2: return sizeof(VkPhysicalDeviceSparseImageFormatInfo2);
         case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SUBGROUP_PROPERTIES: return sizeof(VkPhysicalDeviceSubgroupProperties);
+        case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SUBGROUP_SIZE_CONTROL_FEATURES_EXT: return sizeof(VkPhysicalDeviceSubgroupSizeControlFeaturesEXT);
+        case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SUBGROUP_SIZE_CONTROL_PROPERTIES_EXT: return sizeof(VkPhysicalDeviceSubgroupSizeControlPropertiesEXT);
         case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SURFACE_INFO_2_KHR: return sizeof(VkPhysicalDeviceSurfaceInfo2KHR);
+        case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_TEXEL_BUFFER_ALIGNMENT_FEATURES_EXT: return sizeof(VkPhysicalDeviceTexelBufferAlignmentFeaturesEXT);
+        case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_TEXEL_BUFFER_ALIGNMENT_PROPERTIES_EXT: return sizeof(VkPhysicalDeviceTexelBufferAlignmentPropertiesEXT);
+        case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_TEXTURE_COMPRESSION_ASTC_HDR_FEATURES_EXT: return sizeof(VkPhysicalDeviceTextureCompressionASTCHDRFeaturesEXT);
+        case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_TIMELINE_SEMAPHORE_FEATURES: return sizeof(VkPhysicalDeviceTimelineSemaphoreFeatures);
+        case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_TIMELINE_SEMAPHORE_PROPERTIES: return sizeof(VkPhysicalDeviceTimelineSemaphoreProperties);
+        case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_TOOL_PROPERTIES_EXT: return sizeof(VkPhysicalDeviceToolPropertiesEXT);
         case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_TRANSFORM_FEEDBACK_FEATURES_EXT: return sizeof(VkPhysicalDeviceTransformFeedbackFeaturesEXT);
         case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_TRANSFORM_FEEDBACK_PROPERTIES_EXT: return sizeof(VkPhysicalDeviceTransformFeedbackPropertiesEXT);
+        case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_UNIFORM_BUFFER_STANDARD_LAYOUT_FEATURES: return sizeof(VkPhysicalDeviceUniformBufferStandardLayoutFeatures);
         case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VARIABLE_POINTERS_FEATURES: return sizeof(VkPhysicalDeviceVariablePointersFeatures);
         case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VERTEX_ATTRIBUTE_DIVISOR_FEATURES_EXT: return sizeof(VkPhysicalDeviceVertexAttributeDivisorFeaturesEXT);
         case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VERTEX_ATTRIBUTE_DIVISOR_PROPERTIES_EXT: return sizeof(VkPhysicalDeviceVertexAttributeDivisorPropertiesEXT);
-        case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_MEMORY_MODEL_FEATURES_KHR: return sizeof(VkPhysicalDeviceVulkanMemoryModelFeaturesKHR);
+        case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_1_FEATURES: return sizeof(VkPhysicalDeviceVulkan11Features);
+        case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_1_PROPERTIES: return sizeof(VkPhysicalDeviceVulkan11Properties);
+        case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES: return sizeof(VkPhysicalDeviceVulkan12Features);
+        case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_PROPERTIES: return sizeof(VkPhysicalDeviceVulkan12Properties);
+        case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_MEMORY_MODEL_FEATURES: return sizeof(VkPhysicalDeviceVulkanMemoryModelFeatures);
         case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_YCBCR_IMAGE_ARRAYS_FEATURES_EXT: return sizeof(VkPhysicalDeviceYcbcrImageArraysFeaturesEXT);
         case VK_STRUCTURE_TYPE_PIPELINE_CACHE_CREATE_INFO: return sizeof(VkPipelineCacheCreateInfo);
         case VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_ADVANCED_STATE_CREATE_INFO_EXT: return sizeof(VkPipelineColorBlendAdvancedStateCreateInfoEXT);
         case VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO: return sizeof(VkPipelineColorBlendStateCreateInfo);
+        case VK_STRUCTURE_TYPE_PIPELINE_COMPILER_CONTROL_CREATE_INFO_AMD: return sizeof(VkPipelineCompilerControlCreateInfoAMD);
         case VK_STRUCTURE_TYPE_PIPELINE_COVERAGE_MODULATION_STATE_CREATE_INFO_NV: return sizeof(VkPipelineCoverageModulationStateCreateInfoNV);
+        case VK_STRUCTURE_TYPE_PIPELINE_COVERAGE_REDUCTION_STATE_CREATE_INFO_NV: return sizeof(VkPipelineCoverageReductionStateCreateInfoNV);
         case VK_STRUCTURE_TYPE_PIPELINE_COVERAGE_TO_COLOR_STATE_CREATE_INFO_NV: return sizeof(VkPipelineCoverageToColorStateCreateInfoNV);
         case VK_STRUCTURE_TYPE_PIPELINE_CREATION_FEEDBACK_CREATE_INFO_EXT: return sizeof(VkPipelineCreationFeedbackCreateInfoEXT);
         case VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO: return sizeof(VkPipelineDepthStencilStateCreateInfo);
         case VK_STRUCTURE_TYPE_PIPELINE_DISCARD_RECTANGLE_STATE_CREATE_INFO_EXT: return sizeof(VkPipelineDiscardRectangleStateCreateInfoEXT);
         case VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO: return sizeof(VkPipelineDynamicStateCreateInfo);
+        case VK_STRUCTURE_TYPE_PIPELINE_EXECUTABLE_INFO_KHR: return sizeof(VkPipelineExecutableInfoKHR);
+        case VK_STRUCTURE_TYPE_PIPELINE_EXECUTABLE_INTERNAL_REPRESENTATION_KHR: return sizeof(VkPipelineExecutableInternalRepresentationKHR);
+        case VK_STRUCTURE_TYPE_PIPELINE_EXECUTABLE_PROPERTIES_KHR: return sizeof(VkPipelineExecutablePropertiesKHR);
+        case VK_STRUCTURE_TYPE_PIPELINE_EXECUTABLE_STATISTIC_KHR: return sizeof(VkPipelineExecutableStatisticKHR);
+        case VK_STRUCTURE_TYPE_PIPELINE_INFO_KHR: return sizeof(VkPipelineInfoKHR);
         case VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO: return sizeof(VkPipelineInputAssemblyStateCreateInfo);
         case VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO: return sizeof(VkPipelineLayoutCreateInfo);
         case VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO: return sizeof(VkPipelineMultisampleStateCreateInfo);
         case VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_CONSERVATIVE_STATE_CREATE_INFO_EXT: return sizeof(VkPipelineRasterizationConservativeStateCreateInfoEXT);
         case VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_DEPTH_CLIP_STATE_CREATE_INFO_EXT: return sizeof(VkPipelineRasterizationDepthClipStateCreateInfoEXT);
+        case VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_LINE_STATE_CREATE_INFO_EXT: return sizeof(VkPipelineRasterizationLineStateCreateInfoEXT);
         case VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO: return sizeof(VkPipelineRasterizationStateCreateInfo);
         case VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_RASTERIZATION_ORDER_AMD: return sizeof(VkPipelineRasterizationStateRasterizationOrderAMD);
         case VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_STREAM_CREATE_INFO_EXT: return sizeof(VkPipelineRasterizationStateStreamCreateInfoEXT);
         case VK_STRUCTURE_TYPE_PIPELINE_REPRESENTATIVE_FRAGMENT_TEST_STATE_CREATE_INFO_NV: return sizeof(VkPipelineRepresentativeFragmentTestStateCreateInfoNV);
         case VK_STRUCTURE_TYPE_PIPELINE_SAMPLE_LOCATIONS_STATE_CREATE_INFO_EXT: return sizeof(VkPipelineSampleLocationsStateCreateInfoEXT);
         case VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO: return sizeof(VkPipelineShaderStageCreateInfo);
+        case VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_REQUIRED_SUBGROUP_SIZE_CREATE_INFO_EXT: return sizeof(VkPipelineShaderStageRequiredSubgroupSizeCreateInfoEXT);
         case VK_STRUCTURE_TYPE_PIPELINE_TESSELLATION_DOMAIN_ORIGIN_STATE_CREATE_INFO: return sizeof(VkPipelineTessellationDomainOriginStateCreateInfo);
         case VK_STRUCTURE_TYPE_PIPELINE_TESSELLATION_STATE_CREATE_INFO: return sizeof(VkPipelineTessellationStateCreateInfo);
         case VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_DIVISOR_STATE_CREATE_INFO_EXT: return sizeof(VkPipelineVertexInputDivisorStateCreateInfoEXT);
@@ -3266,20 +3914,23 @@
         case VK_STRUCTURE_TYPE_PRESENT_TIMES_INFO_GOOGLE: return sizeof(VkPresentTimesInfoGOOGLE);
         case VK_STRUCTURE_TYPE_PROTECTED_SUBMIT_INFO: return sizeof(VkProtectedSubmitInfo);
         case VK_STRUCTURE_TYPE_QUERY_POOL_CREATE_INFO: return sizeof(VkQueryPoolCreateInfo);
+        case VK_STRUCTURE_TYPE_QUERY_POOL_CREATE_INFO_INTEL: return sizeof(VkQueryPoolCreateInfoINTEL);
+        case VK_STRUCTURE_TYPE_QUERY_POOL_PERFORMANCE_CREATE_INFO_KHR: return sizeof(VkQueryPoolPerformanceCreateInfoKHR);
         case VK_STRUCTURE_TYPE_QUEUE_FAMILY_CHECKPOINT_PROPERTIES_NV: return sizeof(VkQueueFamilyCheckpointPropertiesNV);
         case VK_STRUCTURE_TYPE_QUEUE_FAMILY_PROPERTIES_2: return sizeof(VkQueueFamilyProperties2);
         case VK_STRUCTURE_TYPE_RAY_TRACING_PIPELINE_CREATE_INFO_NV: return sizeof(VkRayTracingPipelineCreateInfoNV);
         case VK_STRUCTURE_TYPE_RAY_TRACING_SHADER_GROUP_CREATE_INFO_NV: return sizeof(VkRayTracingShaderGroupCreateInfoNV);
+        case VK_STRUCTURE_TYPE_RENDER_PASS_ATTACHMENT_BEGIN_INFO: return sizeof(VkRenderPassAttachmentBeginInfo);
         case VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO: return sizeof(VkRenderPassBeginInfo);
         case VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO: return sizeof(VkRenderPassCreateInfo);
-        case VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO_2_KHR: return sizeof(VkRenderPassCreateInfo2KHR);
+        case VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO_2: return sizeof(VkRenderPassCreateInfo2);
         case VK_STRUCTURE_TYPE_RENDER_PASS_FRAGMENT_DENSITY_MAP_CREATE_INFO_EXT: return sizeof(VkRenderPassFragmentDensityMapCreateInfoEXT);
         case VK_STRUCTURE_TYPE_RENDER_PASS_INPUT_ATTACHMENT_ASPECT_CREATE_INFO: return sizeof(VkRenderPassInputAttachmentAspectCreateInfo);
         case VK_STRUCTURE_TYPE_RENDER_PASS_MULTIVIEW_CREATE_INFO: return sizeof(VkRenderPassMultiviewCreateInfo);
         case VK_STRUCTURE_TYPE_RENDER_PASS_SAMPLE_LOCATIONS_BEGIN_INFO_EXT: return sizeof(VkRenderPassSampleLocationsBeginInfoEXT);
         case VK_STRUCTURE_TYPE_SAMPLE_LOCATIONS_INFO_EXT: return sizeof(VkSampleLocationsInfoEXT);
         case VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO: return sizeof(VkSamplerCreateInfo);
-        case VK_STRUCTURE_TYPE_SAMPLER_REDUCTION_MODE_CREATE_INFO_EXT: return sizeof(VkSamplerReductionModeCreateInfoEXT);
+        case VK_STRUCTURE_TYPE_SAMPLER_REDUCTION_MODE_CREATE_INFO: return sizeof(VkSamplerReductionModeCreateInfo);
         case VK_STRUCTURE_TYPE_SAMPLER_YCBCR_CONVERSION_CREATE_INFO: return sizeof(VkSamplerYcbcrConversionCreateInfo);
         case VK_STRUCTURE_TYPE_SAMPLER_YCBCR_CONVERSION_IMAGE_FORMAT_PROPERTIES: return sizeof(VkSamplerYcbcrConversionImageFormatProperties);
         case VK_STRUCTURE_TYPE_SAMPLER_YCBCR_CONVERSION_INFO: return sizeof(VkSamplerYcbcrConversionInfo);
@@ -3288,6 +3939,9 @@
     #ifdef VK_USE_PLATFORM_WIN32_KHR
         case VK_STRUCTURE_TYPE_SEMAPHORE_GET_WIN32_HANDLE_INFO_KHR: return sizeof(VkSemaphoreGetWin32HandleInfoKHR);
     #endif
+        case VK_STRUCTURE_TYPE_SEMAPHORE_SIGNAL_INFO: return sizeof(VkSemaphoreSignalInfo);
+        case VK_STRUCTURE_TYPE_SEMAPHORE_TYPE_CREATE_INFO: return sizeof(VkSemaphoreTypeCreateInfo);
+        case VK_STRUCTURE_TYPE_SEMAPHORE_WAIT_INFO: return sizeof(VkSemaphoreWaitInfo);
         case VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO: return sizeof(VkShaderModuleCreateInfo);
         case VK_STRUCTURE_TYPE_SHADER_MODULE_VALIDATION_CACHE_CREATE_INFO_EXT: return sizeof(VkShaderModuleValidationCacheCreateInfoEXT);
         case VK_STRUCTURE_TYPE_SHARED_PRESENT_SURFACE_CAPABILITIES_KHR: return sizeof(VkSharedPresentSurfaceCapabilitiesKHR);
@@ -3297,11 +3951,11 @@
         case VK_STRUCTURE_TYPE_STREAM_DESCRIPTOR_SURFACE_CREATE_INFO_GGP: return sizeof(VkStreamDescriptorSurfaceCreateInfoGGP);
     #endif
         case VK_STRUCTURE_TYPE_SUBMIT_INFO: return sizeof(VkSubmitInfo);
-        case VK_STRUCTURE_TYPE_SUBPASS_BEGIN_INFO_KHR: return sizeof(VkSubpassBeginInfoKHR);
-        case VK_STRUCTURE_TYPE_SUBPASS_DEPENDENCY_2_KHR: return sizeof(VkSubpassDependency2KHR);
-        case VK_STRUCTURE_TYPE_SUBPASS_DESCRIPTION_2_KHR: return sizeof(VkSubpassDescription2KHR);
-        case VK_STRUCTURE_TYPE_SUBPASS_DESCRIPTION_DEPTH_STENCIL_RESOLVE_KHR: return sizeof(VkSubpassDescriptionDepthStencilResolveKHR);
-        case VK_STRUCTURE_TYPE_SUBPASS_END_INFO_KHR: return sizeof(VkSubpassEndInfoKHR);
+        case VK_STRUCTURE_TYPE_SUBPASS_BEGIN_INFO: return sizeof(VkSubpassBeginInfo);
+        case VK_STRUCTURE_TYPE_SUBPASS_DEPENDENCY_2: return sizeof(VkSubpassDependency2);
+        case VK_STRUCTURE_TYPE_SUBPASS_DESCRIPTION_2: return sizeof(VkSubpassDescription2);
+        case VK_STRUCTURE_TYPE_SUBPASS_DESCRIPTION_DEPTH_STENCIL_RESOLVE: return sizeof(VkSubpassDescriptionDepthStencilResolve);
+        case VK_STRUCTURE_TYPE_SUBPASS_END_INFO: return sizeof(VkSubpassEndInfo);
         case VK_STRUCTURE_TYPE_SURFACE_CAPABILITIES_2_EXT: return sizeof(VkSurfaceCapabilities2EXT);
         case VK_STRUCTURE_TYPE_SURFACE_CAPABILITIES_2_KHR: return sizeof(VkSurfaceCapabilities2KHR);
     #ifdef VK_USE_PLATFORM_WIN32_KHR
@@ -3318,7 +3972,9 @@
         case VK_STRUCTURE_TYPE_SWAPCHAIN_COUNTER_CREATE_INFO_EXT: return sizeof(VkSwapchainCounterCreateInfoEXT);
         case VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR: return sizeof(VkSwapchainCreateInfoKHR);
         case VK_STRUCTURE_TYPE_SWAPCHAIN_DISPLAY_NATIVE_HDR_CREATE_INFO_AMD: return sizeof(VkSwapchainDisplayNativeHdrCreateInfoAMD);
+        case VK_STRUCTURE_TYPE_SWAPCHAIN_IMAGE_CREATE_INFO_ANDROID: return sizeof(VkSwapchainImageCreateInfoANDROID);
         case VK_STRUCTURE_TYPE_TEXTURE_LOD_GATHER_FORMAT_PROPERTIES_AMD: return sizeof(VkTextureLODGatherFormatPropertiesAMD);
+        case VK_STRUCTURE_TYPE_TIMELINE_SEMAPHORE_SUBMIT_INFO: return sizeof(VkTimelineSemaphoreSubmitInfo);
         case VK_STRUCTURE_TYPE_VALIDATION_CACHE_CREATE_INFO_EXT: return sizeof(VkValidationCacheCreateInfoEXT);
         case VK_STRUCTURE_TYPE_VALIDATION_FEATURES_EXT: return sizeof(VkValidationFeaturesEXT);
         case VK_STRUCTURE_TYPE_VALIDATION_FLAGS_EXT: return sizeof(VkValidationFlagsEXT);
@@ -3346,9 +4002,9 @@
     #ifdef VK_USE_PLATFORM_XLIB_KHR
         case VK_STRUCTURE_TYPE_XLIB_SURFACE_CREATE_INFO_KHR: return sizeof(VkXlibSurfaceCreateInfoKHR);
     #endif
-        default:
-            unreachable("Undefined struct type.");
         }
+        #pragma GCC diagnostic pop
+        unreachable("Undefined struct type.");
     }
 
     void vk_load_instance_commands(VkInstance instance,
@@ -3368,6 +4024,7 @@
         table->CreateDevice = (PFN_vkCreateDevice) gpa(instance, "vkCreateDevice");
         table->CreateDisplayModeKHR = (PFN_vkCreateDisplayModeKHR) gpa(instance, "vkCreateDisplayModeKHR");
         table->CreateDisplayPlaneSurfaceKHR = (PFN_vkCreateDisplayPlaneSurfaceKHR) gpa(instance, "vkCreateDisplayPlaneSurfaceKHR");
+        table->CreateHeadlessSurfaceEXT = (PFN_vkCreateHeadlessSurfaceEXT) gpa(instance, "vkCreateHeadlessSurfaceEXT");
     #ifdef VK_USE_PLATFORM_IOS_MVK
         table->CreateIOSSurfaceMVK = (PFN_vkCreateIOSSurfaceMVK) gpa(instance, "vkCreateIOSSurfaceMVK");
     #endif
@@ -3410,6 +4067,7 @@
         table->EnumerateInstanceLayerProperties = (PFN_vkEnumerateInstanceLayerProperties) gpa(instance, "vkEnumerateInstanceLayerProperties");
         table->EnumerateInstanceVersion = (PFN_vkEnumerateInstanceVersion) gpa(instance, "vkEnumerateInstanceVersion");
         table->EnumeratePhysicalDeviceGroups = (PFN_vkEnumeratePhysicalDeviceGroups) gpa(instance, "vkEnumeratePhysicalDeviceGroups");
+        table->EnumeratePhysicalDeviceQueueFamilyPerformanceQueryCountersKHR = (PFN_vkEnumeratePhysicalDeviceQueueFamilyPerformanceQueryCountersKHR) gpa(instance, "vkEnumeratePhysicalDeviceQueueFamilyPerformanceQueryCountersKHR");
         table->EnumeratePhysicalDevices = (PFN_vkEnumeratePhysicalDevices) gpa(instance, "vkEnumeratePhysicalDevices");
         table->GetDisplayModeProperties2KHR = (PFN_vkGetDisplayModeProperties2KHR) gpa(instance, "vkGetDisplayModeProperties2KHR");
         table->GetDisplayModePropertiesKHR = (PFN_vkGetDisplayModePropertiesKHR) gpa(instance, "vkGetDisplayModePropertiesKHR");
@@ -3439,10 +4097,12 @@
         table->GetPhysicalDevicePresentRectanglesKHR = (PFN_vkGetPhysicalDevicePresentRectanglesKHR) gpa(instance, "vkGetPhysicalDevicePresentRectanglesKHR");
         table->GetPhysicalDeviceProperties = (PFN_vkGetPhysicalDeviceProperties) gpa(instance, "vkGetPhysicalDeviceProperties");
         table->GetPhysicalDeviceProperties2 = (PFN_vkGetPhysicalDeviceProperties2) gpa(instance, "vkGetPhysicalDeviceProperties2");
+        table->GetPhysicalDeviceQueueFamilyPerformanceQueryPassesKHR = (PFN_vkGetPhysicalDeviceQueueFamilyPerformanceQueryPassesKHR) gpa(instance, "vkGetPhysicalDeviceQueueFamilyPerformanceQueryPassesKHR");
         table->GetPhysicalDeviceQueueFamilyProperties = (PFN_vkGetPhysicalDeviceQueueFamilyProperties) gpa(instance, "vkGetPhysicalDeviceQueueFamilyProperties");
         table->GetPhysicalDeviceQueueFamilyProperties2 = (PFN_vkGetPhysicalDeviceQueueFamilyProperties2) gpa(instance, "vkGetPhysicalDeviceQueueFamilyProperties2");
         table->GetPhysicalDeviceSparseImageFormatProperties = (PFN_vkGetPhysicalDeviceSparseImageFormatProperties) gpa(instance, "vkGetPhysicalDeviceSparseImageFormatProperties");
         table->GetPhysicalDeviceSparseImageFormatProperties2 = (PFN_vkGetPhysicalDeviceSparseImageFormatProperties2) gpa(instance, "vkGetPhysicalDeviceSparseImageFormatProperties2");
+        table->GetPhysicalDeviceSupportedFramebufferMixedSamplesCombinationsNV = (PFN_vkGetPhysicalDeviceSupportedFramebufferMixedSamplesCombinationsNV) gpa(instance, "vkGetPhysicalDeviceSupportedFramebufferMixedSamplesCombinationsNV");
         table->GetPhysicalDeviceSurfaceCapabilities2EXT = (PFN_vkGetPhysicalDeviceSurfaceCapabilities2EXT) gpa(instance, "vkGetPhysicalDeviceSurfaceCapabilities2EXT");
         table->GetPhysicalDeviceSurfaceCapabilities2KHR = (PFN_vkGetPhysicalDeviceSurfaceCapabilities2KHR) gpa(instance, "vkGetPhysicalDeviceSurfaceCapabilities2KHR");
         table->GetPhysicalDeviceSurfaceCapabilitiesKHR = (PFN_vkGetPhysicalDeviceSurfaceCapabilitiesKHR) gpa(instance, "vkGetPhysicalDeviceSurfaceCapabilitiesKHR");
@@ -3453,6 +4113,7 @@
     #endif
         table->GetPhysicalDeviceSurfacePresentModesKHR = (PFN_vkGetPhysicalDeviceSurfacePresentModesKHR) gpa(instance, "vkGetPhysicalDeviceSurfacePresentModesKHR");
         table->GetPhysicalDeviceSurfaceSupportKHR = (PFN_vkGetPhysicalDeviceSurfaceSupportKHR) gpa(instance, "vkGetPhysicalDeviceSurfaceSupportKHR");
+        table->GetPhysicalDeviceToolPropertiesEXT = (PFN_vkGetPhysicalDeviceToolPropertiesEXT) gpa(instance, "vkGetPhysicalDeviceToolPropertiesEXT");
     #ifdef VK_USE_PLATFORM_WAYLAND_KHR
         table->GetPhysicalDeviceWaylandPresentationSupportKHR = (PFN_vkGetPhysicalDeviceWaylandPresentationSupportKHR) gpa(instance, "vkGetPhysicalDeviceWaylandPresentationSupportKHR");
     #endif
@@ -3484,6 +4145,8 @@
         table->AcquireImageANDROID = (PFN_vkAcquireImageANDROID) gpa(device, "vkAcquireImageANDROID");
         table->AcquireNextImage2KHR = (PFN_vkAcquireNextImage2KHR) gpa(device, "vkAcquireNextImage2KHR");
         table->AcquireNextImageKHR = (PFN_vkAcquireNextImageKHR) gpa(device, "vkAcquireNextImageKHR");
+        table->AcquirePerformanceConfigurationINTEL = (PFN_vkAcquirePerformanceConfigurationINTEL) gpa(device, "vkAcquirePerformanceConfigurationINTEL");
+        table->AcquireProfilingLockKHR = (PFN_vkAcquireProfilingLockKHR) gpa(device, "vkAcquireProfilingLockKHR");
         table->AllocateCommandBuffers = (PFN_vkAllocateCommandBuffers) gpa(device, "vkAllocateCommandBuffers");
         table->AllocateDescriptorSets = (PFN_vkAllocateDescriptorSets) gpa(device, "vkAllocateDescriptorSets");
         table->AllocateMemory = (PFN_vkAllocateMemory) gpa(device, "vkAllocateMemory");
@@ -3498,7 +4161,7 @@
         table->CmdBeginQuery = (PFN_vkCmdBeginQuery) gpa(device, "vkCmdBeginQuery");
         table->CmdBeginQueryIndexedEXT = (PFN_vkCmdBeginQueryIndexedEXT) gpa(device, "vkCmdBeginQueryIndexedEXT");
         table->CmdBeginRenderPass = (PFN_vkCmdBeginRenderPass) gpa(device, "vkCmdBeginRenderPass");
-        table->CmdBeginRenderPass2KHR = (PFN_vkCmdBeginRenderPass2KHR) gpa(device, "vkCmdBeginRenderPass2KHR");
+        table->CmdBeginRenderPass2 = (PFN_vkCmdBeginRenderPass2) gpa(device, "vkCmdBeginRenderPass2");
         table->CmdBeginTransformFeedbackEXT = (PFN_vkCmdBeginTransformFeedbackEXT) gpa(device, "vkCmdBeginTransformFeedbackEXT");
         table->CmdBindDescriptorSets = (PFN_vkCmdBindDescriptorSets) gpa(device, "vkCmdBindDescriptorSets");
         table->CmdBindIndexBuffer = (PFN_vkCmdBindIndexBuffer) gpa(device, "vkCmdBindIndexBuffer");
@@ -3526,12 +4189,10 @@
         table->CmdDraw = (PFN_vkCmdDraw) gpa(device, "vkCmdDraw");
         table->CmdDrawIndexed = (PFN_vkCmdDrawIndexed) gpa(device, "vkCmdDrawIndexed");
         table->CmdDrawIndexedIndirect = (PFN_vkCmdDrawIndexedIndirect) gpa(device, "vkCmdDrawIndexedIndirect");
-        table->CmdDrawIndexedIndirectCountAMD = (PFN_vkCmdDrawIndexedIndirectCountAMD) gpa(device, "vkCmdDrawIndexedIndirectCountAMD");
-        table->CmdDrawIndexedIndirectCountKHR = (PFN_vkCmdDrawIndexedIndirectCountKHR) gpa(device, "vkCmdDrawIndexedIndirectCountKHR");
+        table->CmdDrawIndexedIndirectCount = (PFN_vkCmdDrawIndexedIndirectCount) gpa(device, "vkCmdDrawIndexedIndirectCount");
         table->CmdDrawIndirect = (PFN_vkCmdDrawIndirect) gpa(device, "vkCmdDrawIndirect");
         table->CmdDrawIndirectByteCountEXT = (PFN_vkCmdDrawIndirectByteCountEXT) gpa(device, "vkCmdDrawIndirectByteCountEXT");
-        table->CmdDrawIndirectCountAMD = (PFN_vkCmdDrawIndirectCountAMD) gpa(device, "vkCmdDrawIndirectCountAMD");
-        table->CmdDrawIndirectCountKHR = (PFN_vkCmdDrawIndirectCountKHR) gpa(device, "vkCmdDrawIndirectCountKHR");
+        table->CmdDrawIndirectCount = (PFN_vkCmdDrawIndirectCount) gpa(device, "vkCmdDrawIndirectCount");
         table->CmdDrawMeshTasksIndirectCountNV = (PFN_vkCmdDrawMeshTasksIndirectCountNV) gpa(device, "vkCmdDrawMeshTasksIndirectCountNV");
         table->CmdDrawMeshTasksIndirectNV = (PFN_vkCmdDrawMeshTasksIndirectNV) gpa(device, "vkCmdDrawMeshTasksIndirectNV");
         table->CmdDrawMeshTasksNV = (PFN_vkCmdDrawMeshTasksNV) gpa(device, "vkCmdDrawMeshTasksNV");
@@ -3540,13 +4201,13 @@
         table->CmdEndQuery = (PFN_vkCmdEndQuery) gpa(device, "vkCmdEndQuery");
         table->CmdEndQueryIndexedEXT = (PFN_vkCmdEndQueryIndexedEXT) gpa(device, "vkCmdEndQueryIndexedEXT");
         table->CmdEndRenderPass = (PFN_vkCmdEndRenderPass) gpa(device, "vkCmdEndRenderPass");
-        table->CmdEndRenderPass2KHR = (PFN_vkCmdEndRenderPass2KHR) gpa(device, "vkCmdEndRenderPass2KHR");
+        table->CmdEndRenderPass2 = (PFN_vkCmdEndRenderPass2) gpa(device, "vkCmdEndRenderPass2");
         table->CmdEndTransformFeedbackEXT = (PFN_vkCmdEndTransformFeedbackEXT) gpa(device, "vkCmdEndTransformFeedbackEXT");
         table->CmdExecuteCommands = (PFN_vkCmdExecuteCommands) gpa(device, "vkCmdExecuteCommands");
         table->CmdFillBuffer = (PFN_vkCmdFillBuffer) gpa(device, "vkCmdFillBuffer");
         table->CmdInsertDebugUtilsLabelEXT = (PFN_vkCmdInsertDebugUtilsLabelEXT) gpa(device, "vkCmdInsertDebugUtilsLabelEXT");
         table->CmdNextSubpass = (PFN_vkCmdNextSubpass) gpa(device, "vkCmdNextSubpass");
-        table->CmdNextSubpass2KHR = (PFN_vkCmdNextSubpass2KHR) gpa(device, "vkCmdNextSubpass2KHR");
+        table->CmdNextSubpass2 = (PFN_vkCmdNextSubpass2) gpa(device, "vkCmdNextSubpass2");
         table->CmdPipelineBarrier = (PFN_vkCmdPipelineBarrier) gpa(device, "vkCmdPipelineBarrier");
         table->CmdProcessCommandsNVX = (PFN_vkCmdProcessCommandsNVX) gpa(device, "vkCmdProcessCommandsNVX");
         table->CmdPushConstants = (PFN_vkCmdPushConstants) gpa(device, "vkCmdPushConstants");
@@ -3565,7 +4226,11 @@
         table->CmdSetDiscardRectangleEXT = (PFN_vkCmdSetDiscardRectangleEXT) gpa(device, "vkCmdSetDiscardRectangleEXT");
         table->CmdSetEvent = (PFN_vkCmdSetEvent) gpa(device, "vkCmdSetEvent");
         table->CmdSetExclusiveScissorNV = (PFN_vkCmdSetExclusiveScissorNV) gpa(device, "vkCmdSetExclusiveScissorNV");
+        table->CmdSetLineStippleEXT = (PFN_vkCmdSetLineStippleEXT) gpa(device, "vkCmdSetLineStippleEXT");
         table->CmdSetLineWidth = (PFN_vkCmdSetLineWidth) gpa(device, "vkCmdSetLineWidth");
+        table->CmdSetPerformanceMarkerINTEL = (PFN_vkCmdSetPerformanceMarkerINTEL) gpa(device, "vkCmdSetPerformanceMarkerINTEL");
+        table->CmdSetPerformanceOverrideINTEL = (PFN_vkCmdSetPerformanceOverrideINTEL) gpa(device, "vkCmdSetPerformanceOverrideINTEL");
+        table->CmdSetPerformanceStreamMarkerINTEL = (PFN_vkCmdSetPerformanceStreamMarkerINTEL) gpa(device, "vkCmdSetPerformanceStreamMarkerINTEL");
         table->CmdSetSampleLocationsEXT = (PFN_vkCmdSetSampleLocationsEXT) gpa(device, "vkCmdSetSampleLocationsEXT");
         table->CmdSetScissor = (PFN_vkCmdSetScissor) gpa(device, "vkCmdSetScissor");
         table->CmdSetStencilCompareMask = (PFN_vkCmdSetStencilCompareMask) gpa(device, "vkCmdSetStencilCompareMask");
@@ -3602,7 +4267,7 @@
         table->CreateQueryPool = (PFN_vkCreateQueryPool) gpa(device, "vkCreateQueryPool");
         table->CreateRayTracingPipelinesNV = (PFN_vkCreateRayTracingPipelinesNV) gpa(device, "vkCreateRayTracingPipelinesNV");
         table->CreateRenderPass = (PFN_vkCreateRenderPass) gpa(device, "vkCreateRenderPass");
-        table->CreateRenderPass2KHR = (PFN_vkCreateRenderPass2KHR) gpa(device, "vkCreateRenderPass2KHR");
+        table->CreateRenderPass2 = (PFN_vkCreateRenderPass2) gpa(device, "vkCreateRenderPass2");
         table->CreateSampler = (PFN_vkCreateSampler) gpa(device, "vkCreateSampler");
         table->CreateSamplerYcbcrConversion = (PFN_vkCreateSamplerYcbcrConversion) gpa(device, "vkCreateSamplerYcbcrConversion");
         table->CreateSemaphore = (PFN_vkCreateSemaphore) gpa(device, "vkCreateSemaphore");
@@ -3650,9 +4315,10 @@
     #ifdef VK_USE_PLATFORM_ANDROID_KHR
         table->GetAndroidHardwareBufferPropertiesANDROID = (PFN_vkGetAndroidHardwareBufferPropertiesANDROID) gpa(device, "vkGetAndroidHardwareBufferPropertiesANDROID");
     #endif
-        table->GetBufferDeviceAddressEXT = (PFN_vkGetBufferDeviceAddressEXT) gpa(device, "vkGetBufferDeviceAddressEXT");
+        table->GetBufferDeviceAddress = (PFN_vkGetBufferDeviceAddress) gpa(device, "vkGetBufferDeviceAddress");
         table->GetBufferMemoryRequirements = (PFN_vkGetBufferMemoryRequirements) gpa(device, "vkGetBufferMemoryRequirements");
         table->GetBufferMemoryRequirements2 = (PFN_vkGetBufferMemoryRequirements2) gpa(device, "vkGetBufferMemoryRequirements2");
+        table->GetBufferOpaqueCaptureAddress = (PFN_vkGetBufferOpaqueCaptureAddress) gpa(device, "vkGetBufferOpaqueCaptureAddress");
         table->GetCalibratedTimestampsEXT = (PFN_vkGetCalibratedTimestampsEXT) gpa(device, "vkGetCalibratedTimestampsEXT");
         table->GetDescriptorSetLayoutSupport = (PFN_vkGetDescriptorSetLayoutSupport) gpa(device, "vkGetDescriptorSetLayoutSupport");
         table->GetDeviceGroupPeerMemoryFeatures = (PFN_vkGetDeviceGroupPeerMemoryFeatures) gpa(device, "vkGetDeviceGroupPeerMemoryFeatures");
@@ -3662,6 +4328,7 @@
     #endif
         table->GetDeviceGroupSurfacePresentModesKHR = (PFN_vkGetDeviceGroupSurfacePresentModesKHR) gpa(device, "vkGetDeviceGroupSurfacePresentModesKHR");
         table->GetDeviceMemoryCommitment = (PFN_vkGetDeviceMemoryCommitment) gpa(device, "vkGetDeviceMemoryCommitment");
+        table->GetDeviceMemoryOpaqueCaptureAddress = (PFN_vkGetDeviceMemoryOpaqueCaptureAddress) gpa(device, "vkGetDeviceMemoryOpaqueCaptureAddress");
         table->GetDeviceQueue = (PFN_vkGetDeviceQueue) gpa(device, "vkGetDeviceQueue");
         table->GetDeviceQueue2 = (PFN_vkGetDeviceQueue2) gpa(device, "vkGetDeviceQueue2");
         table->GetEventStatus = (PFN_vkGetEventStatus) gpa(device, "vkGetEventStatus");
@@ -3693,18 +4360,24 @@
         table->GetMemoryWin32HandlePropertiesKHR = (PFN_vkGetMemoryWin32HandlePropertiesKHR) gpa(device, "vkGetMemoryWin32HandlePropertiesKHR");
     #endif
         table->GetPastPresentationTimingGOOGLE = (PFN_vkGetPastPresentationTimingGOOGLE) gpa(device, "vkGetPastPresentationTimingGOOGLE");
+        table->GetPerformanceParameterINTEL = (PFN_vkGetPerformanceParameterINTEL) gpa(device, "vkGetPerformanceParameterINTEL");
         table->GetPipelineCacheData = (PFN_vkGetPipelineCacheData) gpa(device, "vkGetPipelineCacheData");
+        table->GetPipelineExecutableInternalRepresentationsKHR = (PFN_vkGetPipelineExecutableInternalRepresentationsKHR) gpa(device, "vkGetPipelineExecutableInternalRepresentationsKHR");
+        table->GetPipelineExecutablePropertiesKHR = (PFN_vkGetPipelineExecutablePropertiesKHR) gpa(device, "vkGetPipelineExecutablePropertiesKHR");
+        table->GetPipelineExecutableStatisticsKHR = (PFN_vkGetPipelineExecutableStatisticsKHR) gpa(device, "vkGetPipelineExecutableStatisticsKHR");
         table->GetQueryPoolResults = (PFN_vkGetQueryPoolResults) gpa(device, "vkGetQueryPoolResults");
         table->GetQueueCheckpointDataNV = (PFN_vkGetQueueCheckpointDataNV) gpa(device, "vkGetQueueCheckpointDataNV");
         table->GetRayTracingShaderGroupHandlesNV = (PFN_vkGetRayTracingShaderGroupHandlesNV) gpa(device, "vkGetRayTracingShaderGroupHandlesNV");
         table->GetRefreshCycleDurationGOOGLE = (PFN_vkGetRefreshCycleDurationGOOGLE) gpa(device, "vkGetRefreshCycleDurationGOOGLE");
         table->GetRenderAreaGranularity = (PFN_vkGetRenderAreaGranularity) gpa(device, "vkGetRenderAreaGranularity");
+        table->GetSemaphoreCounterValue = (PFN_vkGetSemaphoreCounterValue) gpa(device, "vkGetSemaphoreCounterValue");
         table->GetSemaphoreFdKHR = (PFN_vkGetSemaphoreFdKHR) gpa(device, "vkGetSemaphoreFdKHR");
     #ifdef VK_USE_PLATFORM_WIN32_KHR
         table->GetSemaphoreWin32HandleKHR = (PFN_vkGetSemaphoreWin32HandleKHR) gpa(device, "vkGetSemaphoreWin32HandleKHR");
     #endif
         table->GetShaderInfoAMD = (PFN_vkGetShaderInfoAMD) gpa(device, "vkGetShaderInfoAMD");
         table->GetSwapchainCounterEXT = (PFN_vkGetSwapchainCounterEXT) gpa(device, "vkGetSwapchainCounterEXT");
+        table->GetSwapchainGrallocUsage2ANDROID = (PFN_vkGetSwapchainGrallocUsage2ANDROID) gpa(device, "vkGetSwapchainGrallocUsage2ANDROID");
         table->GetSwapchainGrallocUsageANDROID = (PFN_vkGetSwapchainGrallocUsageANDROID) gpa(device, "vkGetSwapchainGrallocUsageANDROID");
         table->GetSwapchainImagesKHR = (PFN_vkGetSwapchainImagesKHR) gpa(device, "vkGetSwapchainImagesKHR");
         table->GetSwapchainStatusKHR = (PFN_vkGetSwapchainStatusKHR) gpa(device, "vkGetSwapchainStatusKHR");
@@ -3717,6 +4390,7 @@
     #ifdef VK_USE_PLATFORM_WIN32_KHR
         table->ImportSemaphoreWin32HandleKHR = (PFN_vkImportSemaphoreWin32HandleKHR) gpa(device, "vkImportSemaphoreWin32HandleKHR");
     #endif
+        table->InitializePerformanceApiINTEL = (PFN_vkInitializePerformanceApiINTEL) gpa(device, "vkInitializePerformanceApiINTEL");
         table->InvalidateMappedMemoryRanges = (PFN_vkInvalidateMappedMemoryRanges) gpa(device, "vkInvalidateMappedMemoryRanges");
         table->MapMemory = (PFN_vkMapMemory) gpa(device, "vkMapMemory");
         table->MergePipelineCaches = (PFN_vkMergePipelineCaches) gpa(device, "vkMergePipelineCaches");
@@ -3726,6 +4400,7 @@
         table->QueueEndDebugUtilsLabelEXT = (PFN_vkQueueEndDebugUtilsLabelEXT) gpa(device, "vkQueueEndDebugUtilsLabelEXT");
         table->QueueInsertDebugUtilsLabelEXT = (PFN_vkQueueInsertDebugUtilsLabelEXT) gpa(device, "vkQueueInsertDebugUtilsLabelEXT");
         table->QueuePresentKHR = (PFN_vkQueuePresentKHR) gpa(device, "vkQueuePresentKHR");
+        table->QueueSetPerformanceConfigurationINTEL = (PFN_vkQueueSetPerformanceConfigurationINTEL) gpa(device, "vkQueueSetPerformanceConfigurationINTEL");
         table->QueueSignalReleaseImageANDROID = (PFN_vkQueueSignalReleaseImageANDROID) gpa(device, "vkQueueSignalReleaseImageANDROID");
         table->QueueSubmit = (PFN_vkQueueSubmit) gpa(device, "vkQueueSubmit");
         table->QueueWaitIdle = (PFN_vkQueueWaitIdle) gpa(device, "vkQueueWaitIdle");
@@ -3735,21 +4410,26 @@
     #ifdef VK_USE_PLATFORM_WIN32_KHR
         table->ReleaseFullScreenExclusiveModeEXT = (PFN_vkReleaseFullScreenExclusiveModeEXT) gpa(device, "vkReleaseFullScreenExclusiveModeEXT");
     #endif
+        table->ReleasePerformanceConfigurationINTEL = (PFN_vkReleasePerformanceConfigurationINTEL) gpa(device, "vkReleasePerformanceConfigurationINTEL");
+        table->ReleaseProfilingLockKHR = (PFN_vkReleaseProfilingLockKHR) gpa(device, "vkReleaseProfilingLockKHR");
         table->ResetCommandBuffer = (PFN_vkResetCommandBuffer) gpa(device, "vkResetCommandBuffer");
         table->ResetCommandPool = (PFN_vkResetCommandPool) gpa(device, "vkResetCommandPool");
         table->ResetDescriptorPool = (PFN_vkResetDescriptorPool) gpa(device, "vkResetDescriptorPool");
         table->ResetEvent = (PFN_vkResetEvent) gpa(device, "vkResetEvent");
         table->ResetFences = (PFN_vkResetFences) gpa(device, "vkResetFences");
-        table->ResetQueryPoolEXT = (PFN_vkResetQueryPoolEXT) gpa(device, "vkResetQueryPoolEXT");
+        table->ResetQueryPool = (PFN_vkResetQueryPool) gpa(device, "vkResetQueryPool");
         table->SetDebugUtilsObjectNameEXT = (PFN_vkSetDebugUtilsObjectNameEXT) gpa(device, "vkSetDebugUtilsObjectNameEXT");
         table->SetDebugUtilsObjectTagEXT = (PFN_vkSetDebugUtilsObjectTagEXT) gpa(device, "vkSetDebugUtilsObjectTagEXT");
         table->SetEvent = (PFN_vkSetEvent) gpa(device, "vkSetEvent");
         table->SetHdrMetadataEXT = (PFN_vkSetHdrMetadataEXT) gpa(device, "vkSetHdrMetadataEXT");
         table->SetLocalDimmingAMD = (PFN_vkSetLocalDimmingAMD) gpa(device, "vkSetLocalDimmingAMD");
+        table->SignalSemaphore = (PFN_vkSignalSemaphore) gpa(device, "vkSignalSemaphore");
         table->TrimCommandPool = (PFN_vkTrimCommandPool) gpa(device, "vkTrimCommandPool");
+        table->UninitializePerformanceApiINTEL = (PFN_vkUninitializePerformanceApiINTEL) gpa(device, "vkUninitializePerformanceApiINTEL");
         table->UnmapMemory = (PFN_vkUnmapMemory) gpa(device, "vkUnmapMemory");
         table->UnregisterObjectsNVX = (PFN_vkUnregisterObjectsNVX) gpa(device, "vkUnregisterObjectsNVX");
         table->UpdateDescriptorSetWithTemplate = (PFN_vkUpdateDescriptorSetWithTemplate) gpa(device, "vkUpdateDescriptorSetWithTemplate");
         table->UpdateDescriptorSets = (PFN_vkUpdateDescriptorSets) gpa(device, "vkUpdateDescriptorSets");
         table->WaitForFences = (PFN_vkWaitForFences) gpa(device, "vkWaitForFences");
+        table->WaitSemaphores = (PFN_vkWaitSemaphores) gpa(device, "vkWaitSemaphores");
     }

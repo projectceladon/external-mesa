@@ -181,7 +181,10 @@ hw_vars["$EuSlicesTotalCount"] = "perf->sys_vars.n_eu_slices"
 hw_vars["$EuSubslicesTotalCount"] = "perf->sys_vars.n_eu_sub_slices"
 hw_vars["$EuThreadsCount"] = "perf->sys_vars.eu_threads_count"
 hw_vars["$SliceMask"] = "perf->sys_vars.slice_mask"
+# subslice_mask is interchangeable with subslice/dual-subslice since Gen12+
+# only has dual subslices which can be assimilated with 16EUs subslices.
 hw_vars["$SubsliceMask"] = "perf->sys_vars.subslice_mask"
+hw_vars["$DualSubsliceMask"] = "perf->sys_vars.subslice_mask"
 hw_vars["$GpuTimestampFrequency"] = "perf->sys_vars.timestamp_frequency"
 hw_vars["$GpuMinFrequency"] = "perf->sys_vars.gt_min_freq"
 hw_vars["$GpuMaxFrequency"] = "perf->sys_vars.gt_max_freq"
@@ -278,7 +281,7 @@ def output_counter_read(gen, set, counter):
         read_eq = counter.get('equation')
 
         c("static " + ret_type)
-        c(counter.read_sym + "(MAYBE_UNUSED struct gen_perf *perf,\n")
+        c(counter.read_sym + "(UNUSED struct gen_perf_config *perf,\n")
         c_indent(len(counter.read_sym) + 1)
         c("const struct gen_perf_query_info *query,\n")
         c("const uint64_t *accumulator)\n")
@@ -313,7 +316,7 @@ def output_counter_max(gen, set, counter):
             ret_type = "uint64_t"
 
         c("static " + ret_type)
-        c(counter.max_sym() + "(struct gen_perf *perf)\n")
+        c(counter.max_sym() + "(struct gen_perf_config *perf)\n")
         c("{")
         c_indent(3)
         output_rpn_equation_code(set, counter, max_eq)
@@ -419,7 +422,7 @@ def generate_register_configs(set):
             c_indent(3)
 
         for register in register_config.findall('register'):
-            c("query->%s[query->n_%s++] = (struct gen_perf_query_register_prog) { .reg = %s, .val = %s };" %
+            c("query->config.%s[query->config.n_%s++] = (struct gen_perf_query_register_prog) { .reg = %s, .val = %s };" %
               (t, t, register.get('address'), register.get('value')))
 
         if availability:
@@ -611,7 +614,7 @@ def main():
     h(textwrap.dedent("""\
         #pragma once
 
-        struct gen_perf;
+        struct gen_perf_config;
 
         """))
 
@@ -692,15 +695,19 @@ def main():
                     .c_offset = 46,
                 """))
 
+            c(".config = {")
+            c_indent(3)
             for reg_type, reg_length in register_lengths.items():
                 c(".{0} = {1}_{2}_{3},".format(reg_type, gen.chipset, set.underscore_name, reg_type))
                 c(".n_{0} = 0, /* Determined at runtime */".format(reg_type))
+            c_outdent(3)
+            c("},")
 
             c_outdent(3)
             c("};\n")
 
             c("\nstatic void\n")
-            c("{0}_register_{1}_counter_query(struct gen_perf *perf)\n".format(gen.chipset, set.underscore_name))
+            c("{0}_register_{1}_counter_query(struct gen_perf_config *perf)\n".format(gen.chipset, set.underscore_name))
             c("{\n")
             c_indent(3)
 
@@ -731,10 +738,10 @@ def main():
             c_outdent(3)
             c("}\n")
 
-        h("void gen_oa_register_queries_" + gen.chipset + "(struct gen_perf *perf);\n")
+        h("void gen_oa_register_queries_" + gen.chipset + "(struct gen_perf_config *perf);\n")
 
         c("\nvoid")
-        c("gen_oa_register_queries_" + gen.chipset + "(struct gen_perf *perf)")
+        c("gen_oa_register_queries_" + gen.chipset + "(struct gen_perf_config *perf)")
         c("{")
         c_indent(3)
 

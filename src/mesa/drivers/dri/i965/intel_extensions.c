@@ -97,6 +97,7 @@ intelInitExtensions(struct gl_context *ctx)
    ctx->Extensions.EXT_blend_func_separate = true;
    ctx->Extensions.EXT_blend_minmax = true;
    ctx->Extensions.EXT_draw_buffers2 = true;
+   ctx->Extensions.EXT_EGL_image_storage = true;
    ctx->Extensions.EXT_float_blend = true;
    ctx->Extensions.EXT_framebuffer_sRGB = true;
    ctx->Extensions.EXT_gpu_program_parameters = true;
@@ -111,6 +112,7 @@ intelInitExtensions(struct gl_context *ctx)
    ctx->Extensions.EXT_texture_env_dot3 = true;
    ctx->Extensions.EXT_texture_filter_anisotropic = true;
    ctx->Extensions.EXT_texture_integer = true;
+   ctx->Extensions.EXT_texture_norm16 = true;
    ctx->Extensions.EXT_texture_shared_exponent = true;
    ctx->Extensions.EXT_texture_snorm = true;
    ctx->Extensions.EXT_texture_sRGB = true;
@@ -143,7 +145,7 @@ intelInitExtensions(struct gl_context *ctx)
    ctx->Extensions.OES_texture_half_float_linear = true;
 
    if (devinfo->gen >= 8)
-      ctx->Const.GLSLVersion = 450;
+      ctx->Const.GLSLVersion = 460;
    else if (devinfo->is_haswell && can_do_pipelined_register_writes(brw->screen))
       ctx->Const.GLSLVersion = 450;
    else if (devinfo->gen >= 7 && can_do_pipelined_register_writes(brw->screen))
@@ -201,6 +203,8 @@ intelInitExtensions(struct gl_context *ctx)
       ctx->Extensions.ARB_texture_gather = true;
       ctx->Extensions.ARB_texture_multisample = true;
       ctx->Extensions.ARB_uniform_buffer_object = true;
+      ctx->Extensions.EXT_gpu_shader4 = true;
+      ctx->Extensions.EXT_texture_shadow_lod = true;
 
       if (ctx->API != API_OPENGL_COMPAT ||
           ctx->Const.AllowHigherCompatVersion)
@@ -274,6 +278,9 @@ intelInitExtensions(struct gl_context *ctx)
             ctx->Extensions.ARB_indirect_parameters = true;
          }
       }
+
+      ctx->Extensions.ARB_gl_spirv = true;
+      ctx->Extensions.ARB_spirv_extensions = true;
    }
 
    if (devinfo->gen >= 8 || devinfo->is_haswell) {
@@ -314,6 +321,11 @@ intelInitExtensions(struct gl_context *ctx)
       /* requires ARB_gpu_shader_int64 */
       ctx->Extensions.ARB_shader_ballot = true;
       ctx->Extensions.ARB_ES3_2_compatibility = true;
+
+      /* Currently only implemented in the scalar backend, so only enable for
+       * Gen8+.  Eventually Gen6+ could be supported.
+       */
+      ctx->Extensions.INTEL_shader_integer_functions2 = true;
    }
 
    if (devinfo->gen >= 9) {
@@ -368,4 +380,6 @@ intelInitExtensions(struct gl_context *ctx)
    ctx->Extensions.EXT_texture_compression_s3tc = true;
    ctx->Extensions.EXT_texture_compression_s3tc_srgb = true;
    ctx->Extensions.ANGLE_texture_compression_dxt = true;
+
+   ctx->Extensions.EXT_demote_to_helper_invocation = true;
 }

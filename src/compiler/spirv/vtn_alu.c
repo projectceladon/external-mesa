@@ -261,6 +261,21 @@ vtn_nir_alu_op_for_spirv_opcode(struct vtn_builder *b,
    case SpvOpBitReverse:            return nir_op_bitfield_reverse;
    case SpvOpBitCount:              return nir_op_bit_count;
 
+   case SpvOpUCountLeadingZerosINTEL: return nir_op_uclz;
+   /* SpvOpUCountTrailingZerosINTEL is handled elsewhere. */
+   case SpvOpAbsISubINTEL:          return nir_op_uabs_isub;
+   case SpvOpAbsUSubINTEL:          return nir_op_uabs_usub;
+   case SpvOpIAddSatINTEL:          return nir_op_iadd_sat;
+   case SpvOpUAddSatINTEL:          return nir_op_uadd_sat;
+   case SpvOpIAverageINTEL:         return nir_op_ihadd;
+   case SpvOpUAverageINTEL:         return nir_op_uhadd;
+   case SpvOpIAverageRoundedINTEL:  return nir_op_irhadd;
+   case SpvOpUAverageRoundedINTEL:  return nir_op_urhadd;
+   case SpvOpISubSatINTEL:          return nir_op_isub_sat;
+   case SpvOpUSubSatINTEL:          return nir_op_usub_sat;
+   case SpvOpIMul32x16INTEL:        return nir_op_imul_32x16;
+   case SpvOpUMul32x16INTEL:        return nir_op_umul_32x16;
+
    /* The ordered / unordered operators need special implementation besides
     * the logical operator to use since they also need to check if operands are
     * ordered.
@@ -377,6 +392,24 @@ handle_rounding_mode(struct vtn_builder *b, struct vtn_value *val, int member,
    }
 }
 
+static void
+handle_no_wrap(struct vtn_builder *b, struct vtn_value *val, int member,
+               const struct vtn_decoration *dec, void *_alu)
+{
+   nir_alu_instr *alu = _alu;
+   switch (dec->decoration) {
+   case SpvDecorationNoSignedWrap:
+      alu->no_signed_wrap = true;
+      break;
+   case SpvDecorationNoUnsignedWrap:
+      alu->no_unsigned_wrap = true;
+      break;
+   default:
+      /* Do nothing. */
+      break;
+   }
+}
+
 void
 vtn_handle_alu(struct vtn_builder *b, SpvOp opcode,
                const uint32_t *w, unsigned count)
@@ -410,7 +443,7 @@ vtn_handle_alu(struct vtn_builder *b, SpvOp opcode,
    switch (opcode) {
    case SpvOpAny:
       if (src[0]->num_components == 1) {
-         val->ssa->def = nir_imov(&b->nb, src[0]);
+         val->ssa->def = nir_mov(&b->nb, src[0]);
       } else {
          nir_op op;
          switch (src[0]->num_components) {
@@ -427,7 +460,7 @@ vtn_handle_alu(struct vtn_builder *b, SpvOp opcode,
 
    case SpvOpAll:
       if (src[0]->num_components == 1) {
-         val->ssa->def = nir_imov(&b->nb, src[0]);
+         val->ssa->def = nir_mov(&b->nb, src[0]);
       } else {
          nir_op op;
          switch (src[0]->num_components) {
@@ -622,6 +655,12 @@ vtn_handle_alu(struct vtn_builder *b, SpvOp opcode,
       break;
    }
 
+   case SpvOpUCountTrailingZerosINTEL:
+      val->ssa->def = nir_umin(&b->nb,
+                               nir_find_lsb(&b->nb, src[0]),
+                               nir_imm_int(&b->nb, 32u));
+      break;
+
    default: {
       bool swap;
       unsigned src_bit_size = glsl_get_bit_size(vtn_src[0]->type);
@@ -649,6 +688,21 @@ vtn_handle_alu(struct vtn_builder *b, SpvOp opcode,
       val->ssa->def = nir_build_alu(&b->nb, op, src[0], src[1], src[2], src[3]);
       break;
    } /* default */
+   }
+
+   switch (opcode) {
+   case SpvOpIAdd:
+   case SpvOpIMul:
+   case SpvOpISub:
+   case SpvOpShiftLeftLogical:
+   case SpvOpSNegate: {
+      nir_alu_instr *alu = nir_instr_as_alu(val->ssa->def->parent_instr);
+      vtn_foreach_decoration(b, val, handle_no_wrap, alu);
+      break;
+   }
+   default:
+      /* Do nothing. */
+      break;
    }
 
    b->nb.exact = b->exact;

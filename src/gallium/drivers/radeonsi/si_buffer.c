@@ -36,8 +36,8 @@ bool si_rings_is_buffer_referenced(struct si_context *sctx,
 	if (sctx->ws->cs_is_buffer_referenced(sctx->gfx_cs, buf, usage)) {
 		return true;
 	}
-	if (radeon_emitted(sctx->dma_cs, 0) &&
-	    sctx->ws->cs_is_buffer_referenced(sctx->dma_cs, buf, usage)) {
+	if (radeon_emitted(sctx->sdma_cs, 0) &&
+	    sctx->ws->cs_is_buffer_referenced(sctx->sdma_cs, buf, usage)) {
 		return true;
 	}
 	return false;
@@ -72,8 +72,8 @@ void *si_buffer_map_sync_with_rings(struct si_context *sctx,
 			busy = true;
 		}
 	}
-	if (radeon_emitted(sctx->dma_cs, 0) &&
-	    sctx->ws->cs_is_buffer_referenced(sctx->dma_cs,
+	if (radeon_emitted(sctx->sdma_cs, 0) &&
+	    sctx->ws->cs_is_buffer_referenced(sctx->sdma_cs,
 						resource->buf, rusage)) {
 		if (usage & PIPE_TRANSFER_DONTBLOCK) {
 			si_flush_dma_cs(sctx, PIPE_FLUSH_ASYNC, NULL);
@@ -91,8 +91,8 @@ void *si_buffer_map_sync_with_rings(struct si_context *sctx,
 			/* We will be wait for the GPU. Wait for any offloaded
 			 * CS flush to complete to avoid busy-waiting in the winsys. */
 			sctx->ws->cs_sync_flush(sctx->gfx_cs);
-			if (sctx->dma_cs)
-				sctx->ws->cs_sync_flush(sctx->dma_cs);
+			if (sctx->sdma_cs)
+				sctx->ws->cs_sync_flush(sctx->sdma_cs);
 		}
 	}
 
@@ -155,7 +155,7 @@ void si_init_resource_fields(struct si_screen *sscreen,
 		 * persistent buffers into GTT to prevent VRAM CPU page faults.
 		 */
 		if (!sscreen->info.kernel_flushes_hdp_before_ib ||
-		    sscreen->info.drm_major == 2)
+		    !sscreen->info.is_amdgpu)
 			res->domains = RADEON_DOMAIN_GTT;
 	}
 
@@ -503,9 +503,9 @@ static void *si_buffer_transfer_map(struct pipe_context *ctx,
 				box->width + (box->x % SI_MAP_BUFFER_ALIGNMENT)));
 		if (staging) {
 			/* Copy the VRAM buffer to the staging buffer. */
-			sctx->dma_copy(ctx, &staging->b.b, 0,
-				       box->x % SI_MAP_BUFFER_ALIGNMENT,
-				       0, 0, resource, 0, box);
+			si_sdma_copy_buffer(sctx, &staging->b.b, resource,
+					    box->x % SI_MAP_BUFFER_ALIGNMENT,
+					    box->x, box->width);
 
 			data = si_buffer_map_sync_with_rings(sctx, staging,
 							     usage & ~PIPE_TRANSFER_UNSYNCHRONIZED);
@@ -590,7 +590,7 @@ static void si_buffer_do_flush_region(struct pipe_context *ctx,
 			       box->x, src_offset, box->width);
 	}
 
-	util_range_add(&buf->valid_buffer_range, box->x,
+	util_range_add(&buf->b.b, &buf->valid_buffer_range, box->x,
 		       box->x + box->width);
 }
 
@@ -637,12 +637,13 @@ static void si_buffer_subdata(struct pipe_context *ctx,
 	struct pipe_box box;
 	uint8_t *map = NULL;
 
+	usage |= PIPE_TRANSFER_WRITE;
+
+	if (!(usage & PIPE_TRANSFER_MAP_DIRECTLY))
+		usage |= PIPE_TRANSFER_DISCARD_RANGE;
+
 	u_box_1d(offset, size, &box);
-	map = si_buffer_transfer_map(ctx, buffer, 0,
-				       PIPE_TRANSFER_WRITE |
-				       PIPE_TRANSFER_DISCARD_RANGE |
-				       usage,
-				       &box, &transfer);
+	map = si_buffer_transfer_map(ctx, buffer, 0, usage, &box, &transfer);
 	if (!map)
 		return;
 
@@ -743,8 +744,8 @@ si_buffer_from_user_memory(struct pipe_screen *screen,
 	buf->domains = RADEON_DOMAIN_GTT;
 	buf->flags = 0;
 	buf->b.is_user_ptr = true;
-	util_range_add(&buf->valid_buffer_range, 0, templ->width0);
-	util_range_add(&buf->b.valid_buffer_range, 0, templ->width0);
+	util_range_add(&buf->b.b, &buf->valid_buffer_range, 0, templ->width0);
+	util_range_add(&buf->b.b, &buf->b.valid_buffer_range, 0, templ->width0);
 
 	/* Convert a user pointer to a buffer. */
 	buf->buf = ws->buffer_from_ptr(ws, user_memory, templ->width0);
@@ -790,13 +791,14 @@ static bool si_resource_commit(struct pipe_context *pctx,
 					       res->buf, RADEON_USAGE_READWRITE)) {
 		si_flush_gfx_cs(ctx, RADEON_FLUSH_ASYNC_START_NEXT_GFX_IB_NOW, NULL);
 	}
-	if (radeon_emitted(ctx->dma_cs, 0) &&
-	    ctx->ws->cs_is_buffer_referenced(ctx->dma_cs,
+	if (radeon_emitted(ctx->sdma_cs, 0) &&
+	    ctx->ws->cs_is_buffer_referenced(ctx->sdma_cs,
 					       res->buf, RADEON_USAGE_READWRITE)) {
 		si_flush_dma_cs(ctx, PIPE_FLUSH_ASYNC, NULL);
 	}
 
-	ctx->ws->cs_sync_flush(ctx->dma_cs);
+	if (ctx->sdma_cs)
+		ctx->ws->cs_sync_flush(ctx->sdma_cs);
 	ctx->ws->cs_sync_flush(ctx->gfx_cs);
 
 	assert(resource->target == PIPE_BUFFER);

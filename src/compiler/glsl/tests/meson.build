@@ -18,18 +18,6 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
-test(
-  'blob_test',
-  executable(
-    'blob_test',
-    'blob_test.c',
-    c_args : [c_vis_args, c_msvc_compat_args, no_override_init_args],
-    include_directories : [inc_common, inc_compiler],
-    link_with : [libglsl],
-  ),
-  suite : ['compiler', 'glsl'],
-)
-
 if with_shader_cache
   test(
     'cache_test',
@@ -111,3 +99,14 @@ test(
   ],
   suite : ['compiler', 'glsl'],
 )
+
+if with_tools.contains('glsl')
+  test(
+    'glsl dump-builder test',
+    glsl_compiler,
+    args : ['--version', '110', '--dump-builder',
+            join_paths(meson.current_source_dir(), 'standalone_dump-builder.frag'),
+           ],
+    suite : ['compiler', 'glsl'],
+  )
+endif

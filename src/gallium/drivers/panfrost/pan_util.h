@@ -1,6 +1,6 @@
 /**************************************************************************
  *
- * Copyright 2019 Collabora
+ * Copyright 2019 Collabora, Ltd.
  * All Rights Reserved.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
@@ -29,6 +29,11 @@
 #define PAN_UTIL_H
 
 #define PAN_DBG_MSGS		0x0001
+#define PAN_DBG_TRACE           0x0002
+#define PAN_DBG_DEQP            0x0004
+#define PAN_DBG_AFBC            0x0008
+#define PAN_DBG_SYNC            0x0010
+#define PAN_DBG_PRECOMPILE      0x0020
 
 extern int pan_debug;
 
