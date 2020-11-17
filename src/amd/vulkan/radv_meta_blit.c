@@ -128,7 +128,7 @@ build_nir_copy_fragment_shader(enum glsl_sampler_dim tex_dim)
 	unsigned swz[] = { 0, (tex_dim == GLSL_SAMPLER_DIM_1D ? 2 : 1), 2 };
 	nir_ssa_def *const tex_pos =
 		nir_swizzle(&b, nir_load_var(&b, tex_pos_in), swz,
-			    (tex_dim == GLSL_SAMPLER_DIM_1D ? 2 : 3), false);
+			    (tex_dim == GLSL_SAMPLER_DIM_1D ? 2 : 3));
 
 	const struct glsl_type *sampler_type =
 		glsl_sampler_type(tex_dim, false, tex_dim != GLSL_SAMPLER_DIM_3D,
@@ -186,7 +186,7 @@ build_nir_copy_fragment_shader_depth(enum glsl_sampler_dim tex_dim)
 	unsigned swz[] = { 0, (tex_dim == GLSL_SAMPLER_DIM_1D ? 2 : 1), 2 };
 	nir_ssa_def *const tex_pos =
 		nir_swizzle(&b, nir_load_var(&b, tex_pos_in), swz,
-			    (tex_dim == GLSL_SAMPLER_DIM_1D ? 2 : 3), false);
+			    (tex_dim == GLSL_SAMPLER_DIM_1D ? 2 : 3));
 
 	const struct glsl_type *sampler_type =
 		glsl_sampler_type(tex_dim, false, tex_dim != GLSL_SAMPLER_DIM_3D,
@@ -244,7 +244,7 @@ build_nir_copy_fragment_shader_stencil(enum glsl_sampler_dim tex_dim)
 	unsigned swz[] = { 0, (tex_dim == GLSL_SAMPLER_DIM_1D ? 2 : 1), 2 };
 	nir_ssa_def *const tex_pos =
 		nir_swizzle(&b, nir_load_var(&b, tex_pos_in), swz,
-			    (tex_dim == GLSL_SAMPLER_DIM_1D ? 2 : 3), false);
+			    (tex_dim == GLSL_SAMPLER_DIM_1D ? 2 : 3));
 
 	const struct glsl_type *sampler_type =
 		glsl_sampler_type(tex_dim, false, tex_dim != GLSL_SAMPLER_DIM_3D,
@@ -660,7 +660,7 @@ void radv_CmdBlitImage(
 							     .baseArrayLayer = dest_array_slice,
 							     .layerCount = 1
 						     },
-					     });
+					     }, NULL);
 			radv_image_view_init(&src_iview, cmd_buffer->device,
 					     &(VkImageViewCreateInfo) {
 						.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
@@ -674,7 +674,7 @@ void radv_CmdBlitImage(
 							.baseArrayLayer = src_array_slice,
 							.layerCount = 1
 						},
-					});
+					}, NULL);
 			meta_emit_blit(cmd_buffer,
 				       src_image, &src_iview, srcImageLayout,
 				       src_offset_0, src_offset_1,
@@ -959,7 +959,27 @@ radv_device_init_meta_blit_color(struct radv_device *device, bool on_demand)
 								.preserveAttachmentCount = 0,
 								.pPreserveAttachments = NULL,
 							},
-							.dependencyCount = 0,
+							.dependencyCount = 2,
+							.pDependencies = (VkSubpassDependency[]) {
+								{
+									.srcSubpass = VK_SUBPASS_EXTERNAL,
+									.dstSubpass = 0,
+									.srcStageMask = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
+									.dstStageMask = VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT,
+									.srcAccessMask = 0,
+									.dstAccessMask = 0,
+									.dependencyFlags = 0
+								},
+								{
+									.srcSubpass = 0,
+									.dstSubpass = VK_SUBPASS_EXTERNAL,
+									.srcStageMask = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
+									.dstStageMask = VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT,
+									.srcAccessMask = 0,
+									.dstAccessMask = 0,
+									.dependencyFlags = 0
+								}
+							},
 						}, &device->meta_state.alloc, &device->meta_state.blit.render_pass[key][j]);
 			if (result != VK_SUCCESS)
 				goto fail;
@@ -1019,7 +1039,27 @@ radv_device_init_meta_blit_depth(struct radv_device *device, bool on_demand)
 							       .preserveAttachmentCount = 0,
 							       .pPreserveAttachments = NULL,
 							},
-						        .dependencyCount = 0,
+							.dependencyCount = 2,
+							.pDependencies = (VkSubpassDependency[]) {
+								{
+									.srcSubpass = VK_SUBPASS_EXTERNAL,
+									.dstSubpass = 0,
+									.srcStageMask = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
+									.dstStageMask = VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT,
+									.srcAccessMask = 0,
+									.dstAccessMask = 0,
+									.dependencyFlags = 0
+								},
+								{
+									.srcSubpass = 0,
+									.dstSubpass = VK_SUBPASS_EXTERNAL,
+									.srcStageMask = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
+									.dstStageMask = VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT,
+									.srcAccessMask = 0,
+									.dstAccessMask = 0,
+									.dependencyFlags = 0
+								}
+							},
 						}, &device->meta_state.alloc, &device->meta_state.blit.depth_only_rp[ds_layout]);
 		if (result != VK_SUCCESS)
 			goto fail;
@@ -1076,7 +1116,28 @@ radv_device_init_meta_blit_stencil(struct radv_device *device, bool on_demand)
 							       .preserveAttachmentCount = 0,
 							       .pPreserveAttachments = NULL,
 						       },
-						       .dependencyCount = 0,
+						       .dependencyCount = 2,
+						       .pDependencies = (VkSubpassDependency[]) {
+								{
+									.srcSubpass = VK_SUBPASS_EXTERNAL,
+									.dstSubpass = 0,
+									.srcStageMask = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
+									.dstStageMask = VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT,
+									.srcAccessMask = 0,
+									.dstAccessMask = 0,
+									.dependencyFlags = 0
+								},
+								{
+									.srcSubpass = 0,
+									.dstSubpass = VK_SUBPASS_EXTERNAL,
+									.srcStageMask = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
+									.dstStageMask = VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT,
+									.srcAccessMask = 0,
+									.dstAccessMask = 0,
+									.dependencyFlags = 0
+								}
+							},
+
 					 }, &device->meta_state.alloc, &device->meta_state.blit.stencil_only_rp[ds_layout]);
 	}
 	if (result != VK_SUCCESS)

@@ -220,14 +220,16 @@ nir_lower_regs_to_ssa_impl(nir_function_impl *impl)
                               nir_metadata_dominance);
    nir_index_local_regs(impl);
 
+   void *dead_ctx = ralloc_context(NULL);
    struct regs_to_ssa_state state;
    state.shader = impl->function->shader;
-   state.values = malloc(impl->reg_alloc * sizeof(*state.values));
+   state.values = ralloc_array(dead_ctx, struct nir_phi_builder_value *,
+                               impl->reg_alloc);
 
    struct nir_phi_builder *phi_build = nir_phi_builder_create(impl);
 
    const unsigned block_set_words = BITSET_WORDS(impl->num_blocks);
-   NIR_VLA(BITSET_WORD, defs, block_set_words);
+   BITSET_WORD *defs = ralloc_array(dead_ctx, BITSET_WORD, block_set_words);
 
    nir_foreach_register(reg, &impl->registers) {
       if (reg->num_array_elems != 0) {
@@ -298,14 +300,14 @@ nir_lower_regs_to_ssa_impl(nir_function_impl *impl)
 
    nir_foreach_register_safe(reg, &impl->registers) {
       if (state.values[reg->index]) {
-         assert(list_empty(&reg->uses));
-         assert(list_empty(&reg->if_uses));
-         assert(list_empty(&reg->defs));
+         assert(list_is_empty(&reg->uses));
+         assert(list_is_empty(&reg->if_uses));
+         assert(list_is_empty(&reg->defs));
          exec_node_remove(&reg->node);
       }
    }
 
-   free(state.values);
+   ralloc_free(dead_ctx);
 
    nir_metadata_preserve(impl, nir_metadata_block_index |
                                nir_metadata_dominance);

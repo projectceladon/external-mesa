@@ -222,7 +222,7 @@ static VAStatus vlVaPostProcBlit(vlVaDriver *drv, vlVaContext *context,
       blit.filter = PIPE_TEX_MIPFILTER_LINEAR;
 
       if (drv->pipe->screen->get_param(drv->pipe->screen,
-                                       PIPE_CAP_PREFER_COMPUTE_BLIT_FOR_MULTIMEDIA))
+                                       PIPE_CAP_PREFER_COMPUTE_FOR_MULTIMEDIA))
          util_compute_blit(drv->pipe, &blit, &context->blit_cs);
       else
          drv->pipe->blit(drv->pipe, &blit);
@@ -353,6 +353,7 @@ vlVaHandleVAProcPipelineParameterBufferType(vlVaDriver *drv, vlVaContext *contex
    dst_region = vlVaRegionDefault(param->output_region, dst_surface, &def_dst_region);
 
    if (context->target->buffer_format != PIPE_FORMAT_NV12 &&
+       context->target->buffer_format != PIPE_FORMAT_P010 &&
        context->target->buffer_format != PIPE_FORMAT_P016)
       return vlVaPostProcCompositor(drv, context, src_region, dst_region,
                                     src, context->target, deinterlace);

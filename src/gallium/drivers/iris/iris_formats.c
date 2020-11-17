@@ -29,7 +29,7 @@
 
 #include "util/bitscan.h"
 #include "util/macros.h"
-#include "util/u_format.h"
+#include "util/format/u_format.h"
 
 #include "iris_resource.h"
 #include "iris_screen.h"
@@ -283,6 +283,8 @@ iris_isl_format_for_pipe_format(enum pipe_format pf)
       [PIPE_FORMAT_ETC2_RG11_UNORM]         = ISL_FORMAT_EAC_RG11,
       [PIPE_FORMAT_ETC2_RG11_SNORM]         = ISL_FORMAT_EAC_SIGNED_RG11,
 
+      [PIPE_FORMAT_FXT1_RGB]                = ISL_FORMAT_FXT1,
+      [PIPE_FORMAT_FXT1_RGBA]               = ISL_FORMAT_FXT1,
 
       [PIPE_FORMAT_ASTC_4x4]                = ISL_FORMAT_ASTC_LDR_2D_4X4_FLT16,
       [PIPE_FORMAT_ASTC_5x4]                = ISL_FORMAT_ASTC_LDR_2D_5X4_FLT16,
@@ -315,6 +317,16 @@ iris_isl_format_for_pipe_format(enum pipe_format pf)
       [PIPE_FORMAT_ASTC_12x12_SRGB]         = ISL_FORMAT_ASTC_LDR_2D_12X12_U8SRGB,
 
       [PIPE_FORMAT_A1B5G5R5_UNORM]          = ISL_FORMAT_A1B5G5R5_UNORM,
+
+      /* We support these so that we know the API expects no alpha channel.
+       * Otherwise, the state tracker would just give us a format with alpha
+       * and we wouldn't know to override the swizzle to 1.
+       */
+      [PIPE_FORMAT_R16G16B16X16_UINT]       = ISL_FORMAT_R16G16B16A16_UINT,
+      [PIPE_FORMAT_R16G16B16X16_SINT]       = ISL_FORMAT_R16G16B16A16_SINT,
+      [PIPE_FORMAT_R32G32B32X32_UINT]       = ISL_FORMAT_R32G32B32A32_UINT,
+      [PIPE_FORMAT_R32G32B32X32_SINT]       = ISL_FORMAT_R32G32B32A32_SINT,
+      [PIPE_FORMAT_R10G10B10X2_SNORM]       = ISL_FORMAT_R10G10B10A2_SNORM,
    };
    assert(pf < PIPE_FORMAT_COUNT);
    return table[pf];
@@ -328,6 +340,11 @@ iris_format_for_usage(const struct gen_device_info *devinfo,
    enum isl_format format = iris_isl_format_for_pipe_format(pformat);
    struct isl_swizzle swizzle = ISL_SWIZZLE_IDENTITY;
 
+   if (format == ISL_FORMAT_UNSUPPORTED)
+      return (struct iris_format_info) { .fmt = format, .swizzle = swizzle };
+
+   const struct isl_format_layout *fmtl = isl_format_get_layout(format);
+
    if (!util_format_is_srgb(pformat)) {
       if (util_format_is_intensity(pformat)) {
          swizzle = ISL_SWIZZLE(RED, RED, RED, RED);
@@ -340,8 +357,8 @@ iris_format_for_usage(const struct gen_device_info *devinfo,
       }
    }
 
-   if (pformat == PIPE_FORMAT_DXT1_RGB ||
-       pformat == PIPE_FORMAT_DXT1_SRGB) {
+   /* When faking RGBX pipe formats with RGBA ISL formats, override alpha. */
+   if (!util_format_has_alpha(pformat) && fmtl->channels.a.type != ISL_VOID) {
       swizzle = ISL_SWIZZLE(RED, GREEN, BLUE, ONE);
    }
 
@@ -383,7 +400,7 @@ iris_format_for_usage(const struct gen_device_info *devinfo,
  * Returns true if the given format is supported for the given usage
  * (PIPE_BIND_*) and sample count.
  */
-boolean
+bool
 iris_is_format_supported(struct pipe_screen *pscreen,
                          enum pipe_format pformat,
                          enum pipe_texture_target target,
@@ -395,8 +412,8 @@ iris_is_format_supported(struct pipe_screen *pscreen,
    const struct gen_device_info *devinfo = &screen->devinfo;
    uint32_t max_samples = devinfo->gen == 8 ? 8 : 16;
 
-   // XXX: msaa max
-   if (sample_count > max_samples || !util_is_power_of_two_or_zero(sample_count))
+   if (sample_count > max_samples ||
+       !util_is_power_of_two_or_zero(sample_count))
       return false;
 
    if (pformat == PIPE_FORMAT_NONE)
@@ -457,11 +474,10 @@ iris_is_format_supported(struct pipe_screen *pscreen,
       /* Dataport doesn't support compression, and we can't resolve an MCS
        * compressed surface.  (Buffer images may have sample count of 0.)
        */
-      supported &= sample_count <= 1;
+      supported &= sample_count == 0;
 
-      // XXX: allow untyped reads
-      supported &= isl_format_supports_typed_reads(devinfo, format) &&
-                   isl_format_supports_typed_writes(devinfo, format);
+      supported &= isl_format_supports_typed_writes(devinfo, format);
+      supported &= isl_has_matching_typed_storage_image_format(devinfo, format);
    }
 
    if (usage & PIPE_BIND_SAMPLER_VIEW) {
@@ -469,15 +485,17 @@ iris_is_format_supported(struct pipe_screen *pscreen,
       if (!is_integer)
          supported &= isl_format_supports_filtering(devinfo, format);
 
-      /* Don't advertise 3-component RGB formats.  This ensures that they
-       * are renderable from an API perspective since the state tracker will
-       * fall back to RGBA or RGBX, which are renderable.  We want to render
-       * internally for copies and blits, even if the application doesn't.
+      /* Don't advertise 3-component RGB formats for non-buffer textures.
+       * This ensures that they are renderable from an API perspective since
+       * the state tracker will fall back to RGBA or RGBX, which are
+       * renderable.  We want to render internally for copies and blits,
+       * even if the application doesn't.
        *
-       * We do need to advertise 32-bit RGB for texture buffers though.
+       * Buffer textures don't need to be renderable, so we support real RGB.
+       * This is useful for PBO upload, and 32-bit RGB support is mandatory.
        */
-      supported &= fmtl->bpb != 24 && fmtl->bpb != 48 &&
-                   (fmtl->bpb != 96 || target == PIPE_BUFFER);
+      if (target != PIPE_BUFFER)
+         supported &= fmtl->bpb != 24 && fmtl->bpb != 48 && fmtl->bpb != 96;
    }
 
    if (usage & PIPE_BIND_VERTEX_BUFFER)
@@ -489,37 +507,13 @@ iris_is_format_supported(struct pipe_screen *pscreen,
                    format == ISL_FORMAT_R32_UINT;
    }
 
-   if (usage & PIPE_BIND_CONSTANT_BUFFER) {
-      // XXX:
-   }
-
-   if (usage & PIPE_BIND_STREAM_OUTPUT) {
-      // XXX:
-   }
-
-   if (usage & PIPE_BIND_CURSOR) {
-      // XXX:
-   }
-
-   if (usage & PIPE_BIND_CUSTOM) {
-      // XXX:
-   }
-
-   if (usage & PIPE_BIND_SHADER_BUFFER) {
-      // XXX:
-   }
-
-   if (usage & PIPE_BIND_COMPUTE_RESOURCE) {
-      // XXX:
-   }
-
-   if (usage & PIPE_BIND_COMMAND_ARGS_BUFFER) {
-      // XXX:
-   }
-
-   if (usage & PIPE_BIND_QUERY_BUFFER) {
-      // XXX:
-   }
+   /* TODO: Support ASTC 5x5 on Gen9 properly.  This means implementing
+    * a complex sampler workaround (see i965's gen9_apply_astc5x5_wa_flush).
+    * Without it, st/mesa will emulate ASTC 5x5 via uncompressed textures.
+    */
+   if (devinfo->gen == 9 && (format == ISL_FORMAT_ASTC_LDR_2D_5X5_FLT16 ||
+                             format == ISL_FORMAT_ASTC_LDR_2D_5X5_U8SRGB))
+      return false;
 
    return supported;
 }

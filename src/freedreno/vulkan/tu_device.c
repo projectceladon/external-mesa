@@ -36,13 +36,13 @@
 #include <unistd.h>
 #include <xf86drm.h>
 
+#include "compiler/glsl_types.h"
 #include "util/debug.h"
 #include "util/disk_cache.h"
-#include "util/strtod.h"
 #include "vk_format.h"
 #include "vk_util.h"
 
-#include "drm/msm_drm.h"
+#include "drm-uapi/msm_drm.h"
 
 static int
 tu_device_get_cache_uuid(uint16_t family, void *uuid)
@@ -257,8 +257,9 @@ tu_physical_device_init(struct tu_physical_device *device,
 
    switch (device->gpu_id) {
    case 630:
-      device->tile_align_w = 32;
-      device->tile_align_h = 32;
+   case 640:
+      device->tile_align_w = 64;
+      device->tile_align_h = 16;
       break;
    default:
       result = vk_errorf(instance, VK_ERROR_INITIALIZATION_FAILED,
@@ -353,6 +354,7 @@ static const struct debug_control tu_debug_options[] = {
    { "startup", TU_DEBUG_STARTUP },
    { "nir", TU_DEBUG_NIR },
    { "ir3", TU_DEBUG_IR3 },
+   { "nobin", TU_DEBUG_NOBIN },
    { NULL, 0 }
 };
 
@@ -430,7 +432,7 @@ tu_CreateInstance(const VkInstanceCreateInfo *pCreateInfo,
       return vk_error(instance, result);
    }
 
-   _mesa_locale_init();
+   glsl_type_singleton_init_or_ref();
 
    VG(VALGRIND_CREATE_MEMPOOL(instance, 0, false));
 
@@ -454,7 +456,7 @@ tu_DestroyInstance(VkInstance _instance,
 
    VG(VALGRIND_DESTROY_MEMPOOL(instance));
 
-   _mesa_locale_fini();
+   glsl_type_singleton_decref();
 
    vk_debug_report_instance_destroy(&instance->debug_report_callbacks);
 
@@ -579,11 +581,11 @@ tu_GetPhysicalDeviceFeatures(VkPhysicalDevice physicalDevice,
       .largePoints = false,
       .alphaToOne = false,
       .multiViewport = false,
-      .samplerAnisotropy = false,
-      .textureCompressionETC2 = false,
-      .textureCompressionASTC_LDR = false,
-      .textureCompressionBC = false,
-      .occlusionQueryPrecise = false,
+      .samplerAnisotropy = true,
+      .textureCompressionETC2 = true,
+      .textureCompressionASTC_LDR = true,
+      .textureCompressionBC = true,
+      .occlusionQueryPrecise = true,
       .pipelineStatisticsQuery = false,
       .vertexPipelineStoresAndAtomics = false,
       .fragmentStoresAndAtomics = false,
@@ -700,7 +702,8 @@ tu_GetPhysicalDeviceProperties(VkPhysicalDevice physicalDevice,
                                VkPhysicalDeviceProperties *pProperties)
 {
    TU_FROM_HANDLE(tu_physical_device, pdevice, physicalDevice);
-   VkSampleCountFlags sample_counts = 0xf;
+   VkSampleCountFlags sample_counts = VK_SAMPLE_COUNT_1_BIT |
+      VK_SAMPLE_COUNT_2_BIT | VK_SAMPLE_COUNT_4_BIT | VK_SAMPLE_COUNT_8_BIT;
 
    /* make sure that the entire descriptor set is addressable with a signed
     * 32-bit int. So the sum of all limits scaled by descriptor size has to
@@ -723,7 +726,7 @@ tu_GetPhysicalDeviceProperties(VkPhysicalDevice physicalDevice,
       .maxImageArrayLayers = (1 << 11),
       .maxTexelBufferElements = 128 * 1024 * 1024,
       .maxUniformBufferRange = UINT32_MAX,
-      .maxStorageBufferRange = UINT32_MAX,
+      .maxStorageBufferRange = MAX_STORAGE_BUFFER_RANGE,
       .maxPushConstantsSize = MAX_PUSH_CONSTANTS_SIZE,
       .maxMemoryAllocationCount = UINT32_MAX,
       .maxSamplerAllocationCount = 64 * 1024,
@@ -783,7 +786,7 @@ tu_GetPhysicalDeviceProperties(VkPhysicalDevice physicalDevice,
       .viewportBoundsRange = { INT16_MIN, INT16_MAX },
       .viewportSubPixelBits = 8,
       .minMemoryMapAlignment = 4096, /* A page */
-      .minTexelBufferOffsetAlignment = 1,
+      .minTexelBufferOffsetAlignment = 64,
       .minUniformBufferOffsetAlignment = 4,
       .minStorageBufferOffsetAlignment = 4,
       .minTexelOffset = -32,
@@ -807,7 +810,7 @@ tu_GetPhysicalDeviceProperties(VkPhysicalDevice physicalDevice,
       .sampledImageStencilSampleCounts = sample_counts,
       .storageImageSampleCounts = VK_SAMPLE_COUNT_1_BIT,
       .maxSampleMaskWords = 1,
-      .timestampComputeAndGraphics = true,
+      .timestampComputeAndGraphics = false, /* FINISHME */
       .timestampPeriod = 1,
       .maxClipDistances = 8,
       .maxCullDistances = 8,
@@ -896,7 +899,7 @@ static const VkQueueFamilyProperties tu_queue_family_properties = {
    .queueFlags =
       VK_QUEUE_GRAPHICS_BIT | VK_QUEUE_COMPUTE_BIT | VK_QUEUE_TRANSFER_BIT,
    .queueCount = 1,
-   .timestampValidBits = 64,
+   .timestampValidBits = 0, /* FINISHME */
    .minImageTransferGranularity = { 1, 1, 1 },
 };
 
@@ -1560,7 +1563,7 @@ tu_GetImageMemoryRequirements(VkDevice _device,
    TU_FROM_HANDLE(tu_image, image, _image);
 
    pMemoryRequirements->memoryTypeBits = 1;
-   pMemoryRequirements->size = image->size;
+   pMemoryRequirements->size = image->layout.size;
    pMemoryRequirements->alignment = image->alignment;
 }
 
@@ -1729,9 +1732,23 @@ tu_CreateEvent(VkDevice _device,
    if (!event)
       return vk_error(device->instance, VK_ERROR_OUT_OF_HOST_MEMORY);
 
+   VkResult result = tu_bo_init_new(device, &event->bo, 0x1000);
+   if (result != VK_SUCCESS)
+      goto fail_alloc;
+
+   result = tu_bo_map(device, &event->bo);
+   if (result != VK_SUCCESS)
+      goto fail_map;
+
    *pEvent = tu_event_to_handle(event);
 
    return VK_SUCCESS;
+
+fail_map:
+   tu_bo_finish(device, &event->bo);
+fail_alloc:
+   vk_free2(&device->alloc, pAllocator, event);
+   return vk_error(device->instance, VK_ERROR_OUT_OF_HOST_MEMORY);
 }
 
 void
@@ -1744,6 +1761,8 @@ tu_DestroyEvent(VkDevice _device,
 
    if (!event)
       return;
+
+   tu_bo_finish(device, &event->bo);
    vk_free2(&device->alloc, pAllocator, event);
 }
 
@@ -1752,7 +1771,7 @@ tu_GetEventStatus(VkDevice _device, VkEvent _event)
 {
    TU_FROM_HANDLE(tu_event, event, _event);
 
-   if (*event->map == 1)
+   if (*(uint64_t*) event->bo.map == 1)
       return VK_EVENT_SET;
    return VK_EVENT_RESET;
 }
@@ -1761,7 +1780,7 @@ VkResult
 tu_SetEvent(VkDevice _device, VkEvent _event)
 {
    TU_FROM_HANDLE(tu_event, event, _event);
-   *event->map = 1;
+   *(uint64_t*) event->bo.map = 1;
 
    return VK_SUCCESS;
 }
@@ -1770,7 +1789,7 @@ VkResult
 tu_ResetEvent(VkDevice _device, VkEvent _event)
 {
    TU_FROM_HANDLE(tu_event, event, _event);
-   *event->map = 0;
+   *(uint64_t*) event->bo.map = 0;
 
    return VK_SUCCESS;
 }
@@ -1872,11 +1891,78 @@ tu_DestroyFramebuffer(VkDevice _device,
    vk_free2(&device->alloc, pAllocator, fb);
 }
 
+static enum a6xx_tex_clamp
+tu6_tex_wrap(VkSamplerAddressMode address_mode, bool *needs_border)
+{
+   switch (address_mode) {
+   case VK_SAMPLER_ADDRESS_MODE_REPEAT:
+      return A6XX_TEX_REPEAT;
+   case VK_SAMPLER_ADDRESS_MODE_MIRRORED_REPEAT:
+      return A6XX_TEX_MIRROR_REPEAT;
+   case VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE:
+      return A6XX_TEX_CLAMP_TO_EDGE;
+   case VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_BORDER:
+      *needs_border = true;
+      return A6XX_TEX_CLAMP_TO_BORDER;
+   case VK_SAMPLER_ADDRESS_MODE_MIRROR_CLAMP_TO_EDGE:
+      /* only works for PoT.. need to emulate otherwise! */
+      return A6XX_TEX_MIRROR_CLAMP;
+   default:
+      unreachable("illegal tex wrap mode");
+      break;
+   }
+}
+
+static enum a6xx_tex_filter
+tu6_tex_filter(VkFilter filter, unsigned aniso)
+{
+   switch (filter) {
+   case VK_FILTER_NEAREST:
+      return A6XX_TEX_NEAREST;
+   case VK_FILTER_LINEAR:
+      return aniso ? A6XX_TEX_ANISO : A6XX_TEX_LINEAR;
+   case VK_FILTER_CUBIC_IMG:
+   default:
+      unreachable("illegal texture filter");
+      break;
+   }
+}
+
 static void
 tu_init_sampler(struct tu_device *device,
                 struct tu_sampler *sampler,
                 const VkSamplerCreateInfo *pCreateInfo)
 {
+   unsigned aniso = pCreateInfo->anisotropyEnable ?
+      util_last_bit(MIN2((uint32_t)pCreateInfo->maxAnisotropy >> 1, 8)) : 0;
+   bool miplinear = (pCreateInfo->mipmapMode == VK_SAMPLER_MIPMAP_MODE_LINEAR);
+   bool needs_border = false;
+
+   sampler->state[0] =
+      COND(miplinear, A6XX_TEX_SAMP_0_MIPFILTER_LINEAR_NEAR) |
+      A6XX_TEX_SAMP_0_XY_MAG(tu6_tex_filter(pCreateInfo->magFilter, aniso)) |
+      A6XX_TEX_SAMP_0_XY_MIN(tu6_tex_filter(pCreateInfo->minFilter, aniso)) |
+      A6XX_TEX_SAMP_0_ANISO(aniso) |
+      A6XX_TEX_SAMP_0_WRAP_S(tu6_tex_wrap(pCreateInfo->addressModeU, &needs_border)) |
+      A6XX_TEX_SAMP_0_WRAP_T(tu6_tex_wrap(pCreateInfo->addressModeV, &needs_border)) |
+      A6XX_TEX_SAMP_0_WRAP_R(tu6_tex_wrap(pCreateInfo->addressModeW, &needs_border)) |
+      A6XX_TEX_SAMP_0_LOD_BIAS(pCreateInfo->mipLodBias);
+   sampler->state[1] =
+      /* COND(!cso->seamless_cube_map, A6XX_TEX_SAMP_1_CUBEMAPSEAMLESSFILTOFF) | */
+      COND(pCreateInfo->unnormalizedCoordinates, A6XX_TEX_SAMP_1_UNNORM_COORDS) |
+      A6XX_TEX_SAMP_1_MIN_LOD(pCreateInfo->minLod) |
+      A6XX_TEX_SAMP_1_MAX_LOD(pCreateInfo->maxLod) |
+      COND(pCreateInfo->compareEnable, A6XX_TEX_SAMP_1_COMPARE_FUNC(pCreateInfo->compareOp));
+   sampler->state[2] = 0;
+   sampler->state[3] = 0;
+
+   /* TODO:
+    * A6XX_TEX_SAMP_1_MIPFILTER_LINEAR_FAR disables mipmapping, but vk has no NONE mipfilter?
+    * border color
+    */
+
+   sampler->needs_border = needs_border;
+   sampler->border = pCreateInfo->borderColor;
 }
 
 VkResult

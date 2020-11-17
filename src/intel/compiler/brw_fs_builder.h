@@ -503,24 +503,29 @@ namespace brw {
             }
          }
 
-         if (cluster_size > 4) {
-            const fs_builder ubld = exec_all().group(4, 0);
-            src_reg left = component(tmp, 3);
-            dst_reg right = horiz_offset(tmp, 4);
+         for (unsigned i = 4;
+              i < MIN2(cluster_size, dispatch_width());
+              i *= 2) {
+            const fs_builder ubld = exec_all().group(i, 0);
+            src_reg left = component(tmp, i - 1);
+            dst_reg right = horiz_offset(tmp, i);
             set_condmod(mod, ubld.emit(opcode, right, left, right));
 
-            if (dispatch_width() > 8) {
-               left = component(tmp, 8 + 3);
-               right = horiz_offset(tmp, 8 + 4);
+            if (dispatch_width() > i * 2) {
+               left = component(tmp, i * 3 - 1);
+               right = horiz_offset(tmp, i * 3);
                set_condmod(mod, ubld.emit(opcode, right, left, right));
             }
-         }
 
-         if (cluster_size > 8 && dispatch_width() > 8) {
-            const fs_builder ubld = exec_all().group(8, 0);
-            src_reg left = component(tmp, 7);
-            dst_reg right = horiz_offset(tmp, 8);
-            set_condmod(mod, ubld.emit(opcode, right, left, right));
+            if (dispatch_width() > i * 4) {
+               left = component(tmp, i * 5 - 1);
+               right = horiz_offset(tmp, i * 5);
+               set_condmod(mod, ubld.emit(opcode, right, left, right));
+
+               left = component(tmp, i * 7 - 1);
+               right = horiz_offset(tmp, i * 7);
+               set_condmod(mod, ubld.emit(opcode, right, left, right));
+            }
          }
       }
 
@@ -594,6 +599,8 @@ namespace brw {
       ALU1(RNDE)
       ALU1(RNDU)
       ALU1(RNDZ)
+      ALU2(ROL)
+      ALU2(ROR)
       ALU2(SAD2)
       ALU2_ACC(SADA2)
       ALU2(SEL)
@@ -710,6 +717,17 @@ namespace brw {
          return inst;
       }
 
+      instruction *
+      UNDEF(const dst_reg &dst) const
+      {
+         assert(dst.file == VGRF);
+         instruction *inst = emit(SHADER_OPCODE_UNDEF,
+                                  retype(dst, BRW_REGISTER_TYPE_UD));
+         inst->size_written = shader->alloc.sizes[dst.nr] * REG_SIZE;
+
+         return inst;
+      }
+
       backend_shader *shader;
 
       /**
@@ -718,8 +736,7 @@ namespace brw {
       src_reg
       fix_byte_src(const src_reg &src) const
       {
-         if ((shader->devinfo->gen < 11 && !shader->devinfo->is_geminilake) ||
-             type_sz(src.type) != 1)
+         if (shader->devinfo->gen < 11 || type_sz(src.type) != 1)
             return src;
 
          dst_reg temp = vgrf(src.type == BRW_REGISTER_TYPE_UB ?

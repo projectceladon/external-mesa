@@ -25,7 +25,7 @@
 #include "pipe/p_defines.h"
 #include "util/u_blit.h"
 #include "util/u_memory.h"
-#include "util/u_format.h"
+#include "util/format/u_format.h"
 #include "util/u_inlines.h"
 #include "util/u_surface.h"
 #include "util/u_transfer_helper.h"
@@ -284,7 +284,7 @@ vc4_resource_destroy(struct pipe_screen *pscreen,
         free(rsc);
 }
 
-static boolean
+static bool
 vc4_resource_get_handle(struct pipe_screen *pscreen,
                         struct pipe_context *pctx,
                         struct pipe_resource *prsc,
@@ -315,7 +315,7 @@ vc4_resource_get_handle(struct pipe_screen *pscreen,
                          * control node was used for pl111.
                          */
                         fprintf(stderr, "flink unsupported with pl111\n");
-                        return FALSE;
+                        return false;
                 }
 
                 return vc4_bo_flink(rsc->bo, &whandle->handle);
@@ -325,7 +325,7 @@ vc4_resource_get_handle(struct pipe_screen *pscreen,
                         return renderonly_get_handle(rsc->scanout, whandle);
                 }
                 whandle->handle = rsc->bo->handle;
-                return TRUE;
+                return true;
         case WINSYS_HANDLE_TYPE_FD:
                 /* FDs are cross-device, so we can export directly from vc4.
                  */
@@ -333,7 +333,7 @@ vc4_resource_get_handle(struct pipe_screen *pscreen,
                 return whandle->handle != -1;
         }
 
-        return FALSE;
+        return false;
 }
 
 static void

@@ -30,10 +30,28 @@ LOCAL_SRC_FILES := \
 
 LOCAL_MODULE := libmesa_pipe_virgl
 
+LOCAL_MODULE_CLASS := STATIC_LIBRARIES
+intermediates := $(call local-generated-sources-dir)
+prebuilt_intermediates := $(MESA_TOP)/prebuilt-intermediates
+
+LOCAL_GENERATED_SOURCES := $(intermediates)/virgl/virgl_driinfo.h
+
+GEN_DRIINFO_INPUTS := \
+	$(MESA_TOP)/src/gallium/auxiliary/pipe-loader/driinfo_gallium.h \
+	$(LOCAL_PATH)/virgl_driinfo.h.in
+
+MERGE_DRIINFO := $(MESA_TOP)/src/util/merge_driinfo.py
+
+$(intermediates)/virgl/virgl_driinfo.h: $(prebuilt_intermediates)/virgl/virgl_driinfo.h
+	@mkdir -p $(dir $@)
+	@cp -f $< $@
+
+LOCAL_EXPORT_C_INCLUDE_DIRS := $(intermediates)
+
 include $(GALLIUM_COMMON_MK)
 include $(BUILD_STATIC_LIBRARY)
 
 ifneq ($(HAVE_GALLIUM_VIRGL),)
 GALLIUM_TARGET_DRIVERS += virtio_gpu
-$(eval GALLIUM_LIBS += $(LOCAL_MODULE) libmesa_winsys_virgl libmesa_winsys_virgl_vtest)
+$(eval GALLIUM_LIBS += $(LOCAL_MODULE) libmesa_winsys_virgl_common libmesa_winsys_virgl libmesa_winsys_virgl_vtest)
 endif

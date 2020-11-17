@@ -43,10 +43,12 @@ $(intermediates)/dummy.c:
 
 LOCAL_GENERATED_SOURCES += $(addprefix $(intermediates)/, git_sha1.h)
 
-$(intermediates)/git_sha1.h: $(wildcard $(MESA_TOP)/.git/logs/HEAD)
+.KATI_RESTAT: $(intermediates)/git_sha1.h
+$(intermediates)/git_sha1.h: PRIVATE_SCRIPT := $(MESA_PYTHON2) $(MESA_TOP)/bin/git_sha1_gen.py
+$(intermediates)/git_sha1.h: $(wildcard $(MESA_TOP)/.git/logs/HEAD) $(MESA_TOP)/bin/git_sha1_gen.py
 	@mkdir -p $(dir $@)
 	@echo "GIT-SHA1: $(PRIVATE_MODULE) <= git"
-	$(hide) $(MESA_PYTHON2) $(MESA_TOP)/bin/git_sha1_gen.py --output $@
+	$(hide) $(PRIVATE_SCRIPT) --output $@
 
 LOCAL_EXPORT_C_INCLUDE_DIRS := $(intermediates)
 

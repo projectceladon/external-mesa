@@ -46,14 +46,6 @@ cc_library_static {
     },
 }
 
-cc_binary_host {
-    name: "mesa_gen_matypes",
-    defaults: ["mesa_common_defaults"],
-    srcs: ["x86/gen_matypes.c"],
-    header_libs: ["mesa_mapi_headers"],
-    compile_multilib: "32",
-}
-
 cc_library_static {
     name: "libmesa_sse41",
     defaults: ["mesa_common_defaults"],

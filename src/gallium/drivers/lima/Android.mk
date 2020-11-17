@@ -31,12 +31,12 @@ LOCAL_SRC_FILES := \
 	ir/gp/lower.c \
 	ir/gp/nir.c \
 	ir/gp/node.c \
-	ir/gp/physical_regalloc.c \
+	ir/gp/regalloc.c \
 	ir/gp/reduce_scheduler.c \
 	ir/gp/scheduler.c \
-	ir/gp/value_regalloc.c \
 	ir/lima_ir.h \
 	ir/lima_nir_lower_uniform_to_scalar.c \
+	ir/lima_nir_split_load_input.c \
 	ir/pp/codegen.c \
 	ir/pp/codegen.h \
 	ir/pp/disasm.c \
@@ -47,6 +47,7 @@ LOCAL_SRC_FILES := \
 	ir/pp/node_to_instr.c \
 	ir/pp/ppir.h \
 	ir/pp/regalloc.c \
+	ir/pp/liveness.c \
 	ir/pp/scheduler.c \
 	lima_bo.c \
 	lima_bo.h \
@@ -55,6 +56,8 @@ LOCAL_SRC_FILES := \
 	lima_draw.c \
 	lima_fence.c \
 	lima_fence.h \
+	lima_parser.c \
+	lima_parser.h \
 	lima_program.c \
 	lima_program.h \
 	lima_query.c \
@@ -67,16 +70,31 @@ LOCAL_SRC_FILES := \
 	lima_submit.h \
 	lima_texture.c \
 	lima_texture.h \
-	lima_tiling.c \
-	lima_tiling.h \
 	lima_util.c \
-	lima_util.h
+	lima_util.h \
+	lima_format.c \
+	lima_format.h
 
 LOCAL_MODULE := libmesa_pipe_lima
 
 LOCAL_SHARED_LIBRARIES := libdrm
 
-LOCAL_STATIC_LIBRARIES := libmesa_nir
+LOCAL_STATIC_LIBRARIES := \
+	libmesa_nir \
+	libpanfrost_shared \
+
+LOCAL_MODULE_CLASS := STATIC_LIBRARIES
+
+intermediates := $(call local-generated-sources-dir)
+prebuilt_intermediates := $(MESA_TOP)/prebuilt-intermediates
+
+$(intermediates)/lima_nir_algebraic.c: $(prebuilt_intermediates)/lima/lima_nir_algebraic.c
+	@echo "target Generated: $(PRIVATE_MODULE) <= $(notdir $(@))"
+	@mkdir -p $(dir $@)
+	@cp -f $< $@
+
+LOCAL_GENERATED_SOURCES := \
+	$(intermediates)/lima_nir_algebraic.c \
 
 include $(GALLIUM_COMMON_MK)
 include $(BUILD_STATIC_LIBRARY)

@@ -155,7 +155,8 @@ gather_vars_written(struct copy_prop_var_state *state,
                               nir_var_shader_temp |
                               nir_var_function_temp |
                               nir_var_mem_ssbo |
-                              nir_var_mem_shared;
+                              nir_var_mem_shared |
+                              nir_var_mem_global;
             continue;
          }
 
@@ -164,11 +165,17 @@ gather_vars_written(struct copy_prop_var_state *state,
 
          nir_intrinsic_instr *intrin = nir_instr_as_intrinsic(instr);
          switch (intrin->intrinsic) {
-         case nir_intrinsic_barrier:
+         case nir_intrinsic_control_barrier:
          case nir_intrinsic_memory_barrier:
             written->modes |= nir_var_shader_out |
                               nir_var_mem_ssbo |
-                              nir_var_mem_shared;
+                              nir_var_mem_shared |
+                              nir_var_mem_global;
+            break;
+
+         case nir_intrinsic_scoped_memory_barrier:
+            if (nir_intrinsic_memory_semantics(intrin) & NIR_MEMORY_ACQUIRE)
+               written->modes |= nir_intrinsic_memory_modes(intrin);
             break;
 
          case nir_intrinsic_emit_vertex:
@@ -433,9 +440,7 @@ load_element_from_ssa_entry_value(struct copy_prop_var_state *state,
                                   nir_builder *b, nir_intrinsic_instr *intrin,
                                   struct value *value, unsigned index)
 {
-   const struct glsl_type *type = entry->dst->type;
-   unsigned num_components = glsl_get_vector_elements(type);
-   assert(index < num_components);
+   assert(index < glsl_get_vector_elements(entry->dst->type));
 
    /* We don't have the element available, so let the instruction do the work. */
    if (!entry->src.ssa.def[index])
@@ -785,7 +790,8 @@ copy_prop_vars_block(struct copy_prop_var_state *state,
                                          nir_var_shader_temp |
                                          nir_var_function_temp |
                                          nir_var_mem_ssbo |
-                                         nir_var_mem_shared);
+                                         nir_var_mem_shared |
+                                         nir_var_mem_global);
          if (debug) dump_copy_entries(copies);
          continue;
       }
@@ -795,13 +801,40 @@ copy_prop_vars_block(struct copy_prop_var_state *state,
 
       nir_intrinsic_instr *intrin = nir_instr_as_intrinsic(instr);
       switch (intrin->intrinsic) {
-      case nir_intrinsic_barrier:
+      case nir_intrinsic_control_barrier:
       case nir_intrinsic_memory_barrier:
          if (debug) dump_instr(instr);
 
          apply_barrier_for_modes(copies, nir_var_shader_out |
                                          nir_var_mem_ssbo |
-                                         nir_var_mem_shared);
+                                         nir_var_mem_shared |
+                                         nir_var_mem_global);
+         break;
+
+      case nir_intrinsic_memory_barrier_buffer:
+         if (debug) dump_instr(instr);
+
+         apply_barrier_for_modes(copies, nir_var_mem_ssbo |
+                                         nir_var_mem_global);
+         break;
+
+      case nir_intrinsic_memory_barrier_shared:
+         if (debug) dump_instr(instr);
+
+         apply_barrier_for_modes(copies, nir_var_mem_shared);
+         break;
+
+      case nir_intrinsic_memory_barrier_tcs_patch:
+         if (debug) dump_instr(instr);
+
+         apply_barrier_for_modes(copies, nir_var_shader_out);
+         break;
+
+      case nir_intrinsic_scoped_memory_barrier:
+         if (debug) dump_instr(instr);
+
+         if (nir_intrinsic_memory_semantics(intrin) & NIR_MEMORY_ACQUIRE)
+            apply_barrier_for_modes(copies, nir_intrinsic_memory_modes(intrin));
          break;
 
       case nir_intrinsic_emit_vertex:
@@ -813,6 +846,9 @@ copy_prop_vars_block(struct copy_prop_var_state *state,
 
       case nir_intrinsic_load_deref: {
          if (debug) dump_instr(instr);
+
+         if (nir_intrinsic_access(intrin) & ACCESS_VOLATILE)
+            break;
 
          nir_deref_instr *src = nir_src_as_deref(intrin->src[0]);
 
@@ -894,6 +930,9 @@ copy_prop_vars_block(struct copy_prop_var_state *state,
       case nir_intrinsic_store_deref: {
          if (debug) dump_instr(instr);
 
+         if (nir_intrinsic_access(intrin) & ACCESS_VOLATILE)
+            break;
+
          nir_deref_instr *dst = nir_src_as_deref(intrin->src[0]);
          assert(glsl_type_is_vector_or_scalar(dst->type));
 
@@ -937,6 +976,10 @@ copy_prop_vars_block(struct copy_prop_var_state *state,
 
       case nir_intrinsic_copy_deref: {
          if (debug) dump_instr(instr);
+
+         if ((nir_intrinsic_src_access(intrin) & ACCESS_VOLATILE) ||
+             (nir_intrinsic_dst_access(intrin) & ACCESS_VOLATILE))
+            break;
 
          nir_deref_instr *dst = nir_src_as_deref(intrin->src[0]);
          nir_deref_instr *src = nir_src_as_deref(intrin->src[1]);
@@ -989,6 +1032,14 @@ copy_prop_vars_block(struct copy_prop_var_state *state,
             };
          }
 
+         nir_variable *src_var = nir_deref_instr_get_variable(src);
+         if (src_var && src_var->data.cannot_coalesce) {
+            /* The source cannot be coaleseced, which means we can't propagate
+             * this copy.
+             */
+            break;
+         }
+
          struct copy_entry *dst_entry =
             get_entry_and_kill_aliases(copies, dst, full_mask);
          value_set_from_value(&dst_entry->src, &value, 0, full_mask);
@@ -1006,6 +1057,9 @@ copy_prop_vars_block(struct copy_prop_var_state *state,
       case nir_intrinsic_deref_atomic_exchange:
       case nir_intrinsic_deref_atomic_comp_swap:
          if (debug) dump_instr(instr);
+
+         if (nir_intrinsic_access(intrin) & ACCESS_VOLATILE)
+            break;
 
          nir_deref_instr *dst = nir_src_as_deref(intrin->src[0]);
          unsigned num_components = glsl_get_vector_elements(dst->type);

@@ -279,6 +279,14 @@ enum quniform_contents {
          * L2T cache will effectively be the shared memory area.
          */
         QUNIFORM_SHARED_OFFSET,
+
+        /**
+         * Returns the number of layers in the framebuffer.
+         *
+         * This is used to cap gl_Layer in geometry shaders to avoid
+         * out-of-bounds accesses into the tile state during binning.
+         */
+        QUNIFORM_FB_LAYERS,
 };
 
 static inline uint32_t v3d_unit_data_create(uint32_t unit, uint32_t value)
@@ -329,6 +337,7 @@ struct v3d_key {
                 bool clamp_r:1;
         } tex[V3D_MAX_TEXTURE_SAMPLERS];
         uint8_t ucp_enables;
+        bool is_last_geometry_stage;
 };
 
 struct v3d_fs_key {
@@ -355,6 +364,15 @@ struct v3d_fs_key {
          */
         uint8_t int_color_rb;
         uint8_t uint_color_rb;
+
+        /* Color format information per render target. Only set when logic
+         * operations are enabled.
+         */
+        struct {
+                enum pipe_format format;
+                const uint8_t *swizzle;
+        } color_fmt[V3D_MAX_DRAW_BUFFERS];
+
         uint8_t alpha_test_func;
         uint8_t logicop_func;
         uint32_t point_sprite_mask;
@@ -362,11 +380,21 @@ struct v3d_fs_key {
         struct pipe_rt_blend_state blend;
 };
 
+struct v3d_gs_key {
+        struct v3d_key base;
+
+        struct v3d_varying_slot used_outputs[V3D_MAX_FS_INPUTS];
+        uint8_t num_used_outputs;
+
+        bool is_coord;
+        bool per_vertex_point_size;
+};
+
 struct v3d_vs_key {
         struct v3d_key base;
 
-        struct v3d_varying_slot fs_inputs[V3D_MAX_FS_INPUTS];
-        uint8_t num_fs_inputs;
+        struct v3d_varying_slot used_outputs[V3D_MAX_ANY_STAGE_INPUTS];
+        uint8_t num_used_outputs;
 
         bool is_coord;
         bool per_vertex_point_size;
@@ -495,8 +523,8 @@ struct v3d_compile {
         struct qreg *inputs;
         struct qreg *outputs;
         bool msaa_per_sample_output;
-        struct qreg color_reads[V3D_MAX_SAMPLES];
-        struct qreg sample_colors[V3D_MAX_SAMPLES];
+        struct qreg color_reads[V3D_MAX_DRAW_BUFFERS * V3D_MAX_SAMPLES * 4];
+        struct qreg sample_colors[V3D_MAX_DRAW_BUFFERS * V3D_MAX_SAMPLES * 4];
         uint32_t inputs_array_size;
         uint32_t outputs_array_size;
         uint32_t uniforms_array_size;
@@ -513,6 +541,7 @@ struct v3d_compile {
 
         bool uses_center_w;
         bool writes_z;
+        bool uses_implicit_point_line_varyings;
 
         /* State for whether we're executing on each channel currently.  0 if
          * yes, otherwise a block number + 1 that the channel jumped to.
@@ -542,6 +571,7 @@ struct v3d_compile {
         int local_invocation_index_bits;
 
         uint8_t vattr_sizes[V3D_MAX_VS_INPUTS / 4];
+        uint8_t gs_input_sizes[V3D_MAX_GS_INPUTS];
         uint32_t vpm_output_size;
 
         /* Size in bytes of registers that have been spilled. This is how much
@@ -576,6 +606,7 @@ struct v3d_compile {
         struct pipe_shader_state *shader_state;
         struct v3d_key *key;
         struct v3d_fs_key *fs_key;
+        struct v3d_gs_key *gs_key;
         struct v3d_vs_key *vs_key;
 
         /* Live ranges of temps. */
@@ -603,6 +634,7 @@ struct v3d_compile {
         uint64_t *qpu_insts;
         uint32_t qpu_inst_count;
         uint32_t qpu_inst_size;
+        uint32_t qpu_inst_stalled_count;
 
         /* For the FS, the number of varying inputs not counting the
          * point/line varyings payload
@@ -624,7 +656,12 @@ struct v3d_compile {
         struct qinst *last_thrsw;
         bool last_thrsw_at_top_level;
 
+        bool emitted_tlb_load;
+        bool lock_scoreboard_on_first_thrsw;
+
         bool failed;
+
+        bool tmu_dirty_rcl;
 };
 
 struct v3d_uniform_list {
@@ -644,6 +681,8 @@ struct v3d_prog_data {
          * after-final-THRSW state.
          */
         bool single_seg;
+
+        bool tmu_dirty_rcl;
 };
 
 struct v3d_vs_prog_data {
@@ -669,6 +708,36 @@ struct v3d_vs_prog_data {
         uint8_t vcm_cache_size;
 };
 
+struct v3d_gs_prog_data {
+        struct v3d_prog_data base;
+
+        /* Whether the program reads gl_PrimitiveIDIn */
+        bool uses_pid;
+
+        /* Number of components read from each input varying. */
+        uint8_t input_sizes[V3D_MAX_GS_INPUTS / 4];
+
+        /* Number of inputs */
+        uint8_t num_inputs;
+        struct v3d_varying_slot input_slots[V3D_MAX_GS_INPUTS];
+
+        /* Total number of components written, for the shader state record. */
+        uint32_t vpm_output_size;
+
+        /* Maximum SIMD dispatch width to not exceed VPM output size limits
+         * in the geometry shader. Notice that the final dispatch width has to
+         * be decided at draw time and could be lower based on the VPM pressure
+         * added by other shader stages.
+         */
+        uint8_t simd_width;
+
+        /* Output primitive type */
+        uint8_t out_prim_type;
+
+        /* Number of GS invocations */
+        uint8_t num_invocations;
+};
+
 struct v3d_fs_prog_data {
         struct v3d_prog_data base;
 
@@ -689,6 +758,8 @@ struct v3d_fs_prog_data {
         bool writes_z;
         bool disable_ez;
         bool uses_center_w;
+        bool uses_implicit_point_line_varyings;
+        bool lock_scoreboard_on_first_thrsw;
 };
 
 struct v3d_compute_prog_data {
@@ -702,13 +773,6 @@ vir_has_uniform(struct qinst *inst)
 {
         return inst->uniform != ~0;
 }
-
-/* Special nir_load_input intrinsic index for loading the current TLB
- * destination color.
- */
-#define V3D_NIR_TLB_COLOR_READ_INPUT		2000000000
-
-#define V3D_NIR_MS_MASK_OUTPUT			2000000000
 
 extern const nir_shader_compiler_options v3d_nir_options;
 
@@ -797,6 +861,7 @@ bool vir_opt_small_immediates(struct v3d_compile *c);
 bool vir_opt_vpm(struct v3d_compile *c);
 void v3d_nir_lower_blend(nir_shader *s, struct v3d_compile *c);
 void v3d_nir_lower_io(nir_shader *s, struct v3d_compile *c);
+void v3d_nir_lower_logic_ops(nir_shader *s, struct v3d_compile *c);
 void v3d_nir_lower_scratch(nir_shader *s);
 void v3d_nir_lower_txf_ms(nir_shader *s, struct v3d_compile *c);
 void v3d_nir_lower_image_load_store(nir_shader *s);
@@ -816,6 +881,9 @@ struct qpu_reg *v3d_register_allocate(struct v3d_compile *c, bool *spilled);
 bool vir_init_reg_sets(struct v3d_compiler *compiler);
 
 bool v3d_gl_format_is_return_32(GLenum format);
+
+uint32_t
+v3d_get_op_for_atomic_add(nir_intrinsic_instr *instr, unsigned src);
 
 static inline bool
 quniform_contents_is_texture_p0(enum quniform_contents contents)
@@ -981,8 +1049,13 @@ VIR_A_ALU0(TIDX)
 VIR_A_ALU0(EIDX)
 VIR_A_ALU1(LDVPMV_IN)
 VIR_A_ALU1(LDVPMV_OUT)
+VIR_A_ALU1(LDVPMD_IN)
+VIR_A_ALU1(LDVPMD_OUT)
+VIR_A_ALU2(LDVPMG_IN)
+VIR_A_ALU2(LDVPMG_OUT)
 VIR_A_ALU0(TMUWT)
 
+VIR_A_ALU0(IID)
 VIR_A_ALU0(FXCD)
 VIR_A_ALU0(XCD)
 VIR_A_ALU0(FYCD)
@@ -1072,6 +1145,30 @@ vir_UMUL(struct v3d_compile *c, struct qreg src0, struct qreg src1)
 {
         vir_MULTOP(c, src0, src1);
         return vir_UMUL24(c, src0, src1);
+}
+
+static inline struct qreg
+vir_TLBU_COLOR_READ(struct v3d_compile *c, uint32_t config)
+{
+        assert(c->devinfo->ver >= 41); /* XXX */
+        assert((config & 0xffffff00) == 0xffffff00);
+
+        struct qinst *ldtlb = vir_add_inst(V3D_QPU_A_NOP, c->undef,
+                                           c->undef, c->undef);
+        ldtlb->qpu.sig.ldtlbu = true;
+        ldtlb->uniform = vir_get_uniform_index(c, QUNIFORM_CONSTANT, config);
+        return vir_emit_def(c, ldtlb);
+}
+
+static inline struct qreg
+vir_TLB_COLOR_READ(struct v3d_compile *c)
+{
+        assert(c->devinfo->ver >= 41); /* XXX */
+
+        struct qinst *ldtlb = vir_add_inst(V3D_QPU_A_NOP, c->undef,
+                                           c->undef, c->undef);
+        ldtlb->qpu.sig.ldtlb = true;
+        return vir_emit_def(c, ldtlb);
 }
 
 /*
