@@ -813,6 +813,27 @@ st_link_nir(struct gl_context *ctx,
 
    st_lower_patch_vertices_in(shader_program);
 
+   struct shader_info *prev_info = NULL;
+
+   for (unsigned i = 0; i < MESA_SHADER_STAGES; i++) {
+      struct gl_linked_shader *shader = shader_program->_LinkedShaders[i];
+      struct shader_info *info = &shader->Program->nir->info;
+
+      st_glsl_to_nir_post_opts(st, shader->Program, shader_program);
+
+      if (prev_info &&
+          ctx->Const.ShaderCompilerOptions[shader->Stage].NirOptions->unify_interfaces) {
+         prev_info->outputs_written |= info->inputs_read &
+            ~(VARYING_BIT_TESS_LEVEL_INNER | VARYING_BIT_TESS_LEVEL_OUTER);
+         info->inputs_read |= prev_info->outputs_written &
+            ~(VARYING_BIT_TESS_LEVEL_INNER | VARYING_BIT_TESS_LEVEL_OUTER);
+
+         prev_info->patch_outputs_written |= info->patch_inputs_read;
+         info->patch_inputs_read |= prev_info->patch_outputs_written;
+      }
+      prev_info = info;
+   }
+
    for (unsigned i = 0; i < MESA_SHADER_STAGES; i++) {
       struct gl_linked_shader *shader = shader_program->_LinkedShaders[i];
       if (shader == NULL)
