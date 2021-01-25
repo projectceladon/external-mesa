@@ -31,6 +31,9 @@ include $(CLEAR_VARS)
 LOCAL_SRC_FILES := \
 	$(C_SOURCES)
 
+LOCAL_STATIC_LIBRARIES := \
+        libmesa_nir
+
 LOCAL_MODULE := libmesa_pipe_softpipe
 
 include $(GALLIUM_COMMON_MK)
