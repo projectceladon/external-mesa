@@ -257,6 +257,8 @@ struct dri2_egl_display
    GRALLOC1_PFN_LOCK_FLEX pfn_lockflex;
    GRALLOC1_PFN_GET_FORMAT pfn_getFormat;
    GRALLOC1_PFN_UNLOCK pfn_unlock;
+   GRALLOC1_PFN_IMPORT_BUFFER pfn_importBuffer;
+   GRALLOC1_PFN_RELEASE pfn_release;
 #endif
 #endif
 
