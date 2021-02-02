@@ -75,6 +75,7 @@ endif
 
 ifeq ($(strip $(BOARD_USES_GRALLOC1)),true)
 	LOCAL_CFLAGS += -DHAVE_GRALLOC1
+	LOCAL_C_INCLUDES += $(INTEL_MINIGBM)/cros_gralloc
 endif
 
 ifeq ($(filter $(MESA_ANDROID_MAJOR_VERSION), 4 5 6 7),)
