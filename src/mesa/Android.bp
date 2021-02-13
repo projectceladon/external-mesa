@@ -20,6 +20,15 @@
 // FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 // DEALINGS IN THE SOFTWARE.
 
+package {
+    // See: http://go/android-license-faq
+    // A large-scale-change added 'default_applicable_licenses' to import
+    // all of the 'license_kinds' from "external_mesa3d_license"
+    // to get the below license kinds:
+    //   SPDX-license-identifier-MIT
+    default_applicable_licenses: ["external_mesa3d_license"],
+}
+
 build = ["Android.sources.bp"]
 
 //

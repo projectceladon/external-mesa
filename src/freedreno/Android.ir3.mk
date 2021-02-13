@@ -42,6 +42,9 @@ LOCAL_STATIC_LIBRARIES := \
 	libmesa_nir
 
 LOCAL_MODULE := libfreedreno_ir3
+LOCAL_LICENSE_KINDS := SPDX-license-identifier-ISC SPDX-license-identifier-MIT
+LOCAL_LICENSE_CONDITIONS := notice
+LOCAL_NOTICE_FILE := $(LOCAL_PATH)/../../LICENSE
 
 LOCAL_GENERATED_SOURCES := \
 	$(MESA_GEN_GLSL_H) \

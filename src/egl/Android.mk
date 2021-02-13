@@ -88,6 +88,9 @@ LOCAL_REQUIRED_MODULES += gallium_dri
 endif
 
 LOCAL_MODULE := libGLES_mesa
+LOCAL_LICENSE_KINDS := SPDX-license-identifier-ISC SPDX-license-identifier-MIT
+LOCAL_LICENSE_CONDITIONS := notice
+LOCAL_NOTICE_FILE := $(LOCAL_PATH)/../../LICENSE
 LOCAL_MODULE_RELATIVE_PATH := egl
 
 include $(MESA_COMMON_MK)

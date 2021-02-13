@@ -29,6 +29,9 @@ ifeq ($(MESA_ENABLE_LLVM),true)
 include $(CLEAR_VARS)
 
 LOCAL_MODULE := libmesa_amd_common
+LOCAL_LICENSE_KINDS := SPDX-license-identifier-ISC SPDX-license-identifier-MIT
+LOCAL_LICENSE_CONDITIONS := notice
+LOCAL_NOTICE_FILE := $(LOCAL_PATH)/../../LICENSE
 
 LOCAL_SRC_FILES := \
 	$(AMD_COMMON_FILES) \

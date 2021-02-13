@@ -31,6 +31,9 @@ include $(LOCAL_PATH)/Makefile.sources
 include $(CLEAR_VARS)
 
 LOCAL_MODULE := libmesa_aco
+LOCAL_LICENSE_KINDS := SPDX-license-identifier-ISC SPDX-license-identifier-MIT
+LOCAL_LICENSE_CONDITIONS := notice
+LOCAL_NOTICE_FILE := $(LOCAL_PATH)/../../LICENSE
 
 # filter-out compiler/aco_instruction_selection_setup.cpp because
 # it's already included by compiler/aco_instruction_selection.cpp

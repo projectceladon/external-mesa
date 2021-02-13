@@ -40,6 +40,9 @@ LOCAL_C_INCLUDES := \
 LOCAL_STATIC_LIBRARIES := libmesa_nir
 LOCAL_SHARED_LIBRARIES := libdrm_tegra
 LOCAL_MODULE := libmesa_pipe_tegra
+LOCAL_LICENSE_KINDS := SPDX-license-identifier-MIT
+LOCAL_LICENSE_CONDITIONS := notice
+LOCAL_NOTICE_FILE := $(LOCAL_PATH)/../../../../LICENSE
 
 include $(GALLIUM_COMMON_MK)
 include $(BUILD_STATIC_LIBRARY)

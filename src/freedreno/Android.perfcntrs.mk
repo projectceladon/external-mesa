@@ -36,6 +36,9 @@ LOCAL_C_INCLUDES := \
 	$(MESA_TOP)/src/gallium/auxiliary
 
 LOCAL_MODULE := libfreedreno_perfcntrs
+LOCAL_LICENSE_KINDS := SPDX-license-identifier-ISC SPDX-license-identifier-MIT
+LOCAL_LICENSE_CONDITIONS := notice
+LOCAL_NOTICE_FILE := $(LOCAL_PATH)/../../LICENSE
 
 LOCAL_STATIC_LIBRARIES := libfreedreno_registers
 
