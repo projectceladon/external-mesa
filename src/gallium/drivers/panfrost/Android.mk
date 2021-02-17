@@ -35,6 +35,9 @@ LOCAL_C_INCLUDES := \
 	$(MESA_TOP)/src/panfrost/
 
 LOCAL_MODULE := libmesa_pipe_panfrost
+LOCAL_LICENSE_KINDS := SPDX-license-identifier-MIT
+LOCAL_LICENSE_CONDITIONS := notice
+LOCAL_NOTICE_FILE := $(LOCAL_PATH)/../../../../LICENSE
 
 LOCAL_SHARED_LIBRARIES := libdrm
 
