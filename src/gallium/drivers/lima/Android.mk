@@ -76,6 +76,9 @@ LOCAL_SRC_FILES := \
 	lima_format.h
 
 LOCAL_MODULE := libmesa_pipe_lima
+LOCAL_LICENSE_KINDS := SPDX-license-identifier-MIT
+LOCAL_LICENSE_CONDITIONS := notice
+LOCAL_NOTICE_FILE := $(LOCAL_PATH)/../../../../LICENSE
 
 LOCAL_SHARED_LIBRARIES := libdrm
 
