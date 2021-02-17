@@ -28,6 +28,9 @@ include $(CLEAR_VARS)
 LOCAL_SRC_FILES := $(C_SOURCES)
 
 LOCAL_MODULE := libmesa_winsys_virgl_vtest
+LOCAL_LICENSE_KINDS := SPDX-license-identifier-MIT
+LOCAL_LICENSE_CONDITIONS := notice
+LOCAL_NOTICE_FILE := $(LOCAL_PATH)/../../../../../LICENSE
 
 LOCAL_STATIC_LIBRARIES := libmesa_winsys_virgl_common
 
