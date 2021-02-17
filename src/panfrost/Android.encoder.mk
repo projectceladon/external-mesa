@@ -21,6 +21,9 @@
 include $(CLEAR_VARS)
 
 LOCAL_MODULE := libpanfrost_encoder
+LOCAL_LICENSE_KINDS := SPDX-license-identifier-MIT
+LOCAL_LICENSE_CONDITIONS := notice
+LOCAL_NOTICE_FILE := $(LOCAL_PATH)/../../LICENSE
 
 LOCAL_SRC_FILES := \
 	$(encoder_FILES)

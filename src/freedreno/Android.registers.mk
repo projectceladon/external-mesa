@@ -29,6 +29,9 @@
 include $(CLEAR_VARS)
 
 LOCAL_MODULE := libfreedreno_registers
+LOCAL_LICENSE_KINDS := SPDX-license-identifier-ISC SPDX-license-identifier-MIT
+LOCAL_LICENSE_CONDITIONS := notice
+LOCAL_NOTICE_FILE := $(LOCAL_PATH)/../../LICENSE
 
 LOCAL_MODULE_CLASS := STATIC_LIBRARIES
 
