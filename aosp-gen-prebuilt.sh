@@ -1,4 +1,4 @@
-mkdir -p prebuilt-intermediates/{glsl,ir3,main,nir,spirv,cle,isl,perf,genxml,compiler,lima,midgard,iris,util,virgl,vulkan}
+mkdir -p prebuilt-intermediates/{glsl,ir3,main,nir,spirv,cle,isl,perf,genxml,compiler,lima,midgard,iris,util,virgl,vulkan,bifrost}
 
 python src/compiler/glsl/ir_expression_operation.py strings > prebuilt-intermediates/glsl/ir_expression_operation_strings.h 
 python src/compiler/glsl/ir_expression_operation.py constant > prebuilt-intermediates/glsl/ir_expression_operation_constant.h
@@ -68,6 +68,9 @@ python  src/vulkan/util/gen_enum_to_str.py  --xml src/vulkan/registry/vk.xml   -
 
 python src/gallium/drivers/lima/ir/lima_nir_algebraic.py -p src/compiler/nir/ > prebuilt-intermediates/lima/lima_nir_algebraic.c
 python src/panfrost/midgard/midgard_nir_algebraic.py -p src/compiler/nir/ > prebuilt-intermediates/midgard/midgard_nir_algebraic.c
+python3 src/panfrost/bifrost/gen_disasm.py src/panfrost/bifrost/ISA.xml > prebuilt-intermediates/bifrost/bifrost_gen_disasm.c
+python3 src/panfrost/bifrost/bifrost_nir_algebraic.py -p src/compiler/nir/ > prebuilt-intermediates/bifrost/bifrost_nir_algebraic.c
+python3 src/panfrost/bifrost/gen_pack.py src/panfrost/bifrost/ISA.xml > prebuilt-intermediates/bifrost/bi_generated_pack.h
 
 
 python src/intel/compiler/brw_nir_trig_workarounds.py -p src/compiler/nir > prebuilt-intermediates/compiler/brw_nir_trig_workarounds.c
