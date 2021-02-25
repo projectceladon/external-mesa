@@ -57,6 +57,7 @@ struct st_external_sampler_key
    GLuint lower_yx_xuxv;          /**< bitmask of 2 plane YUV samplers */
    GLuint lower_ayuv;
    GLuint lower_xyuv;
+   GLuint lower_yuv;
 };
 
 static inline struct st_external_sampler_key
@@ -79,7 +80,13 @@ st_get_external_sampler_key(struct st_context *st, struct gl_program *prog)
 
       switch (format) {
       case PIPE_FORMAT_NV12:
+         if (stObj->pt->format == PIPE_FORMAT_R8_G8B8_420_UNORM) {
+            key.lower_yuv |= (1 << unit);
+            break;
+         }
+         /* fallthrough */
       case PIPE_FORMAT_P010:
+      case PIPE_FORMAT_P012:
       case PIPE_FORMAT_P016:
          key.lower_nv12 |= (1 << unit);
          break;
@@ -137,7 +144,7 @@ struct st_fp_variant_key
    GLuint lower_two_sided_color:1;
 
    GLuint lower_flatshade:1;
-   enum compare_func lower_alpha_func:3;
+   unsigned lower_alpha_func:3;
 
    /** needed for ATI_fragment_shader */
    char texture_targets[MAX_NUM_FRAGMENT_REGISTERS_ATI];
@@ -232,6 +239,9 @@ struct st_program
    struct ati_fragment_shader *ati_fs;
    uint64_t affected_states; /**< ST_NEW_* flags to mark dirty when binding */
 
+   void *serialized_nir;
+   unsigned serialized_nir_size;
+
    /* used when bypassing glsl_to_tgsi: */
    struct gl_shader_program *shader_program;
 
@@ -315,6 +325,9 @@ extern void
 st_release_variants(struct st_context *st, struct st_program *p);
 
 extern void
+st_release_program(struct st_context *st, struct st_program **p);
+
+extern void
 st_destroy_program_variants(struct st_context *st);
 
 extern void
@@ -337,6 +350,9 @@ st_translate_fragment_program(struct st_context *st,
 extern bool
 st_translate_common_program(struct st_context *st,
                             struct st_program *stp);
+
+extern void
+st_serialize_nir(struct st_program *stp);
 
 extern void
 st_finalize_program(struct st_context *st, struct gl_program *prog);

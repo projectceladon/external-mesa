@@ -145,7 +145,8 @@ blorp_alloc_vertex_buffer(struct blorp_batch *batch, uint32_t size,
    *addr = (struct blorp_address) {
       .buffer = cmd_buffer->device->dynamic_state_pool.block_pool.bo,
       .offset = vb_state.offset,
-      .mocs = cmd_buffer->device->isl_dev.mocs.internal,
+      .mocs = isl_mocs(&cmd_buffer->device->isl_dev,
+                       ISL_SURF_USAGE_VERTEX_BUFFER_BIT),
    };
 
    return vb_state.map;
@@ -179,12 +180,13 @@ blorp_vf_invalidate_for_vb_48b_transitions(struct blorp_batch *batch,
 }
 
 UNUSED static struct blorp_address
-blorp_get_workaround_page(struct blorp_batch *batch)
+blorp_get_workaround_address(struct blorp_batch *batch)
 {
    struct anv_cmd_buffer *cmd_buffer = batch->driver_batch;
 
    return (struct blorp_address) {
-      .buffer = cmd_buffer->device->workaround_bo,
+      .buffer = cmd_buffer->device->workaround_address.bo,
+      .offset = cmd_buffer->device->workaround_address.offset,
    };
 }
 

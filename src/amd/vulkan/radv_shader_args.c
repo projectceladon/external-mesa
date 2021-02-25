@@ -68,7 +68,7 @@ set_loc_desc(struct radv_shader_args *args, int idx, uint8_t *sgpr_idx)
 
 	set_loc(ud_info, sgpr_idx, 1);
 
-	locs->descriptor_sets_enabled |= 1 << idx;
+	locs->descriptor_sets_enabled |= 1u << idx;
 }
 
 struct user_sgpr_info {
@@ -89,9 +89,14 @@ static bool needs_view_index_sgpr(struct radv_shader_args *args,
 		if (args->shader_info->needs_multiview_view_index || (!args->options->key.vs_common_out.as_es && args->options->key.has_multiview_view_index))
 			return true;
 		break;
-	case MESA_SHADER_GEOMETRY:
 	case MESA_SHADER_TESS_CTRL:
 		if (args->shader_info->needs_multiview_view_index)
+			return true;
+		break;
+	case MESA_SHADER_GEOMETRY:
+		if (args->shader_info->needs_multiview_view_index ||
+		    (args->options->key.vs_common_out.as_ngg &&
+		     args->options->key.has_multiview_view_index))
 			return true;
 		break;
 	default:

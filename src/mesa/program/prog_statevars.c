@@ -33,7 +33,7 @@
 #include "main/glheader.h"
 #include "main/context.h"
 #include "main/blend.h"
-#include "main/imports.h"
+
 #include "main/macros.h"
 #include "main/mtypes.h"
 #include "main/fbobject.h"
@@ -54,8 +54,8 @@
  * The program parser will produce the state[] values.
  */
 static void
-_mesa_fetch_state(struct gl_context *ctx, const gl_state_index16 state[],
-                  gl_constant_value *val)
+fetch_state(struct gl_context *ctx, const gl_state_index16 state[],
+            gl_constant_value *val)
 {
    GLfloat *value = &val->f;
 
@@ -322,7 +322,7 @@ _mesa_fetch_state(struct gl_context *ctx, const gl_state_index16 state[],
             matrix = ctx->ProgramMatrixStack[index].Top;
          }
          else {
-            _mesa_problem(ctx, "Bad matrix name in _mesa_fetch_state()");
+            _mesa_problem(ctx, "Bad matrix name in fetch_state()");
             return;
          }
          if (modifier == STATE_MATRIX_INVERSE ||
@@ -386,7 +386,7 @@ _mesa_fetch_state(struct gl_context *ctx, const gl_state_index16 state[],
                        ctx->FragmentProgram.Current->arb.LocalParams[idx]);
                return;
             default:
-               _mesa_problem(ctx, "Bad state switch in _mesa_fetch_state()");
+               _mesa_problem(ctx, "Bad state switch in fetch_state()");
                return;
          }
       }
@@ -415,7 +415,7 @@ _mesa_fetch_state(struct gl_context *ctx, const gl_state_index16 state[],
                        ctx->VertexProgram.Current->arb.LocalParams[idx]);
                return;
             default:
-               _mesa_problem(ctx, "Bad state switch in _mesa_fetch_state()");
+               _mesa_problem(ctx, "Bad state switch in fetch_state()");
                return;
          }
       }
@@ -440,10 +440,10 @@ _mesa_fetch_state(struct gl_context *ctx, const gl_state_index16 state[],
             if(ctx->Light._ClampVertexColor &&
                (idx == VERT_ATTRIB_COLOR0 ||
                 idx == VERT_ATTRIB_COLOR1)) {
-               value[0] = CLAMP(ctx->Current.Attrib[idx][0], 0.0f, 1.0f);
-               value[1] = CLAMP(ctx->Current.Attrib[idx][1], 0.0f, 1.0f);
-               value[2] = CLAMP(ctx->Current.Attrib[idx][2], 0.0f, 1.0f);
-               value[3] = CLAMP(ctx->Current.Attrib[idx][3], 0.0f, 1.0f);
+               value[0] = SATURATE(ctx->Current.Attrib[idx][0]);
+               value[1] = SATURATE(ctx->Current.Attrib[idx][1]);
+               value[2] = SATURATE(ctx->Current.Attrib[idx][2]);
+               value[3] = SATURATE(ctx->Current.Attrib[idx][3]);
             }
             else
                COPY_4V(value, ctx->Current.Attrib[idx]);
@@ -451,10 +451,10 @@ _mesa_fetch_state(struct gl_context *ctx, const gl_state_index16 state[],
          return;
 
       case STATE_NORMAL_SCALE:
-         ASSIGN_4V(value, 
-                   ctx->_ModelViewInvScale, 
-                   ctx->_ModelViewInvScale, 
-                   ctx->_ModelViewInvScale, 
+         ASSIGN_4V(value,
+                   ctx->_ModelViewInvScale,
+                   ctx->_ModelViewInvScale,
+                   ctx->_ModelViewInvScale,
                    1);
          return;
 
@@ -586,6 +586,18 @@ _mesa_fetch_state(struct gl_context *ctx, const gl_state_index16 state[],
          }
          return;
 
+      case STATE_FB_PNTC_Y_TRANSFORM:
+         {
+            bool flip_y = (ctx->Point.SpriteOrigin == GL_LOWER_LEFT) ^
+               (ctx->DrawBuffer->FlipY);
+
+            value[0] = flip_y ? -1.0F : 1.0F;
+            value[1] = flip_y ? 1.0F : 0.0F;
+            value[2] = 0.0F;
+            value[3] = 0.0F;
+         }
+         return;
+
       case STATE_TCS_PATCH_VERTICES_IN:
          val[0].i = ctx->TessCtrlProgram.patch_vertices;
          return;
@@ -613,7 +625,7 @@ _mesa_fetch_state(struct gl_context *ctx, const gl_state_index16 state[],
          }
          return;
 
-      /* XXX: make sure new tokens added here are also handled in the 
+      /* XXX: make sure new tokens added here are also handled in the
        * _mesa_program_state_flags() switch, below.
        */
       default:
@@ -630,6 +642,15 @@ _mesa_fetch_state(struct gl_context *ctx, const gl_state_index16 state[],
    }
 }
 
+unsigned
+_mesa_program_state_value_size(const gl_state_index16 state[STATE_LENGTH])
+{
+   if (state[0] == STATE_LIGHT && state[2] == STATE_SPOT_CUTOFF)
+      return 1;
+
+   /* Everything else is packed into vec4s */
+   return 4;
+}
 
 /**
  * Return a bitmask of the Mesa state flags (_NEW_* values) which would
@@ -720,6 +741,9 @@ _mesa_program_state_flags(const gl_state_index16 state[STATE_LENGTH])
       case STATE_FB_SIZE:
       case STATE_FB_WPOS_Y_TRANSFORM:
          return _NEW_BUFFERS;
+
+      case STATE_FB_PNTC_Y_TRANSFORM:
+         return _NEW_BUFFERS | _NEW_POINT;
 
       case STATE_ADVANCED_BLENDING_MODE:
          return _NEW_COLOR;
@@ -933,6 +957,9 @@ append_token(char *dst, gl_state_index k)
    case STATE_FB_WPOS_Y_TRANSFORM:
       append(dst, "FbWposYTransform");
       break;
+   case STATE_FB_PNTC_Y_TRANSFORM:
+      append(dst, "PntcYTransform");
+      break;
    case STATE_ADVANCED_BLENDING_MODE:
       append(dst, "AdvancedBlendingMode");
       break;
@@ -1100,9 +1127,8 @@ _mesa_load_state_parameters(struct gl_context *ctx,
    for (i = 0; i < paramList->NumParameters; i++) {
       if (paramList->Parameters[i].Type == PROGRAM_STATE_VAR) {
          unsigned pvo = paramList->ParameterValueOffset[i];
-         _mesa_fetch_state(ctx,
-			   paramList->Parameters[i].StateIndexes,
-                           paramList->ParameterValues + pvo);
+         fetch_state(ctx, paramList->Parameters[i].StateIndexes,
+                     paramList->ParameterValues + pvo);
       }
    }
 }

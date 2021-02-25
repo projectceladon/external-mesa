@@ -235,10 +235,7 @@ nvc0_rasterizer_state_create(struct pipe_context *pipe,
     SB_IMMED_3D(so, MULTISAMPLE_ENABLE, cso->multisample);
 
     SB_IMMED_3D(so, LINE_SMOOTH_ENABLE, cso->line_smooth);
-    /* On GM20x+, LINE_WIDTH_SMOOTH controls both aliased and smooth
-     * rendering and LINE_WIDTH_ALIASED seems to be ignored
-     */
-    if (cso->line_smooth || cso->multisample || class_3d >= GM200_3D_CLASS)
+    if (cso->line_smooth || cso->multisample)
        SB_BEGIN_3D(so, LINE_WIDTH_SMOOTH, 1);
     else
        SB_BEGIN_3D(so, LINE_WIDTH_ALIASED, 1);
@@ -619,6 +616,7 @@ nvc0_sp_state_create(struct pipe_context *pipe,
 
    prog->translated = nvc0_program_translate(
       prog, nvc0_context(pipe)->screen->base.device->chipset,
+      nvc0_context(pipe)->screen->base.disk_shader_cache,
       &nouveau_context(pipe)->debug);
 
    return (void *)prog;
@@ -758,6 +756,7 @@ nvc0_cp_state_create(struct pipe_context *pipe,
 
    prog->translated = nvc0_program_translate(
       prog, nvc0_context(pipe)->screen->base.device->chipset,
+      nvc0_context(pipe)->screen->base.disk_shader_cache,
       &nouveau_context(pipe)->debug);
 
    return (void *)prog;
@@ -1358,14 +1357,9 @@ nvc0_set_global_handle(uint32_t *phandle, struct pipe_resource *res)
 {
    struct nv04_resource *buf = nv04_resource(res);
    if (buf) {
-      uint64_t limit = (buf->address + buf->base.width0) - 1;
-      if (limit < (1ULL << 32)) {
-         *phandle = (uint32_t)buf->address;
-      } else {
-         NOUVEAU_ERR("Cannot map into TGSI_RESOURCE_GLOBAL: "
-                     "resource not contained within 32-bit address space !\n");
-         *phandle = 0;
-      }
+      uint64_t address = buf->address + *phandle;
+      /* even though it's a pointer to uint32_t that's fine */
+      memcpy(phandle, &address, 8);
    } else {
       *phandle = 0;
    }
@@ -1382,11 +1376,18 @@ nvc0_set_global_bindings(struct pipe_context *pipe,
    unsigned i;
    const unsigned end = start + nr;
 
+   if (!nr)
+      return;
+
    if (nvc0->global_residents.size <= (end * sizeof(struct pipe_resource *))) {
       const unsigned old_size = nvc0->global_residents.size;
-      util_dynarray_resize(&nvc0->global_residents, struct pipe_resource *, end);
-      memset((uint8_t *)nvc0->global_residents.data + old_size, 0,
-             nvc0->global_residents.size - old_size);
+      if (util_dynarray_resize(&nvc0->global_residents, struct pipe_resource *, end)) {
+         memset((uint8_t *)nvc0->global_residents.data + old_size, 0,
+                nvc0->global_residents.size - old_size);
+      } else {
+         NOUVEAU_ERR("Could not resize global residents array\n");
+         return;
+      }
    }
 
    if (resources) {

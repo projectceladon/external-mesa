@@ -34,6 +34,7 @@ LOCAL_SRC_FILES := $(LOCAL_SRC_FILES)
 
 LOCAL_C_INCLUDES += \
 	$(intermediates)/nir \
+	$(intermediates)/spirv \
 	$(MESA_TOP)/src/compiler/nir
 
 LOCAL_EXPORT_C_INCLUDE_DIRS += \
@@ -77,6 +78,10 @@ $(intermediates)/spirv/spirv_info.c: $(prebuilt_intermediates)/spirv/spirv_info.
 $(intermediates)/spirv/vtn_gather_types.c: $(prebuilt_intermediates)/spirv/vtn_gather_types.c
 	@mkdir -p $(dir $@)
 	@cp -f $< $@
+
+$(intermediates)/spirv/vtn_generator_ids.h: $(LOCAL_PATH)/spirv/vtn_generator_ids_h.py $(LOCAL_PATH)/spirv/spir-v.xml
+	@mkdir -p $(dir $@)
+	$(hide) $(MESA_PYTHON2) $^ $@ || ($(RM) $@; false)
 
 nir_intrinsics_h_gen := $(LOCAL_PATH)/nir/nir_intrinsics_h.py
 $(intermediates)/nir/nir_intrinsics.h: $(prebuilt_intermediates)/nir/nir_intrinsics.h

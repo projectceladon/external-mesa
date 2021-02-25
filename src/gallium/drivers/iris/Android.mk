@@ -47,9 +47,6 @@ IRIS_COMMON_INCLUDES := \
 
 include $(CLEAR_VARS)
 LOCAL_MODULE := libmesa_iris_gen8
-LOCAL_LICENSE_KINDS := SPDX-license-identifier-MIT
-LOCAL_LICENSE_CONDITIONS := notice
-LOCAL_NOTICE_FILE := $(LOCAL_PATH)/../../../../LICENSE
 LOCAL_MODULE_CLASS := STATIC_LIBRARIES
 
 LOCAL_SRC_FILES := $(LIBIRIS_SRC_FILES)
@@ -70,36 +67,10 @@ include $(BUILD_STATIC_LIBRARY)
 
 include $(CLEAR_VARS)
 LOCAL_MODULE := libmesa_iris_gen9
-LOCAL_LICENSE_KINDS := SPDX-license-identifier-MIT
-LOCAL_LICENSE_CONDITIONS := notice
-LOCAL_NOTICE_FILE := $(LOCAL_PATH)/../../../../LICENSE
 LOCAL_MODULE_CLASS := STATIC_LIBRARIES
 
 LOCAL_SRC_FILES := $(LIBIRIS_SRC_FILES)
 LOCAL_CFLAGS := -DGEN_VERSIONx10=90
-
-LOCAL_C_INCLUDES := $(IRIS_COMMON_INCLUDES)
-
-LOCAL_STATIC_LIBRARIES := $(LIBIRIS_STATIC_LIBS)
-
-LOCAL_WHOLE_STATIC_LIBRARIES := libmesa_genxml
-
-include $(MESA_COMMON_MK)
-include $(BUILD_STATIC_LIBRARY)
-
-#
-# libiris for gen10
-#
-
-include $(CLEAR_VARS)
-LOCAL_MODULE := libmesa_iris_gen10
-LOCAL_LICENSE_KINDS := SPDX-license-identifier-MIT
-LOCAL_LICENSE_CONDITIONS := notice
-LOCAL_NOTICE_FILE := $(LOCAL_PATH)/../../../../LICENSE
-LOCAL_MODULE_CLASS := STATIC_LIBRARIES
-
-LOCAL_SRC_FILES := $(LIBIRIS_SRC_FILES)
-LOCAL_CFLAGS := -DGEN_VERSIONx10=100
 
 LOCAL_C_INCLUDES := $(IRIS_COMMON_INCLUDES)
 
@@ -116,9 +87,6 @@ include $(BUILD_STATIC_LIBRARY)
 
 include $(CLEAR_VARS)
 LOCAL_MODULE := libmesa_iris_gen11
-LOCAL_LICENSE_KINDS := SPDX-license-identifier-MIT
-LOCAL_LICENSE_CONDITIONS := notice
-LOCAL_NOTICE_FILE := $(LOCAL_PATH)/../../../../LICENSE
 LOCAL_MODULE_CLASS := STATIC_LIBRARIES
 
 LOCAL_SRC_FILES := $(LIBIRIS_SRC_FILES)
@@ -139,9 +107,6 @@ include $(BUILD_STATIC_LIBRARY)
 
 include $(CLEAR_VARS)
 LOCAL_MODULE := libmesa_iris_gen12
-LOCAL_LICENSE_KINDS := SPDX-license-identifier-MIT
-LOCAL_LICENSE_CONDITIONS := notice
-LOCAL_NOTICE_FILE := $(LOCAL_PATH)/../../../../LICENSE
 LOCAL_MODULE_CLASS := STATIC_LIBRARIES
 
 LOCAL_SRC_FILES := $(LIBIRIS_SRC_FILES)
@@ -160,27 +125,6 @@ include $(BUILD_STATIC_LIBRARY)
 include $(CLEAR_VARS)
 
 LOCAL_MODULE := libmesa_pipe_iris
-LOCAL_LICENSE_KINDS := SPDX-license-identifier-MIT
-LOCAL_LICENSE_CONDITIONS := notice
-LOCAL_NOTICE_FILE := $(LOCAL_PATH)/../../../../LICENSE
-LOCAL_MODULE_CLASS := STATIC_LIBRARIES
-
-intermediates := $(call local-generated-sources-dir)
-prebuilt_intermediates := $(MESA_TOP)/prebuilt-intermediates
-
-LOCAL_GENERATED_SOURCES := $(addprefix $(intermediates)/iris/,$(GENERATED_SOURCES))
-
-GEN_DRIINFO_INPUTS := \
-        $(MESA_TOP)/src/gallium/auxiliary/pipe-loader/driinfo_gallium.h \
-        $(LOCAL_PATH)/driinfo_iris.h
-
-MERGE_DRIINFO := $(MESA_TOP)/src/util/merge_driinfo.py
-
-$(intermediates)/iris/iris_driinfo.h: $(prebuilt_intermediates)/iris/iris_driinfo.h
-	@mkdir -p $(dir $@)
-	@cp -f $< $@
-
-LOCAL_EXPORT_C_INCLUDE_DIRS := $(intermediates)
 
 LOCAL_SRC_FILES := \
 	$(IRIS_C_SOURCES)
@@ -205,7 +149,6 @@ LOCAL_WHOLE_STATIC_LIBRARIES := \
 	libmesa_intel_perf \
 	libmesa_iris_gen8 \
 	libmesa_iris_gen9 \
-	libmesa_iris_gen10 \
 	libmesa_iris_gen11 \
 	libmesa_iris_gen12
 

@@ -68,7 +68,7 @@ occlusion_resume(struct fd_acc_query *aq, struct fd_batch *batch)
 	OUT_RING(ring, A6XX_RB_SAMPLE_COUNT_CONTROL_COPY);
 
 	OUT_PKT4(ring, REG_A6XX_RB_SAMPLE_COUNT_ADDR_LO, 2);
-	OUT_RELOCW(ring, query_sample(aq, start));
+	OUT_RELOC(ring, query_sample(aq, start));
 
 	fd6_event_write(batch, ring, ZPASS_DONE, false);
 
@@ -81,7 +81,7 @@ occlusion_pause(struct fd_acc_query *aq, struct fd_batch *batch)
 	struct fd_ringbuffer *ring = batch->draw;
 
 	OUT_PKT7(ring, CP_MEM_WRITE, 4);
-	OUT_RELOCW(ring, query_sample(aq, stop));
+	OUT_RELOC(ring, query_sample(aq, stop));
 	OUT_RING(ring, 0xffffffff);
 	OUT_RING(ring, 0xffffffff);
 
@@ -91,27 +91,24 @@ occlusion_pause(struct fd_acc_query *aq, struct fd_batch *batch)
 	OUT_RING(ring, A6XX_RB_SAMPLE_COUNT_CONTROL_COPY);
 
 	OUT_PKT4(ring, REG_A6XX_RB_SAMPLE_COUNT_ADDR_LO, 2);
-	OUT_RELOCW(ring, query_sample(aq, stop));
-
-	OUT_PKT7(ring, CP_EVENT_WRITE, 1);
-	OUT_RING(ring, ZPASS_DONE);
-	fd_reset_wfi(batch);
-
-	OUT_PKT7(ring, CP_WAIT_REG_MEM, 6);
-	OUT_RING(ring, 0x00000014);   // XXX
 	OUT_RELOC(ring, query_sample(aq, stop));
-	OUT_RING(ring, 0xffffffff);
-	OUT_RING(ring, 0xffffffff);
-	OUT_RING(ring, 0x00000010);   // XXX
+
+	fd6_event_write(batch, ring, ZPASS_DONE, false);
+
+	/* To avoid stalling in the draw buffer, emit code the code to compute the
+	 * counter delta in the epilogue ring.
+	 */
+	struct fd_ringbuffer *epilogue = fd_batch_get_epilogue(batch);
+	fd_wfi(batch, epilogue);
 
 	/* result += stop - start: */
-	OUT_PKT7(ring, CP_MEM_TO_MEM, 9);
-	OUT_RING(ring, CP_MEM_TO_MEM_0_DOUBLE |
+	OUT_PKT7(epilogue, CP_MEM_TO_MEM, 9);
+	OUT_RING(epilogue, CP_MEM_TO_MEM_0_DOUBLE |
 			CP_MEM_TO_MEM_0_NEG_C);
-	OUT_RELOCW(ring, query_sample(aq, result));     /* dst */
-	OUT_RELOC(ring, query_sample(aq, result));      /* srcA */
-	OUT_RELOC(ring, query_sample(aq, stop));        /* srcB */
-	OUT_RELOC(ring, query_sample(aq, start));       /* srcC */
+	OUT_RELOC(epilogue, query_sample(aq, result));     /* dst */
+	OUT_RELOC(epilogue, query_sample(aq, result));      /* srcA */
+	OUT_RELOC(epilogue, query_sample(aq, stop));        /* srcB */
+	OUT_RELOC(epilogue, query_sample(aq, start));       /* srcC */
 
 	fd6_context(batch->ctx)->samples_passed_queries--;
 }
@@ -134,7 +131,6 @@ occlusion_predicate_result(struct fd_acc_query *aq, void *buf,
 
 static const struct fd_acc_sample_provider occlusion_counter = {
 		.query_type = PIPE_QUERY_OCCLUSION_COUNTER,
-		.active = FD_STAGE_DRAW,
 		.size = sizeof(struct fd6_query_sample),
 		.resume = occlusion_resume,
 		.pause = occlusion_pause,
@@ -143,7 +139,6 @@ static const struct fd_acc_sample_provider occlusion_counter = {
 
 static const struct fd_acc_sample_provider occlusion_predicate = {
 		.query_type = PIPE_QUERY_OCCLUSION_PREDICATE,
-		.active = FD_STAGE_DRAW,
 		.size = sizeof(struct fd6_query_sample),
 		.resume = occlusion_resume,
 		.pause = occlusion_pause,
@@ -152,7 +147,6 @@ static const struct fd_acc_sample_provider occlusion_predicate = {
 
 static const struct fd_acc_sample_provider occlusion_predicate_conservative = {
 		.query_type = PIPE_QUERY_OCCLUSION_PREDICATE_CONSERVATIVE,
-		.active = FD_STAGE_DRAW,
 		.size = sizeof(struct fd6_query_sample),
 		.resume = occlusion_resume,
 		.pause = occlusion_pause,
@@ -169,23 +163,23 @@ timestamp_resume(struct fd_acc_query *aq, struct fd_batch *batch)
 	struct fd_ringbuffer *ring = batch->draw;
 
 	OUT_PKT7(ring, CP_EVENT_WRITE, 4);
-	OUT_RING(ring, CP_EVENT_WRITE_0_EVENT(CACHE_FLUSH_AND_INV_EVENT) |
+	OUT_RING(ring, CP_EVENT_WRITE_0_EVENT(RB_DONE_TS) |
 			CP_EVENT_WRITE_0_TIMESTAMP);
-	OUT_RELOCW(ring, query_sample(aq, start));
+	OUT_RELOC(ring, query_sample(aq, start));
 	OUT_RING(ring, 0x00000000);
 
 	fd_reset_wfi(batch);
 }
 
 static void
-timestamp_pause(struct fd_acc_query *aq, struct fd_batch *batch)
+time_elapsed_pause(struct fd_acc_query *aq, struct fd_batch *batch)
 {
 	struct fd_ringbuffer *ring = batch->draw;
 
 	OUT_PKT7(ring, CP_EVENT_WRITE, 4);
-	OUT_RING(ring, CP_EVENT_WRITE_0_EVENT(CACHE_FLUSH_AND_INV_EVENT) |
+	OUT_RING(ring, CP_EVENT_WRITE_0_EVENT(RB_DONE_TS) |
 			CP_EVENT_WRITE_0_TIMESTAMP);
-	OUT_RELOCW(ring, query_sample(aq, stop));
+	OUT_RELOC(ring, query_sample(aq, stop));
 	OUT_RING(ring, 0x00000000);
 
 	fd_reset_wfi(batch);
@@ -195,14 +189,31 @@ timestamp_pause(struct fd_acc_query *aq, struct fd_batch *batch)
 	OUT_PKT7(ring, CP_MEM_TO_MEM, 9);
 	OUT_RING(ring, CP_MEM_TO_MEM_0_DOUBLE |
 			CP_MEM_TO_MEM_0_NEG_C);
-	OUT_RELOCW(ring, query_sample(aq, result));     /* dst */
+	OUT_RELOC(ring, query_sample(aq, result));     /* dst */
 	OUT_RELOC(ring, query_sample(aq, result));      /* srcA */
 	OUT_RELOC(ring, query_sample(aq, stop));        /* srcB */
 	OUT_RELOC(ring, query_sample(aq, start));       /* srcC */
 }
 
+static void
+timestamp_pause(struct fd_acc_query *aq, struct fd_batch *batch)
+{
+	/* We captured a timestamp in timestamp_resume(), nothing to do here. */
+}
+
+/* timestamp logging for fd_log(): */
+static void
+record_timestamp(struct fd_ringbuffer *ring, struct fd_bo *bo, unsigned offset)
+{
+	OUT_PKT7(ring, CP_EVENT_WRITE, 4);
+	OUT_RING(ring, CP_EVENT_WRITE_0_EVENT(RB_DONE_TS) |
+			CP_EVENT_WRITE_0_TIMESTAMP);
+	OUT_RELOC(ring, bo, offset, 0, 0);
+	OUT_RING(ring, 0x00000000);
+}
+
 static uint64_t
-ticks_to_ns(uint32_t ts)
+ticks_to_ns(uint64_t ts)
 {
 	/* This is based on the 19.2MHz always-on rbbm timer.
 	 *
@@ -224,28 +235,28 @@ timestamp_accumulate_result(struct fd_acc_query *aq, void *buf,
 		union pipe_query_result *result)
 {
 	struct fd6_query_sample *sp = buf;
-	result->u64 = ticks_to_ns(sp->result);
+	result->u64 = ticks_to_ns(sp->start);
 }
 
 static const struct fd_acc_sample_provider time_elapsed = {
 		.query_type = PIPE_QUERY_TIME_ELAPSED,
-		.active = FD_STAGE_DRAW | FD_STAGE_CLEAR,
+		.always = true,
 		.size = sizeof(struct fd6_query_sample),
 		.resume = timestamp_resume,
-		.pause = timestamp_pause,
+		.pause = time_elapsed_pause,
 		.result = time_elapsed_accumulate_result,
 };
 
 /* NOTE: timestamp query isn't going to give terribly sensible results
  * on a tiler.  But it is needed by qapitrace profile heatmap.  If you
  * add in a binning pass, the results get even more non-sensical.  So
- * we just return the timestamp on the first tile and hope that is
+ * we just return the timestamp on the last tile and hope that is
  * kind of good enough.
  */
 
 static const struct fd_acc_sample_provider timestamp = {
 		.query_type = PIPE_QUERY_TIMESTAMP,
-		.active = FD_STAGE_ALL,
+		.always = true,
 		.size = sizeof(struct fd6_query_sample),
 		.resume = timestamp_resume,
 		.pause = timestamp_pause,
@@ -262,7 +273,7 @@ struct PACKED fd6_primitives_sample {
 
 
 #define primitives_relocw(ring, aq, field) \
-	OUT_RELOCW(ring, fd_resource((aq)->prsc)->bo, offsetof(struct fd6_primitives_sample, field), 0, 0);
+	OUT_RELOC(ring, fd_resource((aq)->prsc)->bo, offsetof(struct fd6_primitives_sample, field), 0, 0);
 #define primitives_reloc(ring, aq, field) \
 	OUT_RELOC(ring, fd_resource((aq)->prsc)->bo, offsetof(struct fd6_primitives_sample, field), 0, 0);
 
@@ -371,7 +382,6 @@ primitives_generated_result(struct fd_acc_query *aq, void *buf,
 
 static const struct fd_acc_sample_provider primitives_generated = {
 	.query_type = PIPE_QUERY_PRIMITIVES_GENERATED,
-	.active = FD_STAGE_DRAW,
 	.size = sizeof(struct fd6_primitives_sample),
 	.resume = primitives_generated_resume,
 	.pause = primitives_generated_pause,
@@ -426,7 +436,6 @@ primitives_emitted_result(struct fd_acc_query *aq, void *buf,
 
 static const struct fd_acc_sample_provider primitives_emitted = {
 	.query_type = PIPE_QUERY_PRIMITIVES_EMITTED,
-	.active = FD_STAGE_DRAW,
 	.size = sizeof(struct fd6_primitives_sample),
 	.resume = primitives_emitted_resume,
 	.pause = primitives_emitted_pause,
@@ -489,7 +498,7 @@ perfcntr_resume(struct fd_acc_query *aq, struct fd_batch *batch)
 		OUT_PKT7(ring, CP_REG_TO_MEM, 3);
 		OUT_RING(ring, CP_REG_TO_MEM_0_64B |
 			CP_REG_TO_MEM_0_REG(counter->counter_reg_lo));
-		OUT_RELOCW(ring, query_sample_idx(aq, i, start));
+		OUT_RELOC(ring, query_sample_idx(aq, i, start));
 	}
 }
 
@@ -517,7 +526,7 @@ perfcntr_pause(struct fd_acc_query *aq, struct fd_batch *batch)
 		OUT_PKT7(ring, CP_REG_TO_MEM, 3);
 		OUT_RING(ring, CP_REG_TO_MEM_0_64B |
 			CP_REG_TO_MEM_0_REG(counter->counter_reg_lo));
-		OUT_RELOCW(ring, query_sample_idx(aq, i, stop));
+		OUT_RELOC(ring, query_sample_idx(aq, i, stop));
 	}
 
 	/* and compute the result: */
@@ -526,7 +535,7 @@ perfcntr_pause(struct fd_acc_query *aq, struct fd_batch *batch)
 		OUT_PKT7(ring, CP_MEM_TO_MEM, 9);
 		OUT_RING(ring, CP_MEM_TO_MEM_0_DOUBLE |
 				CP_MEM_TO_MEM_0_NEG_C);
-		OUT_RELOCW(ring, query_sample_idx(aq, i, result));     /* dst */
+		OUT_RELOC(ring, query_sample_idx(aq, i, result));     /* dst */
 		OUT_RELOC(ring, query_sample_idx(aq, i, result));      /* srcA */
 		OUT_RELOC(ring, query_sample_idx(aq, i, stop));        /* srcB */
 		OUT_RELOC(ring, query_sample_idx(aq, i, start));       /* srcC */
@@ -547,7 +556,7 @@ perfcntr_accumulate_result(struct fd_acc_query *aq, void *buf,
 
 static const struct fd_acc_sample_provider perfcntr = {
 		.query_type = FD_QUERY_FIRST_PERFCNTR,
-		.active = FD_STAGE_DRAW | FD_STAGE_CLEAR,
+		.always = true,
 		.resume = perfcntr_resume,
 		.pause = perfcntr_pause,
 		.result = perfcntr_accumulate_result,
@@ -635,6 +644,9 @@ fd6_query_context_init(struct pipe_context *pctx)
 
 	ctx->create_query = fd_acc_create_query;
 	ctx->query_set_stage = fd_acc_query_set_stage;
+
+	ctx->record_timestamp = record_timestamp;
+	ctx->ts_to_ns = ticks_to_ns;
 
 	pctx->create_batch_query = fd6_create_batch_query;
 

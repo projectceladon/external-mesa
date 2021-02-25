@@ -29,6 +29,8 @@
 #include <fcntl.h>
 #include <unistd.h>
 
+#include "util/os_file.h"
+
 #include "anv_private.h"
 #include "vk_util.h"
 
@@ -93,11 +95,16 @@ anv_queue_submit_free(struct anv_device *device,
    for (uint32_t i = 0; i < submit->sync_fd_semaphore_count; i++)
       anv_semaphore_unref(device, submit->sync_fd_semaphores[i]);
    /* Execbuf does not consume the in_fence.  It's our job to close it. */
-   if (submit->in_fence != -1)
+   if (submit->in_fence != -1) {
+      assert(!device->has_thread_submit);
       close(submit->in_fence);
-   if (submit->out_fence != -1)
+   }
+   if (submit->out_fence != -1) {
+      assert(!device->has_thread_submit);
       close(submit->out_fence);
+   }
    vk_free(alloc, submit->fences);
+   vk_free(alloc, submit->fence_values);
    vk_free(alloc, submit->temporary_semaphores);
    vk_free(alloc, submit->wait_timelines);
    vk_free(alloc, submit->wait_timeline_values);
@@ -139,13 +146,13 @@ anv_timeline_finish(struct anv_device *device,
                             &timeline->free_points, link) {
       list_del(&point->link);
       anv_device_release_bo(device, point->bo);
-      vk_free(&device->alloc, point);
+      vk_free(&device->vk.alloc, point);
    }
    list_for_each_entry_safe(struct anv_timeline_point, point,
                             &timeline->points, link) {
       list_del(&point->link);
       anv_device_release_bo(device, point->bo);
-      vk_free(&device->alloc, point);
+      vk_free(&device->vk.alloc, point);
    }
 }
 
@@ -159,7 +166,7 @@ anv_timeline_add_point_locked(struct anv_device *device,
 
    if (list_is_empty(&timeline->free_points)) {
       *point =
-         vk_zalloc(&device->alloc, sizeof(**point),
+         vk_zalloc(&device->vk.alloc, sizeof(**point),
                    8, VK_SYSTEM_ALLOCATION_SCOPE_DEVICE);
       if (!(*point))
          result = vk_error(VK_ERROR_OUT_OF_HOST_MEMORY);
@@ -170,7 +177,7 @@ anv_timeline_add_point_locked(struct anv_device *device,
                                       0 /* explicit_address */,
                                       &(*point)->bo);
          if (result != VK_SUCCESS)
-            vk_free(&device->alloc, *point);
+            vk_free(&device->vk.alloc, *point);
       }
    } else {
       *point = list_first_entry(&timeline->free_points,
@@ -295,7 +302,7 @@ anv_queue_submit_timeline_locked(struct anv_queue *queue,
          struct anv_semaphore_impl *impl = &semaphore->permanent;
 
          assert(impl->type == ANV_SEMAPHORE_TYPE_SYNC_FILE);
-         impl->fd = dup(submit->out_fence);
+         impl->fd = os_dupfd_cloexec(submit->out_fence);
       }
    } else {
       /* Unblock any waiter by signaling the points, the application will get
@@ -347,6 +354,98 @@ anv_device_submit_deferred_locked(struct anv_device *device)
    return anv_queue_submit_deferred_locked(&device->queue, &advance);
 }
 
+static void
+anv_queue_submit_signal_fences(struct anv_device *device,
+                               struct anv_queue_submit *submit)
+{
+   for (uint32_t i = 0; i < submit->fence_count; i++) {
+      if (submit->fences[i].flags & I915_EXEC_FENCE_SIGNAL) {
+         anv_gem_syncobj_timeline_signal(device, &submit->fences[i].handle,
+                                         &submit->fence_values[i], 1);
+      }
+   }
+}
+
+static void *
+anv_queue_task(void *_queue)
+{
+   struct anv_queue *queue = _queue;
+
+   pthread_mutex_lock(&queue->mutex);
+
+   while (!queue->quit) {
+      while (!list_is_empty(&queue->queued_submits)) {
+         struct anv_queue_submit *submit =
+            list_first_entry(&queue->queued_submits, struct anv_queue_submit, link);
+         list_del(&submit->link);
+
+         pthread_mutex_unlock(&queue->mutex);
+
+         VkResult result = VK_ERROR_DEVICE_LOST;
+
+         /* Wait for timeline points to materialize before submitting. We need
+          * to do this because we're using threads to do the submit to i915.
+          * We could end up in a situation where the application submits to 2
+          * queues with the first submit creating the dma-fence for the
+          * second. But because the scheduling of the submission threads might
+          * wakeup the second queue thread first, this would make that execbuf
+          * fail because the dma-fence it depends on hasn't materialized yet.
+          */
+         if (!queue->lost && submit->wait_timeline_count > 0) {
+            int ret = queue->device->no_hw ? 0 :
+               anv_gem_syncobj_timeline_wait(
+                  queue->device, submit->wait_timeline_syncobjs,
+                  submit->wait_timeline_values, submit->wait_timeline_count,
+                  anv_get_absolute_timeout(UINT64_MAX) /* wait forever */,
+                  true /* wait for all */, true /* wait for materialize */);
+            if (ret) {
+               result = anv_queue_set_lost(queue, "timeline timeout: %s",
+                                           strerror(errno));
+            }
+         }
+
+         /* Now submit */
+         if (!queue->lost) {
+            pthread_mutex_lock(&queue->device->mutex);
+            result = anv_queue_execbuf_locked(queue, submit);
+            pthread_mutex_unlock(&queue->device->mutex);
+         }
+
+         for (uint32_t i = 0; i < submit->sync_fd_semaphore_count; i++) {
+            struct anv_semaphore *semaphore = submit->sync_fd_semaphores[i];
+            /* Out fences can't have temporary state because that would imply
+             * that we imported a sync file and are trying to signal it.
+             */
+            assert(semaphore->temporary.type == ANV_SEMAPHORE_TYPE_NONE);
+            struct anv_semaphore_impl *impl = &semaphore->permanent;
+
+            assert(impl->type == ANV_SEMAPHORE_TYPE_SYNC_FILE);
+            impl->fd = dup(submit->out_fence);
+         }
+
+         if (result != VK_SUCCESS) {
+            /* vkQueueSubmit or some other entry point will report the
+             * DEVICE_LOST error at some point, but until we have emptied our
+             * list of execbufs we need to wake up all potential the waiters
+             * until one of them spots the error.
+             */
+            anv_queue_submit_signal_fences(queue->device, submit);
+         }
+
+         anv_queue_submit_free(queue->device, submit);
+
+         pthread_mutex_lock(&queue->mutex);
+      }
+
+      if (!queue->quit)
+         pthread_cond_wait(&queue->cond, &queue->mutex);
+   }
+
+   pthread_mutex_unlock(&queue->mutex);
+
+   return NULL;
+}
+
 static VkResult
 _anv_queue_submit(struct anv_queue *queue, struct anv_queue_submit **_submit,
                   bool flush_queue)
@@ -358,41 +457,92 @@ _anv_queue_submit(struct anv_queue *queue, struct anv_queue_submit **_submit,
     * anv_queue.
     */
    *_submit = NULL;
+   if (queue->device->has_thread_submit) {
+      pthread_mutex_lock(&queue->mutex);
+      pthread_cond_broadcast(&queue->cond);
+      list_addtail(&submit->link, &queue->queued_submits);
+      pthread_mutex_unlock(&queue->mutex);
+      return VK_SUCCESS;
+   } else {
+      pthread_mutex_lock(&queue->device->mutex);
+      list_addtail(&submit->link, &queue->queued_submits);
+      VkResult result = anv_device_submit_deferred_locked(queue->device);
+      if (flush_queue) {
+         while (result == VK_SUCCESS && !list_is_empty(&queue->queued_submits)) {
+            int ret = pthread_cond_wait(&queue->device->queue_submit,
+                                        &queue->device->mutex);
+            if (ret != 0) {
+               result = anv_device_set_lost(queue->device, "wait timeout");
+               break;
+            }
 
-   pthread_mutex_lock(&queue->device->mutex);
-   list_addtail(&submit->link, &queue->queued_submits);
-   VkResult result = anv_device_submit_deferred_locked(queue->device);
-   if (flush_queue) {
-      while (result == VK_SUCCESS && !list_is_empty(&queue->queued_submits)) {
-         int ret = pthread_cond_wait(&queue->device->queue_submit,
-                                     &queue->device->mutex);
-         if (ret != 0) {
-            result = anv_device_set_lost(queue->device, "wait timeout");
-            break;
+            result = anv_device_submit_deferred_locked(queue->device);
          }
-
-         result = anv_device_submit_deferred_locked(queue->device);
       }
+      pthread_mutex_unlock(&queue->device->mutex);
+      return result;
    }
-   pthread_mutex_unlock(&queue->device->mutex);
-   return result;
 }
 
 VkResult
 anv_queue_init(struct anv_device *device, struct anv_queue *queue)
 {
-   queue->_loader_data.loaderMagic = ICD_LOADER_MAGIC;
+   VkResult result;
+
    queue->device = device;
    queue->flags = 0;
+   queue->lost = false;
+   queue->quit = false;
 
    list_inithead(&queue->queued_submits);
 
+   /* We only need those additional thread/mutex when using a thread for
+    * submission.
+    */
+   if (device->has_thread_submit) {
+      if (pthread_mutex_init(&queue->mutex, NULL) != 0)
+         return vk_error(VK_ERROR_INITIALIZATION_FAILED);
+
+      if (pthread_cond_init(&queue->cond, NULL) != 0) {
+         result = vk_error(VK_ERROR_INITIALIZATION_FAILED);
+         goto fail_mutex;
+      }
+      if (pthread_create(&queue->thread, NULL, anv_queue_task, queue)) {
+         result = vk_error(VK_ERROR_INITIALIZATION_FAILED);
+         goto fail_cond;
+      }
+   }
+
+   vk_object_base_init(&device->vk, &queue->base, VK_OBJECT_TYPE_QUEUE);
+
    return VK_SUCCESS;
+
+ fail_cond:
+   pthread_cond_destroy(&queue->cond);
+ fail_mutex:
+   pthread_mutex_destroy(&queue->mutex);
+
+   return result;
 }
 
 void
 anv_queue_finish(struct anv_queue *queue)
 {
+   vk_object_base_finish(&queue->base);
+
+   if (!queue->device->has_thread_submit)
+      return;
+
+   pthread_mutex_lock(&queue->mutex);
+   pthread_cond_broadcast(&queue->cond);
+   queue->quit = true;
+   pthread_mutex_unlock(&queue->mutex);
+
+   void *ret;
+   pthread_join(queue->thread, &ret);
+
+   pthread_cond_destroy(&queue->cond);
+   pthread_mutex_destroy(&queue->mutex);
 }
 
 static VkResult
@@ -402,14 +552,14 @@ anv_queue_submit_add_fence_bo(struct anv_queue_submit *submit,
 {
    if (submit->fence_bo_count >= submit->fence_bo_array_length) {
       uint32_t new_len = MAX2(submit->fence_bo_array_length * 2, 64);
-
-      submit->fence_bos =
+      uintptr_t *new_fence_bos =
          vk_realloc(submit->alloc,
                     submit->fence_bos, new_len * sizeof(*submit->fence_bos),
                     8, submit->alloc_scope);
-      if (submit->fence_bos == NULL)
+      if (new_fence_bos == NULL)
          return vk_error(VK_ERROR_OUT_OF_HOST_MEMORY);
 
+      submit->fence_bos = new_fence_bos;
       submit->fence_bo_array_length = new_len;
    }
 
@@ -424,27 +574,70 @@ anv_queue_submit_add_fence_bo(struct anv_queue_submit *submit,
 static VkResult
 anv_queue_submit_add_syncobj(struct anv_queue_submit* submit,
                              struct anv_device *device,
-                             uint32_t handle, uint32_t flags)
+                             uint32_t handle, uint32_t flags,
+                             uint64_t value)
 {
    assert(flags != 0);
 
+   if (device->has_thread_submit && (flags & I915_EXEC_FENCE_WAIT)) {
+      if (submit->wait_timeline_count >= submit->wait_timeline_array_length) {
+         uint32_t new_len = MAX2(submit->wait_timeline_array_length * 2, 64);
+
+         uint32_t *new_wait_timeline_syncobjs =
+            vk_realloc(submit->alloc,
+                       submit->wait_timeline_syncobjs,
+                       new_len * sizeof(*submit->wait_timeline_syncobjs),
+                       8, submit->alloc_scope);
+         if (new_wait_timeline_syncobjs == NULL)
+            return vk_error(VK_ERROR_OUT_OF_HOST_MEMORY);
+
+         submit->wait_timeline_syncobjs = new_wait_timeline_syncobjs;
+
+         uint64_t *new_wait_timeline_values =
+            vk_realloc(submit->alloc,
+                       submit->wait_timeline_values, new_len * sizeof(*submit->wait_timeline_values),
+                       8, submit->alloc_scope);
+         if (new_wait_timeline_values == NULL)
+            return vk_error(VK_ERROR_OUT_OF_HOST_MEMORY);
+
+         submit->wait_timeline_values = new_wait_timeline_values;
+         submit->wait_timeline_array_length = new_len;
+      }
+
+      submit->wait_timeline_syncobjs[submit->wait_timeline_count] = handle;
+      submit->wait_timeline_values[submit->wait_timeline_count] = value;
+
+      submit->wait_timeline_count++;
+   }
+
    if (submit->fence_count >= submit->fence_array_length) {
       uint32_t new_len = MAX2(submit->fence_array_length * 2, 64);
-
-      submit->fences =
+      struct drm_i915_gem_exec_fence *new_fences =
          vk_realloc(submit->alloc,
                     submit->fences, new_len * sizeof(*submit->fences),
                     8, submit->alloc_scope);
-      if (submit->fences == NULL)
+      if (new_fences == NULL)
          return vk_error(VK_ERROR_OUT_OF_HOST_MEMORY);
 
+      submit->fences = new_fences;
+
+      uint64_t *new_fence_values =
+         vk_realloc(submit->alloc,
+                    submit->fence_values, new_len * sizeof(*submit->fence_values),
+                    8, submit->alloc_scope);
+      if (new_fence_values == NULL)
+         return vk_error(VK_ERROR_OUT_OF_HOST_MEMORY);
+
+      submit->fence_values = new_fence_values;
       submit->fence_array_length = new_len;
    }
 
-   submit->fences[submit->fence_count++] = (struct drm_i915_gem_exec_fence) {
+   submit->fences[submit->fence_count] = (struct drm_i915_gem_exec_fence) {
       .handle = handle,
       .flags = flags,
    };
+   submit->fence_values[submit->fence_count] = value;
+   submit->fence_count++;
 
    return VK_SUCCESS;
 }
@@ -480,20 +673,23 @@ anv_queue_submit_add_timeline_wait(struct anv_queue_submit* submit,
 {
    if (submit->wait_timeline_count >= submit->wait_timeline_array_length) {
       uint32_t new_len = MAX2(submit->wait_timeline_array_length * 2, 64);
-
-      submit->wait_timelines =
+      struct anv_timeline **new_wait_timelines =
          vk_realloc(submit->alloc,
                     submit->wait_timelines, new_len * sizeof(*submit->wait_timelines),
                     8, submit->alloc_scope);
-      if (submit->wait_timelines == NULL)
+      if (new_wait_timelines == NULL)
          return vk_error(VK_ERROR_OUT_OF_HOST_MEMORY);
 
-      submit->wait_timeline_values =
+      submit->wait_timelines = new_wait_timelines;
+
+      uint64_t *new_wait_timeline_values =
          vk_realloc(submit->alloc,
                     submit->wait_timeline_values, new_len * sizeof(*submit->wait_timeline_values),
                     8, submit->alloc_scope);
-      if (submit->wait_timeline_values == NULL)
+      if (new_wait_timeline_values == NULL)
          return vk_error(VK_ERROR_OUT_OF_HOST_MEMORY);
+
+      submit->wait_timeline_values = new_wait_timeline_values;
 
       submit->wait_timeline_array_length = new_len;
    }
@@ -516,20 +712,23 @@ anv_queue_submit_add_timeline_signal(struct anv_queue_submit* submit,
 
    if (submit->signal_timeline_count >= submit->signal_timeline_array_length) {
       uint32_t new_len = MAX2(submit->signal_timeline_array_length * 2, 64);
-
-      submit->signal_timelines =
+      struct anv_timeline **new_signal_timelines =
          vk_realloc(submit->alloc,
                     submit->signal_timelines, new_len * sizeof(*submit->signal_timelines),
                     8, submit->alloc_scope);
-      if (submit->signal_timelines == NULL)
+      if (new_signal_timelines == NULL)
             return vk_error(VK_ERROR_OUT_OF_HOST_MEMORY);
 
-      submit->signal_timeline_values =
+      submit->signal_timelines = new_signal_timelines;
+
+      uint64_t *new_signal_timeline_values =
          vk_realloc(submit->alloc,
                     submit->signal_timeline_values, new_len * sizeof(*submit->signal_timeline_values),
                     8, submit->alloc_scope);
-      if (submit->signal_timeline_values == NULL)
+      if (new_signal_timeline_values == NULL)
          return vk_error(VK_ERROR_OUT_OF_HOST_MEMORY);
+
+      submit->signal_timeline_values = new_signal_timeline_values;
 
       submit->signal_timeline_array_length = new_len;
    }
@@ -543,9 +742,9 @@ anv_queue_submit_add_timeline_signal(struct anv_queue_submit* submit,
 }
 
 static struct anv_queue_submit *
-anv_queue_submit_alloc(struct anv_device *device)
+anv_queue_submit_alloc(struct anv_device *device, int perf_query_pass)
 {
-   const VkAllocationCallbacks *alloc = &device->alloc;
+   const VkAllocationCallbacks *alloc = &device->vk.alloc;
    VkSystemAllocationScope alloc_scope = VK_SYSTEM_ALLOCATION_SCOPE_DEVICE;
 
    struct anv_queue_submit *submit = vk_zalloc(alloc, sizeof(*submit), 8, alloc_scope);
@@ -556,6 +755,7 @@ anv_queue_submit_alloc(struct anv_device *device)
    submit->alloc_scope = alloc_scope;
    submit->in_fence = -1;
    submit->out_fence = -1;
+   submit->perf_query_pass = perf_query_pass;
 
    return submit;
 }
@@ -564,8 +764,11 @@ VkResult
 anv_queue_submit_simple_batch(struct anv_queue *queue,
                               struct anv_batch *batch)
 {
+   if (queue->device->no_hw)
+      return VK_SUCCESS;
+
    struct anv_device *device = queue->device;
-   struct anv_queue_submit *submit = anv_queue_submit_alloc(device);
+   struct anv_queue_submit *submit = anv_queue_submit_alloc(device, -1);
    if (!submit)
       return vk_error(VK_ERROR_OUT_OF_HOST_MEMORY);
 
@@ -582,7 +785,7 @@ anv_queue_submit_simple_batch(struct anv_queue *queue,
       }
 
       result = anv_queue_submit_add_syncobj(submit, device, syncobj,
-                                            I915_EXEC_FENCE_SIGNAL);
+                                            I915_EXEC_FENCE_SIGNAL, 0);
    } else {
       result = anv_device_alloc_bo(device, 4096,
                                    ANV_BO_ALLOC_EXTERNAL |
@@ -716,19 +919,19 @@ anv_queue_submit(struct anv_queue *queue,
                  const uint64_t *out_values,
                  uint32_t num_out_semaphores,
                  struct anv_bo *wsi_signal_bo,
-                 VkFence _fence)
+                 VkFence _fence,
+                 int perf_query_pass)
 {
    ANV_FROM_HANDLE(anv_fence, fence, _fence);
    struct anv_device *device = queue->device;
    UNUSED struct anv_physical_device *pdevice = device->physical;
-   struct anv_queue_submit *submit = anv_queue_submit_alloc(device);
+   struct anv_queue_submit *submit = anv_queue_submit_alloc(device, perf_query_pass);
    if (!submit)
       return vk_error(VK_ERROR_OUT_OF_HOST_MEMORY);
 
    submit->cmd_buffer = cmd_buffer;
 
    VkResult result = VK_SUCCESS;
-
    for (uint32_t i = 0; i < num_in_semaphores; i++) {
       ANV_FROM_HANDLE(anv_semaphore, semaphore, in_semaphores[i]);
       struct anv_semaphore_impl *impl;
@@ -782,7 +985,8 @@ anv_queue_submit(struct anv_queue *queue,
       case ANV_SEMAPHORE_TYPE_DRM_SYNCOBJ: {
          result = anv_queue_submit_add_syncobj(submit, device,
                                                impl->syncobj,
-                                               I915_EXEC_FENCE_WAIT);
+                                               I915_EXEC_FENCE_WAIT,
+                                               0);
          if (result != VK_SUCCESS)
             goto error;
          break;
@@ -792,6 +996,15 @@ anv_queue_submit(struct anv_queue *queue,
          result = anv_queue_submit_add_timeline_wait(submit, device,
                                                      &impl->timeline,
                                                      in_values ? in_values[i] : 0);
+         if (result != VK_SUCCESS)
+            goto error;
+         break;
+
+      case ANV_SEMAPHORE_TYPE_DRM_SYNCOBJ_TIMELINE:
+         result = anv_queue_submit_add_syncobj(submit, device,
+                                               impl->syncobj,
+                                               I915_EXEC_FENCE_WAIT,
+                                               in_values ? in_values[i] : 0);
          if (result != VK_SUCCESS)
             goto error;
          break;
@@ -836,7 +1049,8 @@ anv_queue_submit(struct anv_queue *queue,
 
       case ANV_SEMAPHORE_TYPE_DRM_SYNCOBJ: {
          result = anv_queue_submit_add_syncobj(submit, device, impl->syncobj,
-                                               I915_EXEC_FENCE_SIGNAL);
+                                               I915_EXEC_FENCE_SIGNAL,
+                                               0);
          if (result != VK_SUCCESS)
             goto error;
          break;
@@ -846,6 +1060,14 @@ anv_queue_submit(struct anv_queue *queue,
          result = anv_queue_submit_add_timeline_signal(submit, device,
                                                        &impl->timeline,
                                                        out_values ? out_values[i] : 0);
+         if (result != VK_SUCCESS)
+            goto error;
+         break;
+
+      case ANV_SEMAPHORE_TYPE_DRM_SYNCOBJ_TIMELINE:
+         result = anv_queue_submit_add_syncobj(submit, device, impl->syncobj,
+                                               I915_EXEC_FENCE_SIGNAL,
+                                               out_values ? out_values[i] : 0);
          if (result != VK_SUCCESS)
             goto error;
          break;
@@ -879,6 +1101,7 @@ anv_queue_submit(struct anv_queue *queue,
 
       switch (impl->type) {
       case ANV_FENCE_TYPE_BO:
+         assert(!device->has_thread_submit);
          result = anv_queue_submit_add_fence_bo(submit, impl->bo.bo, true /* signal */);
          if (result != VK_SUCCESS)
             goto error;
@@ -890,8 +1113,11 @@ anv_queue_submit(struct anv_queue *queue,
           * also reset the fence's syncobj so that they don't contain a
           * signaled dma-fence.
           */
+         anv_gem_syncobj_reset(device, impl->syncobj);
+
          result = anv_queue_submit_add_syncobj(submit, device, impl->syncobj,
-                                               I915_EXEC_FENCE_SIGNAL);
+                                               I915_EXEC_FENCE_SIGNAL,
+                                               0);
          if (result != VK_SUCCESS)
             goto error;
          break;
@@ -907,6 +1133,7 @@ anv_queue_submit(struct anv_queue *queue,
       goto error;
 
    if (fence && fence->permanent.type == ANV_FENCE_TYPE_BO) {
+      assert(!device->has_thread_submit);
       /* If we have permanent BO fence, the only type of temporary possible
        * would be BO_WSI (because BO fences are not shareable). The Vulkan spec
        * also requires that the fence passed to vkQueueSubmit() be :
@@ -947,6 +1174,9 @@ VkResult anv_QueueSubmit(
 {
    ANV_FROM_HANDLE(anv_queue, queue, _queue);
 
+   if (queue->device->no_hw)
+      return VK_SUCCESS;
+
    /* Query for device status prior to submitting.  Technically, we don't need
     * to do this.  However, if we have a client that's submitting piles of
     * garbage, we would rather break as early as possible to keep the GPU
@@ -965,7 +1195,7 @@ VkResult anv_QueueSubmit(
        * common case.
        */
       result = anv_queue_submit(queue, NULL, NULL, NULL, 0, NULL, NULL, 0,
-                                NULL, fence);
+                                NULL, fence, -1);
       goto out;
    }
 
@@ -983,6 +1213,9 @@ VkResult anv_QueueSubmit(
       const VkTimelineSemaphoreSubmitInfoKHR *timeline_info =
          vk_find_struct_const(pSubmits[i].pNext,
                               TIMELINE_SEMAPHORE_SUBMIT_INFO_KHR);
+      const VkPerformanceQuerySubmitInfoKHR *perf_info =
+         vk_find_struct_const(pSubmits[i].pNext,
+                              PERFORMANCE_QUERY_SUBMIT_INFO_KHR);
       const uint64_t *wait_values =
          timeline_info && timeline_info->waitSemaphoreValueCount ?
          timeline_info->pWaitSemaphoreValues : NULL;
@@ -1004,7 +1237,8 @@ VkResult anv_QueueSubmit(
                                    signal_values,
                                    pSubmits[i].signalSemaphoreCount,
                                    wsi_signal_bo,
-                                   submit_fence);
+                                   submit_fence,
+                                   -1);
          if (result != VK_SUCCESS)
             goto out;
 
@@ -1042,7 +1276,8 @@ VkResult anv_QueueSubmit(
          result = anv_queue_submit(queue, cmd_buffer,
                                    in_semaphores, in_values, num_in_semaphores,
                                    out_semaphores, out_values, num_out_semaphores,
-                                   wsi_signal_bo, execbuf_fence);
+                                   wsi_signal_bo, execbuf_fence,
+                                   perf_info ? perf_info->counterPassIndex : 0);
          if (result != VK_SUCCESS)
             goto out;
       }
@@ -1094,10 +1329,12 @@ VkResult anv_CreateFence(
 
    assert(pCreateInfo->sType == VK_STRUCTURE_TYPE_FENCE_CREATE_INFO);
 
-   fence = vk_zalloc2(&device->alloc, pAllocator, sizeof(*fence), 8,
+   fence = vk_zalloc2(&device->vk.alloc, pAllocator, sizeof(*fence), 8,
                       VK_SYSTEM_ALLOCATION_SCOPE_OBJECT);
    if (fence == NULL)
       return vk_error(VK_ERROR_OUT_OF_HOST_MEMORY);
+
+   vk_object_base_init(&device->vk, &fence->base, VK_OBJECT_TYPE_FENCE);
 
    if (device->physical->has_syncobj_wait) {
       fence->permanent.type = ANV_FENCE_TYPE_SYNCOBJ;
@@ -1185,7 +1422,8 @@ void anv_DestroyFence(
    anv_fence_impl_cleanup(device, &fence->temporary);
    anv_fence_impl_cleanup(device, &fence->permanent);
 
-   vk_free2(&device->alloc, pAllocator, fence);
+   vk_object_base_finish(&fence->base);
+   vk_free2(&device->vk.alloc, pAllocator, fence);
 }
 
 VkResult anv_ResetFences(
@@ -1266,16 +1504,34 @@ VkResult anv_GetFenceStatus(
       }
 
    case ANV_FENCE_TYPE_SYNCOBJ: {
-      int ret = anv_gem_syncobj_wait(device, &impl->syncobj, 1, 0, true);
-      if (ret == -1) {
-         if (errno == ETIME) {
-            return VK_NOT_READY;
+      if (device->has_thread_submit) {
+         uint64_t binary_value = 0;
+         int ret = anv_gem_syncobj_timeline_wait(device, &impl->syncobj,
+                                             &binary_value, 1, 0,
+                                             true /* wait_all */,
+                                             false /* wait_materialize */);
+         if (ret == -1) {
+            if (errno == ETIME) {
+               return VK_NOT_READY;
+            } else {
+               /* We don't know the real error. */
+               return anv_device_set_lost(device, "drm_syncobj_wait failed: %m");
+            }
          } else {
-            /* We don't know the real error. */
-            return anv_device_set_lost(device, "drm_syncobj_wait failed: %m");
+            return VK_SUCCESS;
          }
       } else {
-         return VK_SUCCESS;
+         int ret = anv_gem_syncobj_wait(device, &impl->syncobj, 1, 0, false);
+         if (ret == -1) {
+            if (errno == ETIME) {
+               return VK_NOT_READY;
+            } else {
+               /* We don't know the real error. */
+               return anv_device_set_lost(device, "drm_syncobj_wait failed: %m");
+            }
+         } else {
+            return VK_SUCCESS;
+         }
       }
    }
 
@@ -1291,7 +1547,7 @@ anv_wait_for_syncobj_fences(struct anv_device *device,
                             bool waitAll,
                             uint64_t abs_timeout_ns)
 {
-   uint32_t *syncobjs = vk_zalloc(&device->alloc,
+   uint32_t *syncobjs = vk_zalloc(&device->vk.alloc,
                                   sizeof(*syncobjs) * fenceCount, 8,
                                   VK_SYSTEM_ALLOCATION_SCOPE_COMMAND);
    if (!syncobjs)
@@ -1309,17 +1565,17 @@ anv_wait_for_syncobj_fences(struct anv_device *device,
       syncobjs[i] = impl->syncobj;
    }
 
+   int ret = 0;
    /* The gem_syncobj_wait ioctl may return early due to an inherent
-    * limitation in the way it computes timeouts.  Loop until we've actually
+    * limitation in the way it computes timeouts. Loop until we've actually
     * passed the timeout.
     */
-   int ret;
    do {
       ret = anv_gem_syncobj_wait(device, syncobjs, fenceCount,
                                  abs_timeout_ns, waitAll);
    } while (ret == -1 && errno == ETIME && anv_gettime_ns() < abs_timeout_ns);
 
-   vk_free(&device->alloc, syncobjs);
+   vk_free(&device->vk.alloc, syncobjs);
 
    if (ret == -1) {
       if (errno == ETIME) {
@@ -1471,6 +1727,8 @@ anv_wait_for_fences(struct anv_device *device,
 
          switch (impl->type) {
          case ANV_FENCE_TYPE_BO:
+            assert(!device->physical->has_syncobj_wait);
+            /* fall-through */
          case ANV_FENCE_TYPE_WSI_BO:
             result = anv_wait_for_bo_fences(device, 1, &pFences[i],
                                             true, abs_timeout);
@@ -1536,6 +1794,9 @@ VkResult anv_WaitForFences(
     uint64_t                                    timeout)
 {
    ANV_FROM_HANDLE(anv_device, device, _device);
+
+   if (device->no_hw)
+      return VK_SUCCESS;
 
    if (anv_device_is_lost(device))
       return VK_ERROR_DEVICE_LOST;
@@ -1611,23 +1872,35 @@ VkResult anv_ImportFenceFdKHR(
 
       break;
 
-   case VK_EXTERNAL_FENCE_HANDLE_TYPE_SYNC_FD_BIT:
+   case VK_EXTERNAL_FENCE_HANDLE_TYPE_SYNC_FD_BIT: {
       /* Sync files are a bit tricky.  Because we want to continue using the
        * syncobj implementation of WaitForFences, we don't use the sync file
        * directly but instead import it into a syncobj.
        */
       new_impl.type = ANV_FENCE_TYPE_SYNCOBJ;
 
-      new_impl.syncobj = anv_gem_syncobj_create(device, 0);
+      /* "If handleType is VK_EXTERNAL_FENCE_HANDLE_TYPE_SYNC_FD_BIT, the
+       *  special value -1 for fd is treated like a valid sync file descriptor
+       *  referring to an object that has already signaled. The import
+       *  operation will succeed and the VkFence will have a temporarily
+       *  imported payload as if a valid file descriptor had been provided."
+       */
+      uint32_t create_flags = 0;
+      if (fd == -1)
+         create_flags |= DRM_SYNCOBJ_CREATE_SIGNALED;
+
+      new_impl.syncobj = anv_gem_syncobj_create(device, create_flags);
       if (!new_impl.syncobj)
          return vk_error(VK_ERROR_OUT_OF_HOST_MEMORY);
 
-      if (anv_gem_syncobj_import_sync_file(device, new_impl.syncobj, fd)) {
+      if (fd != -1 &&
+          anv_gem_syncobj_import_sync_file(device, new_impl.syncobj, fd)) {
          anv_gem_syncobj_destroy(device, new_impl.syncobj);
          return vk_errorf(device, NULL, VK_ERROR_INVALID_EXTERNAL_HANDLE,
                           "syncobj sync file import failed: %m");
       }
       break;
+   }
 
    default:
       return vk_error(VK_ERROR_INVALID_EXTERNAL_HANDLE);
@@ -1642,7 +1915,8 @@ VkResult anv_ImportFenceFdKHR(
     *
     * If the import fails, we leave the file descriptor open.
     */
-   close(fd);
+   if (fd != -1)
+      close(fd);
 
    if (pImportFenceFdInfo->flags & VK_FENCE_IMPORT_TEMPORARY_BIT) {
       anv_fence_impl_cleanup(device, &fence->temporary);
@@ -1651,6 +1925,31 @@ VkResult anv_ImportFenceFdKHR(
       anv_fence_impl_cleanup(device, &fence->permanent);
       fence->permanent = new_impl;
    }
+
+   return VK_SUCCESS;
+}
+
+/* The sideband payload of the DRM syncobj was incremented when the
+ * application called vkQueueSubmit(). Here we wait for a fence with the same
+ * value to materialize so that we can exporting (typically as a SyncFD).
+ */
+static VkResult
+wait_syncobj_materialize(struct anv_device *device,
+                         uint32_t syncobj,
+                         int *fd)
+{
+   if (!device->has_thread_submit)
+      return VK_SUCCESS;
+
+   uint64_t binary_value = 0;
+   /* We might need to wait until the fence materializes before we can
+    * export to a sync FD when we use a thread for submission.
+    */
+   if (anv_gem_syncobj_timeline_wait(device, &syncobj, &binary_value, 1,
+                                     anv_get_absolute_timeout(5ull * NSEC_PER_SEC),
+                                     true /* wait_all */,
+                                     true /* wait_materialize */))
+      return anv_device_set_lost(device, "anv_gem_syncobj_timeline_wait failed: %m");
 
    return VK_SUCCESS;
 }
@@ -1681,6 +1980,10 @@ VkResult anv_GetFenceFdKHR(
    }
 
    case VK_EXTERNAL_FENCE_HANDLE_TYPE_SYNC_FD_BIT: {
+      VkResult result = wait_syncobj_materialize(device, impl->syncobj, pFd);
+      if (result != VK_SUCCESS)
+         return result;
+
       int fd = anv_gem_syncobj_export_sync_file(device, impl->syncobj);
       if (fd < 0)
          return vk_error(VK_ERROR_TOO_MANY_OBJECTS);
@@ -1754,8 +2057,24 @@ timeline_semaphore_create(struct anv_device *device,
                           struct anv_semaphore_impl *impl,
                           uint64_t initial_value)
 {
-   impl->type = ANV_SEMAPHORE_TYPE_TIMELINE;
-   anv_timeline_init(device, &impl->timeline, initial_value);
+   if (device->has_thread_submit) {
+      impl->type = ANV_SEMAPHORE_TYPE_DRM_SYNCOBJ_TIMELINE;
+      impl->syncobj = anv_gem_syncobj_create(device, 0);
+      if (!impl->syncobj)
+         return vk_error(VK_ERROR_OUT_OF_HOST_MEMORY);
+      if (initial_value) {
+         if (anv_gem_syncobj_timeline_signal(device,
+                                             &impl->syncobj,
+                                             &initial_value, 1)) {
+            anv_gem_syncobj_destroy(device, impl->syncobj);
+            return vk_error(VK_ERROR_OUT_OF_HOST_MEMORY);
+         }
+      }
+   } else {
+      impl->type = ANV_SEMAPHORE_TYPE_TIMELINE;
+      anv_timeline_init(device, &impl->timeline, initial_value);
+   }
+
    return VK_SUCCESS;
 }
 
@@ -1773,16 +2092,18 @@ VkResult anv_CreateSemaphore(
    uint64_t timeline_value = 0;
    VkSemaphoreTypeKHR sem_type = get_semaphore_type(pCreateInfo->pNext, &timeline_value);
 
-   semaphore = vk_alloc(&device->alloc, sizeof(*semaphore), 8,
+   semaphore = vk_alloc(&device->vk.alloc, sizeof(*semaphore), 8,
                         VK_SYSTEM_ALLOCATION_SCOPE_DEVICE);
    if (semaphore == NULL)
       return vk_error(VK_ERROR_OUT_OF_HOST_MEMORY);
+
+   vk_object_base_init(&device->vk, &semaphore->base, VK_OBJECT_TYPE_SEMAPHORE);
 
    p_atomic_set(&semaphore->refcount, 1);
 
    const VkExportSemaphoreCreateInfo *export =
       vk_find_struct_const(pCreateInfo->pNext, EXPORT_SEMAPHORE_CREATE_INFO);
-    VkExternalSemaphoreHandleTypeFlags handleTypes =
+   VkExternalSemaphoreHandleTypeFlags handleTypes =
       export ? export->handleTypes : 0;
    VkResult result;
 
@@ -1792,15 +2113,17 @@ VkResult anv_CreateSemaphore(
       else
          result = timeline_semaphore_create(device, &semaphore->permanent, timeline_value);
       if (result != VK_SUCCESS) {
-         vk_free2(&device->alloc, pAllocator, semaphore);
+         vk_free2(&device->vk.alloc, pAllocator, semaphore);
          return result;
       }
    } else if (handleTypes & VK_EXTERNAL_SEMAPHORE_HANDLE_TYPE_OPAQUE_FD_BIT) {
       assert(handleTypes == VK_EXTERNAL_SEMAPHORE_HANDLE_TYPE_OPAQUE_FD_BIT);
-      assert(sem_type == VK_SEMAPHORE_TYPE_BINARY_KHR);
-      result = binary_semaphore_create(device, &semaphore->permanent, true);
+      if (sem_type == VK_SEMAPHORE_TYPE_BINARY_KHR)
+         result = binary_semaphore_create(device, &semaphore->permanent, true);
+      else
+         result = timeline_semaphore_create(device, &semaphore->permanent, timeline_value);
       if (result != VK_SUCCESS) {
-         vk_free2(&device->alloc, pAllocator, semaphore);
+         vk_free2(&device->vk.alloc, pAllocator, semaphore);
          return result;
       }
    } else if (handleTypes & VK_EXTERNAL_SEMAPHORE_HANDLE_TYPE_SYNC_FD_BIT) {
@@ -1810,7 +2133,7 @@ VkResult anv_CreateSemaphore(
          semaphore->permanent.type = ANV_SEMAPHORE_TYPE_DRM_SYNCOBJ;
          semaphore->permanent.syncobj = anv_gem_syncobj_create(device, 0);
          if (!semaphore->permanent.syncobj) {
-            vk_free2(&device->alloc, pAllocator, semaphore);
+            vk_free2(&device->vk.alloc, pAllocator, semaphore);
             return vk_error(VK_ERROR_OUT_OF_HOST_MEMORY);
          }
       } else {
@@ -1819,7 +2142,7 @@ VkResult anv_CreateSemaphore(
       }
    } else {
       assert(!"Unknown handle type");
-      vk_free2(&device->alloc, pAllocator, semaphore);
+      vk_free2(&device->vk.alloc, pAllocator, semaphore);
       return vk_error(VK_ERROR_INVALID_EXTERNAL_HANDLE);
    }
 
@@ -1855,6 +2178,7 @@ anv_semaphore_impl_cleanup(struct anv_device *device,
       break;
 
    case ANV_SEMAPHORE_TYPE_DRM_SYNCOBJ:
+   case ANV_SEMAPHORE_TYPE_DRM_SYNCOBJ_TIMELINE:
       anv_gem_syncobj_destroy(device, impl->syncobj);
       break;
 
@@ -1891,7 +2215,9 @@ anv_semaphore_unref(struct anv_device *device, struct anv_semaphore *semaphore)
 
    anv_semaphore_impl_cleanup(device, &semaphore->temporary);
    anv_semaphore_impl_cleanup(device, &semaphore->permanent);
-   vk_free(&device->alloc, semaphore);
+
+   vk_object_base_finish(&semaphore->base);
+   vk_free(&device->vk.alloc, semaphore);
 }
 
 void anv_DestroySemaphore(
@@ -1920,8 +2246,10 @@ void anv_GetPhysicalDeviceExternalSemaphoreProperties(
 
    switch (pExternalSemaphoreInfo->handleType) {
    case VK_EXTERNAL_SEMAPHORE_HANDLE_TYPE_OPAQUE_FD_BIT:
-      /* Timeline semaphores are not exportable. */
-      if (sem_type == VK_SEMAPHORE_TYPE_TIMELINE_KHR)
+      /* Timeline semaphores are not exportable, unless we have threaded
+       * submission.
+       */
+      if (sem_type == VK_SEMAPHORE_TYPE_TIMELINE_KHR && !device->has_thread_submit)
          break;
       pExternalSemaphoreProperties->exportFromImportedHandleTypes =
          VK_EXTERNAL_SEMAPHORE_HANDLE_TYPE_OPAQUE_FD_BIT;
@@ -1970,7 +2298,15 @@ VkResult anv_ImportSemaphoreFdKHR(
    switch (pImportSemaphoreFdInfo->handleType) {
    case VK_EXTERNAL_SEMAPHORE_HANDLE_TYPE_OPAQUE_FD_BIT:
       if (device->physical->has_syncobj) {
-         new_impl.type = ANV_SEMAPHORE_TYPE_DRM_SYNCOBJ;
+         /* When importing non temporarily, reuse the semaphore's existing
+          * type. The Linux/DRM implementation allows to interchangeably use
+          * binary & timeline semaphores and we have no way to differenciate
+          * them.
+          */
+         if (pImportSemaphoreFdInfo->flags & VK_SEMAPHORE_IMPORT_TEMPORARY_BIT)
+            new_impl.type = ANV_SEMAPHORE_TYPE_DRM_SYNCOBJ;
+         else
+            new_impl.type = semaphore->permanent.type;
 
          new_impl.syncobj = anv_gem_syncobj_fd_to_handle(device, fd);
          if (!new_impl.syncobj)
@@ -2011,22 +2347,31 @@ VkResult anv_ImportSemaphoreFdKHR(
 
    case VK_EXTERNAL_SEMAPHORE_HANDLE_TYPE_SYNC_FD_BIT:
       if (device->physical->has_syncobj) {
+         uint32_t create_flags = 0;
+
+         if (fd == -1)
+            create_flags |= DRM_SYNCOBJ_CREATE_SIGNALED;
+
          new_impl = (struct anv_semaphore_impl) {
             .type = ANV_SEMAPHORE_TYPE_DRM_SYNCOBJ,
-            .syncobj = anv_gem_syncobj_create(device, 0),
+            .syncobj = anv_gem_syncobj_create(device, create_flags),
          };
+
          if (!new_impl.syncobj)
             return vk_error(VK_ERROR_OUT_OF_HOST_MEMORY);
-         if (anv_gem_syncobj_import_sync_file(device, new_impl.syncobj, fd)) {
-            anv_gem_syncobj_destroy(device, new_impl.syncobj);
-            return vk_errorf(device, NULL, VK_ERROR_INVALID_EXTERNAL_HANDLE,
-                             "syncobj sync file import failed: %m");
+
+         if (fd != -1) {
+            if (anv_gem_syncobj_import_sync_file(device, new_impl.syncobj, fd)) {
+               anv_gem_syncobj_destroy(device, new_impl.syncobj);
+               return vk_errorf(device, NULL, VK_ERROR_INVALID_EXTERNAL_HANDLE,
+                                "syncobj sync file import failed: %m");
+            }
+            /* Ownership of the FD is transfered to Anv. Since we don't need it
+             * anymore because the associated fence has been put into a syncobj,
+             * we must close the FD.
+             */
+            close(fd);
          }
-         /* Ownership of the FD is transfered to Anv. Since we don't need it
-          * anymore because the associated fence has been put into a syncobj,
-          * we must close the FD.
-          */
-         close(fd);
       } else {
          new_impl = (struct anv_semaphore_impl) {
             .type = ANV_SEMAPHORE_TYPE_SYNC_FILE,
@@ -2115,12 +2460,24 @@ VkResult anv_GetSemaphoreFdKHR(
    }
 
    case ANV_SEMAPHORE_TYPE_DRM_SYNCOBJ:
-      if (pGetFdInfo->handleType == VK_EXTERNAL_SEMAPHORE_HANDLE_TYPE_SYNC_FD_BIT)
+      if (pGetFdInfo->handleType == VK_EXTERNAL_SEMAPHORE_HANDLE_TYPE_SYNC_FD_BIT) {
+         VkResult result = wait_syncobj_materialize(device, impl->syncobj, pFd);
+         if (result != VK_SUCCESS)
+            return result;
+
          fd = anv_gem_syncobj_export_sync_file(device, impl->syncobj);
-      else {
+      } else {
          assert(pGetFdInfo->handleType == VK_EXTERNAL_SEMAPHORE_HANDLE_TYPE_OPAQUE_FD_BIT);
          fd = anv_gem_syncobj_handle_to_fd(device, impl->syncobj);
       }
+      if (fd < 0)
+         return vk_error(VK_ERROR_TOO_MANY_OBJECTS);
+      *pFd = fd;
+      break;
+
+   case ANV_SEMAPHORE_TYPE_DRM_SYNCOBJ_TIMELINE:
+      assert(pGetFdInfo->handleType == VK_EXTERNAL_SEMAPHORE_HANDLE_TYPE_OPAQUE_FD_BIT);
+      fd = anv_gem_syncobj_handle_to_fd(device, impl->syncobj);
       if (fd < 0)
          return vk_error(VK_ERROR_TOO_MANY_OBJECTS);
       *pFd = fd;
@@ -2158,8 +2515,18 @@ VkResult anv_GetSemaphoreCounterValue(
    switch (impl->type) {
    case ANV_SEMAPHORE_TYPE_TIMELINE: {
       pthread_mutex_lock(&device->mutex);
+      anv_timeline_gc_locked(device, &impl->timeline);
       *pValue = impl->timeline.highest_past;
       pthread_mutex_unlock(&device->mutex);
+      return VK_SUCCESS;
+   }
+
+   case ANV_SEMAPHORE_TYPE_DRM_SYNCOBJ_TIMELINE: {
+      int ret = anv_gem_syncobj_timeline_query(device, &impl->syncobj, pValue, 1);
+
+      if (ret != 0)
+         return anv_device_set_lost(device, "unable to query timeline syncobj");
+
       return VK_SUCCESS;
    }
 
@@ -2182,8 +2549,8 @@ anv_timeline_wait_locked(struct anv_device *device,
          .tv_nsec = abs_timeout_ns % NSEC_PER_SEC,
       };
 
-      int ret = pthread_cond_timedwait(&device->queue_submit,
-                                       &device->mutex, &abstime);
+      UNUSED int ret = pthread_cond_timedwait(&device->queue_submit,
+                                              &device->mutex, &abstime);
       assert(ret != EINVAL);
       if (anv_gettime_ns() >= abs_timeout_ns &&
           timeline->highest_pending < serial)
@@ -2229,9 +2596,10 @@ anv_timelines_wait(struct anv_device *device,
                    uint64_t abs_timeout_ns)
 {
    if (!wait_all && n_timelines > 1) {
+      pthread_mutex_lock(&device->mutex);
+
       while (1) {
          VkResult result;
-         pthread_mutex_lock(&device->mutex);
          for (uint32_t i = 0; i < n_timelines; i++) {
             result =
                anv_timeline_wait_locked(device, timelines[i], serials[i], 0);
@@ -2281,21 +2649,22 @@ VkResult anv_WaitSemaphores(
     uint64_t                                    timeout)
 {
    ANV_FROM_HANDLE(anv_device, device, _device);
+   uint32_t *handles;
+   struct anv_timeline **timelines;
+   uint64_t *values;
 
-   struct anv_timeline **timelines =
-      vk_alloc(&device->alloc,
-               pWaitInfo->semaphoreCount * sizeof(*timelines),
-               8, VK_SYSTEM_ALLOCATION_SCOPE_COMMAND);
-   if (!timelines)
-      return vk_error(VK_ERROR_OUT_OF_HOST_MEMORY);
+   ANV_MULTIALLOC(ma);
 
-   uint64_t *values = vk_alloc(&device->alloc,
-                               pWaitInfo->semaphoreCount * sizeof(*values),
-                               8, VK_SYSTEM_ALLOCATION_SCOPE_COMMAND);
-   if (!values) {
-      vk_free(&device->alloc, timelines);
-      return vk_error(VK_ERROR_OUT_OF_HOST_MEMORY);
+   anv_multialloc_add(&ma, &values, pWaitInfo->semaphoreCount);
+   if (device->has_thread_submit) {
+      anv_multialloc_add(&ma, &handles, pWaitInfo->semaphoreCount);
+   } else {
+      anv_multialloc_add(&ma, &timelines, pWaitInfo->semaphoreCount);
    }
+
+   if (!anv_multialloc_alloc(&ma, &device->vk.alloc,
+                             VK_SYSTEM_ALLOCATION_SCOPE_COMMAND))
+      return vk_error(VK_ERROR_OUT_OF_HOST_MEMORY);
 
    uint32_t handle_count = 0;
    for (uint32_t i = 0; i < pWaitInfo->semaphoreCount; i++) {
@@ -2304,25 +2673,41 @@ VkResult anv_WaitSemaphores(
          semaphore->temporary.type != ANV_SEMAPHORE_TYPE_NONE ?
          &semaphore->temporary : &semaphore->permanent;
 
-      assert(impl->type == ANV_SEMAPHORE_TYPE_TIMELINE);
-
       if (pWaitInfo->pValues[i] == 0)
          continue;
 
-      timelines[handle_count] = &impl->timeline;
+      if (device->has_thread_submit) {
+         assert(impl->type == ANV_SEMAPHORE_TYPE_DRM_SYNCOBJ_TIMELINE);
+         handles[handle_count] = impl->syncobj;
+      } else {
+         assert(impl->type == ANV_SEMAPHORE_TYPE_TIMELINE);
+         timelines[handle_count] = &impl->timeline;
+      }
       values[handle_count] = pWaitInfo->pValues[i];
       handle_count++;
    }
 
    VkResult result = VK_SUCCESS;
    if (handle_count > 0) {
-      result = anv_timelines_wait(device, timelines, values, handle_count,
-                                  !(pWaitInfo->flags & VK_SEMAPHORE_WAIT_ANY_BIT_KHR),
-                                  timeout);
+      if (device->has_thread_submit) {
+         int ret =
+            anv_gem_syncobj_timeline_wait(device,
+                                          handles, values, handle_count,
+                                          anv_get_absolute_timeout(timeout),
+                                          !(pWaitInfo->flags & VK_SEMAPHORE_WAIT_ANY_BIT_KHR),
+                                          false);
+         if (ret != 0)
+            result = errno == ETIME ? VK_TIMEOUT :
+               anv_device_set_lost(device, "unable to wait on timeline syncobj");
+      } else {
+         result =
+            anv_timelines_wait(device, timelines, values, handle_count,
+                               !(pWaitInfo->flags & VK_SEMAPHORE_WAIT_ANY_BIT_KHR),
+                               anv_get_absolute_timeout(timeout));
+      }
    }
 
-   vk_free(&device->alloc, timelines);
-   vk_free(&device->alloc, values);
+   vk_free(&device->vk.alloc, values);
 
    return result;
 }
@@ -2354,6 +2739,20 @@ VkResult anv_SignalSemaphore(
       pthread_cond_broadcast(&device->queue_submit);
       pthread_mutex_unlock(&device->mutex);
       return result;
+   }
+
+   case ANV_SEMAPHORE_TYPE_DRM_SYNCOBJ_TIMELINE: {
+      /* Timeline semaphores are created with a value of 0, so signaling on 0
+       * is a waste of time.
+       */
+      if (pSignalInfo->value == 0)
+         return VK_SUCCESS;
+
+      int ret = anv_gem_syncobj_timeline_signal(device, &impl->syncobj,
+                                                &pSignalInfo->value, 1);
+
+      return ret == 0 ? VK_SUCCESS :
+         anv_device_set_lost(device, "unable to signal timeline syncobj");
    }
 
    default:

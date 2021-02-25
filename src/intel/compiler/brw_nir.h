@@ -99,9 +99,8 @@ void
 brw_nir_link_shaders(const struct brw_compiler *compiler,
                      nir_shader *producer, nir_shader *consumer);
 
-bool brw_nir_lower_cs_intrinsics(nir_shader *nir,
-                                 unsigned dispatch_width);
-void brw_nir_lower_alpha_to_coverage(nir_shader *shader);
+bool brw_nir_lower_cs_intrinsics(nir_shader *nir);
+bool brw_nir_lower_alpha_to_coverage(nir_shader *shader);
 void brw_nir_lower_legacy_clipping(nir_shader *nir,
                                    int nr_userclip_plane_consts,
                                    struct brw_stage_prog_data *prog_data);
@@ -120,8 +119,11 @@ void brw_nir_lower_fs_outputs(nir_shader *nir);
 
 bool brw_nir_lower_conversions(nir_shader *nir);
 
+bool brw_nir_lower_scoped_barriers(nir_shader *nir);
+
 bool brw_nir_lower_image_load_store(nir_shader *nir,
-                                    const struct gen_device_info *devinfo);
+                                    const struct gen_device_info *devinfo,
+                                    bool *uses_atomic_load_store);
 void brw_nir_rewrite_image_intrinsic(nir_intrinsic_instr *intrin,
                                      nir_ssa_def *index);
 void brw_nir_rewrite_bindless_image_intrinsic(nir_intrinsic_instr *intrin,
@@ -189,6 +191,13 @@ nir_shader *brw_nir_create_passthrough_tcs(void *mem_ctx,
 #define BRW_NIR_FRAG_OUTPUT_INDEX_MASK INTEL_MASK(0, 0)
 #define BRW_NIR_FRAG_OUTPUT_LOCATION_SHIFT 1
 #define BRW_NIR_FRAG_OUTPUT_LOCATION_MASK INTEL_MASK(31, 1)
+
+bool brw_nir_move_interpolation_to_top(nir_shader *nir);
+bool brw_nir_demote_sample_qualifiers(nir_shader *nir);
+void brw_nir_populate_wm_prog_data(const nir_shader *shader,
+                                   const struct gen_device_info *devinfo,
+                                   const struct brw_wm_prog_key *key,
+                                   struct brw_wm_prog_data *prog_data);
 
 #ifdef __cplusplus
 }

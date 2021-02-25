@@ -33,11 +33,12 @@
 
 static bool
 lower_impl(nir_function_impl *impl,
-           const gl_state_index16 *pointsize_state_tokens)
+           const gl_state_index16 *pointsize_state_tokens,
+           nir_variable *out)
 {
    nir_shader *shader = impl->function->shader;
    nir_builder b;
-   nir_variable *in, *out;
+   nir_variable *in;
 
    nir_builder_init(&b, impl);
    b.cursor = nir_before_cf_list(&impl->body);
@@ -50,9 +51,11 @@ lower_impl(nir_function_impl *impl,
          pointsize_state_tokens,
          sizeof(in->state_slots[0].tokens));
 
-   out = nir_variable_create(shader, nir_var_shader_out,
-                             glsl_float_type(), "gl_PointSize");
-   out->data.location = VARYING_SLOT_PSIZ;
+   if (!out) {
+      out = nir_variable_create(shader, nir_var_shader_out,
+                                glsl_float_type(), "gl_PointSize");
+      out->data.location = VARYING_SLOT_PSIZ;
+   }
 
    nir_copy_var(&b, out, in);
 
@@ -65,5 +68,13 @@ void
 nir_lower_point_size_mov(nir_shader *shader,
                          const gl_state_index16 *pointsize_state_tokens)
 {
-   lower_impl(nir_shader_get_entrypoint(shader), pointsize_state_tokens);
+   assert(shader->info.stage != MESA_SHADER_FRAGMENT &&
+          shader->info.stage != MESA_SHADER_COMPUTE);
+
+   nir_variable *out =
+      nir_find_variable_with_location(shader, nir_var_shader_out,
+                                      VARYING_SLOT_PSIZ);
+
+   lower_impl(nir_shader_get_entrypoint(shader), pointsize_state_tokens,
+              out);
 }
