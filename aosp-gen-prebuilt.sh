@@ -21,6 +21,7 @@ python src/compiler/nir/nir_intrinsics_h.py --outdir prebuilt-intermediates/nir/
 
 python src/compiler/spirv/spirv_info_c.py src/compiler/spirv/spirv.core.grammar.json prebuilt-intermediates/spirv/spirv_info.c || ( prebuilt-intermediates/spirv/spirv_info.c; false)
 python src/compiler/spirv/vtn_gather_types_c.py src/compiler/spirv/spirv.core.grammar.json prebuilt-intermediates/spirv/vtn_gather_types.c || ( prebuilt-intermediates/spirv/vtn_gather_types.c; false)
+python src/compiler/spirv/vtn_generator_ids_h.py src/compiler/spirv/spir-v.xml prebuilt-intermediates/spirv/vtn_generator_ids.h
 
 python src/util/format_srgb.py > prebuilt-intermediates/util/format_srgb.c
 
