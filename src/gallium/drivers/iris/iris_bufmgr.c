@@ -1849,7 +1849,14 @@ iris_bufmgr_create(struct gen_device_info *devinfo, int fd, bool bo_reuse)
    bufmgr->has_llc = devinfo->has_llc;
    bufmgr->has_tiling_uapi = devinfo->has_tiling_uapi;
    bufmgr->bo_reuse = bo_reuse;
+#if defined(ANDROID)
+   /* Android kernel still has some issues to support
+    * mmap_offset on 32 bit, hardcode to legacy mode
+    */
+   bufmgr->has_mmap_offset = false;
+#else
    bufmgr->has_mmap_offset = gem_param(fd, I915_PARAM_MMAP_GTT_VERSION) >= 4;
+#endif
 
    STATIC_ASSERT(IRIS_MEMZONE_SHADER_START == 0ull);
    const uint64_t _4GB = 1ull << 32;
