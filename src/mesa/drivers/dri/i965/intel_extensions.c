@@ -126,7 +126,6 @@ intelInitExtensions(struct gl_context *ctx)
    ctx->Extensions.APPLE_object_purgeable = true;
    ctx->Extensions.ATI_texture_env_combine3 = true;
    ctx->Extensions.MESA_framebuffer_flip_y = true;
-   ctx->Extensions.MESA_pack_invert = true;
    ctx->Extensions.NV_conditional_render = true;
    ctx->Extensions.NV_fog_distance = true;
    ctx->Extensions.NV_primitive_restart = true;
@@ -220,10 +219,12 @@ intelInitExtensions(struct gl_context *ctx)
       ctx->Extensions.EXT_disjoint_timer_query =
          ctx->Extensions.ARB_timer_query;
 
-      /* Only enable this in core profile because other parts of Mesa behave
-       * slightly differently when the extension is enabled.
+      /* Only enable this in core profile because geometry shaders are
+       * required, and Mesa only supports geometry shaders in OpenGL 3.2 and
+       * later.  In this driver, that currently means Core profile.
        */
-      if (ctx->API == API_OPENGL_CORE) {
+      if (ctx->API == API_OPENGL_CORE ||
+          ctx->Const.AllowHigherCompatVersion) {
          ctx->Extensions.ARB_shader_viewport_layer_array = true;
          ctx->Extensions.ARB_viewport_array = true;
          ctx->Extensions.AMD_vertex_shader_viewport_index = true;
@@ -271,6 +272,7 @@ intelInitExtensions(struct gl_context *ctx)
             ctx->Extensions.ARB_ES3_1_compatibility =
                devinfo->gen >= 8 || devinfo->is_haswell;
             ctx->Extensions.NV_compute_shader_derivatives = true;
+            ctx->Extensions.ARB_compute_variable_group_size = true;
          }
 
          if (can_do_predicate_writes(brw->screen)) {
@@ -315,6 +317,12 @@ intelInitExtensions(struct gl_context *ctx)
        */
       ctx->Extensions.OES_copy_image = true;
    }
+
+   /* Gen < 6 still uses the blitter. It's somewhat annoying to add support
+    * for blackhole there... Does anybody actually care anymore anyway?
+    */
+   if (devinfo->gen >= 6)
+      ctx->Extensions.INTEL_blackhole_render = true;
 
    if (devinfo->gen >= 8) {
       ctx->Extensions.ARB_gpu_shader_int64 = true;
@@ -382,4 +390,6 @@ intelInitExtensions(struct gl_context *ctx)
    ctx->Extensions.ANGLE_texture_compression_dxt = true;
 
    ctx->Extensions.EXT_demote_to_helper_invocation = true;
+
+   ctx->Const.PrimitiveRestartFixedIndex = true;
 }

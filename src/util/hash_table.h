@@ -1,4 +1,4 @@
-/*
+﻿/*
  * Copyright © 2009,2012 Intel Corporation
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
@@ -32,7 +32,6 @@
 #include <inttypes.h>
 #include <stdbool.h>
 #include "c99_compat.h"
-#include "fnv1a.h"
 #include "macros.h"
 
 #ifdef __cplusplus
@@ -125,6 +124,8 @@ bool _mesa_key_pointer_equal(const void *a, const void *b);
 struct hash_table *
 _mesa_pointer_hash_table_create(void *mem_ctx);
 
+bool
+_mesa_hash_table_reserve(struct hash_table *ht, unsigned size);
 /**
  * This foreach function is safe against deletion (which just replaces
  * an entry's data with the deleted marker), but not against insertion

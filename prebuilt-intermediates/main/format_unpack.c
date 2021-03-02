@@ -37,6 +37,7 @@
  */
 
 #include <stdint.h>
+#include <stdlib.h>
 
 #include "format_unpack.h"
 #include "format_utils.h"

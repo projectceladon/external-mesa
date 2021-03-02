@@ -34,13 +34,24 @@ LOCAL_SRC_FILES := \
 	$(MESA_UTIL_FILES) \
 	$(XMLCONFIG_FILES)
 
+LOCAL_MODULE := libmesa_util
+LOCAL_LICENSE_KINDS := SPDX-license-identifier-BSD SPDX-license-identifier-MIT legacy_by_exception_only legacy_notice legacy_unencumbered
+LOCAL_LICENSE_CONDITIONS := by_exception_only notice unencumbered
+LOCAL_NOTICE_FILE := $(LOCAL_PATH)/../../LICENSE
+
+LOCAL_MODULE_CLASS := STATIC_LIBRARIES
+
+prebuilt_intermediates := $(MESA_TOP)/prebuilt-intermediates
+intermediates := $(call local-generated-sources-dir)
+
 LOCAL_C_INCLUDES := \
 	external/zlib \
 	$(MESA_TOP)/src/mesa \
 	$(MESA_TOP)/src/mapi \
 	$(MESA_TOP)/src/gallium/include \
 	$(MESA_TOP)/src/gallium/auxiliary \
-	$(MESA_TOP)/src/util/format
+	$(MESA_TOP)/src/util/format \
+	$(intermediates)/format
 
 # If Android version >=8 MESA should static link libexpat else should dynamic link
 ifeq ($(shell test $(PLATFORM_SDK_VERSION) -ge 27; echo $$?), 0)
@@ -51,44 +62,33 @@ LOCAL_SHARED_LIBRARIES := \
 	libexpat
 endif
 
-LOCAL_SHARED_LIBRARIES += liblog
-
-LOCAL_MODULE := libmesa_util
-LOCAL_LICENSE_KINDS := SPDX-license-identifier-BSD SPDX-license-identifier-MIT legacy_by_exception_only legacy_notice legacy_unencumbered
-LOCAL_LICENSE_CONDITIONS := by_exception_only notice unencumbered
-LOCAL_NOTICE_FILE := $(LOCAL_PATH)/../../LICENSE
+LOCAL_SHARED_LIBRARIES += liblog libsync
 
 # Generated sources
-
-LOCAL_MODULE_CLASS := STATIC_LIBRARIES
-
-prebuilt_intermediates := $(MESA_TOP)/prebuilt-intermediates
-intermediates := $(call local-generated-sources-dir)
 
 LOCAL_EXPORT_C_INCLUDE_DIRS := $(intermediates)
 
 UTIL_GENERATED_SOURCES := $(addprefix $(intermediates)/,$(MESA_UTIL_GENERATED_FILES))
 LOCAL_GENERATED_SOURCES := $(UTIL_GENERATED_SOURCES)
 
-MESA_DRI_OPTIONS_H := $(intermediates)/xmlpool/options.h
-LOCAL_GENERATED_SOURCES += $(MESA_DRI_OPTIONS_H)
+format_srgb_gen := $(LOCAL_PATH)/format_srgb.py
 
-$(intermediates)/xmlpool/options.h: $(prebuilt_intermediates)/xmlpool/options.h
+$(intermediates)/format_srgb.c: $(format_srgb_gen)
 	@mkdir -p $(dir $@)
-	@cp -f $< $@
+	$(hide) $(MESA_PYTHON2) $(format_srgb_gen) $< > $@
 
-PRIVATE_SCRIPT := $(LOCAL_PATH)/xmlpool/gen_xmlpool.py
-PRIVATE_LOCALEDIR := $(intermediates)/xmlpool
-PRIVATE_TEMPLATE_HEADER := $(LOCAL_PATH)/xmlpool/t_options.h
-PRIVATE_MO_FILES := $(MESA_DRI_OPTIONS_LANGS:%=$(intermediates)/xmlpool/%.gmo)
+u_format_gen := $(LOCAL_PATH)/format/u_format_table.py
+u_format_deps := $(LOCAL_PATH)/format/u_format.csv \
+	$(LOCAL_PATH)/format/u_format_pack.py \
+	$(LOCAL_PATH)/format/u_format_parse.py
 
-LOCAL_GENERATED_SOURCES += $(PRIVATE_MO_FILES)
+$(intermediates)/format/u_format_pack.h: $(u_format_deps)
+	@mkdir -p $(dir $@)
+	$(hide) $(MESA_PYTHON2) $(u_format_gen) --header $< > $@
 
-$(LOCAL_GENERATED_SOURCES): PRIVATE_PYTHON := $(MESA_PYTHON2)
-
-$(UTIL_GENERATED_SOURCES): PRIVATE_CUSTOM_TOOL = $(PRIVATE_PYTHON) $^ > $@
-$(UTIL_GENERATED_SOURCES): $(intermediates)/%.c: $(LOCAL_PATH)/%.py $(LOCAL_PATH)/format/u_format.csv
-	$(transform-generated-source)
+$(intermediates)/format/u_format_table.c: $(u_format_deps)
+	@mkdir -p $(dir $@)
+	$(hide) $(MESA_PYTHON2) $(u_format_gen) $< > $@
 
 include $(MESA_COMMON_MK)
 include $(BUILD_STATIC_LIBRARY)

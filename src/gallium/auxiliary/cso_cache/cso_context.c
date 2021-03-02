@@ -291,8 +291,9 @@ static void cso_init_vbuf(struct cso_context *cso, unsigned flags)
 {
    struct u_vbuf_caps caps;
    bool uses_user_vertex_buffers = !(flags & CSO_NO_USER_VERTEX_BUFFERS);
+   bool needs64b = !(flags & CSO_NO_64B_VERTEX_BUFFERS);
 
-   u_vbuf_get_caps(cso->pipe->screen, &caps);
+   u_vbuf_get_caps(cso->pipe->screen, &caps, needs64b);
 
    /* Enable u_vbuf if needed. */
    if (caps.fallback_always ||
@@ -370,21 +371,58 @@ void cso_destroy_context( struct cso_context *ctx )
 
       {
          static struct pipe_sampler_view *views[PIPE_MAX_SHADER_SAMPLER_VIEWS] = { NULL };
+         static struct pipe_shader_buffer ssbos[PIPE_MAX_SHADER_BUFFERS] = { 0 };
          static void *zeros[PIPE_MAX_SAMPLERS] = { NULL };
          struct pipe_screen *scr = ctx->pipe->screen;
          enum pipe_shader_type sh;
          for (sh = 0; sh < PIPE_SHADER_TYPES; sh++) {
+            switch (sh) {
+            case PIPE_SHADER_GEOMETRY:
+               if (!ctx->has_geometry_shader)
+                  continue;
+               break;
+            case PIPE_SHADER_TESS_CTRL:
+            case PIPE_SHADER_TESS_EVAL:
+               if (!ctx->has_tessellation)
+                  continue;
+               break;
+            case PIPE_SHADER_COMPUTE:
+               if (!ctx->has_compute_shader)
+                  continue;
+               break;
+            default:
+               break;
+            }
+
             int maxsam = scr->get_shader_param(scr, sh,
                                                PIPE_SHADER_CAP_MAX_TEXTURE_SAMPLERS);
             int maxview = scr->get_shader_param(scr, sh,
                                                 PIPE_SHADER_CAP_MAX_SAMPLER_VIEWS);
+            int maxssbo = scr->get_shader_param(scr, sh,
+                                                PIPE_SHADER_CAP_MAX_SHADER_BUFFERS);
+            int maxcb = scr->get_shader_param(scr, sh,
+                                              PIPE_SHADER_CAP_MAX_CONST_BUFFERS);
+            int maximg = scr->get_shader_param(scr, sh,
+                                              PIPE_SHADER_CAP_MAX_SHADER_IMAGES);
             assert(maxsam <= PIPE_MAX_SAMPLERS);
             assert(maxview <= PIPE_MAX_SHADER_SAMPLER_VIEWS);
+            assert(maxssbo <= PIPE_MAX_SHADER_BUFFERS);
+            assert(maxcb <= PIPE_MAX_CONSTANT_BUFFERS);
+            assert(maximg <= PIPE_MAX_SHADER_IMAGES);
             if (maxsam > 0) {
                ctx->pipe->bind_sampler_states(ctx->pipe, sh, 0, maxsam, zeros);
             }
             if (maxview > 0) {
                ctx->pipe->set_sampler_views(ctx->pipe, sh, 0, maxview, views);
+            }
+            if (maxssbo > 0) {
+               ctx->pipe->set_shader_buffers(ctx->pipe, sh, 0, maxssbo, ssbos, 0);
+            }
+            if (maximg > 0) {
+               ctx->pipe->set_shader_images(ctx->pipe, sh, 0, maximg, NULL);
+            }
+            for (int i = 0; i < maxcb; i++) {
+               ctx->pipe->set_constant_buffer(ctx->pipe, sh, i, NULL);
             }
          }
       }
@@ -396,17 +434,13 @@ void cso_destroy_context( struct cso_context *ctx )
       ctx->pipe->set_constant_buffer(ctx->pipe, PIPE_SHADER_VERTEX, 0, NULL);
       if (ctx->has_geometry_shader) {
          ctx->pipe->bind_gs_state(ctx->pipe, NULL);
-         ctx->pipe->set_constant_buffer(ctx->pipe, PIPE_SHADER_GEOMETRY, 0, NULL);
       }
       if (ctx->has_tessellation) {
          ctx->pipe->bind_tcs_state(ctx->pipe, NULL);
-         ctx->pipe->set_constant_buffer(ctx->pipe, PIPE_SHADER_TESS_CTRL, 0, NULL);
          ctx->pipe->bind_tes_state(ctx->pipe, NULL);
-         ctx->pipe->set_constant_buffer(ctx->pipe, PIPE_SHADER_TESS_EVAL, 0, NULL);
       }
       if (ctx->has_compute_shader) {
          ctx->pipe->bind_compute_state(ctx->pipe, NULL);
-         ctx->pipe->set_constant_buffer(ctx->pipe, PIPE_SHADER_COMPUTE, 0, NULL);
       }
       ctx->pipe->bind_vertex_elements_state( ctx->pipe, NULL );
 
@@ -662,16 +696,6 @@ void cso_set_fragment_shader_handle(struct cso_context *ctx, void *handle )
    }
 }
 
-void cso_delete_fragment_shader(struct cso_context *ctx, void *handle )
-{
-   if (handle == ctx->fragment_shader) {
-      /* unbind before deleting */
-      ctx->pipe->bind_fs_state(ctx->pipe, NULL);
-      ctx->fragment_shader = NULL;
-   }
-   ctx->pipe->delete_fs_state(ctx->pipe, handle);
-}
-
 static void
 cso_save_fragment_shader(struct cso_context *ctx)
 {
@@ -696,16 +720,6 @@ void cso_set_vertex_shader_handle(struct cso_context *ctx, void *handle)
       ctx->vertex_shader = handle;
       ctx->pipe->bind_vs_state(ctx->pipe, handle);
    }
-}
-
-void cso_delete_vertex_shader(struct cso_context *ctx, void *handle )
-{
-   if (handle == ctx->vertex_shader) {
-      /* unbind before deleting */
-      ctx->pipe->bind_vs_state(ctx->pipe, NULL);
-      ctx->vertex_shader = NULL;
-   }
-   ctx->pipe->delete_vs_state(ctx->pipe, handle);
 }
 
 static void
@@ -776,6 +790,10 @@ cso_set_viewport_dims(struct cso_context *ctx,
    vp.translate[0] = 0.5f * width;
    vp.translate[1] = 0.5f * height;
    vp.translate[2] = 0.5f;
+   vp.swizzle_x = PIPE_VIEWPORT_SWIZZLE_POSITIVE_X;
+   vp.swizzle_y = PIPE_VIEWPORT_SWIZZLE_POSITIVE_Y;
+   vp.swizzle_z = PIPE_VIEWPORT_SWIZZLE_POSITIVE_Z;
+   vp.swizzle_w = PIPE_VIEWPORT_SWIZZLE_POSITIVE_W;
    cso_set_viewport(ctx, &vp);
 }
 
@@ -914,16 +932,6 @@ void cso_set_geometry_shader_handle(struct cso_context *ctx, void *handle)
    }
 }
 
-void cso_delete_geometry_shader(struct cso_context *ctx, void *handle)
-{
-   if (handle == ctx->geometry_shader) {
-      /* unbind before deleting */
-      ctx->pipe->bind_gs_state(ctx->pipe, NULL);
-      ctx->geometry_shader = NULL;
-   }
-   ctx->pipe->delete_gs_state(ctx->pipe, handle);
-}
-
 static void
 cso_save_geometry_shader(struct cso_context *ctx)
 {
@@ -957,16 +965,6 @@ void cso_set_tessctrl_shader_handle(struct cso_context *ctx, void *handle)
       ctx->tessctrl_shader = handle;
       ctx->pipe->bind_tcs_state(ctx->pipe, handle);
    }
-}
-
-void cso_delete_tessctrl_shader(struct cso_context *ctx, void *handle)
-{
-   if (handle == ctx->tessctrl_shader) {
-      /* unbind before deleting */
-      ctx->pipe->bind_tcs_state(ctx->pipe, NULL);
-      ctx->tessctrl_shader = NULL;
-   }
-   ctx->pipe->delete_tcs_state(ctx->pipe, handle);
 }
 
 static void
@@ -1004,16 +1002,6 @@ void cso_set_tesseval_shader_handle(struct cso_context *ctx, void *handle)
    }
 }
 
-void cso_delete_tesseval_shader(struct cso_context *ctx, void *handle)
-{
-   if (handle == ctx->tesseval_shader) {
-      /* unbind before deleting */
-      ctx->pipe->bind_tes_state(ctx->pipe, NULL);
-      ctx->tesseval_shader = NULL;
-   }
-   ctx->pipe->delete_tes_state(ctx->pipe, handle);
-}
-
 static void
 cso_save_tesseval_shader(struct cso_context *ctx)
 {
@@ -1049,46 +1037,33 @@ void cso_set_compute_shader_handle(struct cso_context *ctx, void *handle)
    }
 }
 
-void cso_delete_compute_shader(struct cso_context *ctx, void *handle)
-{
-   if (handle == ctx->compute_shader) {
-      /* unbind before deleting */
-      ctx->pipe->bind_compute_state(ctx->pipe, NULL);
-      ctx->compute_shader = NULL;
-   }
-   ctx->pipe->delete_compute_state(ctx->pipe, handle);
-}
-
 static void
 cso_set_vertex_elements_direct(struct cso_context *ctx,
-                               unsigned count,
-                               const struct pipe_vertex_element *states)
+                               const struct cso_velems_state *velems)
 {
    unsigned key_size, hash_key;
    struct cso_hash_iter iter;
    void *handle;
-   struct cso_velems_state velems_state;
 
    /* Need to include the count into the stored state data too.
     * Otherwise first few count pipe_vertex_elements could be identical
     * even if count is different, and there's no guarantee the hash would
     * be different in that case neither.
     */
-   key_size = sizeof(struct pipe_vertex_element) * count + sizeof(unsigned);
-   velems_state.count = count;
-   memcpy(velems_state.velems, states,
-          sizeof(struct pipe_vertex_element) * count);
-   hash_key = cso_construct_key((void*)&velems_state, key_size);
+   key_size = sizeof(struct pipe_vertex_element) * velems->count +
+              sizeof(unsigned);
+   hash_key = cso_construct_key((void*)velems, key_size);
    iter = cso_find_state_template(ctx->cache, hash_key, CSO_VELEMENTS,
-                                  (void*)&velems_state, key_size);
+                                  (void*)velems, key_size);
 
    if (cso_hash_iter_is_null(iter)) {
       struct cso_velements *cso = MALLOC(sizeof(struct cso_velements));
       if (!cso)
          return;
 
-      memcpy(&cso->state, &velems_state, key_size);
-      cso->data = ctx->pipe->create_vertex_elements_state(ctx->pipe, count,
+      memcpy(&cso->state, velems, key_size);
+      cso->data = ctx->pipe->create_vertex_elements_state(ctx->pipe,
+                                                          velems->count,
                                                       &cso->state.velems[0]);
       cso->delete_state =
          (cso_state_callback) ctx->pipe->delete_vertex_elements_state;
@@ -1114,17 +1089,16 @@ cso_set_vertex_elements_direct(struct cso_context *ctx,
 
 enum pipe_error
 cso_set_vertex_elements(struct cso_context *ctx,
-                        unsigned count,
-                        const struct pipe_vertex_element *states)
+                        const struct cso_velems_state *velems)
 {
    struct u_vbuf *vbuf = ctx->vbuf_current;
 
    if (vbuf) {
-      u_vbuf_set_vertex_elements(vbuf, count, states);
+      u_vbuf_set_vertex_elements(vbuf, velems);
       return PIPE_OK;
    }
 
-   cso_set_vertex_elements_direct(ctx, count, states);
+   cso_set_vertex_elements_direct(ctx, velems);
    return PIPE_OK;
 }
 
@@ -1241,8 +1215,7 @@ cso_restore_vertex_buffer0(struct cso_context *ctx)
  */
 void
 cso_set_vertex_buffers_and_elements(struct cso_context *ctx,
-                                    unsigned velem_count,
-                                    const struct pipe_vertex_element *velems,
+                                    const struct cso_velems_state *velems,
                                     unsigned vb_count,
                                     unsigned unbind_trailing_vb_count,
                                     const struct pipe_vertex_buffer *vbuffers,
@@ -1267,7 +1240,7 @@ cso_set_vertex_buffers_and_elements(struct cso_context *ctx,
 
       if (vb_count)
          u_vbuf_set_vertex_buffers(vbuf, 0, vb_count, vbuffers);
-      u_vbuf_set_vertex_elements(vbuf, velem_count, velems);
+      u_vbuf_set_vertex_elements(vbuf, velems);
       return;
    }
 
@@ -1287,7 +1260,7 @@ cso_set_vertex_buffers_and_elements(struct cso_context *ctx,
 
    if (vb_count)
       cso_set_vertex_buffers_direct(ctx, 0, vb_count, vbuffers);
-   cso_set_vertex_elements_direct(ctx, velem_count, velems);
+   cso_set_vertex_elements_direct(ctx, velems);
 }
 
 void

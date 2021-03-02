@@ -1,8 +1,8 @@
 /**************************************************************************
- * 
+ *
  * Copyright 2003 VMware, Inc.
  * All Rights Reserved.
- * 
+ *
  * Permission is hereby granted, free of charge, to any person obtaining a
  * copy of this software and associated documentation files (the
  * "Software"), to deal in the Software without restriction, including
@@ -10,11 +10,11 @@
  * distribute, sub license, and/or sell copies of the Software, and to
  * permit persons to whom the Software is furnished to do so, subject to
  * the following conditions:
- * 
+ *
  * The above copyright notice and this permission notice (including the
  * next paragraph) shall be included in all copies or substantial portions
  * of the Software.
- * 
+ *
  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
  * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
  * MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NON-INFRINGEMENT.
@@ -22,7 +22,7 @@
  * ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
  * TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
  * SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
- * 
+ *
  **************************************************************************/
 
 /**
@@ -35,7 +35,7 @@
  *   Brian Paul
  */
 
-#include "main/imports.h"
+
 #include "main/mtypes.h"
 #include "main/framebuffer.h"
 #include "main/state.h"
@@ -125,7 +125,7 @@ st_update_fp( struct st_context *st )
                             st->ctx->Light.ShadeModel == GL_FLAT;
 
       /* _NEW_COLOR */
-      key.lower_alpha_func = COMPARE_FUNC_NEVER;
+      key.lower_alpha_func = COMPARE_FUNC_ALWAYS;
       if (st->lower_alpha_test && _mesa_is_alpha_test_enabled(st->ctx))
          key.lower_alpha_func = st->ctx->Color.AlphaFunc;
 
@@ -133,7 +133,7 @@ st_update_fp( struct st_context *st )
       key.lower_two_sided_color = st->lower_two_sided_color &&
          _mesa_vertex_program_two_side_enabled(st->ctx);
 
-      /* _NEW_FRAG_CLAMP */
+      /* gl_driver_flags::NewFragClamp */
       key.clamp_color = st->clamp_frag_color_in_shader &&
                         st->ctx->Color._ClampFragmentColor;
 
@@ -160,7 +160,9 @@ st_update_fp( struct st_context *st )
 
       key.external = st_get_external_sampler_key(st, &stfp->Base);
 
+      simple_mtx_lock(&st->ctx->Shared->Mutex);
       shader = st_get_fp_variant(st, stfp, &key)->base.driver_shader;
+      simple_mtx_unlock(&st->ctx->Shared->Mutex);
    }
 
    st_reference_prog(st, &st->fp, stfp);
@@ -187,7 +189,8 @@ st_update_vp( struct st_context *st )
 
    if (st->shader_has_one_variant[MESA_SHADER_VERTEX] &&
        stvp->variants &&
-       st_common_variant(stvp->variants)->key.passthrough_edgeflags == st->vertdata_edgeflags) {
+       st_common_variant(stvp->variants)->key.passthrough_edgeflags == st->vertdata_edgeflags &&
+       !st_common_variant(stvp->variants)->key.is_draw_shader) {
       st->vp_variant = st_common_variant(stvp->variants);
    } else {
       struct st_common_variant_key key;
@@ -227,15 +230,18 @@ st_update_vp( struct st_context *st )
                              !st_point_size_per_vertex(st->ctx);
 
       /* _NEW_TRANSFORM */
-      if (st->lower_ucp && st_user_clip_planes_enabled(st->ctx))
+      if (st->lower_ucp && st_user_clip_planes_enabled(st->ctx) &&
+          !st->ctx->GeometryProgram._Current)
          key.lower_ucp = st->ctx->Transform.ClipPlanesEnabled;
 
+      simple_mtx_lock(&st->ctx->Shared->Mutex);
       st->vp_variant = st_get_vp_variant(st, stvp, &key);
+      simple_mtx_unlock(&st->ctx->Shared->Mutex);
    }
 
    st_reference_prog(st, &st->vp, stvp);
 
-   cso_set_vertex_shader_handle(st->cso_context, 
+   cso_set_vertex_shader_handle(st->cso_context,
                                 st->vp_variant->base.driver_shader);
 }
 
@@ -284,9 +290,16 @@ st_update_common_program(struct st_context *st, struct gl_program *prog,
          key.clip_negative_one_to_one =
                st->ctx->Transform.ClipDepthMode == GL_NEGATIVE_ONE_TO_ONE;
 
+      if (st->lower_ucp && st_user_clip_planes_enabled(st->ctx) &&
+          pipe_shader == PIPE_SHADER_GEOMETRY)
+         key.lower_ucp = st->ctx->Transform.ClipPlanesEnabled;
    }
 
-   return st_get_common_variant(st, stp, &key)->driver_shader;
+   simple_mtx_lock(&st->ctx->Shared->Mutex);
+   void *result = st_get_common_variant(st, stp, &key)->driver_shader;
+   simple_mtx_unlock(&st->ctx->Shared->Mutex);
+
+   return result;
 }
 
 

@@ -54,6 +54,7 @@
     #define _VK_AMD_shader_trinary_minmax_number (21)
     #define _VK_AMD_texture_gather_bias_lod_number (42)
     #define _VK_ANDROID_external_memory_android_hardware_buffer_number (130)
+    #define _VK_EXT_4444_formats_number (341)
     #define _VK_EXT_acquire_xlib_display_number (90)
     #define _VK_EXT_astc_decode_mode_number (68)
     #define _VK_EXT_blend_operation_advanced_number (149)
@@ -61,20 +62,25 @@
     #define _VK_EXT_calibrated_timestamps_number (185)
     #define _VK_EXT_conditional_rendering_number (82)
     #define _VK_EXT_conservative_rasterization_number (102)
+    #define _VK_EXT_custom_border_color_number (288)
     #define _VK_EXT_debug_marker_number (23)
     #define _VK_EXT_debug_report_number (12)
     #define _VK_EXT_debug_utils_number (129)
     #define _VK_EXT_depth_clip_enable_number (103)
     #define _VK_EXT_depth_range_unrestricted_number (14)
     #define _VK_EXT_descriptor_indexing_number (162)
+    #define _VK_EXT_device_memory_report_number (285)
     #define _VK_EXT_direct_mode_display_number (89)
+    #define _VK_EXT_directfb_surface_number (347)
     #define _VK_EXT_discard_rectangles_number (100)
     #define _VK_EXT_display_control_number (92)
     #define _VK_EXT_display_surface_counter_number (91)
+    #define _VK_EXT_extended_dynamic_state_number (268)
     #define _VK_EXT_external_memory_dma_buf_number (126)
     #define _VK_EXT_external_memory_host_number (179)
     #define _VK_EXT_filter_cubic_number (171)
     #define _VK_EXT_fragment_density_map_number (219)
+    #define _VK_EXT_fragment_density_map2_number (333)
     #define _VK_EXT_fragment_shader_interlock_number (252)
     #define _VK_EXT_full_screen_exclusive_number (256)
     #define _VK_EXT_global_priority_number (175)
@@ -82,6 +88,7 @@
     #define _VK_EXT_headless_surface_number (257)
     #define _VK_EXT_host_query_reset_number (262)
     #define _VK_EXT_image_drm_format_modifier_number (159)
+    #define _VK_EXT_image_robustness_number (336)
     #define _VK_EXT_index_type_uint8_number (266)
     #define _VK_EXT_inline_uniform_block_number (139)
     #define _VK_EXT_line_rasterization_number (260)
@@ -89,14 +96,19 @@
     #define _VK_EXT_memory_priority_number (239)
     #define _VK_EXT_metal_surface_number (218)
     #define _VK_EXT_pci_bus_info_number (213)
+    #define _VK_EXT_pipeline_creation_cache_control_number (298)
     #define _VK_EXT_pipeline_creation_feedback_number (193)
     #define _VK_EXT_post_depth_coverage_number (156)
+    #define _VK_EXT_private_data_number (296)
     #define _VK_EXT_queue_family_foreign_number (127)
+    #define _VK_EXT_robustness2_number (287)
     #define _VK_EXT_sample_locations_number (144)
     #define _VK_EXT_sampler_filter_minmax_number (131)
     #define _VK_EXT_scalar_block_layout_number (222)
     #define _VK_EXT_separate_stencil_usage_number (247)
+    #define _VK_EXT_shader_atomic_float_number (261)
     #define _VK_EXT_shader_demote_to_helper_invocation_number (277)
+    #define _VK_EXT_shader_image_atomic_int64_number (235)
     #define _VK_EXT_shader_stencil_export_number (141)
     #define _VK_EXT_shader_subgroup_ballot_number (65)
     #define _VK_EXT_shader_subgroup_vote_number (66)
@@ -128,8 +140,10 @@
     #define _VK_KHR_android_surface_number (9)
     #define _VK_KHR_bind_memory2_number (158)
     #define _VK_KHR_buffer_device_address_number (258)
+    #define _VK_KHR_copy_commands2_number (338)
     #define _VK_KHR_create_renderpass2_number (110)
     #define _VK_KHR_dedicated_allocation_number (128)
+    #define _VK_KHR_deferred_host_operations_number (269)
     #define _VK_KHR_depth_stencil_resolve_number (200)
     #define _VK_KHR_descriptor_update_template_number (86)
     #define _VK_KHR_device_group_number (61)
@@ -150,6 +164,7 @@
     #define _VK_KHR_external_semaphore_capabilities_number (77)
     #define _VK_KHR_external_semaphore_fd_number (80)
     #define _VK_KHR_external_semaphore_win32_number (79)
+    #define _VK_KHR_fragment_shading_rate_number (227)
     #define _VK_KHR_get_display_properties2_number (122)
     #define _VK_KHR_get_memory_requirements2_number (147)
     #define _VK_KHR_get_physical_device_properties2_number (60)
@@ -163,7 +178,10 @@
     #define _VK_KHR_multiview_number (54)
     #define _VK_KHR_performance_query_number (117)
     #define _VK_KHR_pipeline_executable_properties_number (270)
+    #define _VK_KHR_pipeline_library_number (291)
+    #define _VK_KHR_portability_subset_number (164)
     #define _VK_KHR_push_descriptor_number (81)
+    #define _VK_KHR_ray_tracing_number (151)
     #define _VK_KHR_relaxed_block_layout_number (145)
     #define _VK_KHR_sampler_mirror_clamp_to_edge_number (15)
     #define _VK_KHR_sampler_ycbcr_conversion_number (157)
@@ -173,7 +191,9 @@
     #define _VK_KHR_shader_draw_parameters_number (64)
     #define _VK_KHR_shader_float16_int8_number (83)
     #define _VK_KHR_shader_float_controls_number (198)
+    #define _VK_KHR_shader_non_semantic_info_number (294)
     #define _VK_KHR_shader_subgroup_extended_types_number (176)
+    #define _VK_KHR_shader_terminate_invocation_number (216)
     #define _VK_KHR_shared_presentable_image_number (112)
     #define _VK_KHR_spirv_1_4_number (237)
     #define _VK_KHR_storage_buffer_storage_class_number (132)
@@ -193,7 +213,6 @@
     #define _VK_MVK_ios_surface_number (123)
     #define _VK_MVK_macos_surface_number (124)
     #define _VK_NN_vi_surface_number (63)
-    #define _VK_NVX_device_generated_commands_number (87)
     #define _VK_NVX_image_view_handle_number (31)
     #define _VK_NVX_multiview_per_view_attributes_number (98)
     #define _VK_NV_clip_space_w_scaling_number (88)
@@ -204,6 +223,8 @@
     #define _VK_NV_dedicated_allocation_number (27)
     #define _VK_NV_dedicated_allocation_image_aliasing_number (241)
     #define _VK_NV_device_diagnostic_checkpoints_number (207)
+    #define _VK_NV_device_diagnostics_config_number (301)
+    #define _VK_NV_device_generated_commands_number (278)
     #define _VK_NV_external_memory_number (57)
     #define _VK_NV_external_memory_capabilities_number (56)
     #define _VK_NV_external_memory_win32_number (58)
@@ -225,9 +246,19 @@
     #define _VK_NV_viewport_array2_number (97)
     #define _VK_NV_viewport_swizzle_number (99)
     #define _VK_NV_win32_keyed_mutex_number (59)
+    #define _VK_QCOM_render_pass_shader_resolve_number (172)
+    #define _VK_QCOM_render_pass_store_ops_number (302)
+    #define _VK_QCOM_render_pass_transform_number (283)
 
-    const char * vk_AccelerationStructureMemoryRequirementsTypeNV_to_str(VkAccelerationStructureMemoryRequirementsTypeNV input);
-    const char * vk_AccelerationStructureTypeNV_to_str(VkAccelerationStructureTypeNV input);
+#ifdef VK_ENABLE_BETA_EXTENSIONS
+    const char * vk_AccelerationStructureBuildTypeKHR_to_str(VkAccelerationStructureBuildTypeKHR input);
+#endif
+#ifdef VK_ENABLE_BETA_EXTENSIONS
+    const char * vk_AccelerationStructureMemoryRequirementsTypeKHR_to_str(VkAccelerationStructureMemoryRequirementsTypeKHR input);
+#endif
+#ifdef VK_ENABLE_BETA_EXTENSIONS
+    const char * vk_AccelerationStructureTypeKHR_to_str(VkAccelerationStructureTypeKHR input);
+#endif
     const char * vk_AttachmentLoadOp_to_str(VkAttachmentLoadOp input);
     const char * vk_AttachmentStoreOp_to_str(VkAttachmentStoreOp input);
     const char * vk_BlendFactor_to_str(VkBlendFactor input);
@@ -242,13 +273,16 @@
     const char * vk_ComponentSwizzle_to_str(VkComponentSwizzle input);
     const char * vk_ComponentTypeNV_to_str(VkComponentTypeNV input);
     const char * vk_ConservativeRasterizationModeEXT_to_str(VkConservativeRasterizationModeEXT input);
-    const char * vk_CopyAccelerationStructureModeNV_to_str(VkCopyAccelerationStructureModeNV input);
+#ifdef VK_ENABLE_BETA_EXTENSIONS
+    const char * vk_CopyAccelerationStructureModeKHR_to_str(VkCopyAccelerationStructureModeKHR input);
+#endif
     const char * vk_CoverageModulationModeNV_to_str(VkCoverageModulationModeNV input);
     const char * vk_CoverageReductionModeNV_to_str(VkCoverageReductionModeNV input);
     const char * vk_DebugReportObjectTypeEXT_to_str(VkDebugReportObjectTypeEXT input);
     const char * vk_DescriptorType_to_str(VkDescriptorType input);
     const char * vk_DescriptorUpdateTemplateType_to_str(VkDescriptorUpdateTemplateType input);
     const char * vk_DeviceEventTypeEXT_to_str(VkDeviceEventTypeEXT input);
+    const char * vk_DeviceMemoryReportEventTypeEXT_to_str(VkDeviceMemoryReportEventTypeEXT input);
     const char * vk_DiscardRectangleModeEXT_to_str(VkDiscardRectangleModeEXT input);
     const char * vk_DisplayEventTypeEXT_to_str(VkDisplayEventTypeEXT input);
     const char * vk_DisplayPowerStateEXT_to_str(VkDisplayPowerStateEXT input);
@@ -256,22 +290,24 @@
     const char * vk_DynamicState_to_str(VkDynamicState input);
     const char * vk_Filter_to_str(VkFilter input);
     const char * vk_Format_to_str(VkFormat input);
+    const char * vk_FragmentShadingRateCombinerOpKHR_to_str(VkFragmentShadingRateCombinerOpKHR input);
     const char * vk_FrontFace_to_str(VkFrontFace input);
 #ifdef VK_USE_PLATFORM_WIN32_KHR
     const char * vk_FullScreenExclusiveEXT_to_str(VkFullScreenExclusiveEXT input);
 #endif
-    const char * vk_GeometryTypeNV_to_str(VkGeometryTypeNV input);
+#ifdef VK_ENABLE_BETA_EXTENSIONS
+    const char * vk_GeometryTypeKHR_to_str(VkGeometryTypeKHR input);
+#endif
     const char * vk_ImageLayout_to_str(VkImageLayout input);
     const char * vk_ImageTiling_to_str(VkImageTiling input);
     const char * vk_ImageType_to_str(VkImageType input);
     const char * vk_ImageViewType_to_str(VkImageViewType input);
     const char * vk_IndexType_to_str(VkIndexType input);
-    const char * vk_IndirectCommandsTokenTypeNVX_to_str(VkIndirectCommandsTokenTypeNVX input);
+    const char * vk_IndirectCommandsTokenTypeNV_to_str(VkIndirectCommandsTokenTypeNV input);
     const char * vk_InternalAllocationType_to_str(VkInternalAllocationType input);
     const char * vk_LineRasterizationModeEXT_to_str(VkLineRasterizationModeEXT input);
     const char * vk_LogicOp_to_str(VkLogicOp input);
     const char * vk_MemoryOverallocationBehaviorAMD_to_str(VkMemoryOverallocationBehaviorAMD input);
-    const char * vk_ObjectEntryTypeNVX_to_str(VkObjectEntryTypeNVX input);
     const char * vk_ObjectType_to_str(VkObjectType input);
     const char * vk_PerformanceConfigurationTypeINTEL_to_str(VkPerformanceConfigurationTypeINTEL input);
     const char * vk_PerformanceCounterScopeKHR_to_str(VkPerformanceCounterScopeKHR input);
@@ -292,7 +328,9 @@
     const char * vk_QueryType_to_str(VkQueryType input);
     const char * vk_QueueGlobalPriorityEXT_to_str(VkQueueGlobalPriorityEXT input);
     const char * vk_RasterizationOrderAMD_to_str(VkRasterizationOrderAMD input);
-    const char * vk_RayTracingShaderGroupTypeNV_to_str(VkRayTracingShaderGroupTypeNV input);
+#ifdef VK_ENABLE_BETA_EXTENSIONS
+    const char * vk_RayTracingShaderGroupTypeKHR_to_str(VkRayTracingShaderGroupTypeKHR input);
+#endif
     const char * vk_Result_to_str(VkResult input);
     const char * vk_SamplerAddressMode_to_str(VkSamplerAddressMode input);
     const char * vk_SamplerMipmapMode_to_str(VkSamplerMipmapMode input);
@@ -332,6 +370,9 @@
         PFN_vkCreateDebugReportCallbackEXT CreateDebugReportCallbackEXT;
         PFN_vkCreateDebugUtilsMessengerEXT CreateDebugUtilsMessengerEXT;
         PFN_vkCreateDevice CreateDevice;
+    #ifdef VK_USE_PLATFORM_DIRECTFB_EXT
+        PFN_vkCreateDirectFBSurfaceEXT CreateDirectFBSurfaceEXT;
+    #endif
         PFN_vkCreateDisplayModeKHR CreateDisplayModeKHR;
         PFN_vkCreateDisplayPlaneSurfaceKHR CreateDisplayPlaneSurfaceKHR;
         PFN_vkCreateHeadlessSurfaceEXT CreateHeadlessSurfaceEXT;
@@ -386,6 +427,9 @@
         PFN_vkGetDisplayPlaneSupportedDisplaysKHR GetDisplayPlaneSupportedDisplaysKHR;
         PFN_vkGetPhysicalDeviceCalibrateableTimeDomainsEXT GetPhysicalDeviceCalibrateableTimeDomainsEXT;
         PFN_vkGetPhysicalDeviceCooperativeMatrixPropertiesNV GetPhysicalDeviceCooperativeMatrixPropertiesNV;
+    #ifdef VK_USE_PLATFORM_DIRECTFB_EXT
+        PFN_vkGetPhysicalDeviceDirectFBPresentationSupportEXT GetPhysicalDeviceDirectFBPresentationSupportEXT;
+    #endif
         PFN_vkGetPhysicalDeviceDisplayPlaneProperties2KHR GetPhysicalDeviceDisplayPlaneProperties2KHR;
         PFN_vkGetPhysicalDeviceDisplayPlanePropertiesKHR GetPhysicalDeviceDisplayPlanePropertiesKHR;
         PFN_vkGetPhysicalDeviceDisplayProperties2KHR GetPhysicalDeviceDisplayProperties2KHR;
@@ -398,7 +442,7 @@
         PFN_vkGetPhysicalDeviceFeatures2 GetPhysicalDeviceFeatures2;
         PFN_vkGetPhysicalDeviceFormatProperties GetPhysicalDeviceFormatProperties;
         PFN_vkGetPhysicalDeviceFormatProperties2 GetPhysicalDeviceFormatProperties2;
-        PFN_vkGetPhysicalDeviceGeneratedCommandsPropertiesNVX GetPhysicalDeviceGeneratedCommandsPropertiesNVX;
+        PFN_vkGetPhysicalDeviceFragmentShadingRatesKHR GetPhysicalDeviceFragmentShadingRatesKHR;
         PFN_vkGetPhysicalDeviceImageFormatProperties GetPhysicalDeviceImageFormatProperties;
         PFN_vkGetPhysicalDeviceImageFormatProperties2 GetPhysicalDeviceImageFormatProperties2;
         PFN_vkGetPhysicalDeviceMemoryProperties GetPhysicalDeviceMemoryProperties;
@@ -457,11 +501,16 @@
         PFN_vkAllocateDescriptorSets AllocateDescriptorSets;
         PFN_vkAllocateMemory AllocateMemory;
         PFN_vkBeginCommandBuffer BeginCommandBuffer;
-        PFN_vkBindAccelerationStructureMemoryNV BindAccelerationStructureMemoryNV;
+    #ifdef VK_ENABLE_BETA_EXTENSIONS
+        PFN_vkBindAccelerationStructureMemoryKHR BindAccelerationStructureMemoryKHR;
+    #endif
         PFN_vkBindBufferMemory BindBufferMemory;
         PFN_vkBindBufferMemory2 BindBufferMemory2;
         PFN_vkBindImageMemory BindImageMemory;
         PFN_vkBindImageMemory2 BindImageMemory2;
+    #ifdef VK_ENABLE_BETA_EXTENSIONS
+        PFN_vkBuildAccelerationStructureKHR BuildAccelerationStructureKHR;
+    #endif
         PFN_vkCmdBeginConditionalRenderingEXT CmdBeginConditionalRenderingEXT;
         PFN_vkCmdBeginDebugUtilsLabelEXT CmdBeginDebugUtilsLabelEXT;
         PFN_vkCmdBeginQuery CmdBeginQuery;
@@ -472,19 +521,41 @@
         PFN_vkCmdBindDescriptorSets CmdBindDescriptorSets;
         PFN_vkCmdBindIndexBuffer CmdBindIndexBuffer;
         PFN_vkCmdBindPipeline CmdBindPipeline;
+        PFN_vkCmdBindPipelineShaderGroupNV CmdBindPipelineShaderGroupNV;
         PFN_vkCmdBindShadingRateImageNV CmdBindShadingRateImageNV;
         PFN_vkCmdBindTransformFeedbackBuffersEXT CmdBindTransformFeedbackBuffersEXT;
         PFN_vkCmdBindVertexBuffers CmdBindVertexBuffers;
+        PFN_vkCmdBindVertexBuffers2EXT CmdBindVertexBuffers2EXT;
         PFN_vkCmdBlitImage CmdBlitImage;
+        PFN_vkCmdBlitImage2KHR CmdBlitImage2KHR;
+    #ifdef VK_ENABLE_BETA_EXTENSIONS
+        PFN_vkCmdBuildAccelerationStructureIndirectKHR CmdBuildAccelerationStructureIndirectKHR;
+    #endif
+    #ifdef VK_ENABLE_BETA_EXTENSIONS
+        PFN_vkCmdBuildAccelerationStructureKHR CmdBuildAccelerationStructureKHR;
+    #endif
         PFN_vkCmdBuildAccelerationStructureNV CmdBuildAccelerationStructureNV;
         PFN_vkCmdClearAttachments CmdClearAttachments;
         PFN_vkCmdClearColorImage CmdClearColorImage;
         PFN_vkCmdClearDepthStencilImage CmdClearDepthStencilImage;
+    #ifdef VK_ENABLE_BETA_EXTENSIONS
+        PFN_vkCmdCopyAccelerationStructureKHR CmdCopyAccelerationStructureKHR;
+    #endif
         PFN_vkCmdCopyAccelerationStructureNV CmdCopyAccelerationStructureNV;
+    #ifdef VK_ENABLE_BETA_EXTENSIONS
+        PFN_vkCmdCopyAccelerationStructureToMemoryKHR CmdCopyAccelerationStructureToMemoryKHR;
+    #endif
         PFN_vkCmdCopyBuffer CmdCopyBuffer;
+        PFN_vkCmdCopyBuffer2KHR CmdCopyBuffer2KHR;
         PFN_vkCmdCopyBufferToImage CmdCopyBufferToImage;
+        PFN_vkCmdCopyBufferToImage2KHR CmdCopyBufferToImage2KHR;
         PFN_vkCmdCopyImage CmdCopyImage;
+        PFN_vkCmdCopyImage2KHR CmdCopyImage2KHR;
         PFN_vkCmdCopyImageToBuffer CmdCopyImageToBuffer;
+        PFN_vkCmdCopyImageToBuffer2KHR CmdCopyImageToBuffer2KHR;
+    #ifdef VK_ENABLE_BETA_EXTENSIONS
+        PFN_vkCmdCopyMemoryToAccelerationStructureKHR CmdCopyMemoryToAccelerationStructureKHR;
+    #endif
         PFN_vkCmdCopyQueryPoolResults CmdCopyQueryPoolResults;
         PFN_vkCmdDebugMarkerBeginEXT CmdDebugMarkerBeginEXT;
         PFN_vkCmdDebugMarkerEndEXT CmdDebugMarkerEndEXT;
@@ -510,53 +581,89 @@
         PFN_vkCmdEndRenderPass2 CmdEndRenderPass2;
         PFN_vkCmdEndTransformFeedbackEXT CmdEndTransformFeedbackEXT;
         PFN_vkCmdExecuteCommands CmdExecuteCommands;
+        PFN_vkCmdExecuteGeneratedCommandsNV CmdExecuteGeneratedCommandsNV;
         PFN_vkCmdFillBuffer CmdFillBuffer;
         PFN_vkCmdInsertDebugUtilsLabelEXT CmdInsertDebugUtilsLabelEXT;
         PFN_vkCmdNextSubpass CmdNextSubpass;
         PFN_vkCmdNextSubpass2 CmdNextSubpass2;
         PFN_vkCmdPipelineBarrier CmdPipelineBarrier;
-        PFN_vkCmdProcessCommandsNVX CmdProcessCommandsNVX;
+        PFN_vkCmdPreprocessGeneratedCommandsNV CmdPreprocessGeneratedCommandsNV;
         PFN_vkCmdPushConstants CmdPushConstants;
         PFN_vkCmdPushDescriptorSetKHR CmdPushDescriptorSetKHR;
         PFN_vkCmdPushDescriptorSetWithTemplateKHR CmdPushDescriptorSetWithTemplateKHR;
-        PFN_vkCmdReserveSpaceForCommandsNVX CmdReserveSpaceForCommandsNVX;
         PFN_vkCmdResetEvent CmdResetEvent;
         PFN_vkCmdResetQueryPool CmdResetQueryPool;
         PFN_vkCmdResolveImage CmdResolveImage;
+        PFN_vkCmdResolveImage2KHR CmdResolveImage2KHR;
         PFN_vkCmdSetBlendConstants CmdSetBlendConstants;
         PFN_vkCmdSetCheckpointNV CmdSetCheckpointNV;
         PFN_vkCmdSetCoarseSampleOrderNV CmdSetCoarseSampleOrderNV;
+        PFN_vkCmdSetCullModeEXT CmdSetCullModeEXT;
         PFN_vkCmdSetDepthBias CmdSetDepthBias;
         PFN_vkCmdSetDepthBounds CmdSetDepthBounds;
+        PFN_vkCmdSetDepthBoundsTestEnableEXT CmdSetDepthBoundsTestEnableEXT;
+        PFN_vkCmdSetDepthCompareOpEXT CmdSetDepthCompareOpEXT;
+        PFN_vkCmdSetDepthTestEnableEXT CmdSetDepthTestEnableEXT;
+        PFN_vkCmdSetDepthWriteEnableEXT CmdSetDepthWriteEnableEXT;
         PFN_vkCmdSetDeviceMask CmdSetDeviceMask;
         PFN_vkCmdSetDiscardRectangleEXT CmdSetDiscardRectangleEXT;
         PFN_vkCmdSetEvent CmdSetEvent;
         PFN_vkCmdSetExclusiveScissorNV CmdSetExclusiveScissorNV;
+        PFN_vkCmdSetFragmentShadingRateKHR CmdSetFragmentShadingRateKHR;
+        PFN_vkCmdSetFrontFaceEXT CmdSetFrontFaceEXT;
         PFN_vkCmdSetLineStippleEXT CmdSetLineStippleEXT;
         PFN_vkCmdSetLineWidth CmdSetLineWidth;
         PFN_vkCmdSetPerformanceMarkerINTEL CmdSetPerformanceMarkerINTEL;
         PFN_vkCmdSetPerformanceOverrideINTEL CmdSetPerformanceOverrideINTEL;
         PFN_vkCmdSetPerformanceStreamMarkerINTEL CmdSetPerformanceStreamMarkerINTEL;
+        PFN_vkCmdSetPrimitiveTopologyEXT CmdSetPrimitiveTopologyEXT;
         PFN_vkCmdSetSampleLocationsEXT CmdSetSampleLocationsEXT;
         PFN_vkCmdSetScissor CmdSetScissor;
+        PFN_vkCmdSetScissorWithCountEXT CmdSetScissorWithCountEXT;
         PFN_vkCmdSetStencilCompareMask CmdSetStencilCompareMask;
+        PFN_vkCmdSetStencilOpEXT CmdSetStencilOpEXT;
         PFN_vkCmdSetStencilReference CmdSetStencilReference;
+        PFN_vkCmdSetStencilTestEnableEXT CmdSetStencilTestEnableEXT;
         PFN_vkCmdSetStencilWriteMask CmdSetStencilWriteMask;
         PFN_vkCmdSetViewport CmdSetViewport;
         PFN_vkCmdSetViewportShadingRatePaletteNV CmdSetViewportShadingRatePaletteNV;
         PFN_vkCmdSetViewportWScalingNV CmdSetViewportWScalingNV;
+        PFN_vkCmdSetViewportWithCountEXT CmdSetViewportWithCountEXT;
+    #ifdef VK_ENABLE_BETA_EXTENSIONS
+        PFN_vkCmdTraceRaysIndirectKHR CmdTraceRaysIndirectKHR;
+    #endif
+    #ifdef VK_ENABLE_BETA_EXTENSIONS
+        PFN_vkCmdTraceRaysKHR CmdTraceRaysKHR;
+    #endif
         PFN_vkCmdTraceRaysNV CmdTraceRaysNV;
         PFN_vkCmdUpdateBuffer CmdUpdateBuffer;
         PFN_vkCmdWaitEvents CmdWaitEvents;
-        PFN_vkCmdWriteAccelerationStructuresPropertiesNV CmdWriteAccelerationStructuresPropertiesNV;
+    #ifdef VK_ENABLE_BETA_EXTENSIONS
+        PFN_vkCmdWriteAccelerationStructuresPropertiesKHR CmdWriteAccelerationStructuresPropertiesKHR;
+    #endif
         PFN_vkCmdWriteBufferMarkerAMD CmdWriteBufferMarkerAMD;
         PFN_vkCmdWriteTimestamp CmdWriteTimestamp;
         PFN_vkCompileDeferredNV CompileDeferredNV;
+    #ifdef VK_ENABLE_BETA_EXTENSIONS
+        PFN_vkCopyAccelerationStructureKHR CopyAccelerationStructureKHR;
+    #endif
+    #ifdef VK_ENABLE_BETA_EXTENSIONS
+        PFN_vkCopyAccelerationStructureToMemoryKHR CopyAccelerationStructureToMemoryKHR;
+    #endif
+    #ifdef VK_ENABLE_BETA_EXTENSIONS
+        PFN_vkCopyMemoryToAccelerationStructureKHR CopyMemoryToAccelerationStructureKHR;
+    #endif
+    #ifdef VK_ENABLE_BETA_EXTENSIONS
+        PFN_vkCreateAccelerationStructureKHR CreateAccelerationStructureKHR;
+    #endif
         PFN_vkCreateAccelerationStructureNV CreateAccelerationStructureNV;
         PFN_vkCreateBuffer CreateBuffer;
         PFN_vkCreateBufferView CreateBufferView;
         PFN_vkCreateCommandPool CreateCommandPool;
         PFN_vkCreateComputePipelines CreateComputePipelines;
+    #ifdef VK_ENABLE_BETA_EXTENSIONS
+        PFN_vkCreateDeferredOperationKHR CreateDeferredOperationKHR;
+    #endif
         PFN_vkCreateDescriptorPool CreateDescriptorPool;
         PFN_vkCreateDescriptorSetLayout CreateDescriptorSetLayout;
         PFN_vkCreateDescriptorUpdateTemplate CreateDescriptorUpdateTemplate;
@@ -566,11 +673,14 @@
         PFN_vkCreateGraphicsPipelines CreateGraphicsPipelines;
         PFN_vkCreateImage CreateImage;
         PFN_vkCreateImageView CreateImageView;
-        PFN_vkCreateIndirectCommandsLayoutNVX CreateIndirectCommandsLayoutNVX;
-        PFN_vkCreateObjectTableNVX CreateObjectTableNVX;
+        PFN_vkCreateIndirectCommandsLayoutNV CreateIndirectCommandsLayoutNV;
         PFN_vkCreatePipelineCache CreatePipelineCache;
         PFN_vkCreatePipelineLayout CreatePipelineLayout;
+        PFN_vkCreatePrivateDataSlotEXT CreatePrivateDataSlotEXT;
         PFN_vkCreateQueryPool CreateQueryPool;
+    #ifdef VK_ENABLE_BETA_EXTENSIONS
+        PFN_vkCreateRayTracingPipelinesKHR CreateRayTracingPipelinesKHR;
+    #endif
         PFN_vkCreateRayTracingPipelinesNV CreateRayTracingPipelinesNV;
         PFN_vkCreateRenderPass CreateRenderPass;
         PFN_vkCreateRenderPass2 CreateRenderPass2;
@@ -583,10 +693,18 @@
         PFN_vkCreateValidationCacheEXT CreateValidationCacheEXT;
         PFN_vkDebugMarkerSetObjectNameEXT DebugMarkerSetObjectNameEXT;
         PFN_vkDebugMarkerSetObjectTagEXT DebugMarkerSetObjectTagEXT;
-        PFN_vkDestroyAccelerationStructureNV DestroyAccelerationStructureNV;
+    #ifdef VK_ENABLE_BETA_EXTENSIONS
+        PFN_vkDeferredOperationJoinKHR DeferredOperationJoinKHR;
+    #endif
+    #ifdef VK_ENABLE_BETA_EXTENSIONS
+        PFN_vkDestroyAccelerationStructureKHR DestroyAccelerationStructureKHR;
+    #endif
         PFN_vkDestroyBuffer DestroyBuffer;
         PFN_vkDestroyBufferView DestroyBufferView;
         PFN_vkDestroyCommandPool DestroyCommandPool;
+    #ifdef VK_ENABLE_BETA_EXTENSIONS
+        PFN_vkDestroyDeferredOperationKHR DestroyDeferredOperationKHR;
+    #endif
         PFN_vkDestroyDescriptorPool DestroyDescriptorPool;
         PFN_vkDestroyDescriptorSetLayout DestroyDescriptorSetLayout;
         PFN_vkDestroyDescriptorUpdateTemplate DestroyDescriptorUpdateTemplate;
@@ -596,11 +714,11 @@
         PFN_vkDestroyFramebuffer DestroyFramebuffer;
         PFN_vkDestroyImage DestroyImage;
         PFN_vkDestroyImageView DestroyImageView;
-        PFN_vkDestroyIndirectCommandsLayoutNVX DestroyIndirectCommandsLayoutNVX;
-        PFN_vkDestroyObjectTableNVX DestroyObjectTableNVX;
+        PFN_vkDestroyIndirectCommandsLayoutNV DestroyIndirectCommandsLayoutNV;
         PFN_vkDestroyPipeline DestroyPipeline;
         PFN_vkDestroyPipelineCache DestroyPipelineCache;
         PFN_vkDestroyPipelineLayout DestroyPipelineLayout;
+        PFN_vkDestroyPrivateDataSlotEXT DestroyPrivateDataSlotEXT;
         PFN_vkDestroyQueryPool DestroyQueryPool;
         PFN_vkDestroyRenderPass DestroyRenderPass;
         PFN_vkDestroySampler DestroySampler;
@@ -616,7 +734,13 @@
         PFN_vkFreeCommandBuffers FreeCommandBuffers;
         PFN_vkFreeDescriptorSets FreeDescriptorSets;
         PFN_vkFreeMemory FreeMemory;
+    #ifdef VK_ENABLE_BETA_EXTENSIONS
+        PFN_vkGetAccelerationStructureDeviceAddressKHR GetAccelerationStructureDeviceAddressKHR;
+    #endif
         PFN_vkGetAccelerationStructureHandleNV GetAccelerationStructureHandleNV;
+    #ifdef VK_ENABLE_BETA_EXTENSIONS
+        PFN_vkGetAccelerationStructureMemoryRequirementsKHR GetAccelerationStructureMemoryRequirementsKHR;
+    #endif
         PFN_vkGetAccelerationStructureMemoryRequirementsNV GetAccelerationStructureMemoryRequirementsNV;
     #ifdef VK_USE_PLATFORM_ANDROID_KHR
         PFN_vkGetAndroidHardwareBufferPropertiesANDROID GetAndroidHardwareBufferPropertiesANDROID;
@@ -626,7 +750,16 @@
         PFN_vkGetBufferMemoryRequirements2 GetBufferMemoryRequirements2;
         PFN_vkGetBufferOpaqueCaptureAddress GetBufferOpaqueCaptureAddress;
         PFN_vkGetCalibratedTimestampsEXT GetCalibratedTimestampsEXT;
+    #ifdef VK_ENABLE_BETA_EXTENSIONS
+        PFN_vkGetDeferredOperationMaxConcurrencyKHR GetDeferredOperationMaxConcurrencyKHR;
+    #endif
+    #ifdef VK_ENABLE_BETA_EXTENSIONS
+        PFN_vkGetDeferredOperationResultKHR GetDeferredOperationResultKHR;
+    #endif
         PFN_vkGetDescriptorSetLayoutSupport GetDescriptorSetLayoutSupport;
+    #ifdef VK_ENABLE_BETA_EXTENSIONS
+        PFN_vkGetDeviceAccelerationStructureCompatibilityKHR GetDeviceAccelerationStructureCompatibilityKHR;
+    #endif
         PFN_vkGetDeviceGroupPeerMemoryFeatures GetDeviceGroupPeerMemoryFeatures;
         PFN_vkGetDeviceGroupPresentCapabilitiesKHR GetDeviceGroupPresentCapabilitiesKHR;
     #ifdef VK_USE_PLATFORM_WIN32_KHR
@@ -643,12 +776,14 @@
     #ifdef VK_USE_PLATFORM_WIN32_KHR
         PFN_vkGetFenceWin32HandleKHR GetFenceWin32HandleKHR;
     #endif
+        PFN_vkGetGeneratedCommandsMemoryRequirementsNV GetGeneratedCommandsMemoryRequirementsNV;
         PFN_vkGetImageDrmFormatModifierPropertiesEXT GetImageDrmFormatModifierPropertiesEXT;
         PFN_vkGetImageMemoryRequirements GetImageMemoryRequirements;
         PFN_vkGetImageMemoryRequirements2 GetImageMemoryRequirements2;
         PFN_vkGetImageSparseMemoryRequirements GetImageSparseMemoryRequirements;
         PFN_vkGetImageSparseMemoryRequirements2 GetImageSparseMemoryRequirements2;
         PFN_vkGetImageSubresourceLayout GetImageSubresourceLayout;
+        PFN_vkGetImageViewAddressNVX GetImageViewAddressNVX;
         PFN_vkGetImageViewHandleNVX GetImageViewHandleNVX;
     #ifdef VK_USE_PLATFORM_ANDROID_KHR
         PFN_vkGetMemoryAndroidHardwareBufferANDROID GetMemoryAndroidHardwareBufferANDROID;
@@ -671,9 +806,15 @@
         PFN_vkGetPipelineExecutableInternalRepresentationsKHR GetPipelineExecutableInternalRepresentationsKHR;
         PFN_vkGetPipelineExecutablePropertiesKHR GetPipelineExecutablePropertiesKHR;
         PFN_vkGetPipelineExecutableStatisticsKHR GetPipelineExecutableStatisticsKHR;
+        PFN_vkGetPrivateDataEXT GetPrivateDataEXT;
         PFN_vkGetQueryPoolResults GetQueryPoolResults;
         PFN_vkGetQueueCheckpointDataNV GetQueueCheckpointDataNV;
-        PFN_vkGetRayTracingShaderGroupHandlesNV GetRayTracingShaderGroupHandlesNV;
+    #ifdef VK_ENABLE_BETA_EXTENSIONS
+        PFN_vkGetRayTracingCaptureReplayShaderGroupHandlesKHR GetRayTracingCaptureReplayShaderGroupHandlesKHR;
+    #endif
+    #ifdef VK_ENABLE_BETA_EXTENSIONS
+        PFN_vkGetRayTracingShaderGroupHandlesKHR GetRayTracingShaderGroupHandlesKHR;
+    #endif
         PFN_vkGetRefreshCycleDurationGOOGLE GetRefreshCycleDurationGOOGLE;
         PFN_vkGetRenderAreaGranularity GetRenderAreaGranularity;
         PFN_vkGetSemaphoreCounterValue GetSemaphoreCounterValue;
@@ -712,7 +853,6 @@
         PFN_vkQueueWaitIdle QueueWaitIdle;
         PFN_vkRegisterDeviceEventEXT RegisterDeviceEventEXT;
         PFN_vkRegisterDisplayEventEXT RegisterDisplayEventEXT;
-        PFN_vkRegisterObjectsNVX RegisterObjectsNVX;
     #ifdef VK_USE_PLATFORM_WIN32_KHR
         PFN_vkReleaseFullScreenExclusiveModeEXT ReleaseFullScreenExclusiveModeEXT;
     #endif
@@ -729,15 +869,18 @@
         PFN_vkSetEvent SetEvent;
         PFN_vkSetHdrMetadataEXT SetHdrMetadataEXT;
         PFN_vkSetLocalDimmingAMD SetLocalDimmingAMD;
+        PFN_vkSetPrivateDataEXT SetPrivateDataEXT;
         PFN_vkSignalSemaphore SignalSemaphore;
         PFN_vkTrimCommandPool TrimCommandPool;
         PFN_vkUninitializePerformanceApiINTEL UninitializePerformanceApiINTEL;
         PFN_vkUnmapMemory UnmapMemory;
-        PFN_vkUnregisterObjectsNVX UnregisterObjectsNVX;
         PFN_vkUpdateDescriptorSetWithTemplate UpdateDescriptorSetWithTemplate;
         PFN_vkUpdateDescriptorSets UpdateDescriptorSets;
         PFN_vkWaitForFences WaitForFences;
         PFN_vkWaitSemaphores WaitSemaphores;
+    #ifdef VK_ENABLE_BETA_EXTENSIONS
+        PFN_vkWriteAccelerationStructuresPropertiesKHR WriteAccelerationStructuresPropertiesKHR;
+    #endif
     };
 
     void vk_load_instance_commands(VkInstance instance, PFN_vkGetInstanceProcAddr gpa, struct vk_instance_dispatch_table *table);

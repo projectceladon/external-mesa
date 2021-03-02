@@ -133,7 +133,7 @@ nouveau_context_init(struct gl_context *ctx, gl_api api,
 	nouveau_scratch_init(ctx);
 	_mesa_meta_init(ctx);
 	_swrast_CreateContext(ctx);
-	_vbo_CreateContext(ctx);
+	_vbo_CreateContext(ctx, true);
 	_tnl_CreateContext(ctx);
 	nouveau_span_functions_init(ctx);
 	_mesa_allow_light_in_model(ctx, GL_FALSE);
@@ -217,7 +217,7 @@ nouveau_context_deinit(struct gl_context *ctx)
 	nouveau_object_del(&nctx->hw.chan);
 
 	nouveau_scratch_destroy(ctx);
-	_mesa_free_context_data(ctx);
+	_mesa_free_context_data(ctx, true);
 }
 
 void
