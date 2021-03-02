@@ -27,7 +27,7 @@
 #include "pipe/p_state.h"
 
 #include "virgl_winsys.h"
-#include "virgl_protocol.h"
+#include "virtio-gpu/virgl_protocol.h"
 
 struct tgsi_token;
 
@@ -115,6 +115,12 @@ int virgl_encode_clear(struct virgl_context *ctx,
                       unsigned buffers,
                       const union pipe_color_union *color,
                       double depth, unsigned stencil);
+
+int virgl_encode_clear_texture(struct virgl_context *ctx,
+                               struct virgl_resource *res,
+                               unsigned int level,
+                               const struct pipe_box *box,
+                               const void *data);
 
 int virgl_encode_bind_object(struct virgl_context *ctx,
                             uint32_t handle, uint32_t object);

@@ -7,21 +7,21 @@
 
 /* What follows is NIR algebraic transform code for the following 2
  * transforms:
- *    ('fsin', 'x') => ('fsin', ('fsub', ('fmul', 6.2831853, ('ffract', ('fadd', ('fmul', 0.15915494, 'x'), 0.5))), 3.14159265))
- *    ('fcos', 'x') => ('fcos', ('fsub', ('fmul', 6.2831853, ('ffract', ('fadd', ('fmul', 0.15915494, 'x'), 0.5))), 3.14159265))
+ *    ('fsin', 'x@32') => ('fsin', ('fsub', ('fmul', 6.2831853, ('ffract', ('fadd', ('fmul', 0.15915494, 'x'), 0.5))), 3.14159265))
+ *    ('fcos', 'x@32') => ('fcos', ('fsub', ('fmul', 6.2831853, ('ffract', ('fadd', ('fmul', 0.15915494, 'x'), 0.5))), 3.14159265))
  */
 
 
    static const nir_search_variable search0_0 = {
-   { nir_search_value_variable, -1 },
+   { nir_search_value_variable, 32 },
    0, /* x */
    false,
    nir_type_invalid,
    NULL,
-   {0, 1, 2, 3},
+   {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15},
 };
 static const nir_search_expression search0 = {
-   { nir_search_value_expression, -1 },
+   { nir_search_value_expression, 32 },
    false, false,
    -1, 0,
    nir_op_fsin,
@@ -30,18 +30,18 @@ static const nir_search_expression search0 = {
 };
 
    static const nir_search_constant replace0_0_0_0 = {
-   { nir_search_value_constant, -1 },
+   { nir_search_value_constant, 32 },
    nir_type_float, { 0x401921fb53c8d4f1 /* 6.2831853 */ },
 };
 
 static const nir_search_constant replace0_0_0_1_0_0_0 = {
-   { nir_search_value_constant, -1 },
+   { nir_search_value_constant, 32 },
    nir_type_float, { 0x3fc45f306725feed /* 0.15915494 */ },
 };
 
 /* replace0_0_0_1_0_0_1 -> search0_0 in the cache */
 static const nir_search_expression replace0_0_0_1_0_0 = {
-   { nir_search_value_expression, -1 },
+   { nir_search_value_expression, 32 },
    false, false,
    2, 1,
    nir_op_fmul,
@@ -50,11 +50,11 @@ static const nir_search_expression replace0_0_0_1_0_0 = {
 };
 
 static const nir_search_constant replace0_0_0_1_0_1 = {
-   { nir_search_value_constant, -1 },
+   { nir_search_value_constant, 32 },
    nir_type_float, { 0x3fe0000000000000 /* 0.5 */ },
 };
 static const nir_search_expression replace0_0_0_1_0 = {
-   { nir_search_value_expression, -1 },
+   { nir_search_value_expression, 32 },
    false, false,
    1, 2,
    nir_op_fadd,
@@ -62,7 +62,7 @@ static const nir_search_expression replace0_0_0_1_0 = {
    NULL,
 };
 static const nir_search_expression replace0_0_0_1 = {
-   { nir_search_value_expression, -1 },
+   { nir_search_value_expression, 32 },
    false, false,
    -1, 2,
    nir_op_ffract,
@@ -70,7 +70,7 @@ static const nir_search_expression replace0_0_0_1 = {
    NULL,
 };
 static const nir_search_expression replace0_0_0 = {
-   { nir_search_value_expression, -1 },
+   { nir_search_value_expression, 32 },
    false, false,
    0, 3,
    nir_op_fmul,
@@ -79,11 +79,11 @@ static const nir_search_expression replace0_0_0 = {
 };
 
 static const nir_search_constant replace0_0_1 = {
-   { nir_search_value_constant, -1 },
+   { nir_search_value_constant, 32 },
    nir_type_float, { 0x400921fb53c8d4f1 /* 3.14159265 */ },
 };
 static const nir_search_expression replace0_0 = {
-   { nir_search_value_expression, -1 },
+   { nir_search_value_expression, 32 },
    false, false,
    -1, 3,
    nir_op_fsub,
@@ -91,7 +91,7 @@ static const nir_search_expression replace0_0 = {
    NULL,
 };
 static const nir_search_expression replace0 = {
-   { nir_search_value_expression, -1 },
+   { nir_search_value_expression, 32 },
    false, false,
    -1, 3,
    nir_op_fsin,
@@ -101,7 +101,7 @@ static const nir_search_expression replace0 = {
 
    /* search1_0 -> search0_0 in the cache */
 static const nir_search_expression search1 = {
-   { nir_search_value_expression, -1 },
+   { nir_search_value_expression, 32 },
    false, false,
    -1, 0,
    nir_op_fcos,
@@ -124,7 +124,7 @@ static const nir_search_expression search1 = {
 /* replace1_0_1 -> replace0_0_1 in the cache */
 /* replace1_0 -> replace0_0 in the cache */
 static const nir_search_expression replace1 = {
-   { nir_search_value_expression, -1 },
+   { nir_search_value_expression, 32 },
    false, false,
    -1, 3,
    nir_op_fcos,

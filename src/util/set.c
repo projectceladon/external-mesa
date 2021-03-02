@@ -92,7 +92,7 @@ static const struct {
    ENTRY(2147483648ul, 2362232233ul, 2362232231ul )
 };
 
-static inline bool
+ASSERTED static inline bool
 key_pointer_is_reserved(const void *key)
 {
    return key == NULL || key == deleted_key;
@@ -146,6 +146,26 @@ _mesa_set_create(void *mem_ctx,
    }
 
    return ht;
+}
+
+static uint32_t
+key_u32_hash(const void *key)
+{
+   uint32_t u = (uint32_t)(uintptr_t)key;
+   return _mesa_hash_uint(&u);
+}
+
+static bool
+key_u32_equals(const void *a, const void *b)
+{
+   return (uint32_t)(uintptr_t)a == (uint32_t)(uintptr_t)b;
+}
+
+/* key == 0 and key == deleted_key are not allowed */
+struct set *
+_mesa_set_create_u32_keys(void *mem_ctx)
+{
+   return _mesa_set_create(NULL, key_u32_hash, key_u32_equals);
 }
 
 struct set *
@@ -203,13 +223,17 @@ _mesa_set_clear(struct set *set, void (*delete_function)(struct set_entry *entry
    if (!set)
       return;
 
-   set_foreach (set, entry) {
-      if (delete_function)
+   struct set_entry *entry;
+
+   for (entry = set->table; entry != set->table + set->size; entry++) {
+      if (entry_is_present(entry) && delete_function != NULL)
          delete_function(entry);
-      entry->key = deleted_key;
+
+      entry->key = NULL;
    }
 
-   set->entries = set->deleted_entries = 0;
+   set->entries = 0;
+   set->deleted_entries = 0;
 }
 
 /**
@@ -569,4 +593,24 @@ _mesa_pointer_set_create(void *mem_ctx)
 {
    return _mesa_set_create(mem_ctx, _mesa_hash_pointer,
                            _mesa_key_pointer_equal);
+}
+
+bool
+_mesa_set_intersects(struct set *a, struct set *b)
+{
+   assert(a->key_hash_function == b->key_hash_function);
+   assert(a->key_equals_function == b->key_equals_function);
+
+   /* iterate over the set with less entries */
+   if (b->entries < a->entries) {
+      struct set *tmp = a;
+      a = b;
+      b = tmp;
+   }
+
+   set_foreach(a, entry) {
+      if (_mesa_set_search_pre_hashed(b, entry->hash, entry->key))
+         return true;
+   }
+   return false;
 }

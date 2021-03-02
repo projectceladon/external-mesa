@@ -20,19 +20,19 @@
 
    <function name="MatrixLoadfEXT" offset="assign">
       <param name="matrixMode" type="GLenum" />
-      <param name="m" type="const GLfloat *" />
+      <param name="m" type="const GLfloat *" count="16"/>
    </function>
    <function name="MatrixLoaddEXT" offset="assign">
       <param name="matrixMode" type="GLenum" />
-      <param name="m" type="const GLdouble *" />
+      <param name="m" type="const GLdouble *" count="16"/>
    </function>
    <function name="MatrixMultfEXT" offset="assign">
       <param name="matrixMode" type="GLenum" />
-      <param name="m" type="const GLfloat *" />
+      <param name="m" type="const GLfloat *" count="16"/>
    </function>
    <function name="MatrixMultdEXT" offset="assign">
       <param name="matrixMode" type="GLenum" />
-      <param name="m" type="const GLdouble *" />
+      <param name="m" type="const GLdouble *" count="16"/>
    </function>
    <function name="MatrixLoadIdentityEXT" offset="assign">
       <param name="matrixMode" type="GLenum" />
@@ -102,11 +102,13 @@
 
    <!-- OpenGL 1.1 -->
 
-    <function name="ClientAttribDefaultEXT">
+    <function name="ClientAttribDefaultEXT"
+              marshal_call_after="if (COMPAT) _mesa_glthread_ClientAttribDefault(ctx, mask);">
        <param name="mask" type="GLbitfield" />
     </function>
 
-    <function name="PushClientAttribDefaultEXT">
+    <function name="PushClientAttribDefaultEXT"
+              marshal_call_after="if (COMPAT) _mesa_glthread_PushClientAttrib(ctx, mask, true);">
        <param name="mask" type="GLbitfield" />
     </function>
 
@@ -151,7 +153,7 @@
        <param name="texture" type="GLuint" />
        <param name="target" type="GLenum" />
        <param name="pname" type="GLenum" />
-       <param name="params" type="const GLint *" />
+       <param name="params" type="const GLint *" count="_mesa_tex_param_enum_to_count(pname)"/>
     </function>
 
     <function name="TextureParameterfEXT">
@@ -165,7 +167,7 @@
        <param name="texture" type="GLuint" />
        <param name="target" type="GLenum" />
        <param name="pname" type="GLenum" />
-       <param name="params" type="const float *" />
+       <param name="params" type="const float *" count="_mesa_tex_param_enum_to_count(pname)"/>
     </function>
 
    <function name="TextureImage1DEXT">
@@ -360,7 +362,7 @@
       <param name="texunit" type="GLenum" />
       <param name="target" type="GLenum" />
       <param name="pname" type="GLenum" />
-      <param name="param" type="const GLint *" />
+      <param name="param" type="const GLint *" count="_mesa_texenv_enum_to_count(pname)"/>
    </function>
 
    <function name="MultiTexEnvfEXT">
@@ -374,7 +376,7 @@
       <param name="texunit" type="GLenum" />
       <param name="target" type="GLenum" />
       <param name="pname" type="GLenum" />
-      <param name="param" type="const GLfloat *" />
+      <param name="param" type="const GLfloat *" count="_mesa_texenv_enum_to_count(pname)"/>
    </function>
 
    <function name="GetMultiTexEnvivEXT">
@@ -402,7 +404,7 @@
       <param name="texunit" type="GLenum" />
       <param name="target" type="GLenum" />
       <param name="pname" type="GLenum" />
-      <param name="param" type="const GLint*" />
+      <param name="param" type="const GLint*" count="_mesa_tex_param_enum_to_count(pname)"/>
    </function>
 
    <function name="MultiTexParameterfEXT">
@@ -416,7 +418,7 @@
       <param name="texunit" type="GLenum" />
       <param name="target" type="GLenum" />
       <param name="pname" type="GLenum" />
-      <param name="param" type="const GLfloat*" />
+      <param name="param" type="const GLfloat*" count="_mesa_tex_param_enum_to_count(pname)"/>
    </function>
 
    <function name="GetMultiTexParameterivEXT">
@@ -605,7 +607,7 @@
       <param name="texunit" type="GLenum" />
       <param name="coord" type="GLenum" />
       <param name="pname" type="GLenum" />
-      <param name="param" type="const GLdouble*" />
+      <param name="param" type="const GLdouble*" count="_mesa_texgen_enum_to_count(pname)"/>
    </function>
 
    <function name="MultiTexGenfEXT">
@@ -619,7 +621,7 @@
       <param name="texunit" type="GLenum" />
       <param name="coord" type="GLenum" />
       <param name="pname" type="GLenum" />
-      <param name="param" type="const GLfloat *" />
+      <param name="param" type="const GLfloat *" count="_mesa_texgen_enum_to_count(pname)"/>
    </function>
 
    <function name="MultiTexGeniEXT">
@@ -633,7 +635,7 @@
       <param name="texunit" type="GLenum" />
       <param name="coord" type="GLenum" />
       <param name="pname" type="GLenum" />
-      <param name="param" type="const GLint *" />
+      <param name="param" type="const GLint *" count="_mesa_texgen_enum_to_count(pname)"/>
    </function>
 
    <function name="GetMultiTexGendvEXT">
@@ -657,7 +659,8 @@
       <param name="param" type="GLint *" />
    </function>
 
-   <function name="MultiTexCoordPointerEXT">
+   <function name="MultiTexCoordPointerEXT" marshal="async"
+             marshal_call_after="if (COMPAT) _mesa_glthread_AttribPointer(ctx, VERT_ATTRIB_TEX(texunit - GL_TEXTURE0), size, type, stride,  pointer);">
       <param name="texunit" type="GLenum" />
       <param name="size" type="GLint" />
       <param name="type" type="GLenum" />
@@ -669,22 +672,22 @@
 
    <function name="MatrixLoadTransposefEXT" offset="assign">
       <param name="matrixMode" type="GLenum" />
-      <param name="m" type="const GLfloat *" />
+      <param name="m" type="const GLfloat *" count="16"/>
    </function>
 
    <function name="MatrixLoadTransposedEXT" offset="assign">
       <param name="matrixMode" type="GLenum" />
-      <param name="m" type="const GLdouble *" />
+      <param name="m" type="const GLdouble *" count="16"/>
    </function>
 
    <function name="MatrixMultTransposefEXT" offset="assign">
       <param name="matrixMode" type="GLenum" />
-      <param name="m" type="const GLfloat *" />
+      <param name="m" type="const GLfloat *" count="16"/>
    </function>
 
    <function name="MatrixMultTransposedEXT" offset="assign">
       <param name="matrixMode" type="GLenum" />
-      <param name="m" type="const GLdouble *" />
+      <param name="m" type="const GLdouble *" count="16"/>
     </function>
 
    <function name="CompressedTextureImage1DEXT">
@@ -853,14 +856,14 @@
 
    <!-- OpenGL 1.5 -->
 
-   <function name="NamedBufferDataEXT">
+   <function name="NamedBufferDataEXT" marshal="custom">
       <param name="buffer" type="GLuint" />
       <param name="size" type="GLsizeiptr" />
       <param name="data" type="const GLvoid *" />
       <param name="usage" type="GLenum" />
    </function>
 
-   <function name="NamedBufferSubDataEXT">
+   <function name="NamedBufferSubDataEXT" marshal="custom">
       <param name="buffer" type="GLuint" />
       <param name="offset" type="GLintptr" />
       <param name="size" type="GLsizeiptr" />
@@ -926,7 +929,7 @@
    <function name="FramebufferDrawBuffersEXT">
       <param name="framebuffer" type="GLuint" />
       <param name="n" type="GLsizei" />
-      <param name="bufs" type="const GLenum *" />
+      <param name="bufs" type="const GLenum *" count="n"/>
    </function>
 
    <function name="FramebufferReadBufferEXT">
@@ -985,12 +988,14 @@
       <param name="params" type="GLint *" />
    </function>
 
-   <function name="EnableClientStateiEXT">
+   <function name="EnableClientStateiEXT"
+             marshal_call_after="if (COMPAT) _mesa_glthread_ClientState(ctx, NULL, VERT_ATTRIB_TEX(index), true);">
       <param name="array" type="GLenum" />
       <param name="index" type="GLuint" />
    </function>
 
-   <function name="DisableClientStateiEXT">
+   <function name="DisableClientStateiEXT"
+             marshal_call_after="if (COMPAT) _mesa_glthread_ClientState(ctx, NULL, VERT_ATTRIB_TEX(index), false);">
       <param name="array" type="GLenum" />
       <param name="index" type="GLuint" />
    </function>
@@ -1052,7 +1057,8 @@
       <param name="size" type="GLsizeiptr" />
    </function>
 
-   <function name="VertexArrayVertexOffsetEXT">
+   <function name="VertexArrayVertexOffsetEXT"
+             marshal_call_after="if (COMPAT) _mesa_glthread_DSAAttribPointer(ctx, vaobj, buffer, VERT_ATTRIB_POS, size, type, stride, offset);">
       <param name="vaobj" type="GLuint" />
       <param name="buffer" type="GLuint" />
       <param name="size" type="GLint" />
@@ -1061,7 +1067,8 @@
       <param name="offset" type="GLintptr" />
    </function>
 
-   <function name="VertexArrayColorOffsetEXT">
+   <function name="VertexArrayColorOffsetEXT"
+             marshal_call_after="if (COMPAT) _mesa_glthread_DSAAttribPointer(ctx, vaobj, buffer, VERT_ATTRIB_COLOR0, size, type, stride, offset);">
       <param name="vaobj" type="GLuint" />
       <param name="buffer" type="GLuint" />
       <param name="size" type="GLint" />
@@ -1070,22 +1077,16 @@
       <param name="offset" type="GLintptr" />
    </function>
 
-   <function name="VertexArrayEdgeFlagOffsetEXT">
+   <function name="VertexArrayEdgeFlagOffsetEXT"
+             marshal_call_after="if (COMPAT) _mesa_glthread_DSAAttribPointer(ctx, vaobj, buffer, VERT_ATTRIB_EDGEFLAG, 1, GL_UNSIGNED_BYTE, stride, offset);">
       <param name="vaobj" type="GLuint" />
       <param name="buffer" type="GLuint" />
       <param name="stride" type="GLsizei" />
       <param name="offset" type="GLintptr" />
    </function>
 
-   <function name="VertexArrayIndexOffsetEXT">
-      <param name="vaobj" type="GLuint" />
-      <param name="buffer" type="GLuint" />
-      <param name="type" type="GLenum" />
-      <param name="stride" type="GLsizei" />
-      <param name="offset" type="GLintptr" />
-   </function>
-
-   <function name="VertexArrayNormalOffsetEXT">
+   <function name="VertexArrayIndexOffsetEXT"
+             marshal_call_after="if (COMPAT) _mesa_glthread_DSAAttribPointer(ctx, vaobj, buffer, VERT_ATTRIB_COLOR_INDEX, 1, type, stride, offset);">
       <param name="vaobj" type="GLuint" />
       <param name="buffer" type="GLuint" />
       <param name="type" type="GLenum" />
@@ -1093,7 +1094,17 @@
       <param name="offset" type="GLintptr" />
    </function>
 
-   <function name="VertexArrayTexCoordOffsetEXT">
+   <function name="VertexArrayNormalOffsetEXT"
+             marshal_call_after="if (COMPAT) _mesa_glthread_DSAAttribPointer(ctx, vaobj, buffer, VERT_ATTRIB_NORMAL, 3, type, stride, offset);">
+      <param name="vaobj" type="GLuint" />
+      <param name="buffer" type="GLuint" />
+      <param name="type" type="GLenum" />
+      <param name="stride" type="GLsizei" />
+      <param name="offset" type="GLintptr" />
+   </function>
+
+   <function name="VertexArrayTexCoordOffsetEXT"
+             marshal_call_after="if (COMPAT) _mesa_glthread_DSAAttribPointer(ctx, vaobj, buffer, VERT_ATTRIB_TEX(ctx->GLThread.ClientActiveTexture), size, type, stride, offset);">
       <param name="vaobj" type="GLuint" />
       <param name="buffer" type="GLuint" />
       <param name="size" type="GLint" />
@@ -1102,7 +1113,8 @@
       <param name="offset" type="GLintptr" />
    </function>
 
-   <function name="VertexArrayMultiTexCoordOffsetEXT">
+   <function name="VertexArrayMultiTexCoordOffsetEXT"
+             marshal_call_after="if (COMPAT) _mesa_glthread_DSAAttribPointer(ctx, vaobj, buffer, VERT_ATTRIB_TEX(texunit - GL_TEXTURE0), size, type, stride, offset);">
       <param name="vaobj" type="GLuint" />
       <param name="buffer" type="GLuint" />
       <param name="texunit" type="GLenum" />
@@ -1112,7 +1124,8 @@
       <param name="offset" type="GLintptr" />
    </function>
 
-   <function name="VertexArrayFogCoordOffsetEXT">
+   <function name="VertexArrayFogCoordOffsetEXT"
+             marshal_call_after="if (COMPAT) _mesa_glthread_DSAAttribPointer(ctx, vaobj, buffer, VERT_ATTRIB_FOG, 1, type, stride, offset);">
       <param name="vaobj" type="GLuint" />
       <param name="buffer" type="GLuint" />
       <param name="type" type="GLenum" />
@@ -1120,7 +1133,8 @@
       <param name="offset" type="GLintptr" />
    </function>
 
-   <function name="VertexArraySecondaryColorOffsetEXT">
+   <function name="VertexArraySecondaryColorOffsetEXT"
+             marshal_call_after="if (COMPAT) _mesa_glthread_DSAAttribPointer(ctx, vaobj, buffer, VERT_ATTRIB_COLOR1, size, type, stride, offset);">
       <param name="vaobj" type="GLuint" />
       <param name="buffer" type="GLuint" />
       <param name="size" type="GLint" />
@@ -1129,7 +1143,8 @@
       <param name="offset" type="GLintptr" />
    </function>
 
-   <function name="VertexArrayVertexAttribOffsetEXT">
+   <function name="VertexArrayVertexAttribOffsetEXT"
+             marshal_call_after="if (COMPAT) _mesa_glthread_DSAAttribPointer(ctx, vaobj, buffer, VERT_ATTRIB_GENERIC(index), size, type, stride, offset);">
       <param name="vaobj" type="GLuint" />
       <param name="buffer" type="GLuint" />
       <param name="index" type="GLuint" />
@@ -1140,7 +1155,8 @@
       <param name="offset" type="GLintptr" />
    </function>
 
-   <function name="VertexArrayVertexAttribIOffsetEXT">
+   <function name="VertexArrayVertexAttribIOffsetEXT"
+             marshal_call_after="if (COMPAT) _mesa_glthread_DSAAttribPointer(ctx, vaobj, buffer, VERT_ATTRIB_GENERIC(index), size, type, stride, offset);">
       <param name="vaobj" type="GLuint" />
       <param name="buffer" type="GLuint" />
       <param name="index" type="GLuint" />
@@ -1150,22 +1166,26 @@
       <param name="offset" type="GLintptr" />
    </function>
 
-   <function name="EnableVertexArrayEXT">
+   <function name="EnableVertexArrayEXT"
+             marshal_call_after="if (COMPAT) _mesa_glthread_ClientState(ctx, &amp;vaobj, _mesa_array_to_attrib(ctx, array), true);">
       <param name="vaobj" type="GLuint" />
       <param name="array" type="GLenum" />
    </function>
 
-   <function name="DisableVertexArrayEXT">
+   <function name="DisableVertexArrayEXT"
+             marshal_call_after="if (COMPAT) _mesa_glthread_ClientState(ctx, &amp;vaobj, _mesa_array_to_attrib(ctx, array), false);">
       <param name="vaobj" type="GLuint" />
       <param name="array" type="GLenum" />
    </function>
 
-   <function name="EnableVertexArrayAttribEXT">
+   <function name="EnableVertexArrayAttribEXT"
+             marshal_call_after="if (COMPAT) _mesa_glthread_ClientState(ctx, &amp;vaobj, VERT_ATTRIB_GENERIC(index), true);">
       <param name="vaobj" type="GLuint" />
       <param name="index" type="GLuint" />
    </function>
 
-   <function name="DisableVertexArrayAttribEXT">
+   <function name="DisableVertexArrayAttribEXT"
+             marshal_call_after="if (COMPAT) _mesa_glthread_ClientState(ctx, &amp;vaobj, VERT_ATTRIB_GENERIC(index), false);">
       <param name="vaobj" type="GLuint" />
       <param name="index" type="GLuint" />
    </function>
@@ -1202,7 +1222,7 @@
       <param name="target" type="GLenum" />
       <param name="format" type="GLenum" />
       <param name="len" type="GLsizei" />
-      <param name="string" type="const GLvoid*" />
+      <param name="string" type="const GLvoid*" count="len"/>
     </function>
 
    <function name="GetNamedProgramStringEXT">
@@ -1226,7 +1246,7 @@
       <param name="program" type="GLuint" />
       <param name="target" type="GLenum" />
       <param name="index" type="GLuint" />
-      <param name="params" type="const GLfloat*" />
+      <param name="params" type="const GLfloat*" count="4"/>
     </function>
 
    <function name="GetNamedProgramLocalParameterfvEXT">
@@ -1250,7 +1270,7 @@
       <param name="program" type="GLuint" />
       <param name="target" type="GLenum" />
       <param name="index" type="GLuint" />
-      <param name="params" type="const GLdouble*" />
+      <param name="params" type="const GLdouble*" count="4"/>
     </function>
 
    <function name="GetNamedProgramLocalParameterdvEXT">
@@ -1287,14 +1307,14 @@
       <param name="texture" type="GLuint" />
       <param name="target" type="GLenum" />
       <param name="pname" type="GLenum" />
-      <param name="params" type="const GLint*" />
+      <param name="params" type="const GLint*" count="_mesa_tex_param_enum_to_count(pname)"/>
    </function>
 
    <function name="TextureParameterIuivEXT">
       <param name="texture" type="GLuint" />
       <param name="target" type="GLenum" />
       <param name="pname" type="GLenum" />
-      <param name="params" type="const GLuint*" />
+      <param name="params" type="const GLuint*" count="_mesa_tex_param_enum_to_count(pname)"/>
    </function>
 
    <function name="GetTextureParameterIivEXT">
@@ -1315,14 +1335,14 @@
       <param name="texunit" type="GLenum" />
       <param name="target" type="GLenum" />
       <param name="pname" type="GLenum" />
-      <param name="params" type="const GLint*" />
+      <param name="params" type="const GLint*" count="_mesa_tex_param_enum_to_count(pname)"/>
    </function>
 
    <function name="MultiTexParameterIuivEXT">
       <param name="texunit" type="GLenum" />
       <param name="target" type="GLenum" />
       <param name="pname" type="GLenum" />
-      <param name="params" type="const GLuint*" />
+      <param name="params" type="const GLuint*" count="_mesa_tex_param_enum_to_count(pname)"/>
    </function>
 
    <function name="GetMultiTexParameterIivEXT">
@@ -1351,7 +1371,7 @@
       <param name="target" type="GLenum" />
       <param name="index" type="GLuint" />
       <param name="count" type="GLsizei" />
-      <param name="params" type="const GLfloat*" />
+      <param name="params" type="const GLfloat*" count="4"/>
    </function>
 
 </category>

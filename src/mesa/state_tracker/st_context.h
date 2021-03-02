@@ -30,7 +30,7 @@
 
 #include "main/arrayobj.h"
 #include "main/mtypes.h"
-#include "state_tracker/st_api.h"
+#include "frontend/api.h"
 #include "main/fbobject.h"
 #include "state_tracker/st_atom.h"
 #include "util/u_helpers.h"
@@ -38,6 +38,7 @@
 #include "util/list.h"
 #include "vbo/vbo.h"
 #include "util/list.h"
+#include "cso_cache/cso_context.h"
 
 
 #ifdef __cplusplus
@@ -147,7 +148,6 @@ struct st_context
    boolean has_indep_blend_func;
    boolean needs_rgb_dst_alpha_override;
    boolean can_bind_const_buffer_as_vertex;
-   boolean has_signed_vertex_buffer_offset;
    boolean lower_flatshade;
    boolean lower_alpha_test;
    boolean lower_point_size;
@@ -181,6 +181,10 @@ struct st_context
    boolean invalidate_on_gl_viewport;
    boolean draw_needs_minmax_index;
    boolean has_hw_atomics;
+
+
+   /* driver supports scissored clears */
+   boolean can_scissor_clear;
 
    /* Some state is contained in constant objects.
     * Other state is just parameter values.
@@ -278,7 +282,7 @@ struct st_context
 
    /** for glDraw/CopyPixels */
    struct {
-      void *zs_shaders[4];
+      void *zs_shaders[6];
    } drawpix;
 
    /** Cache of glDrawPixels images */
@@ -313,8 +317,8 @@ struct st_context
       struct pipe_blend_state upload_blend;
       void *vs;
       void *gs;
-      void *upload_fs[3];
-      void *download_fs[3][PIPE_MAX_TEXTURE_TYPES];
+      void *upload_fs[3][2];
+      void *download_fs[3][PIPE_MAX_TEXTURE_TYPES][2];
       bool upload_enabled;
       bool download_enabled;
       bool rgba_only;
@@ -323,7 +327,7 @@ struct st_context
    } pbo;
 
    /** for drawing with st_util_vertex */
-   struct pipe_vertex_element util_velems[3];
+   struct cso_velems_state util_velems;
 
    /** passthrough vertex shader matching the util_velem attributes */
    void *passthrough_vs;
@@ -414,6 +418,8 @@ st_save_zombie_shader(struct st_context *st,
 void
 st_context_free_zombie_objects(struct st_context *st);
 
+const struct nir_shader_compiler_options *
+st_get_nir_compiler_options(struct st_context *st, gl_shader_stage stage);
 
 
 /**

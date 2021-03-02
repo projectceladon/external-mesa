@@ -28,6 +28,7 @@
 #include <err.h>
 #include <fcntl.h>
 #include <ftw.h>
+#include <locale.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -114,8 +115,10 @@ readfile(const char *path, int *sz)
 	int fd, ret, n = 0;
 
 	fd = open(path, O_RDONLY);
-	if (fd < 0)
+	if (fd < 0) {
+		*sz = 0;
 		return NULL;
+	}
 
 	while (1) {
 		buf = realloc(buf, n + CHUNKSIZE);
@@ -155,70 +158,6 @@ delta(uint32_t a, uint32_t b)
 }
 
 /*
- * TODO de-duplicate OUT_RING() and friends
- */
-
-#define CP_WAIT_FOR_IDLE 38
-#define CP_TYPE0_PKT 0x00000000
-#define CP_TYPE3_PKT 0xc0000000
-#define CP_TYPE4_PKT 0x40000000
-#define CP_TYPE7_PKT 0x70000000
-
-static inline void
-OUT_RING(struct fd_ringbuffer *ring, uint32_t data)
-{
-	*(ring->cur++) = data;
-}
-
-static inline void
-OUT_PKT0(struct fd_ringbuffer *ring, uint16_t regindx, uint16_t cnt)
-{
-	OUT_RING(ring, CP_TYPE0_PKT | ((cnt-1) << 16) | (regindx & 0x7FFF));
-}
-
-static inline void
-OUT_PKT3(struct fd_ringbuffer *ring, uint8_t opcode, uint16_t cnt)
-{
-	OUT_RING(ring, CP_TYPE3_PKT | ((cnt-1) << 16) | ((opcode & 0xFF) << 8));
-}
-
-
-/*
- * Starting with a5xx, pkt4/pkt7 are used instead of pkt0/pkt3
- */
-
-static inline unsigned
-_odd_parity_bit(unsigned val)
-{
-	/* See: http://graphics.stanford.edu/~seander/bithacks.html#ParityParallel
-	 * note that we want odd parity so 0x6996 is inverted.
-	 */
-	val ^= val >> 16;
-	val ^= val >> 8;
-	val ^= val >> 4;
-	val &= 0xf;
-	return (~0x6996 >> val) & 1;
-}
-
-static inline void
-OUT_PKT4(struct fd_ringbuffer *ring, uint16_t regindx, uint16_t cnt)
-{
-	OUT_RING(ring, CP_TYPE4_PKT | cnt |
-			(_odd_parity_bit(cnt) << 7) |
-			((regindx & 0x3ffff) << 8) |
-			((_odd_parity_bit(regindx) << 27)));
-}
-
-static inline void
-OUT_PKT7(struct fd_ringbuffer *ring, uint8_t opcode, uint16_t cnt)
-{
-	OUT_RING(ring, CP_TYPE7_PKT | cnt |
-			(_odd_parity_bit(cnt) << 15) |
-			((opcode & 0x7f) << 16) |
-			((_odd_parity_bit(opcode) << 23)));
-}
-
-/*
  * code to find stuff in /proc/device-tree:
  *
  * NOTE: if we sampled the counters from the cmdstream, we could avoid needing
@@ -233,7 +172,7 @@ readdt(const char *node)
 	void *buf;
 	int sz;
 
-	asprintf(&path, "%s/%s", dev.dtnode, node);
+	(void) asprintf(&path, "%s/%s", dev.dtnode, node);
 	buf = readfile(path, &sz);
 	free(path);
 
@@ -266,13 +205,44 @@ find_freqs(void)
 	dev.min_freq = ~0;
 	dev.max_freq = 0;
 
-	asprintf(&path, "%s/%s", dev.dtnode, "qcom,gpu-pwrlevels");
+	(void) asprintf(&path, "%s/%s", dev.dtnode, "qcom,gpu-pwrlevels");
 
 	ret = nftw(path, find_freqs_fn, 64, 0);
 	if (ret < 0)
 		err(1, "could not find power levels");
 
 	free(path);
+}
+
+static const char * compatibles[] = {
+		"qcom,adreno-3xx",
+		"qcom,kgsl-3d0",
+		"amd,imageon",
+		"qcom,adreno",
+};
+
+/**
+ * compatstrs is a list of compatible strings separated by null, ie.
+ *
+ *       compatible = "qcom,adreno-630.2", "qcom,adreno";
+ *
+ * would result in "qcom,adreno-630.2\0qcom,adreno\0"
+ */
+static bool match_compatible(char *compatstrs, int sz)
+{
+	while (sz > 0) {
+		char *compatible = compatstrs;
+
+		for (unsigned i = 0; i < ARRAY_SIZE(compatibles); i++) {
+			if (strcmp(compatible, compatibles[i]) == 0) {
+				return true;
+			}
+		}
+
+		compatstrs += strlen(compatible) + 1;
+		sz -= strlen(compatible) + 1;
+	}
+	return false;
 }
 
 static int
@@ -283,10 +253,7 @@ find_device_fn(const char *fpath, const struct stat *sb, int typeflag, struct FT
 
 	if (strcmp(fname, "compatible") == 0) {
 		char *str = readfile(fpath, &sz);
-		if ((strcmp(str, "qcom,adreno-3xx") == 0) ||
-				(strcmp(str, "qcom,kgsl-3d0") == 0) ||
-				(strstr(str, "amd,imageon") == str) ||
-				(strstr(str, "qcom,adreno") == str)) {
+		if (match_compatible(str, sz)) {
 			int dlen = strlen(fpath) - strlen("/compatible");
 			dev.dtnode = malloc(dlen + 1);
 			memcpy(dev.dtnode, fpath, dlen);
@@ -330,7 +297,7 @@ find_device(void)
 	if (!dev.dtnode)
 		errx(1, "could not find qcom,adreno-3xx node");
 
-	fd = drmOpen("msm", NULL);
+	fd = drmOpenWithType("msm", NULL, DRM_NODE_RENDER);
 	if (fd < 0)
 		err(1, "could not open drm device");
 
@@ -374,7 +341,7 @@ find_device(void)
 
 	free(b);
 
-	printf("i/o region at %08"PRIu64" (size: %x)\n", dev.base, dev.size);
+	printf("i/o region at %08"PRIx64" (size: %x)\n", dev.base, dev.size);
 
 	/* try MAX_FREQ first as that will work regardless of old dt
 	 * dt bindings vs upstream bindings:
@@ -395,7 +362,7 @@ find_device(void)
 		err(1, "could not open /dev/mem");
 
 	dev.io = mmap(0, dev.size, PROT_READ | PROT_WRITE, MAP_SHARED, fd, dev.base);
-	if (!dev.io) {
+	if (dev.io == MAP_FAILED) {
 		close(fd);
 		err(1, "could not map device");
 	}
@@ -640,7 +607,7 @@ static void
 redraw_counter_value_raw(WINDOW *win, float val)
 {
 	char *str;
-	asprintf(&str, "%'.2f", val);
+	(void) asprintf(&str, "%'.2f", val);
 	waddstr(win, str);
 	whline(win, ' ', w - getcurx(win));
 	free(str);
@@ -770,7 +737,7 @@ counter_dialog(void)
 {
 	WINDOW *dialog;
 	struct counter_group *group;
-	int cnt, current = 0, scroll;
+	int cnt = 0, current = 0, scroll;
 
 	/* figure out dialog size: */
 	int dh = h/2;
@@ -1033,7 +1000,7 @@ config_restore(void)
 	config_setting_t *root = config_root_setting(&cfg);
 
 	/* per device settings: */
-	asprintf(&str, "a%dxx", dev.chipid >> 24);
+	(void) asprintf(&str, "a%dxx", dev.chipid >> 24);
 	setting = config_setting_get_member(root, str);
 	if (!setting)
 		setting = config_setting_add(root, str, CONFIG_TYPE_GROUP);
@@ -1084,6 +1051,8 @@ main(int argc, char **argv)
 	}
 
 	dev.groups = calloc(dev.ngroups, sizeof(struct counter_group));
+
+	setlocale(LC_NUMERIC, "en_US.UTF-8");
 
 	setup_counter_groups(groups);
 	restore_counter_groups();

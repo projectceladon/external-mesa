@@ -38,7 +38,7 @@
 #include "tgsi/tgsi_strings.h"
 #include "tgsi/tgsi_text.h"
 #include "cso_cache/cso_context.h"
-#include "state_tracker/winsys_handle.h"
+#include "frontend/winsys_handle.h"
 #include <stdio.h>
 
 #define TOLERANCE 0.01
@@ -134,17 +134,17 @@ static void
 util_set_interleaved_vertex_elements(struct cso_context *cso,
                                      unsigned num_elements)
 {
+   struct cso_velems_state velem;
    unsigned i;
-   struct pipe_vertex_element *velem =
-      calloc(1, num_elements * sizeof(struct pipe_vertex_element));
 
+   memset(&velem, 0, sizeof(velem));
+   velem.count = num_elements;
    for (i = 0; i < num_elements; i++) {
-      velem[i].src_format = PIPE_FORMAT_R32G32B32A32_FLOAT;
-      velem[i].src_offset = i * 16;
+      velem.velems[i].src_format = PIPE_FORMAT_R32G32B32A32_FLOAT;
+      velem.velems[i].src_offset = i * 16;
    }
 
-   cso_set_vertex_elements(cso, num_elements, velem);
-   free(velem);
+   cso_set_vertex_elements(cso, &velem);
 }
 
 static void *
@@ -177,7 +177,7 @@ util_set_common_states_and_clear(struct cso_context *cso, struct pipe_context *c
    util_set_rasterizer_normal(cso);
    util_set_max_viewport(cso, cb);
 
-   ctx->clear(ctx, PIPE_CLEAR_COLOR0, (void*)clear_color, 0, 0);
+   ctx->clear(ctx, PIPE_CLEAR_COLOR0, NULL, (void*)clear_color, 0, 0);
 }
 
 static void
@@ -227,9 +227,9 @@ util_probe_rect_rgba_multi(struct pipe_context *ctx, struct pipe_resource *tex,
    unsigned x,y,e,c;
    bool pass = true;
 
-   map = pipe_transfer_map(ctx, tex, 0, 0, PIPE_TRANSFER_READ,
+   map = pipe_transfer_map(ctx, tex, 0, 0, PIPE_MAP_READ,
                            offx, offy, w, h, &transfer);
-   pipe_get_tile_rgba(transfer, map, 0, 0, w, h, pixels);
+   pipe_get_tile_rgba(transfer, map, 0, 0, w, h, tex->format, pixels);
    pipe_transfer_unmap(ctx, transfer);
 
    for (e = 0; e < num_expected_colors; e++) {
@@ -907,7 +907,7 @@ test_nv12(struct pipe_screen *screen)
          struct pipe_resource *res = i == 2 ? tex->next : tex;
          unsigned plane = i == 2 ? 0 : i;
 
-         if (!screen->resource_get_param(screen, NULL, res, plane, 0,
+         if (!screen->resource_get_param(screen, NULL, res, plane, 0, 0,
                                          PIPE_RESOURCE_PARAM_HANDLE_TYPE_KMS,
                                          0, &handle[i].handle)) {
             printf("resource_get_param failed\n");
@@ -915,7 +915,7 @@ test_nv12(struct pipe_screen *screen)
             goto cleanup;
          }
 
-         if (!screen->resource_get_param(screen, NULL, res, plane, 0,
+         if (!screen->resource_get_param(screen, NULL, res, plane, 0, 0,
                                          PIPE_RESOURCE_PARAM_HANDLE_TYPE_FD,
                                          0, &handle[i].dmabuf)) {
             printf("resource_get_param failed\n");
@@ -923,7 +923,7 @@ test_nv12(struct pipe_screen *screen)
             goto cleanup;
          }
 
-         if (!screen->resource_get_param(screen, NULL, res, plane, 0,
+         if (!screen->resource_get_param(screen, NULL, res, plane, 0, 0,
                                          PIPE_RESOURCE_PARAM_OFFSET,
                                          0, &handle[i].offset)) {
             printf("resource_get_param failed\n");
@@ -931,7 +931,7 @@ test_nv12(struct pipe_screen *screen)
             goto cleanup;
          }
 
-         if (!screen->resource_get_param(screen, NULL, res, plane, 0,
+         if (!screen->resource_get_param(screen, NULL, res, plane, 0, 0,
                                          PIPE_RESOURCE_PARAM_STRIDE,
                                          0, &handle[i].stride)) {
             printf("resource_get_param failed\n");
@@ -939,7 +939,7 @@ test_nv12(struct pipe_screen *screen)
             goto cleanup;
          }
 
-         if (!screen->resource_get_param(screen, NULL, res, plane, 0,
+         if (!screen->resource_get_param(screen, NULL, res, plane, 0, 0,
                                          PIPE_RESOURCE_PARAM_NPLANES,
                                          0, &handle[i].planes)) {
             printf("resource_get_param failed\n");

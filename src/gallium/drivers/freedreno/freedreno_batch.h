@@ -33,6 +33,12 @@
 
 #include "freedreno_util.h"
 
+#ifdef DEBUG
+#  define BATCH_DEBUG (fd_mesa_debug & FD_DBG_MSGS)
+#else
+#  define BATCH_DEBUG 0
+#endif
+
 struct fd_context;
 struct fd_resource;
 enum fd_resource_status;
@@ -47,11 +53,11 @@ enum fd_resource_status;
  * is active across IB's (or between tile IB and draw IB)
  */
 enum fd_render_stage {
-	FD_STAGE_NULL     = 0x01,
-	FD_STAGE_DRAW     = 0x02,
-	FD_STAGE_CLEAR    = 0x04,
+	FD_STAGE_NULL     = 0x00,
+	FD_STAGE_DRAW     = 0x01,
+	FD_STAGE_CLEAR    = 0x02,
 	/* used for driver internal draws (ie. util_blitter_blit()): */
-	FD_STAGE_BLIT     = 0x08,
+	FD_STAGE_BLIT     = 0x04,
 	FD_STAGE_ALL      = 0xff,
 };
 
@@ -129,8 +135,15 @@ struct fd_batch {
 	 */
 	const struct fd_gmem_stateobj *gmem_state;
 
-	unsigned num_draws;   /* number of draws in current batch */
+	unsigned num_draws;      /* number of draws in current batch */
 	unsigned num_vertices;   /* number of vertices in current batch */
+
+	/* Currently only used on a6xx, to calculate vsc prim/draw stream
+	 * sizes:
+	 */
+	unsigned num_bins_per_pipe;
+	unsigned prim_strm_bits;
+	unsigned draw_strm_bits;
 
 	/* Track the maximal bounds of the scissor of all the draws within a
 	 * batch.  Used at the tile rendering step (fd_gmem_render_tiles(),
@@ -177,8 +190,12 @@ struct fd_batch {
 	/** tiling/gmem (IB0) cmdstream: */
 	struct fd_ringbuffer *gmem;
 
-	// TODO maybe more generically split out clear and clear_binning rings?
-	struct fd_ringbuffer *lrz_clear;
+	/** preemble cmdstream (executed once before first tile): */
+	struct fd_ringbuffer *prologue;
+
+	/** epilogue cmdstream (executed after each tile): */
+	struct fd_ringbuffer *epilogue;
+
 	struct fd_ringbuffer *tile_setup;
 	struct fd_ringbuffer *tile_fini;
 
@@ -240,6 +257,8 @@ struct fd_batch {
 	uint32_t tessparam_size;
 
 	struct fd_ringbuffer *tess_addrs_constobj;
+
+	struct list_head log_chunks;  /* list of unflushed log chunks in fifo order */
 };
 
 struct fd_batch * fd_batch_create(struct fd_context *ctx, bool nondraw);
@@ -247,7 +266,8 @@ struct fd_batch * fd_batch_create(struct fd_context *ctx, bool nondraw);
 void fd_batch_reset(struct fd_batch *batch);
 void fd_batch_flush(struct fd_batch *batch);
 void fd_batch_add_dep(struct fd_batch *batch, struct fd_batch *dep);
-void fd_batch_resource_used(struct fd_batch *batch, struct fd_resource *rsc, bool write);
+void fd_batch_resource_write(struct fd_batch *batch, struct fd_resource *rsc);
+void fd_batch_resource_read_slowpath(struct fd_batch *batch, struct fd_resource *rsc);
 void fd_batch_check_size(struct fd_batch *batch);
 
 /* not called directly: */
@@ -325,5 +345,17 @@ fd_event_write(struct fd_batch *batch, struct fd_ringbuffer *ring,
 	OUT_RING(ring, evt);
 	fd_reset_wfi(batch);
 }
+
+/* Get per-tile epilogue */
+static inline struct fd_ringbuffer *
+fd_batch_get_epilogue(struct fd_batch *batch)
+{
+	if (batch->epilogue == NULL)
+		batch->epilogue = fd_submit_new_ringbuffer(batch->submit, 0x1000, 0);
+
+	return batch->epilogue;
+}
+
+struct fd_ringbuffer * fd_batch_get_prologue(struct fd_batch *batch);
 
 #endif /* FREEDRENO_BATCH_H_ */

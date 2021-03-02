@@ -18,14 +18,15 @@ COMMON_FILES = \
 	common/gen_disasm.c \
 	common/gen_disasm.h \
 	common/gen_defines.h \
+	common/gen_gem.c \
 	common/gen_gem.h \
 	common/gen_guardband.h \
 	common/gen_l3_config.c \
 	common/gen_l3_config.h \
 	common/gen_urb_config.c \
 	common/gen_sample_positions.h \
-	common/intel_log.c \
-	common/intel_log.h
+	common/gen_uuid.c \
+	common/gen_uuid.h
 
 COMPILER_FILES = \
 	compiler/brw_cfg.cpp \
@@ -79,6 +80,8 @@ COMPILER_FILES = \
 	compiler/brw_interpolation_map.c \
 	compiler/brw_ir_allocator.h \
 	compiler/brw_ir_fs.h \
+	compiler/brw_ir_performance.h \
+	compiler/brw_ir_performance.cpp \
 	compiler/brw_ir_vec4.h \
 	compiler/brw_nir.h \
 	compiler/brw_nir.c \
@@ -91,6 +94,7 @@ COMPILER_FILES = \
 	compiler/brw_nir_lower_cs_intrinsics.c \
 	compiler/brw_nir_lower_image_load_store.c \
 	compiler/brw_nir_lower_mem_access_bit_sizes.c \
+	compiler/brw_nir_lower_scoped_barriers.c \
 	compiler/brw_nir_opt_peephole_ffma.c \
 	compiler/brw_nir_tcs_workarounds.c \
 	compiler/brw_packed_float.c \
@@ -148,7 +152,6 @@ GENXML_XML_FILES = \
 	genxml/gen75.xml \
 	genxml/gen8.xml \
 	genxml/gen9.xml \
-	genxml/gen10.xml \
 	genxml/gen11.xml \
 	genxml/gen12.xml
 
@@ -161,7 +164,6 @@ GENXML_GENERATED_PACK_FILES = \
 	genxml/gen75_pack.h \
 	genxml/gen8_pack.h \
 	genxml/gen9_pack.h \
-	genxml/gen10_pack.h \
 	genxml/gen11_pack.h \
 	genxml/gen12_pack.h
 
@@ -173,6 +175,7 @@ GENXML_GENERATED_FILES = \
 ISL_FILES = \
 	isl/isl.c \
 	isl/isl.h \
+	isl/isl_aux_info.c \
 	isl/isl_drm.c \
 	isl/isl_format.c \
 	isl/isl_genX_priv.h \
@@ -214,10 +217,6 @@ ISL_GEN8_FILES = \
 ISL_GEN9_FILES = \
 	isl/isl_gen9.c \
 	isl/isl_gen9.h \
-	isl/isl_emit_depth_stencil.c \
-	isl/isl_surface_state.c
-
-ISL_GEN10_FILES = \
 	isl/isl_emit_depth_stencil.c \
 	isl/isl_surface_state.c
 
@@ -323,10 +322,6 @@ VULKAN_GEN9_FILES := \
 	vulkan/gen8_cmd_buffer.c \
 	$(VULKAN_GENX_FILES)
 
-VULKAN_GEN10_FILES := \
-	vulkan/gen8_cmd_buffer.c \
-	$(VULKAN_GENX_FILES)
-
 VULKAN_GEN11_FILES := \
 	vulkan/gen8_cmd_buffer.c \
 	$(VULKAN_GENX_FILES)
@@ -348,7 +343,6 @@ GEN_PERF_XML_FILES = \
 	perf/oa-glk.xml \
 	perf/oa-cflgt2.xml \
 	perf/oa-cflgt3.xml \
-	perf/oa-cnl.xml \
 	perf/oa-icl.xml \
 	perf/oa-lkf.xml \
 	perf/oa-tgl.xml
@@ -356,8 +350,11 @@ GEN_PERF_XML_FILES = \
 GEN_PERF_FILES = \
 	perf/gen_perf.c \
 	perf/gen_perf.h \
+	perf/gen_perf_mdapi.c \
 	perf/gen_perf_mdapi.h \
-	perf/gen_perf_mdapi.c
+	perf/gen_perf_private.h \
+	perf/gen_perf_query.h \
+	perf/gen_perf_query.c
 
 GEN_PERF_GENERATED_FILES = \
 	perf/gen_perf_metrics.c \
