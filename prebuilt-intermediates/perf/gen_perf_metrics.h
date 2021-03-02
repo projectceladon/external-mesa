@@ -38,7 +38,6 @@ void gen_oa_register_queries_kblgt3(struct gen_perf_config *perf);
 void gen_oa_register_queries_glk(struct gen_perf_config *perf);
 void gen_oa_register_queries_cflgt2(struct gen_perf_config *perf);
 void gen_oa_register_queries_cflgt3(struct gen_perf_config *perf);
-void gen_oa_register_queries_cnl(struct gen_perf_config *perf);
 void gen_oa_register_queries_icl(struct gen_perf_config *perf);
 void gen_oa_register_queries_lkf(struct gen_perf_config *perf);
 void gen_oa_register_queries_tgl(struct gen_perf_config *perf);

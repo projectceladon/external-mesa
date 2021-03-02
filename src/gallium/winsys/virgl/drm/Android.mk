@@ -32,6 +32,8 @@ LOCAL_LICENSE_KINDS := SPDX-license-identifier-MIT
 LOCAL_LICENSE_CONDITIONS := notice
 LOCAL_NOTICE_FILE := $(LOCAL_PATH)/../../../../../LICENSE
 
+LOCAL_C_INCLUDES := $(MESA_TOP)/src/virtio
+
 LOCAL_STATIC_LIBRARIES := libmesa_winsys_virgl_common
 
 include $(GALLIUM_COMMON_MK)

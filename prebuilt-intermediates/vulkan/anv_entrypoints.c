@@ -177,6 +177,7 @@ static const char physical_device_strings[] =
     "vkCreateDisplayModeKHR\0"
     "vkEnumerateDeviceExtensionProperties\0"
     "vkEnumerateDeviceLayerProperties\0"
+    "vkEnumeratePhysicalDeviceQueueFamilyPerformanceQueryCountersKHR\0"
     "vkGetDisplayModeProperties2KHR\0"
     "vkGetDisplayModePropertiesKHR\0"
     "vkGetDisplayPlaneCapabilities2KHR\0"
@@ -209,6 +210,7 @@ static const char physical_device_strings[] =
     "vkGetPhysicalDeviceProperties\0"
     "vkGetPhysicalDeviceProperties2\0"
     "vkGetPhysicalDeviceProperties2KHR\0"
+    "vkGetPhysicalDeviceQueueFamilyPerformanceQueryPassesKHR\0"
     "vkGetPhysicalDeviceQueueFamilyProperties\0"
     "vkGetPhysicalDeviceQueueFamilyProperties2\0"
     "vkGetPhysicalDeviceQueueFamilyProperties2KHR\0"
@@ -235,62 +237,64 @@ static const struct string_map_entry physical_device_string_map_entries[] = {
     { 39, 0xcc0bde41, 14 }, /* vkCreateDisplayModeKHR */
     { 62, 0x5fd13eed, 8 }, /* vkEnumerateDeviceExtensionProperties */
     { 99, 0x2f8566e7, 7 }, /* vkEnumerateDeviceLayerProperties */
-    { 132, 0x3e613e42, 52 }, /* vkGetDisplayModeProperties2KHR */
-    { 163, 0x36b8a8de, 13 }, /* vkGetDisplayModePropertiesKHR */
-    { 193, 0xff1655a4, 53 }, /* vkGetDisplayPlaneCapabilities2KHR */
-    { 227, 0x4b60d48c, 15 }, /* vkGetDisplayPlaneCapabilitiesKHR */
-    { 260, 0xabef4889, 12 }, /* vkGetDisplayPlaneSupportedDisplaysKHR */
-    { 298, 0xea07da1a, 54 }, /* vkGetPhysicalDeviceCalibrateableTimeDomainsEXT */
-    { 345, 0xb7bc4386, 51 }, /* vkGetPhysicalDeviceDisplayPlaneProperties2KHR */
-    { 391, 0xb9b8ddba, 11 }, /* vkGetPhysicalDeviceDisplayPlanePropertiesKHR */
-    { 436, 0x540c0372, 50 }, /* vkGetPhysicalDeviceDisplayProperties2KHR */
-    { 477, 0xfa0cd2e, 10 }, /* vkGetPhysicalDeviceDisplayPropertiesKHR */
-    { 517, 0x944476dc, 37 }, /* vkGetPhysicalDeviceExternalBufferProperties */
-    { 561, 0xee68b389, 38 }, /* vkGetPhysicalDeviceExternalBufferPropertiesKHR */
-    { 608, 0x3bc965eb, 41 }, /* vkGetPhysicalDeviceExternalFenceProperties */
-    { 651, 0x99b35492, 42 }, /* vkGetPhysicalDeviceExternalFencePropertiesKHR */
-    { 697, 0xcf251b0e, 39 }, /* vkGetPhysicalDeviceExternalSemaphoreProperties */
-    { 744, 0x984c3fa7, 40 }, /* vkGetPhysicalDeviceExternalSemaphorePropertiesKHR */
-    { 794, 0x113e2f33, 3 }, /* vkGetPhysicalDeviceFeatures */
-    { 822, 0x63c068a7, 23 }, /* vkGetPhysicalDeviceFeatures2 */
-    { 851, 0x6a9a3636, 24 }, /* vkGetPhysicalDeviceFeatures2KHR */
-    { 883, 0x3e54b398, 4 }, /* vkGetPhysicalDeviceFormatProperties */
-    { 919, 0xca3bb9da, 27 }, /* vkGetPhysicalDeviceFormatProperties2 */
-    { 956, 0x9099cbbb, 28 }, /* vkGetPhysicalDeviceFormatProperties2KHR */
-    { 996, 0xdd36a867, 5 }, /* vkGetPhysicalDeviceImageFormatProperties */
-    { 1037, 0x35d260d3, 29 }, /* vkGetPhysicalDeviceImageFormatProperties2 */
-    { 1079, 0x102ff7ea, 30 }, /* vkGetPhysicalDeviceImageFormatProperties2KHR */
-    { 1124, 0xa90da4da, 2 }, /* vkGetPhysicalDeviceMemoryProperties */
-    { 1160, 0xcb4cc208, 33 }, /* vkGetPhysicalDeviceMemoryProperties2 */
-    { 1197, 0xc8c3da3d, 34 }, /* vkGetPhysicalDeviceMemoryProperties2KHR */
-    { 1237, 0x100341b4, 47 }, /* vkGetPhysicalDevicePresentRectanglesKHR */
-    { 1277, 0x52fe22c9, 0 }, /* vkGetPhysicalDeviceProperties */
-    { 1307, 0x6c4d8ee1, 25 }, /* vkGetPhysicalDeviceProperties2 */
-    { 1338, 0xcd15838c, 26 }, /* vkGetPhysicalDeviceProperties2KHR */
-    { 1372, 0x4e5fc88a, 1 }, /* vkGetPhysicalDeviceQueueFamilyProperties */
-    { 1413, 0xcad374d8, 31 }, /* vkGetPhysicalDeviceQueueFamilyProperties2 */
-    { 1455, 0x5ceb2bed, 32 }, /* vkGetPhysicalDeviceQueueFamilyProperties2KHR */
-    { 1500, 0x272ef8ef, 9 }, /* vkGetPhysicalDeviceSparseImageFormatProperties */
-    { 1547, 0xebddba0b, 35 }, /* vkGetPhysicalDeviceSparseImageFormatProperties2 */
-    { 1595, 0x8746ed72, 36 }, /* vkGetPhysicalDeviceSparseImageFormatProperties2KHR */
-    { 1646, 0x5a5fba04, 46 }, /* vkGetPhysicalDeviceSurfaceCapabilities2EXT */
-    { 1689, 0x9497e378, 48 }, /* vkGetPhysicalDeviceSurfaceCapabilities2KHR */
-    { 1732, 0x77890558, 17 }, /* vkGetPhysicalDeviceSurfaceCapabilitiesKHR */
-    { 1774, 0xd00b7188, 49 }, /* vkGetPhysicalDeviceSurfaceFormats2KHR */
-    { 1812, 0xe32227c8, 18 }, /* vkGetPhysicalDeviceSurfaceFormatsKHR */
-    { 1849, 0x31c3cbd1, 19 }, /* vkGetPhysicalDeviceSurfacePresentModesKHR */
-    { 1891, 0x1a687885, 16 }, /* vkGetPhysicalDeviceSurfaceSupportKHR */
-    { 1928, 0x84e085ac, 20 }, /* vkGetPhysicalDeviceWaylandPresentationSupportKHR */
-    { 1977, 0x41782cb9, 22 }, /* vkGetPhysicalDeviceXcbPresentationSupportKHR */
-    { 2022, 0x34a063ab, 21 }, /* vkGetPhysicalDeviceXlibPresentationSupportKHR */
-    { 2068, 0xb87cdd6c, 45 }, /* vkGetRandROutputDisplayEXT */
-    { 2095, 0x4207f4f1, 43 }, /* vkReleaseDisplayEXT */
+    { 132, 0x8d3d4995, 55 }, /* vkEnumeratePhysicalDeviceQueueFamilyPerformanceQueryCountersKHR */
+    { 196, 0x3e613e42, 52 }, /* vkGetDisplayModeProperties2KHR */
+    { 227, 0x36b8a8de, 13 }, /* vkGetDisplayModePropertiesKHR */
+    { 257, 0xff1655a4, 53 }, /* vkGetDisplayPlaneCapabilities2KHR */
+    { 291, 0x4b60d48c, 15 }, /* vkGetDisplayPlaneCapabilitiesKHR */
+    { 324, 0xabef4889, 12 }, /* vkGetDisplayPlaneSupportedDisplaysKHR */
+    { 362, 0xea07da1a, 54 }, /* vkGetPhysicalDeviceCalibrateableTimeDomainsEXT */
+    { 409, 0xb7bc4386, 51 }, /* vkGetPhysicalDeviceDisplayPlaneProperties2KHR */
+    { 455, 0xb9b8ddba, 11 }, /* vkGetPhysicalDeviceDisplayPlanePropertiesKHR */
+    { 500, 0x540c0372, 50 }, /* vkGetPhysicalDeviceDisplayProperties2KHR */
+    { 541, 0xfa0cd2e, 10 }, /* vkGetPhysicalDeviceDisplayPropertiesKHR */
+    { 581, 0x944476dc, 37 }, /* vkGetPhysicalDeviceExternalBufferProperties */
+    { 625, 0xee68b389, 38 }, /* vkGetPhysicalDeviceExternalBufferPropertiesKHR */
+    { 672, 0x3bc965eb, 41 }, /* vkGetPhysicalDeviceExternalFenceProperties */
+    { 715, 0x99b35492, 42 }, /* vkGetPhysicalDeviceExternalFencePropertiesKHR */
+    { 761, 0xcf251b0e, 39 }, /* vkGetPhysicalDeviceExternalSemaphoreProperties */
+    { 808, 0x984c3fa7, 40 }, /* vkGetPhysicalDeviceExternalSemaphorePropertiesKHR */
+    { 858, 0x113e2f33, 3 }, /* vkGetPhysicalDeviceFeatures */
+    { 886, 0x63c068a7, 23 }, /* vkGetPhysicalDeviceFeatures2 */
+    { 915, 0x6a9a3636, 24 }, /* vkGetPhysicalDeviceFeatures2KHR */
+    { 947, 0x3e54b398, 4 }, /* vkGetPhysicalDeviceFormatProperties */
+    { 983, 0xca3bb9da, 27 }, /* vkGetPhysicalDeviceFormatProperties2 */
+    { 1020, 0x9099cbbb, 28 }, /* vkGetPhysicalDeviceFormatProperties2KHR */
+    { 1060, 0xdd36a867, 5 }, /* vkGetPhysicalDeviceImageFormatProperties */
+    { 1101, 0x35d260d3, 29 }, /* vkGetPhysicalDeviceImageFormatProperties2 */
+    { 1143, 0x102ff7ea, 30 }, /* vkGetPhysicalDeviceImageFormatProperties2KHR */
+    { 1188, 0xa90da4da, 2 }, /* vkGetPhysicalDeviceMemoryProperties */
+    { 1224, 0xcb4cc208, 33 }, /* vkGetPhysicalDeviceMemoryProperties2 */
+    { 1261, 0xc8c3da3d, 34 }, /* vkGetPhysicalDeviceMemoryProperties2KHR */
+    { 1301, 0x100341b4, 47 }, /* vkGetPhysicalDevicePresentRectanglesKHR */
+    { 1341, 0x52fe22c9, 0 }, /* vkGetPhysicalDeviceProperties */
+    { 1371, 0x6c4d8ee1, 25 }, /* vkGetPhysicalDeviceProperties2 */
+    { 1402, 0xcd15838c, 26 }, /* vkGetPhysicalDeviceProperties2KHR */
+    { 1436, 0x7c7c9a0f, 56 }, /* vkGetPhysicalDeviceQueueFamilyPerformanceQueryPassesKHR */
+    { 1492, 0x4e5fc88a, 1 }, /* vkGetPhysicalDeviceQueueFamilyProperties */
+    { 1533, 0xcad374d8, 31 }, /* vkGetPhysicalDeviceQueueFamilyProperties2 */
+    { 1575, 0x5ceb2bed, 32 }, /* vkGetPhysicalDeviceQueueFamilyProperties2KHR */
+    { 1620, 0x272ef8ef, 9 }, /* vkGetPhysicalDeviceSparseImageFormatProperties */
+    { 1667, 0xebddba0b, 35 }, /* vkGetPhysicalDeviceSparseImageFormatProperties2 */
+    { 1715, 0x8746ed72, 36 }, /* vkGetPhysicalDeviceSparseImageFormatProperties2KHR */
+    { 1766, 0x5a5fba04, 46 }, /* vkGetPhysicalDeviceSurfaceCapabilities2EXT */
+    { 1809, 0x9497e378, 48 }, /* vkGetPhysicalDeviceSurfaceCapabilities2KHR */
+    { 1852, 0x77890558, 17 }, /* vkGetPhysicalDeviceSurfaceCapabilitiesKHR */
+    { 1894, 0xd00b7188, 49 }, /* vkGetPhysicalDeviceSurfaceFormats2KHR */
+    { 1932, 0xe32227c8, 18 }, /* vkGetPhysicalDeviceSurfaceFormatsKHR */
+    { 1969, 0x31c3cbd1, 19 }, /* vkGetPhysicalDeviceSurfacePresentModesKHR */
+    { 2011, 0x1a687885, 16 }, /* vkGetPhysicalDeviceSurfaceSupportKHR */
+    { 2048, 0x84e085ac, 20 }, /* vkGetPhysicalDeviceWaylandPresentationSupportKHR */
+    { 2097, 0x41782cb9, 22 }, /* vkGetPhysicalDeviceXcbPresentationSupportKHR */
+    { 2142, 0x34a063ab, 21 }, /* vkGetPhysicalDeviceXlibPresentationSupportKHR */
+    { 2188, 0xb87cdd6c, 45 }, /* vkGetRandROutputDisplayEXT */
+    { 2215, 0x4207f4f1, 43 }, /* vkReleaseDisplayEXT */
 };
 
 /* Hash table stats:
- * size 55 entries
+ * size 57 entries
  * collisions entries:
- *     0      44
+ *     0      46
  *     1      6
  *     2      5
  *     3      0
@@ -304,104 +308,104 @@ static const struct string_map_entry physical_device_string_map_entries[] = {
 
 #define none 0xffff
 static const uint16_t physical_device_string_map[128] = {
-    0x001e,
-    none,
-    none,
-    none,
-    0x002b,
-    0x002a,
-    0x000b,
-    none,
     0x001f,
-    0x0009,
-    0x0025,
-    0x0029,
-    0x0008,
-    0x0000,
-    0x0013,
     none,
     none,
     none,
-    0x0012,
-    0x0027,
-    none,
-    none,
-    none,
-    none,
-    0x0018,
-    none,
-    0x000a,
-    0x002e,
-    0x0010,
-    none,
-    none,
-    0x0024,
-    none,
-    none,
-    none,
-    none,
-    0x0007,
-    none,
-    none,
-    0x0014,
-    none,
-    none,
-    none,
-    0x0031,
-    0x0032,
-    none,
-    0x000e,
-    none,
-    none,
-    none,
-    none,
-    0x0015,
-    0x0021,
-    none,
-    0x0017,
-    none,
-    none,
-    0x0033,
+    0x002d,
+    0x002c,
     0x000c,
-    0x001a,
     none,
     0x0020,
-    0x0034,
-    0x0001,
+    0x000a,
+    0x0027,
+    0x002b,
+    0x0009,
+    0x0000,
+    0x0014,
+    0x0026,
     none,
-    0x0002,
+    none,
+    0x0013,
+    0x0029,
+    none,
     0x0005,
     none,
     none,
+    0x0019,
+    none,
+    0x000b,
+    0x0030,
+    0x0011,
+    none,
+    none,
+    0x0025,
     none,
     none,
     none,
-    0x002f,
-    0x0022,
+    none,
+    0x0008,
+    none,
+    none,
+    0x0015,
+    none,
+    none,
+    none,
+    0x0033,
+    0x0034,
+    none,
+    0x000f,
+    none,
     none,
     none,
     none,
     0x0016,
+    0x0022,
+    none,
+    0x0018,
     none,
     none,
+    0x0035,
+    0x000d,
+    0x001b,
     none,
-    0x0030,
+    0x0021,
+    0x0036,
+    0x0001,
     none,
-    0x001c,
-    none,
-    none,
-    none,
-    none,
-    0x0026,
-    none,
-    0x0019,
-    none,
-    0x000f,
-    none,
+    0x0002,
     0x0006,
     none,
     none,
+    none,
+    none,
+    none,
+    0x0031,
     0x0023,
+    none,
+    none,
+    none,
+    0x0017,
+    none,
+    none,
+    none,
+    0x0032,
+    none,
+    0x001d,
+    none,
+    none,
+    none,
+    none,
+    0x0028,
+    none,
+    0x001a,
+    none,
+    0x0010,
+    none,
+    0x0007,
+    none,
+    none,
+    0x0024,
     none,
     none,
     none,
@@ -410,27 +414,27 @@ static const uint16_t physical_device_string_map[128] = {
     0x0004,
     none,
     none,
-    0x001d,
-    0x0011,
-    0x0035,
+    0x001e,
+    0x0012,
+    0x0037,
     0x0003,
     none,
-    0x0028,
+    0x002a,
     none,
-    0x0036,
-    0x000d,
-    none,
-    none,
+    0x0038,
+    0x000e,
     none,
     none,
     none,
-    0x002c,
-    none,
-    0x001b,
     none,
     none,
+    0x002e,
     none,
-    0x002d,
+    0x001c,
+    none,
+    none,
+    none,
+    0x002f,
     none,
 };
 
@@ -478,6 +482,7 @@ static const char device_strings[] =
     "vkAcquireNextImage2KHR\0"
     "vkAcquireNextImageKHR\0"
     "vkAcquirePerformanceConfigurationINTEL\0"
+    "vkAcquireProfilingLockKHR\0"
     "vkAllocateCommandBuffers\0"
     "vkAllocateDescriptorSets\0"
     "vkAllocateMemory\0"
@@ -500,14 +505,20 @@ static const char device_strings[] =
     "vkCmdBindPipeline\0"
     "vkCmdBindTransformFeedbackBuffersEXT\0"
     "vkCmdBindVertexBuffers\0"
+    "vkCmdBindVertexBuffers2EXT\0"
     "vkCmdBlitImage\0"
+    "vkCmdBlitImage2KHR\0"
     "vkCmdClearAttachments\0"
     "vkCmdClearColorImage\0"
     "vkCmdClearDepthStencilImage\0"
     "vkCmdCopyBuffer\0"
+    "vkCmdCopyBuffer2KHR\0"
     "vkCmdCopyBufferToImage\0"
+    "vkCmdCopyBufferToImage2KHR\0"
     "vkCmdCopyImage\0"
+    "vkCmdCopyImage2KHR\0"
     "vkCmdCopyImageToBuffer\0"
+    "vkCmdCopyImageToBuffer2KHR\0"
     "vkCmdCopyQueryPoolResults\0"
     "vkCmdDispatch\0"
     "vkCmdDispatchBase\0"
@@ -541,22 +552,34 @@ static const char device_strings[] =
     "vkCmdResetEvent\0"
     "vkCmdResetQueryPool\0"
     "vkCmdResolveImage\0"
+    "vkCmdResolveImage2KHR\0"
     "vkCmdSetBlendConstants\0"
+    "vkCmdSetCullModeEXT\0"
     "vkCmdSetDepthBias\0"
     "vkCmdSetDepthBounds\0"
+    "vkCmdSetDepthBoundsTestEnableEXT\0"
+    "vkCmdSetDepthCompareOpEXT\0"
+    "vkCmdSetDepthTestEnableEXT\0"
+    "vkCmdSetDepthWriteEnableEXT\0"
     "vkCmdSetDeviceMask\0"
     "vkCmdSetDeviceMaskKHR\0"
     "vkCmdSetEvent\0"
+    "vkCmdSetFrontFaceEXT\0"
     "vkCmdSetLineStippleEXT\0"
     "vkCmdSetLineWidth\0"
     "vkCmdSetPerformanceMarkerINTEL\0"
     "vkCmdSetPerformanceOverrideINTEL\0"
     "vkCmdSetPerformanceStreamMarkerINTEL\0"
+    "vkCmdSetPrimitiveTopologyEXT\0"
     "vkCmdSetScissor\0"
+    "vkCmdSetScissorWithCountEXT\0"
     "vkCmdSetStencilCompareMask\0"
+    "vkCmdSetStencilOpEXT\0"
     "vkCmdSetStencilReference\0"
+    "vkCmdSetStencilTestEnableEXT\0"
     "vkCmdSetStencilWriteMask\0"
     "vkCmdSetViewport\0"
+    "vkCmdSetViewportWithCountEXT\0"
     "vkCmdUpdateBuffer\0"
     "vkCmdWaitEvents\0"
     "vkCmdWriteTimestamp\0"
@@ -577,6 +600,7 @@ static const char device_strings[] =
     "vkCreateImageView\0"
     "vkCreatePipelineCache\0"
     "vkCreatePipelineLayout\0"
+    "vkCreatePrivateDataSlotEXT\0"
     "vkCreateQueryPool\0"
     "vkCreateRenderPass\0"
     "vkCreateRenderPass2\0"
@@ -603,6 +627,7 @@ static const char device_strings[] =
     "vkDestroyPipeline\0"
     "vkDestroyPipelineCache\0"
     "vkDestroyPipelineLayout\0"
+    "vkDestroyPrivateDataSlotEXT\0"
     "vkDestroyQueryPool\0"
     "vkDestroyRenderPass\0"
     "vkDestroySampler\0"
@@ -660,6 +685,7 @@ static const char device_strings[] =
     "vkGetPipelineExecutableInternalRepresentationsKHR\0"
     "vkGetPipelineExecutablePropertiesKHR\0"
     "vkGetPipelineExecutableStatisticsKHR\0"
+    "vkGetPrivateDataEXT\0"
     "vkGetQueryPoolResults\0"
     "vkGetRenderAreaGranularity\0"
     "vkGetSemaphoreCounterValue\0"
@@ -684,6 +710,7 @@ static const char device_strings[] =
     "vkRegisterDeviceEventEXT\0"
     "vkRegisterDisplayEventEXT\0"
     "vkReleasePerformanceConfigurationINTEL\0"
+    "vkReleaseProfilingLockKHR\0"
     "vkResetCommandBuffer\0"
     "vkResetCommandPool\0"
     "vkResetDescriptorPool\0"
@@ -692,6 +719,7 @@ static const char device_strings[] =
     "vkResetQueryPool\0"
     "vkResetQueryPoolEXT\0"
     "vkSetEvent\0"
+    "vkSetPrivateDataEXT\0"
     "vkSignalSemaphore\0"
     "vkSignalSemaphoreKHR\0"
     "vkTrimCommandPool\0"
@@ -710,243 +738,267 @@ static const struct string_map_entry device_string_map_entries[] = {
     { 0, 0x6bf780dd, 178 }, /* vkAcquireImageANDROID */
     { 22, 0x82860572, 153 }, /* vkAcquireNextImage2KHR */
     { 45, 0xc3fedb2e, 128 }, /* vkAcquireNextImageKHR */
-    { 67, 0x33d2767, 219 }, /* vkAcquirePerformanceConfigurationINTEL */
-    { 106, 0x8c0c811a, 74 }, /* vkAllocateCommandBuffers */
-    { 131, 0x4c449d3a, 63 }, /* vkAllocateDescriptorSets */
-    { 156, 0x522b85d3, 6 }, /* vkAllocateMemory */
-    { 173, 0xc54f7327, 76 }, /* vkBeginCommandBuffer */
-    { 194, 0x6bcbdcb, 14 }, /* vkBindBufferMemory */
-    { 213, 0xc27aaf4f, 145 }, /* vkBindBufferMemory2 */
-    { 233, 0x6878d3ce, 146 }, /* vkBindBufferMemory2KHR */
-    { 256, 0x5caaae4a, 16 }, /* vkBindImageMemory */
-    { 274, 0xa9097118, 147 }, /* vkBindImageMemory2 */
-    { 293, 0xf18729ad, 148 }, /* vkBindImageMemory2KHR */
-    { 315, 0xe561c19f, 115 }, /* vkCmdBeginConditionalRenderingEXT */
-    { 349, 0xf5064ea4, 113 }, /* vkCmdBeginQuery */
-    { 365, 0x73251a2c, 205 }, /* vkCmdBeginQueryIndexedEXT */
-    { 391, 0xcb7a58e3, 121 }, /* vkCmdBeginRenderPass */
-    { 412, 0x9c876577, 184 }, /* vkCmdBeginRenderPass2 */
-    { 434, 0x8b6b4de6, 185 }, /* vkCmdBeginRenderPass2KHR */
-    { 459, 0xb217c94, 203 }, /* vkCmdBeginTransformFeedbackEXT */
-    { 490, 0x28c7a5da, 89 }, /* vkCmdBindDescriptorSets */
-    { 514, 0x4c22d870, 90 }, /* vkCmdBindIndexBuffer */
-    { 535, 0x3af9fd84, 79 }, /* vkCmdBindPipeline */
-    { 553, 0x98fdb5cd, 202 }, /* vkCmdBindTransformFeedbackBuffersEXT */
-    { 590, 0xa9c83f1d, 91 }, /* vkCmdBindVertexBuffers */
-    { 613, 0x331ebf89, 100 }, /* vkCmdBlitImage */
-    { 628, 0x93cb5cb8, 107 }, /* vkCmdClearAttachments */
-    { 650, 0xb4bc8d08, 105 }, /* vkCmdClearColorImage */
-    { 671, 0x4f88e4ba, 106 }, /* vkCmdClearDepthStencilImage */
-    { 699, 0xc939a0da, 98 }, /* vkCmdCopyBuffer */
-    { 715, 0x929847e, 101 }, /* vkCmdCopyBufferToImage */
-    { 738, 0x278effa9, 99 }, /* vkCmdCopyImage */
-    { 753, 0x68cddbac, 102 }, /* vkCmdCopyImageToBuffer */
-    { 776, 0xdee8c6d4, 119 }, /* vkCmdCopyQueryPoolResults */
-    { 802, 0xbd58e867, 96 }, /* vkCmdDispatch */
-    { 816, 0xfb767220, 154 }, /* vkCmdDispatchBase */
-    { 834, 0x402403e5, 155 }, /* vkCmdDispatchBaseKHR */
-    { 855, 0xd6353005, 97 }, /* vkCmdDispatchIndirect */
-    { 877, 0x9912c1a1, 92 }, /* vkCmdDraw */
-    { 887, 0xbe5a8058, 93 }, /* vkCmdDrawIndexed */
-    { 904, 0x94e7ed36, 95 }, /* vkCmdDrawIndexedIndirect */
-    { 929, 0xb4acef41, 200 }, /* vkCmdDrawIndexedIndirectCount */
-    { 959, 0xda9e8a2c, 201 }, /* vkCmdDrawIndexedIndirectCountKHR */
-    { 992, 0xe9ac41bf, 94 }, /* vkCmdDrawIndirect */
-    { 1010, 0x80c3b089, 207 }, /* vkCmdDrawIndirectByteCountEXT */
-    { 1040, 0x40079990, 198 }, /* vkCmdDrawIndirectCount */
-    { 1063, 0xf7dd01f5, 199 }, /* vkCmdDrawIndirectCountKHR */
-    { 1089, 0x18c8217d, 116 }, /* vkCmdEndConditionalRenderingEXT */
-    { 1121, 0xd556fd22, 114 }, /* vkCmdEndQuery */
-    { 1135, 0xd5c2f48a, 206 }, /* vkCmdEndQueryIndexedEXT */
-    { 1159, 0xdcdb0235, 123 }, /* vkCmdEndRenderPass */
-    { 1178, 0x1cbf9115, 188 }, /* vkCmdEndRenderPass2 */
-    { 1198, 0x57eebe78, 189 }, /* vkCmdEndRenderPass2KHR */
-    { 1221, 0xf008d706, 204 }, /* vkCmdEndTransformFeedbackEXT */
-    { 1250, 0x9eaabe40, 124 }, /* vkCmdExecuteCommands */
-    { 1271, 0x5bdd2ae0, 104 }, /* vkCmdFillBuffer */
-    { 1287, 0x2eeec2f9, 122 }, /* vkCmdNextSubpass */
-    { 1304, 0xd4fc131, 186 }, /* vkCmdNextSubpass2 */
-    { 1322, 0x25b621bc, 187 }, /* vkCmdNextSubpass2KHR */
-    { 1343, 0x97fccfe8, 112 }, /* vkCmdPipelineBarrier */
-    { 1364, 0xb1c6b468, 120 }, /* vkCmdPushConstants */
-    { 1383, 0xf17232a1, 130 }, /* vkCmdPushDescriptorSetKHR */
-    { 1409, 0x3d528981, 162 }, /* vkCmdPushDescriptorSetWithTemplateKHR */
-    { 1447, 0x4fccce28, 110 }, /* vkCmdResetEvent */
-    { 1463, 0x2f614082, 117 }, /* vkCmdResetQueryPool */
-    { 1483, 0x671bb594, 108 }, /* vkCmdResolveImage */
-    { 1501, 0x1c989dfb, 84 }, /* vkCmdSetBlendConstants */
-    { 1524, 0x30f14d07, 83 }, /* vkCmdSetDepthBias */
-    { 1542, 0x7b3a8a63, 85 }, /* vkCmdSetDepthBounds */
-    { 1562, 0xaecdae87, 149 }, /* vkCmdSetDeviceMask */
-    { 1581, 0xfbb79356, 150 }, /* vkCmdSetDeviceMaskKHR */
-    { 1603, 0xe257f075, 109 }, /* vkCmdSetEvent */
-    { 1617, 0xbdaa62f9, 228 }, /* vkCmdSetLineStippleEXT */
-    { 1640, 0x32282165, 82 }, /* vkCmdSetLineWidth */
-    { 1658, 0x4eb21af9, 216 }, /* vkCmdSetPerformanceMarkerINTEL */
-    { 1689, 0x30d793c7, 218 }, /* vkCmdSetPerformanceOverrideINTEL */
-    { 1722, 0xc50b03a9, 217 }, /* vkCmdSetPerformanceStreamMarkerINTEL */
-    { 1759, 0x48f28c7f, 81 }, /* vkCmdSetScissor */
-    { 1775, 0xa8f534e2, 86 }, /* vkCmdSetStencilCompareMask */
-    { 1802, 0x83e2b024, 88 }, /* vkCmdSetStencilReference */
-    { 1827, 0xe7c4b134, 87 }, /* vkCmdSetStencilWriteMask */
-    { 1852, 0x53d6c2b, 80 }, /* vkCmdSetViewport */
-    { 1869, 0xd2986b5e, 103 }, /* vkCmdUpdateBuffer */
-    { 1887, 0x3b9346b3, 111 }, /* vkCmdWaitEvents */
-    { 1903, 0xec4d324c, 118 }, /* vkCmdWriteTimestamp */
-    { 1923, 0x7d4282b9, 36 }, /* vkCreateBuffer */
-    { 1938, 0x925bd256, 38 }, /* vkCreateBufferView */
-    { 1957, 0x820fe476, 71 }, /* vkCreateCommandPool */
-    { 1977, 0xf70c85eb, 52 }, /* vkCreateComputePipelines */
-    { 2002, 0xfb95a8a4, 60 }, /* vkCreateDescriptorPool */
-    { 2025, 0x3c14cc74, 58 }, /* vkCreateDescriptorSetLayout */
-    { 2053, 0xad3ce733, 156 }, /* vkCreateDescriptorUpdateTemplate */
-    { 2086, 0x5189488a, 157 }, /* vkCreateDescriptorUpdateTemplateKHR */
-    { 2122, 0x6392dfa7, 229 }, /* vkCreateDmaBufImageINTEL */
-    { 2147, 0xe7188731, 26 }, /* vkCreateEvent */
-    { 2161, 0x958af968, 19 }, /* vkCreateFence */
-    { 2175, 0x887a38c4, 66 }, /* vkCreateFramebuffer */
-    { 2195, 0x4b59f96d, 51 }, /* vkCreateGraphicsPipelines */
-    { 2221, 0x652128c2, 40 }, /* vkCreateImage */
-    { 2235, 0xdce077ff, 43 }, /* vkCreateImageView */
-    { 2253, 0xcbf6489f, 47 }, /* vkCreatePipelineCache */
-    { 2275, 0x451ef1ed, 54 }, /* vkCreatePipelineLayout */
-    { 2298, 0x5edcd92b, 31 }, /* vkCreateQueryPool */
-    { 2316, 0x109a9c18, 68 }, /* vkCreateRenderPass */
-    { 2335, 0x46b16d5a, 182 }, /* vkCreateRenderPass2 */
-    { 2355, 0xfa16043b, 183 }, /* vkCreateRenderPass2KHR */
-    { 2378, 0x13cf03f, 56 }, /* vkCreateSampler */
-    { 2394, 0xe6a58c26, 169 }, /* vkCreateSamplerYcbcrConversion */
-    { 2425, 0x7482104f, 170 }, /* vkCreateSamplerYcbcrConversionKHR */
-    { 2459, 0xf2065e5b, 24 }, /* vkCreateSemaphore */
-    { 2477, 0xa0d3cea2, 45 }, /* vkCreateShaderModule */
-    { 2498, 0xcdefcaa8, 125 }, /* vkCreateSwapchainKHR */
-    { 2519, 0x94a07a45, 37 }, /* vkDestroyBuffer */
-    { 2535, 0x98b27962, 39 }, /* vkDestroyBufferView */
-    { 2555, 0xd5d83a0a, 72 }, /* vkDestroyCommandPool */
-    { 2576, 0x47bdaf30, 61 }, /* vkDestroyDescriptorPool */
-    { 2600, 0xa4227b08, 59 }, /* vkDestroyDescriptorSetLayout */
-    { 2629, 0xbb2cbe7f, 158 }, /* vkDestroyDescriptorUpdateTemplate */
-    { 2663, 0xaa83901e, 159 }, /* vkDestroyDescriptorUpdateTemplateKHR */
-    { 2700, 0x1fbcc9cb, 1 }, /* vkDestroyDevice */
-    { 2716, 0x4df27c05, 27 }, /* vkDestroyEvent */
-    { 2731, 0xfc64ee3c, 20 }, /* vkDestroyFence */
-    { 2746, 0xdc428e58, 67 }, /* vkDestroyFramebuffer */
-    { 2767, 0xcbfb1d96, 41 }, /* vkDestroyImage */
-    { 2782, 0xb5853953, 44 }, /* vkDestroyImageView */
-    { 2801, 0x6aac68af, 53 }, /* vkDestroyPipeline */
-    { 2819, 0x4112a673, 48 }, /* vkDestroyPipelineCache */
-    { 2842, 0x9146f879, 55 }, /* vkDestroyPipelineLayout */
-    { 2866, 0x37819a7f, 32 }, /* vkDestroyQueryPool */
-    { 2885, 0x16f14324, 69 }, /* vkDestroyRenderPass */
-    { 2905, 0x3b645153, 57 }, /* vkDestroySampler */
-    { 2922, 0x20f261b2, 171 }, /* vkDestroySamplerYcbcrConversion */
-    { 2954, 0xaaa623a3, 172 }, /* vkDestroySamplerYcbcrConversionKHR */
-    { 2989, 0xcaab1faf, 25 }, /* vkDestroySemaphore */
-    { 3008, 0x2d77af6e, 46 }, /* vkDestroyShaderModule */
-    { 3030, 0x5a93ab74, 126 }, /* vkDestroySwapchainKHR */
-    { 3052, 0xd46c5f24, 5 }, /* vkDeviceWaitIdle */
-    { 3069, 0xdbb064, 139 }, /* vkDisplayPowerControlEXT */
-    { 3094, 0xaffb5725, 77 }, /* vkEndCommandBuffer */
-    { 3113, 0xff52f051, 10 }, /* vkFlushMappedMemoryRanges */
-    { 3139, 0xb9db2b91, 75 }, /* vkFreeCommandBuffers */
-    { 3160, 0x7a1347b1, 64 }, /* vkFreeDescriptorSets */
-    { 3181, 0x8f6f838a, 7 }, /* vkFreeMemory */
-    { 3194, 0xb891b5e, 196 }, /* vkGetAndroidHardwareBufferPropertiesANDROID */
-    { 3238, 0x7022f0cd, 211 }, /* vkGetBufferDeviceAddress */
-    { 3263, 0x3703280c, 213 }, /* vkGetBufferDeviceAddressEXT */
-    { 3291, 0x713b5180, 212 }, /* vkGetBufferDeviceAddressKHR */
-    { 3319, 0xab98422a, 13 }, /* vkGetBufferMemoryRequirements */
-    { 3349, 0xd1fd0638, 163 }, /* vkGetBufferMemoryRequirements2 */
-    { 3380, 0x78dbe98d, 164 }, /* vkGetBufferMemoryRequirements2KHR */
-    { 3414, 0x2a5545a0, 209 }, /* vkGetBufferOpaqueCaptureAddress */
-    { 3446, 0xddac1c65, 210 }, /* vkGetBufferOpaqueCaptureAddressKHR */
-    { 3481, 0xcf3070fe, 180 }, /* vkGetCalibratedTimestampsEXT */
-    { 3510, 0xfeac9573, 174 }, /* vkGetDescriptorSetLayoutSupport */
-    { 3542, 0xd7e44a, 175 }, /* vkGetDescriptorSetLayoutSupportKHR */
-    { 3577, 0x2e218c10, 143 }, /* vkGetDeviceGroupPeerMemoryFeatures */
-    { 3612, 0xa3809375, 144 }, /* vkGetDeviceGroupPeerMemoryFeaturesKHR */
-    { 3650, 0xf72c87d4, 151 }, /* vkGetDeviceGroupPresentCapabilitiesKHR */
-    { 3689, 0x6b9448c3, 152 }, /* vkGetDeviceGroupSurfacePresentModesKHR */
-    { 3728, 0x46e38db5, 12 }, /* vkGetDeviceMemoryCommitment */
-    { 3756, 0x9a0fe777, 223 }, /* vkGetDeviceMemoryOpaqueCaptureAddress */
-    { 3794, 0x49339be6, 224 }, /* vkGetDeviceMemoryOpaqueCaptureAddressKHR */
-    { 3835, 0xba013486, 0 }, /* vkGetDeviceProcAddr */
-    { 3855, 0xcc920d9a, 2 }, /* vkGetDeviceQueue */
-    { 3872, 0xb11a6348, 173 }, /* vkGetDeviceQueue2 */
-    { 3890, 0x96d834b, 28 }, /* vkGetEventStatus */
-    { 3907, 0x69a5d6af, 137 }, /* vkGetFenceFdKHR */
-    { 3923, 0x5f391892, 22 }, /* vkGetFenceStatus */
-    { 3940, 0x12fa78a3, 208 }, /* vkGetImageDrmFormatModifierPropertiesEXT */
-    { 3981, 0x916f1e63, 15 }, /* vkGetImageMemoryRequirements */
-    { 4010, 0x56e213f7, 165 }, /* vkGetImageMemoryRequirements2 */
-    { 4040, 0x8de28366, 166 }, /* vkGetImageMemoryRequirements2KHR */
-    { 4073, 0x15855f5b, 17 }, /* vkGetImageSparseMemoryRequirements */
-    { 4108, 0xbd4e3d3f, 167 }, /* vkGetImageSparseMemoryRequirements2 */
-    { 4144, 0x3df40f5e, 168 }, /* vkGetImageSparseMemoryRequirements2KHR */
-    { 4183, 0x9163b686, 42 }, /* vkGetImageSubresourceLayout */
-    { 4211, 0x71220e82, 197 }, /* vkGetMemoryAndroidHardwareBufferANDROID */
-    { 4251, 0x503c14c5, 133 }, /* vkGetMemoryFdKHR */
-    { 4268, 0xb028a792, 134 }, /* vkGetMemoryFdPropertiesKHR */
-    { 4295, 0x7030ee5b, 181 }, /* vkGetMemoryHostPointerPropertiesEXT */
-    { 4331, 0x1ec6c4ec, 222 }, /* vkGetPerformanceParameterINTEL */
-    { 4362, 0x2092a349, 49 }, /* vkGetPipelineCacheData */
-    { 4385, 0x8b20fc09, 227 }, /* vkGetPipelineExecutableInternalRepresentationsKHR */
-    { 4435, 0x748dd8cd, 225 }, /* vkGetPipelineExecutablePropertiesKHR */
-    { 4472, 0x5c4d6435, 226 }, /* vkGetPipelineExecutableStatisticsKHR */
-    { 4509, 0xbf3f2cb3, 33 }, /* vkGetQueryPoolResults */
-    { 4531, 0xa9820d22, 70 }, /* vkGetRenderAreaGranularity */
-    { 4558, 0xd05a61a0, 190 }, /* vkGetSemaphoreCounterValue */
-    { 4585, 0xf3c26065, 191 }, /* vkGetSemaphoreCounterValueKHR */
-    { 4615, 0x3e0e9884, 135 }, /* vkGetSemaphoreFdKHR */
-    { 4635, 0xa4aeb5a, 142 }, /* vkGetSwapchainCounterEXT */
-    { 4660, 0x219d929, 177 }, /* vkGetSwapchainGrallocUsage2ANDROID */
-    { 4695, 0x4979c9a3, 176 }, /* vkGetSwapchainGrallocUsageANDROID */
-    { 4729, 0x57695f28, 127 }, /* vkGetSwapchainImagesKHR */
-    { 4753, 0x51df0390, 138 }, /* vkImportFenceFdKHR */
-    { 4772, 0x36337c05, 136 }, /* vkImportSemaphoreFdKHR */
-    { 4795, 0x65a01d77, 214 }, /* vkInitializePerformanceApiINTEL */
-    { 4827, 0x1e115cca, 11 }, /* vkInvalidateMappedMemoryRanges */
-    { 4858, 0xcb977bd8, 8 }, /* vkMapMemory */
-    { 4870, 0xc3499606, 50 }, /* vkMergePipelineCaches */
-    { 4892, 0xc3628a09, 18 }, /* vkQueueBindSparse */
-    { 4910, 0xfc5fb6ce, 129 }, /* vkQueuePresentKHR */
-    { 4928, 0xf8499f82, 221 }, /* vkQueueSetPerformanceConfigurationINTEL */
-    { 4968, 0xa0313eef, 179 }, /* vkQueueSignalReleaseImageANDROID */
-    { 5001, 0xfa4713ec, 3 }, /* vkQueueSubmit */
-    { 5015, 0x6f8fc2a5, 4 }, /* vkQueueWaitIdle */
-    { 5031, 0x26cc78f5, 140 }, /* vkRegisterDeviceEventEXT */
-    { 5056, 0x4a0bd849, 141 }, /* vkRegisterDisplayEventEXT */
-    { 5082, 0x28575036, 220 }, /* vkReleasePerformanceConfigurationINTEL */
-    { 5121, 0x847dc731, 78 }, /* vkResetCommandBuffer */
-    { 5142, 0x6da9f7fd, 73 }, /* vkResetCommandPool */
-    { 5161, 0x9bd85f5, 62 }, /* vkResetDescriptorPool */
-    { 5183, 0x6d373ba8, 30 }, /* vkResetEvent */
-    { 5196, 0x684781dc, 21 }, /* vkResetFences */
-    { 5210, 0x4e671e02, 34 }, /* vkResetQueryPool */
-    { 5227, 0xe6701e5f, 35 }, /* vkResetQueryPoolEXT */
-    { 5247, 0x592ae5f5, 29 }, /* vkSetEvent */
-    { 5258, 0xcd347297, 194 }, /* vkSignalSemaphore */
-    { 5276, 0x8fef55c6, 195 }, /* vkSignalSemaphoreKHR */
-    { 5297, 0xfef2fb38, 131 }, /* vkTrimCommandPool */
-    { 5315, 0x51177c8d, 132 }, /* vkTrimCommandPoolKHR */
-    { 5336, 0x408975ae, 215 }, /* vkUninitializePerformanceApiINTEL */
-    { 5370, 0x1a1a0e2f, 9 }, /* vkUnmapMemory */
-    { 5384, 0x5349c9d, 160 }, /* vkUpdateDescriptorSetWithTemplate */
-    { 5418, 0x214ad230, 161 }, /* vkUpdateDescriptorSetWithTemplateKHR */
-    { 5455, 0xbfd090ae, 65 }, /* vkUpdateDescriptorSets */
-    { 5478, 0x19d64c81, 23 }, /* vkWaitForFences */
-    { 5494, 0x74368ad9, 192 }, /* vkWaitSemaphores */
-    { 5511, 0x2bc77454, 193 }, /* vkWaitSemaphoresKHR */
+    { 67, 0x33d2767, 221 }, /* vkAcquirePerformanceConfigurationINTEL */
+    { 106, 0xaf1d64ad, 208 }, /* vkAcquireProfilingLockKHR */
+    { 132, 0x8c0c811a, 74 }, /* vkAllocateCommandBuffers */
+    { 157, 0x4c449d3a, 63 }, /* vkAllocateDescriptorSets */
+    { 182, 0x522b85d3, 6 }, /* vkAllocateMemory */
+    { 199, 0xc54f7327, 76 }, /* vkBeginCommandBuffer */
+    { 220, 0x6bcbdcb, 14 }, /* vkBindBufferMemory */
+    { 239, 0xc27aaf4f, 145 }, /* vkBindBufferMemory2 */
+    { 259, 0x6878d3ce, 146 }, /* vkBindBufferMemory2KHR */
+    { 282, 0x5caaae4a, 16 }, /* vkBindImageMemory */
+    { 300, 0xa9097118, 147 }, /* vkBindImageMemory2 */
+    { 319, 0xf18729ad, 148 }, /* vkBindImageMemory2KHR */
+    { 341, 0xe561c19f, 115 }, /* vkCmdBeginConditionalRenderingEXT */
+    { 375, 0xf5064ea4, 113 }, /* vkCmdBeginQuery */
+    { 391, 0x73251a2c, 205 }, /* vkCmdBeginQueryIndexedEXT */
+    { 417, 0xcb7a58e3, 121 }, /* vkCmdBeginRenderPass */
+    { 438, 0x9c876577, 184 }, /* vkCmdBeginRenderPass2 */
+    { 460, 0x8b6b4de6, 185 }, /* vkCmdBeginRenderPass2KHR */
+    { 485, 0xb217c94, 203 }, /* vkCmdBeginTransformFeedbackEXT */
+    { 516, 0x28c7a5da, 89 }, /* vkCmdBindDescriptorSets */
+    { 540, 0x4c22d870, 90 }, /* vkCmdBindIndexBuffer */
+    { 561, 0x3af9fd84, 79 }, /* vkCmdBindPipeline */
+    { 579, 0x98fdb5cd, 202 }, /* vkCmdBindTransformFeedbackBuffersEXT */
+    { 616, 0xa9c83f1d, 91 }, /* vkCmdBindVertexBuffers */
+    { 639, 0x30a5f2ec, 236 }, /* vkCmdBindVertexBuffers2EXT */
+    { 666, 0x331ebf89, 100 }, /* vkCmdBlitImage */
+    { 681, 0x785f984c, 249 }, /* vkCmdBlitImage2KHR */
+    { 700, 0x93cb5cb8, 107 }, /* vkCmdClearAttachments */
+    { 722, 0xb4bc8d08, 105 }, /* vkCmdClearColorImage */
+    { 743, 0x4f88e4ba, 106 }, /* vkCmdClearDepthStencilImage */
+    { 771, 0xc939a0da, 98 }, /* vkCmdCopyBuffer */
+    { 787, 0x90c5563d, 247 }, /* vkCmdCopyBuffer2KHR */
+    { 807, 0x929847e, 101 }, /* vkCmdCopyBufferToImage */
+    { 830, 0x1e9f6861, 250 }, /* vkCmdCopyBufferToImage2KHR */
+    { 857, 0x278effa9, 99 }, /* vkCmdCopyImage */
+    { 872, 0xdad52c6c, 248 }, /* vkCmdCopyImage2KHR */
+    { 891, 0x68cddbac, 102 }, /* vkCmdCopyImageToBuffer */
+    { 914, 0x2db6484f, 251 }, /* vkCmdCopyImageToBuffer2KHR */
+    { 941, 0xdee8c6d4, 119 }, /* vkCmdCopyQueryPoolResults */
+    { 967, 0xbd58e867, 96 }, /* vkCmdDispatch */
+    { 981, 0xfb767220, 154 }, /* vkCmdDispatchBase */
+    { 999, 0x402403e5, 155 }, /* vkCmdDispatchBaseKHR */
+    { 1020, 0xd6353005, 97 }, /* vkCmdDispatchIndirect */
+    { 1042, 0x9912c1a1, 92 }, /* vkCmdDraw */
+    { 1052, 0xbe5a8058, 93 }, /* vkCmdDrawIndexed */
+    { 1069, 0x94e7ed36, 95 }, /* vkCmdDrawIndexedIndirect */
+    { 1094, 0xb4acef41, 200 }, /* vkCmdDrawIndexedIndirectCount */
+    { 1124, 0xda9e8a2c, 201 }, /* vkCmdDrawIndexedIndirectCountKHR */
+    { 1157, 0xe9ac41bf, 94 }, /* vkCmdDrawIndirect */
+    { 1175, 0x80c3b089, 207 }, /* vkCmdDrawIndirectByteCountEXT */
+    { 1205, 0x40079990, 198 }, /* vkCmdDrawIndirectCount */
+    { 1228, 0xf7dd01f5, 199 }, /* vkCmdDrawIndirectCountKHR */
+    { 1254, 0x18c8217d, 116 }, /* vkCmdEndConditionalRenderingEXT */
+    { 1286, 0xd556fd22, 114 }, /* vkCmdEndQuery */
+    { 1300, 0xd5c2f48a, 206 }, /* vkCmdEndQueryIndexedEXT */
+    { 1324, 0xdcdb0235, 123 }, /* vkCmdEndRenderPass */
+    { 1343, 0x1cbf9115, 188 }, /* vkCmdEndRenderPass2 */
+    { 1363, 0x57eebe78, 189 }, /* vkCmdEndRenderPass2KHR */
+    { 1386, 0xf008d706, 204 }, /* vkCmdEndTransformFeedbackEXT */
+    { 1415, 0x9eaabe40, 124 }, /* vkCmdExecuteCommands */
+    { 1436, 0x5bdd2ae0, 104 }, /* vkCmdFillBuffer */
+    { 1452, 0x2eeec2f9, 122 }, /* vkCmdNextSubpass */
+    { 1469, 0xd4fc131, 186 }, /* vkCmdNextSubpass2 */
+    { 1487, 0x25b621bc, 187 }, /* vkCmdNextSubpass2KHR */
+    { 1508, 0x97fccfe8, 112 }, /* vkCmdPipelineBarrier */
+    { 1529, 0xb1c6b468, 120 }, /* vkCmdPushConstants */
+    { 1548, 0xf17232a1, 130 }, /* vkCmdPushDescriptorSetKHR */
+    { 1574, 0x3d528981, 162 }, /* vkCmdPushDescriptorSetWithTemplateKHR */
+    { 1612, 0x4fccce28, 110 }, /* vkCmdResetEvent */
+    { 1628, 0x2f614082, 117 }, /* vkCmdResetQueryPool */
+    { 1648, 0x671bb594, 108 }, /* vkCmdResolveImage */
+    { 1666, 0x9fea6337, 252 }, /* vkCmdResolveImage2KHR */
+    { 1688, 0x1c989dfb, 84 }, /* vkCmdSetBlendConstants */
+    { 1711, 0xb7fcea1f, 231 }, /* vkCmdSetCullModeEXT */
+    { 1731, 0x30f14d07, 83 }, /* vkCmdSetDepthBias */
+    { 1749, 0x7b3a8a63, 85 }, /* vkCmdSetDepthBounds */
+    { 1769, 0x3f2ddb1, 240 }, /* vkCmdSetDepthBoundsTestEnableEXT */
+    { 1802, 0x2f377e41, 239 }, /* vkCmdSetDepthCompareOpEXT */
+    { 1828, 0x57c5efe6, 237 }, /* vkCmdSetDepthTestEnableEXT */
+    { 1855, 0xbe217905, 238 }, /* vkCmdSetDepthWriteEnableEXT */
+    { 1883, 0xaecdae87, 149 }, /* vkCmdSetDeviceMask */
+    { 1902, 0xfbb79356, 150 }, /* vkCmdSetDeviceMaskKHR */
+    { 1924, 0xe257f075, 109 }, /* vkCmdSetEvent */
+    { 1938, 0xa7a7a090, 232 }, /* vkCmdSetFrontFaceEXT */
+    { 1959, 0xbdaa62f9, 230 }, /* vkCmdSetLineStippleEXT */
+    { 1982, 0x32282165, 82 }, /* vkCmdSetLineWidth */
+    { 2000, 0x4eb21af9, 218 }, /* vkCmdSetPerformanceMarkerINTEL */
+    { 2031, 0x30d793c7, 220 }, /* vkCmdSetPerformanceOverrideINTEL */
+    { 2064, 0xc50b03a9, 219 }, /* vkCmdSetPerformanceStreamMarkerINTEL */
+    { 2101, 0x1dacaf8, 233 }, /* vkCmdSetPrimitiveTopologyEXT */
+    { 2130, 0x48f28c7f, 81 }, /* vkCmdSetScissor */
+    { 2146, 0xf349b42f, 235 }, /* vkCmdSetScissorWithCountEXT */
+    { 2174, 0xa8f534e2, 86 }, /* vkCmdSetStencilCompareMask */
+    { 2201, 0xbb885f19, 242 }, /* vkCmdSetStencilOpEXT */
+    { 2222, 0x83e2b024, 88 }, /* vkCmdSetStencilReference */
+    { 2247, 0x16cc6095, 241 }, /* vkCmdSetStencilTestEnableEXT */
+    { 2276, 0xe7c4b134, 87 }, /* vkCmdSetStencilWriteMask */
+    { 2301, 0x53d6c2b, 80 }, /* vkCmdSetViewport */
+    { 2318, 0xa3d72e5b, 234 }, /* vkCmdSetViewportWithCountEXT */
+    { 2347, 0xd2986b5e, 103 }, /* vkCmdUpdateBuffer */
+    { 2365, 0x3b9346b3, 111 }, /* vkCmdWaitEvents */
+    { 2381, 0xec4d324c, 118 }, /* vkCmdWriteTimestamp */
+    { 2401, 0x7d4282b9, 36 }, /* vkCreateBuffer */
+    { 2416, 0x925bd256, 38 }, /* vkCreateBufferView */
+    { 2435, 0x820fe476, 71 }, /* vkCreateCommandPool */
+    { 2455, 0xf70c85eb, 52 }, /* vkCreateComputePipelines */
+    { 2480, 0xfb95a8a4, 60 }, /* vkCreateDescriptorPool */
+    { 2503, 0x3c14cc74, 58 }, /* vkCreateDescriptorSetLayout */
+    { 2531, 0xad3ce733, 156 }, /* vkCreateDescriptorUpdateTemplate */
+    { 2564, 0x5189488a, 157 }, /* vkCreateDescriptorUpdateTemplateKHR */
+    { 2600, 0x6392dfa7, 253 }, /* vkCreateDmaBufImageINTEL */
+    { 2625, 0xe7188731, 26 }, /* vkCreateEvent */
+    { 2639, 0x958af968, 19 }, /* vkCreateFence */
+    { 2653, 0x887a38c4, 66 }, /* vkCreateFramebuffer */
+    { 2673, 0x4b59f96d, 51 }, /* vkCreateGraphicsPipelines */
+    { 2699, 0x652128c2, 40 }, /* vkCreateImage */
+    { 2713, 0xdce077ff, 43 }, /* vkCreateImageView */
+    { 2731, 0xcbf6489f, 47 }, /* vkCreatePipelineCache */
+    { 2753, 0x451ef1ed, 54 }, /* vkCreatePipelineLayout */
+    { 2776, 0xc06d475f, 243 }, /* vkCreatePrivateDataSlotEXT */
+    { 2803, 0x5edcd92b, 31 }, /* vkCreateQueryPool */
+    { 2821, 0x109a9c18, 68 }, /* vkCreateRenderPass */
+    { 2840, 0x46b16d5a, 182 }, /* vkCreateRenderPass2 */
+    { 2860, 0xfa16043b, 183 }, /* vkCreateRenderPass2KHR */
+    { 2883, 0x13cf03f, 56 }, /* vkCreateSampler */
+    { 2899, 0xe6a58c26, 169 }, /* vkCreateSamplerYcbcrConversion */
+    { 2930, 0x7482104f, 170 }, /* vkCreateSamplerYcbcrConversionKHR */
+    { 2964, 0xf2065e5b, 24 }, /* vkCreateSemaphore */
+    { 2982, 0xa0d3cea2, 45 }, /* vkCreateShaderModule */
+    { 3003, 0xcdefcaa8, 125 }, /* vkCreateSwapchainKHR */
+    { 3024, 0x94a07a45, 37 }, /* vkDestroyBuffer */
+    { 3040, 0x98b27962, 39 }, /* vkDestroyBufferView */
+    { 3060, 0xd5d83a0a, 72 }, /* vkDestroyCommandPool */
+    { 3081, 0x47bdaf30, 61 }, /* vkDestroyDescriptorPool */
+    { 3105, 0xa4227b08, 59 }, /* vkDestroyDescriptorSetLayout */
+    { 3134, 0xbb2cbe7f, 158 }, /* vkDestroyDescriptorUpdateTemplate */
+    { 3168, 0xaa83901e, 159 }, /* vkDestroyDescriptorUpdateTemplateKHR */
+    { 3205, 0x1fbcc9cb, 1 }, /* vkDestroyDevice */
+    { 3221, 0x4df27c05, 27 }, /* vkDestroyEvent */
+    { 3236, 0xfc64ee3c, 20 }, /* vkDestroyFence */
+    { 3251, 0xdc428e58, 67 }, /* vkDestroyFramebuffer */
+    { 3272, 0xcbfb1d96, 41 }, /* vkDestroyImage */
+    { 3287, 0xb5853953, 44 }, /* vkDestroyImageView */
+    { 3306, 0x6aac68af, 53 }, /* vkDestroyPipeline */
+    { 3324, 0x4112a673, 48 }, /* vkDestroyPipelineCache */
+    { 3347, 0x9146f879, 55 }, /* vkDestroyPipelineLayout */
+    { 3371, 0xe18d5d6b, 244 }, /* vkDestroyPrivateDataSlotEXT */
+    { 3399, 0x37819a7f, 32 }, /* vkDestroyQueryPool */
+    { 3418, 0x16f14324, 69 }, /* vkDestroyRenderPass */
+    { 3438, 0x3b645153, 57 }, /* vkDestroySampler */
+    { 3455, 0x20f261b2, 171 }, /* vkDestroySamplerYcbcrConversion */
+    { 3487, 0xaaa623a3, 172 }, /* vkDestroySamplerYcbcrConversionKHR */
+    { 3522, 0xcaab1faf, 25 }, /* vkDestroySemaphore */
+    { 3541, 0x2d77af6e, 46 }, /* vkDestroyShaderModule */
+    { 3563, 0x5a93ab74, 126 }, /* vkDestroySwapchainKHR */
+    { 3585, 0xd46c5f24, 5 }, /* vkDeviceWaitIdle */
+    { 3602, 0xdbb064, 139 }, /* vkDisplayPowerControlEXT */
+    { 3627, 0xaffb5725, 77 }, /* vkEndCommandBuffer */
+    { 3646, 0xff52f051, 10 }, /* vkFlushMappedMemoryRanges */
+    { 3672, 0xb9db2b91, 75 }, /* vkFreeCommandBuffers */
+    { 3693, 0x7a1347b1, 64 }, /* vkFreeDescriptorSets */
+    { 3714, 0x8f6f838a, 7 }, /* vkFreeMemory */
+    { 3727, 0xb891b5e, 196 }, /* vkGetAndroidHardwareBufferPropertiesANDROID */
+    { 3771, 0x7022f0cd, 213 }, /* vkGetBufferDeviceAddress */
+    { 3796, 0x3703280c, 215 }, /* vkGetBufferDeviceAddressEXT */
+    { 3824, 0x713b5180, 214 }, /* vkGetBufferDeviceAddressKHR */
+    { 3852, 0xab98422a, 13 }, /* vkGetBufferMemoryRequirements */
+    { 3882, 0xd1fd0638, 163 }, /* vkGetBufferMemoryRequirements2 */
+    { 3913, 0x78dbe98d, 164 }, /* vkGetBufferMemoryRequirements2KHR */
+    { 3947, 0x2a5545a0, 211 }, /* vkGetBufferOpaqueCaptureAddress */
+    { 3979, 0xddac1c65, 212 }, /* vkGetBufferOpaqueCaptureAddressKHR */
+    { 4014, 0xcf3070fe, 180 }, /* vkGetCalibratedTimestampsEXT */
+    { 4043, 0xfeac9573, 174 }, /* vkGetDescriptorSetLayoutSupport */
+    { 4075, 0xd7e44a, 175 }, /* vkGetDescriptorSetLayoutSupportKHR */
+    { 4110, 0x2e218c10, 143 }, /* vkGetDeviceGroupPeerMemoryFeatures */
+    { 4145, 0xa3809375, 144 }, /* vkGetDeviceGroupPeerMemoryFeaturesKHR */
+    { 4183, 0xf72c87d4, 151 }, /* vkGetDeviceGroupPresentCapabilitiesKHR */
+    { 4222, 0x6b9448c3, 152 }, /* vkGetDeviceGroupSurfacePresentModesKHR */
+    { 4261, 0x46e38db5, 12 }, /* vkGetDeviceMemoryCommitment */
+    { 4289, 0x9a0fe777, 225 }, /* vkGetDeviceMemoryOpaqueCaptureAddress */
+    { 4327, 0x49339be6, 226 }, /* vkGetDeviceMemoryOpaqueCaptureAddressKHR */
+    { 4368, 0xba013486, 0 }, /* vkGetDeviceProcAddr */
+    { 4388, 0xcc920d9a, 2 }, /* vkGetDeviceQueue */
+    { 4405, 0xb11a6348, 173 }, /* vkGetDeviceQueue2 */
+    { 4423, 0x96d834b, 28 }, /* vkGetEventStatus */
+    { 4440, 0x69a5d6af, 137 }, /* vkGetFenceFdKHR */
+    { 4456, 0x5f391892, 22 }, /* vkGetFenceStatus */
+    { 4473, 0x12fa78a3, 210 }, /* vkGetImageDrmFormatModifierPropertiesEXT */
+    { 4514, 0x916f1e63, 15 }, /* vkGetImageMemoryRequirements */
+    { 4543, 0x56e213f7, 165 }, /* vkGetImageMemoryRequirements2 */
+    { 4573, 0x8de28366, 166 }, /* vkGetImageMemoryRequirements2KHR */
+    { 4606, 0x15855f5b, 17 }, /* vkGetImageSparseMemoryRequirements */
+    { 4641, 0xbd4e3d3f, 167 }, /* vkGetImageSparseMemoryRequirements2 */
+    { 4677, 0x3df40f5e, 168 }, /* vkGetImageSparseMemoryRequirements2KHR */
+    { 4716, 0x9163b686, 42 }, /* vkGetImageSubresourceLayout */
+    { 4744, 0x71220e82, 197 }, /* vkGetMemoryAndroidHardwareBufferANDROID */
+    { 4784, 0x503c14c5, 133 }, /* vkGetMemoryFdKHR */
+    { 4801, 0xb028a792, 134 }, /* vkGetMemoryFdPropertiesKHR */
+    { 4828, 0x7030ee5b, 181 }, /* vkGetMemoryHostPointerPropertiesEXT */
+    { 4864, 0x1ec6c4ec, 224 }, /* vkGetPerformanceParameterINTEL */
+    { 4895, 0x2092a349, 49 }, /* vkGetPipelineCacheData */
+    { 4918, 0x8b20fc09, 229 }, /* vkGetPipelineExecutableInternalRepresentationsKHR */
+    { 4968, 0x748dd8cd, 227 }, /* vkGetPipelineExecutablePropertiesKHR */
+    { 5005, 0x5c4d6435, 228 }, /* vkGetPipelineExecutableStatisticsKHR */
+    { 5042, 0x2dc1491d, 246 }, /* vkGetPrivateDataEXT */
+    { 5062, 0xbf3f2cb3, 33 }, /* vkGetQueryPoolResults */
+    { 5084, 0xa9820d22, 70 }, /* vkGetRenderAreaGranularity */
+    { 5111, 0xd05a61a0, 190 }, /* vkGetSemaphoreCounterValue */
+    { 5138, 0xf3c26065, 191 }, /* vkGetSemaphoreCounterValueKHR */
+    { 5168, 0x3e0e9884, 135 }, /* vkGetSemaphoreFdKHR */
+    { 5188, 0xa4aeb5a, 142 }, /* vkGetSwapchainCounterEXT */
+    { 5213, 0x219d929, 177 }, /* vkGetSwapchainGrallocUsage2ANDROID */
+    { 5248, 0x4979c9a3, 176 }, /* vkGetSwapchainGrallocUsageANDROID */
+    { 5282, 0x57695f28, 127 }, /* vkGetSwapchainImagesKHR */
+    { 5306, 0x51df0390, 138 }, /* vkImportFenceFdKHR */
+    { 5325, 0x36337c05, 136 }, /* vkImportSemaphoreFdKHR */
+    { 5348, 0x65a01d77, 216 }, /* vkInitializePerformanceApiINTEL */
+    { 5380, 0x1e115cca, 11 }, /* vkInvalidateMappedMemoryRanges */
+    { 5411, 0xcb977bd8, 8 }, /* vkMapMemory */
+    { 5423, 0xc3499606, 50 }, /* vkMergePipelineCaches */
+    { 5445, 0xc3628a09, 18 }, /* vkQueueBindSparse */
+    { 5463, 0xfc5fb6ce, 129 }, /* vkQueuePresentKHR */
+    { 5481, 0xf8499f82, 223 }, /* vkQueueSetPerformanceConfigurationINTEL */
+    { 5521, 0xa0313eef, 179 }, /* vkQueueSignalReleaseImageANDROID */
+    { 5554, 0xfa4713ec, 3 }, /* vkQueueSubmit */
+    { 5568, 0x6f8fc2a5, 4 }, /* vkQueueWaitIdle */
+    { 5584, 0x26cc78f5, 140 }, /* vkRegisterDeviceEventEXT */
+    { 5609, 0x4a0bd849, 141 }, /* vkRegisterDisplayEventEXT */
+    { 5635, 0x28575036, 222 }, /* vkReleasePerformanceConfigurationINTEL */
+    { 5674, 0x8bdecb76, 209 }, /* vkReleaseProfilingLockKHR */
+    { 5700, 0x847dc731, 78 }, /* vkResetCommandBuffer */
+    { 5721, 0x6da9f7fd, 73 }, /* vkResetCommandPool */
+    { 5740, 0x9bd85f5, 62 }, /* vkResetDescriptorPool */
+    { 5762, 0x6d373ba8, 30 }, /* vkResetEvent */
+    { 5775, 0x684781dc, 21 }, /* vkResetFences */
+    { 5789, 0x4e671e02, 34 }, /* vkResetQueryPool */
+    { 5806, 0xe6701e5f, 35 }, /* vkResetQueryPoolEXT */
+    { 5826, 0x592ae5f5, 29 }, /* vkSetEvent */
+    { 5837, 0x23456729, 245 }, /* vkSetPrivateDataEXT */
+    { 5857, 0xcd347297, 194 }, /* vkSignalSemaphore */
+    { 5875, 0x8fef55c6, 195 }, /* vkSignalSemaphoreKHR */
+    { 5896, 0xfef2fb38, 131 }, /* vkTrimCommandPool */
+    { 5914, 0x51177c8d, 132 }, /* vkTrimCommandPoolKHR */
+    { 5935, 0x408975ae, 217 }, /* vkUninitializePerformanceApiINTEL */
+    { 5969, 0x1a1a0e2f, 9 }, /* vkUnmapMemory */
+    { 5983, 0x5349c9d, 160 }, /* vkUpdateDescriptorSetWithTemplate */
+    { 6017, 0x214ad230, 161 }, /* vkUpdateDescriptorSetWithTemplateKHR */
+    { 6054, 0xbfd090ae, 65 }, /* vkUpdateDescriptorSets */
+    { 6077, 0x19d64c81, 23 }, /* vkWaitForFences */
+    { 6093, 0x74368ad9, 192 }, /* vkWaitSemaphores */
+    { 6110, 0x2bc77454, 193 }, /* vkWaitSemaphoresKHR */
 };
 
 /* Hash table stats:
- * size 230 entries
+ * size 254 entries
  * collisions entries:
- *     0      185
- *     1      27
- *     2      9
- *     3      8
- *     4      0
+ *     0      198
+ *     1      32
+ *     2      13
+ *     3      9
+ *     4      1
  *     5      0
  *     6      1
  *     7      0
@@ -958,443 +1010,276 @@ static const struct string_map_entry device_string_map_entries[] = {
 static const uint16_t device_string_map[512] = {
     none,
     none,
-    0x00d7,
+    0x00ee,
     none,
     none,
-    0x0026,
-    0x00c8,
+    0x002d,
+    0x00de,
     none,
-    0x00d4,
-    0x00b7,
-    0x0073,
+    0x00eb,
+    0x00cc,
+    0x0087,
     none,
-    0x0092,
-    none,
-    none,
-    none,
-    0x009c,
+    0x00a7,
     none,
     none,
     none,
+    0x00b1,
     none,
     none,
     none,
     none,
-    0x0068,
-    none,
-    none,
-    0x00d9,
-    0x00c9,
-    none,
-    0x0077,
-    none,
-    0x0024,
     none,
     none,
     none,
-    0x0050,
-    none,
-    0x006c,
-    none,
-    0x0040,
-    none,
-    0x0094,
-    0x0052,
-    0x0010,
+    0x007c,
     none,
     none,
+    0x00f0,
     0x00df,
-    0x00e1,
     none,
-    none,
-    none,
-    none,
-    0x0033,
-    0x00d1,
-    none,
-    0x0095,
-    none,
-    none,
-    0x006a,
-    0x007a,
-    none,
-    0x0079,
+    0x008b,
+    0x004c,
     0x002b,
-    0x0037,
     none,
     none,
     none,
+    0x0061,
     none,
-    0x0071,
+    0x0080,
+    none,
+    0x0047,
+    none,
+    0x00a9,
+    0x0064,
+    0x0011,
     none,
     none,
-    0x00b9,
-    0x00d0,
-    0x000b,
+    0x005e,
+    0x00f9,
     none,
-    0x0055,
+    0x00b7,
     none,
     none,
-    0x006d,
+    0x003a,
+    0x00e7,
     none,
-    0x008c,
-    0x006b,
+    0x00aa,
     none,
-    0x00e5,
     none,
-    0x0057,
+    0x007e,
+    0x008e,
+    0x0022,
+    0x008d,
+    0x0032,
+    0x003e,
+    0x0050,
+    0x00f7,
+    none,
+    none,
+    0x0085,
+    none,
+    none,
+    0x00ce,
+    0x00e6,
+    0x000c,
+    none,
+    0x001d,
+    none,
     none,
     0x0028,
     none,
+    0x00a1,
+    0x007f,
     none,
+    0x00fd,
+    none,
+    0x006a,
+    none,
+    0x002f,
+    none,
+    none,
+    0x0065,
+    none,
+    0x00b0,
+    none,
+    0x0068,
+    none,
+    0x0024,
+    0x0081,
+    0x004e,
+    0x009f,
+    0x00ad,
+    none,
+    0x002a,
+    0x0044,
+    none,
+    none,
+    0x008f,
+    0x0026,
+    none,
+    0x0082,
+    none,
+    0x0017,
+    none,
+    0x00ef,
+    0x0093,
     0x006e,
+    0x0055,
+    0x006b,
+    0x00da,
+    0x003c,
+    0x0094,
     none,
-    0x009b,
-    none,
-    0x00d8,
     none,
     none,
-    none,
-    0x0045,
-    0x008a,
-    0x0098,
     none,
     0x0023,
-    0x003d,
+    0x005d,
     none,
-    none,
-    0x007b,
-    none,
-    none,
-    0x00b4,
-    none,
-    0x0016,
-    none,
-    none,
-    0x007f,
-    0x005b,
+    0x00c9,
     0x0048,
-    0x0058,
-    0x00c4,
-    0x0035,
-    0x0080,
+    none,
+    0x00d4,
+    none,
+    0x00b8,
+    0x0053,
+    none,
+    0x0034,
+    0x0039,
+    0x00d3,
+    none,
+    0x00f5,
     none,
     none,
+    0x0056,
+    none,
+    0x008a,
+    none,
+    0x0015,
+    0x0062,
+    none,
+    0x00f2,
+    none,
+    0x00c5,
     none,
     none,
-    0x001f,
-    0x004e,
+    0x00bf,
+    0x0070,
     none,
-    0x00e3,
-    0x0041,
+    0x0078,
     none,
+    0x0045,
+    0x0083,
     0x00be,
+    0x0010,
+    0x0096,
     none,
-    0x00a3,
-    0x0046,
+    0x00fb,
+    0x0084,
     none,
-    0x002d,
-    0x0032,
-    0x00bd,
     none,
-    0x00dd,
+    none,
+    none,
+    0x0004,
+    0x00fa,
+    0x0092,
+    0x00f8,
+    none,
+    none,
+    0x0067,
+    none,
+    none,
+    none,
+    0x006d,
+    0x001e,
+    0x0069,
+    0x0020,
+    0x00c6,
+    none,
+    none,
     none,
     none,
     none,
     none,
     0x0076,
-    none,
-    0x0014,
-    0x00b1,
-    none,
-    0x00da,
-    none,
-    0x00b0,
-    none,
-    none,
-    0x00aa,
-    0x005d,
-    none,
-    0x0065,
-    none,
-    0x003e,
-    0x006f,
-    0x00a9,
-    0x000f,
-    0x0081,
-    none,
-    none,
-    0x0070,
+    0x00b4,
+    0x0074,
+    0x00c7,
+    0x00d0,
     none,
     none,
     none,
+    0x00dc,
+    0x00bd,
     none,
-    none,
-    0x00e2,
-    0x007e,
+    0x00a6,
     0x00e0,
     none,
     none,
-    0x0054,
     none,
     none,
     none,
-    0x005a,
+    0x0029,
+    0x00bc,
+    none,
+    none,
+    none,
+    0x00fc,
+    0x0021,
+    none,
+    none,
+    0x0000,
+    0x00e4,
+    none,
+    0x003f,
+    none,
+    0x005f,
+    0x0012,
+    none,
+    none,
+    none,
+    none,
+    none,
+    none,
+    none,
+    none,
     0x001b,
-    0x0056,
-    0x001d,
+    none,
+    none,
+    0x00e2,
+    none,
+    none,
+    none,
+    0x00cd,
+    none,
+    0x00e5,
+    none,
+    none,
+    0x005c,
+    0x0040,
     none,
     none,
     none,
     none,
-    none,
-    none,
-    none,
-    0x0063,
-    0x009f,
-    0x0061,
-    0x00b2,
-    0x00ba,
-    none,
-    none,
-    none,
-    0x00c6,
-    0x00a8,
-    none,
-    0x0091,
+    0x00ae,
     0x00ca,
     none,
     none,
     none,
     none,
     none,
-    0x0022,
-    0x00a7,
+    0x0052,
+    0x003d,
+    0x004d,
+    0x001f,
     none,
     none,
     none,
-    0x00e4,
-    0x001e,
+    0x0057,
     none,
     none,
-    0x0000,
-    0x00ce,
     none,
-    0x0038,
-    none,
-    0x004f,
-    0x0011,
-    none,
-    none,
-    none,
-    none,
-    none,
-    none,
-    none,
-    none,
-    0x00b5,
-    none,
-    none,
-    0x00cc,
-    none,
-    none,
-    none,
-    0x00b8,
-    none,
-    0x00cf,
-    none,
-    none,
-    none,
-    0x0039,
-    none,
-    none,
-    none,
-    none,
-    0x0099,
-    none,
-    none,
-    none,
-    none,
-    none,
-    none,
-    none,
-    0x0036,
-    0x0044,
-    0x001c,
-    none,
-    none,
-    none,
-    0x0049,
-    none,
-    none,
-    none,
-    none,
-    none,
-    none,
-    none,
-    none,
-    0x0034,
-    none,
-    none,
-    0x000c,
-    none,
-    0x0004,
-    0x0075,
-    none,
-    0x0019,
-    none,
-    0x004b,
-    none,
-    none,
-    0x0031,
-    none,
-    0x0082,
-    0x008b,
-    none,
-    0x0007,
-    0x00c2,
-    0x00c0,
-    none,
-    0x0067,
-    none,
-    none,
-    0x0002,
-    none,
-    0x0074,
-    0x003a,
-    none,
-    0x005c,
-    0x0051,
-    0x00bb,
-    0x0029,
-    0x0089,
-    0x00dc,
-    none,
-    0x0005,
-    none,
-    none,
-    none,
-    none,
-    0x00ae,
-    none,
-    0x002a,
-    none,
-    none,
-    0x005f,
-    none,
-    none,
-    none,
-    0x00a5,
-    0x00b6,
-    none,
-    0x00a6,
-    none,
-    none,
-    none,
-    0x0009,
-    none,
-    none,
-    none,
-    0x007d,
-    none,
-    none,
-    0x0047,
-    0x00d2,
-    none,
-    none,
-    0x0069,
-    0x00ad,
-    none,
-    none,
-    0x0053,
-    none,
-    none,
-    none,
-    0x0072,
-    none,
-    none,
-    0x004a,
-    0x0083,
-    0x0003,
-    0x0060,
-    none,
-    none,
-    none,
-    none,
-    0x0062,
-    0x0087,
-    none,
-    none,
-    0x0090,
-    0x0001,
-    0x009a,
-    0x0088,
-    0x009d,
-    none,
-    0x0012,
-    none,
-    0x00ac,
-    none,
-    none,
-    none,
-    0x0030,
-    none,
-    none,
-    0x0093,
-    0x003f,
-    0x00cb,
-    none,
-    0x0017,
-    none,
-    none,
-    none,
-    none,
-    0x001a,
-    0x008f,
-    none,
-    none,
-    0x0096,
-    none,
-    none,
-    0x002e,
-    0x008d,
-    0x00b3,
-    0x00bf,
-    0x0042,
-    none,
-    0x007c,
-    0x00af,
-    none,
-    none,
-    0x00a4,
-    none,
-    none,
-    0x00a1,
-    none,
-    0x000e,
-    0x0097,
-    0x0027,
-    none,
-    0x0085,
-    none,
-    none,
-    none,
-    0x005e,
-    0x00d5,
-    0x0020,
-    none,
-    none,
-    0x0021,
-    0x000d,
-    0x00de,
-    0x0086,
-    0x00c5,
-    0x008e,
-    0x0084,
-    0x00bc,
-    none,
-    0x00a0,
-    0x00c1,
     none,
     none,
     none,
@@ -1403,71 +1288,238 @@ static const uint16_t device_string_map[512] = {
     0x003b,
     none,
     none,
-    0x002c,
+    0x000d,
+    0x0060,
+    0x0005,
+    0x0089,
+    none,
+    0x001a,
+    none,
+    0x0059,
     none,
     none,
+    0x0038,
+    none,
+    0x0097,
+    0x00a0,
+    none,
+    0x0008,
+    0x00d8,
+    0x00d6,
+    none,
+    0x007b,
     none,
     none,
+    0x0002,
     none,
+    0x0088,
+    0x0041,
     none,
-    0x00db,
-    0x004c,
+    0x006f,
+    0x0063,
+    0x00d1,
+    0x0030,
+    0x004a,
+    0x00f4,
+    none,
+    0x0006,
+    none,
+    0x00f1,
+    none,
     none,
     0x00c3,
     none,
-    0x0008,
+    0x0031,
     none,
-    0x0018,
-    0x000a,
-    0x004d,
-    none,
+    0x00cf,
+    0x0072,
     none,
     none,
-    0x0006,
+    none,
+    0x00ba,
+    0x00cb,
     0x009e,
+    0x00bb,
     none,
     none,
     none,
-    0x00c7,
-    none,
-    0x0015,
-    none,
-    0x00d6,
-    none,
-    0x0078,
+    0x000a,
     none,
     none,
     none,
+    0x0091,
     none,
     none,
+    0x0054,
+    0x00e9,
     none,
-    0x0025,
+    none,
+    0x007d,
+    0x00c2,
+    none,
+    none,
+    0x0066,
+    0x007a,
+    none,
+    none,
+    0x0086,
+    none,
+    none,
+    0x0058,
+    0x0098,
+    0x0003,
+    0x0073,
+    none,
+    none,
+    0x0095,
+    none,
+    0x0075,
+    0x009c,
+    none,
+    none,
+    0x00a5,
+    0x0001,
+    0x00af,
+    0x009d,
+    0x00b2,
+    0x00e8,
     0x0013,
     none,
-    0x003c,
-    none,
-    none,
-    0x0059,
-    0x00cd,
-    0x0066,
+    0x00c1,
     none,
     none,
     none,
+    0x0037,
+    none,
+    none,
+    0x00a8,
+    0x0046,
+    0x00e1,
+    none,
+    0x0018,
     none,
     none,
     none,
     none,
-    0x002f,
+    0x001c,
+    0x00a4,
+    none,
     none,
     0x00ab,
     none,
+    none,
+    0x0035,
     0x00a2,
+    0x00c8,
+    0x00d5,
+    0x0049,
+    none,
+    0x0090,
+    0x00c4,
+    none,
+    none,
+    0x00b9,
+    none,
+    none,
+    0x00b6,
+    none,
+    0x000f,
+    0x00ac,
+    0x002e,
+    none,
+    0x009a,
+    none,
+    none,
+    none,
+    0x0071,
+    0x00ec,
+    0x0025,
+    none,
+    none,
+    0x0027,
+    0x000e,
+    0x00f6,
+    0x009b,
+    0x00db,
+    0x004f,
+    0x0099,
+    0x00d2,
+    none,
+    0x00b5,
+    0x00d7,
+    none,
+    none,
+    none,
+    none,
+    none,
+    0x0042,
+    none,
+    none,
+    0x0033,
+    none,
+    none,
+    none,
+    none,
+    0x00a3,
+    none,
+    0x00f3,
+    0x005a,
+    none,
+    0x00d9,
+    none,
+    0x0009,
+    none,
+    0x0019,
+    0x000b,
+    0x005b,
+    none,
+    none,
+    none,
+    0x0007,
+    0x00b3,
+    none,
+    none,
+    none,
+    0x00dd,
+    none,
+    0x0016,
+    none,
+    0x00ed,
+    none,
+    0x008c,
+    none,
+    none,
+    none,
+    none,
+    none,
+    none,
+    0x002c,
+    0x0014,
     none,
     0x0043,
     none,
-    0x00d3,
     none,
-    0x0064,
+    0x006c,
+    0x00e3,
+    0x0079,
+    none,
+    none,
+    none,
+    none,
+    none,
+    none,
+    none,
+    0x0036,
+    none,
+    0x00c0,
+    none,
+    0x0051,
+    none,
+    0x004b,
+    none,
+    0x00ea,
+    none,
+    0x0077,
 };
 
 static int
@@ -1618,6 +1670,8 @@ const struct anv_instance_dispatch_table anv_instance_dispatch_table = {
   VkResult anv_GetDisplayModeProperties2KHR(VkPhysicalDevice physicalDevice, VkDisplayKHR display, uint32_t* pPropertyCount, VkDisplayModeProperties2KHR* pProperties) __attribute__ ((weak));
   VkResult anv_GetDisplayPlaneCapabilities2KHR(VkPhysicalDevice physicalDevice, const VkDisplayPlaneInfo2KHR* pDisplayPlaneInfo, VkDisplayPlaneCapabilities2KHR* pCapabilities) __attribute__ ((weak));
   VkResult anv_GetPhysicalDeviceCalibrateableTimeDomainsEXT(VkPhysicalDevice physicalDevice, uint32_t* pTimeDomainCount, VkTimeDomainEXT* pTimeDomains) __attribute__ ((weak));
+  VkResult anv_EnumeratePhysicalDeviceQueueFamilyPerformanceQueryCountersKHR(VkPhysicalDevice physicalDevice, uint32_t queueFamilyIndex, uint32_t* pCounterCount, VkPerformanceCounterKHR* pCounters, VkPerformanceCounterDescriptionKHR* pCounterDescriptions) __attribute__ ((weak));
+  void anv_GetPhysicalDeviceQueueFamilyPerformanceQueryPassesKHR(VkPhysicalDevice physicalDevice, const VkQueryPoolPerformanceCreateInfoKHR* pPerformanceQueryCreateInfo, uint32_t* pNumPasses) __attribute__ ((weak));
 
 const struct anv_physical_device_dispatch_table anv_physical_device_dispatch_table = {
   .vkGetPhysicalDeviceProperties = anv_GetPhysicalDeviceProperties,
@@ -1685,6 +1739,8 @@ const struct anv_physical_device_dispatch_table anv_physical_device_dispatch_tab
   .vkGetDisplayModeProperties2KHR = anv_GetDisplayModeProperties2KHR,
   .vkGetDisplayPlaneCapabilities2KHR = anv_GetDisplayPlaneCapabilities2KHR,
   .vkGetPhysicalDeviceCalibrateableTimeDomainsEXT = anv_GetPhysicalDeviceCalibrateableTimeDomainsEXT,
+  .vkEnumeratePhysicalDeviceQueueFamilyPerformanceQueryCountersKHR = anv_EnumeratePhysicalDeviceQueueFamilyPerformanceQueryCountersKHR,
+  .vkGetPhysicalDeviceQueueFamilyPerformanceQueryPassesKHR = anv_GetPhysicalDeviceQueueFamilyPerformanceQueryPassesKHR,
 };
 
 
@@ -2799,6 +2855,18 @@ const struct anv_physical_device_dispatch_table anv_physical_device_dispatch_tab
           return anv_cmd_buffer->device->dispatch.vkCmdDrawIndirectByteCountEXT(commandBuffer, instanceCount, firstInstance, counterBuffer, counterBufferOffset, counterOffset, vertexStride);
       }
       VkResult __attribute__ ((weak))
+      anv_AcquireProfilingLockKHR(VkDevice device, const VkAcquireProfilingLockInfoKHR* pInfo)
+      {
+          ANV_FROM_HANDLE(anv_device, anv_device, device);
+          return anv_device->dispatch.vkAcquireProfilingLockKHR(device, pInfo);
+      }
+      void __attribute__ ((weak))
+      anv_ReleaseProfilingLockKHR(VkDevice device)
+      {
+          ANV_FROM_HANDLE(anv_device, anv_device, device);
+          return anv_device->dispatch.vkReleaseProfilingLockKHR(device);
+      }
+      VkResult __attribute__ ((weak))
       anv_GetImageDrmFormatModifierPropertiesEXT(VkDevice device, VkImage image, VkImageDrmFormatModifierPropertiesEXT* pProperties)
       {
           ANV_FROM_HANDLE(anv_device, anv_device, device);
@@ -2899,6 +2967,138 @@ const struct anv_physical_device_dispatch_table anv_physical_device_dispatch_tab
       {
           ANV_FROM_HANDLE(anv_cmd_buffer, anv_cmd_buffer, commandBuffer);
           return anv_cmd_buffer->device->dispatch.vkCmdSetLineStippleEXT(commandBuffer, lineStippleFactor, lineStipplePattern);
+      }
+      void __attribute__ ((weak))
+      anv_CmdSetCullModeEXT(VkCommandBuffer commandBuffer, VkCullModeFlags cullMode)
+      {
+          ANV_FROM_HANDLE(anv_cmd_buffer, anv_cmd_buffer, commandBuffer);
+          return anv_cmd_buffer->device->dispatch.vkCmdSetCullModeEXT(commandBuffer, cullMode);
+      }
+      void __attribute__ ((weak))
+      anv_CmdSetFrontFaceEXT(VkCommandBuffer commandBuffer, VkFrontFace frontFace)
+      {
+          ANV_FROM_HANDLE(anv_cmd_buffer, anv_cmd_buffer, commandBuffer);
+          return anv_cmd_buffer->device->dispatch.vkCmdSetFrontFaceEXT(commandBuffer, frontFace);
+      }
+      void __attribute__ ((weak))
+      anv_CmdSetPrimitiveTopologyEXT(VkCommandBuffer commandBuffer, VkPrimitiveTopology primitiveTopology)
+      {
+          ANV_FROM_HANDLE(anv_cmd_buffer, anv_cmd_buffer, commandBuffer);
+          return anv_cmd_buffer->device->dispatch.vkCmdSetPrimitiveTopologyEXT(commandBuffer, primitiveTopology);
+      }
+      void __attribute__ ((weak))
+      anv_CmdSetViewportWithCountEXT(VkCommandBuffer commandBuffer, uint32_t viewportCount, const VkViewport* pViewports)
+      {
+          ANV_FROM_HANDLE(anv_cmd_buffer, anv_cmd_buffer, commandBuffer);
+          return anv_cmd_buffer->device->dispatch.vkCmdSetViewportWithCountEXT(commandBuffer, viewportCount, pViewports);
+      }
+      void __attribute__ ((weak))
+      anv_CmdSetScissorWithCountEXT(VkCommandBuffer commandBuffer, uint32_t scissorCount, const VkRect2D* pScissors)
+      {
+          ANV_FROM_HANDLE(anv_cmd_buffer, anv_cmd_buffer, commandBuffer);
+          return anv_cmd_buffer->device->dispatch.vkCmdSetScissorWithCountEXT(commandBuffer, scissorCount, pScissors);
+      }
+      void __attribute__ ((weak))
+      anv_CmdBindVertexBuffers2EXT(VkCommandBuffer commandBuffer, uint32_t firstBinding, uint32_t bindingCount, const VkBuffer* pBuffers, const VkDeviceSize* pOffsets, const VkDeviceSize* pSizes, const VkDeviceSize* pStrides)
+      {
+          ANV_FROM_HANDLE(anv_cmd_buffer, anv_cmd_buffer, commandBuffer);
+          return anv_cmd_buffer->device->dispatch.vkCmdBindVertexBuffers2EXT(commandBuffer, firstBinding, bindingCount, pBuffers, pOffsets, pSizes, pStrides);
+      }
+      void __attribute__ ((weak))
+      anv_CmdSetDepthTestEnableEXT(VkCommandBuffer commandBuffer, VkBool32 depthTestEnable)
+      {
+          ANV_FROM_HANDLE(anv_cmd_buffer, anv_cmd_buffer, commandBuffer);
+          return anv_cmd_buffer->device->dispatch.vkCmdSetDepthTestEnableEXT(commandBuffer, depthTestEnable);
+      }
+      void __attribute__ ((weak))
+      anv_CmdSetDepthWriteEnableEXT(VkCommandBuffer commandBuffer, VkBool32 depthWriteEnable)
+      {
+          ANV_FROM_HANDLE(anv_cmd_buffer, anv_cmd_buffer, commandBuffer);
+          return anv_cmd_buffer->device->dispatch.vkCmdSetDepthWriteEnableEXT(commandBuffer, depthWriteEnable);
+      }
+      void __attribute__ ((weak))
+      anv_CmdSetDepthCompareOpEXT(VkCommandBuffer commandBuffer, VkCompareOp depthCompareOp)
+      {
+          ANV_FROM_HANDLE(anv_cmd_buffer, anv_cmd_buffer, commandBuffer);
+          return anv_cmd_buffer->device->dispatch.vkCmdSetDepthCompareOpEXT(commandBuffer, depthCompareOp);
+      }
+      void __attribute__ ((weak))
+      anv_CmdSetDepthBoundsTestEnableEXT(VkCommandBuffer commandBuffer, VkBool32 depthBoundsTestEnable)
+      {
+          ANV_FROM_HANDLE(anv_cmd_buffer, anv_cmd_buffer, commandBuffer);
+          return anv_cmd_buffer->device->dispatch.vkCmdSetDepthBoundsTestEnableEXT(commandBuffer, depthBoundsTestEnable);
+      }
+      void __attribute__ ((weak))
+      anv_CmdSetStencilTestEnableEXT(VkCommandBuffer commandBuffer, VkBool32 stencilTestEnable)
+      {
+          ANV_FROM_HANDLE(anv_cmd_buffer, anv_cmd_buffer, commandBuffer);
+          return anv_cmd_buffer->device->dispatch.vkCmdSetStencilTestEnableEXT(commandBuffer, stencilTestEnable);
+      }
+      void __attribute__ ((weak))
+      anv_CmdSetStencilOpEXT(VkCommandBuffer commandBuffer, VkStencilFaceFlags faceMask, VkStencilOp failOp, VkStencilOp passOp, VkStencilOp depthFailOp, VkCompareOp compareOp)
+      {
+          ANV_FROM_HANDLE(anv_cmd_buffer, anv_cmd_buffer, commandBuffer);
+          return anv_cmd_buffer->device->dispatch.vkCmdSetStencilOpEXT(commandBuffer, faceMask, failOp, passOp, depthFailOp, compareOp);
+      }
+      VkResult __attribute__ ((weak))
+      anv_CreatePrivateDataSlotEXT(VkDevice device, const VkPrivateDataSlotCreateInfoEXT* pCreateInfo, const VkAllocationCallbacks* pAllocator, VkPrivateDataSlotEXT* pPrivateDataSlot)
+      {
+          ANV_FROM_HANDLE(anv_device, anv_device, device);
+          return anv_device->dispatch.vkCreatePrivateDataSlotEXT(device, pCreateInfo, pAllocator, pPrivateDataSlot);
+      }
+      void __attribute__ ((weak))
+      anv_DestroyPrivateDataSlotEXT(VkDevice device, VkPrivateDataSlotEXT privateDataSlot, const VkAllocationCallbacks* pAllocator)
+      {
+          ANV_FROM_HANDLE(anv_device, anv_device, device);
+          return anv_device->dispatch.vkDestroyPrivateDataSlotEXT(device, privateDataSlot, pAllocator);
+      }
+      VkResult __attribute__ ((weak))
+      anv_SetPrivateDataEXT(VkDevice device, VkObjectType objectType, uint64_t objectHandle, VkPrivateDataSlotEXT privateDataSlot, uint64_t data)
+      {
+          ANV_FROM_HANDLE(anv_device, anv_device, device);
+          return anv_device->dispatch.vkSetPrivateDataEXT(device, objectType, objectHandle, privateDataSlot, data);
+      }
+      void __attribute__ ((weak))
+      anv_GetPrivateDataEXT(VkDevice device, VkObjectType objectType, uint64_t objectHandle, VkPrivateDataSlotEXT privateDataSlot, uint64_t* pData)
+      {
+          ANV_FROM_HANDLE(anv_device, anv_device, device);
+          return anv_device->dispatch.vkGetPrivateDataEXT(device, objectType, objectHandle, privateDataSlot, pData);
+      }
+      void __attribute__ ((weak))
+      anv_CmdCopyBuffer2KHR(VkCommandBuffer commandBuffer, const VkCopyBufferInfo2KHR* pCopyBufferInfo)
+      {
+          ANV_FROM_HANDLE(anv_cmd_buffer, anv_cmd_buffer, commandBuffer);
+          return anv_cmd_buffer->device->dispatch.vkCmdCopyBuffer2KHR(commandBuffer, pCopyBufferInfo);
+      }
+      void __attribute__ ((weak))
+      anv_CmdCopyImage2KHR(VkCommandBuffer commandBuffer, const VkCopyImageInfo2KHR* pCopyImageInfo)
+      {
+          ANV_FROM_HANDLE(anv_cmd_buffer, anv_cmd_buffer, commandBuffer);
+          return anv_cmd_buffer->device->dispatch.vkCmdCopyImage2KHR(commandBuffer, pCopyImageInfo);
+      }
+      void __attribute__ ((weak))
+      anv_CmdBlitImage2KHR(VkCommandBuffer commandBuffer, const VkBlitImageInfo2KHR* pBlitImageInfo)
+      {
+          ANV_FROM_HANDLE(anv_cmd_buffer, anv_cmd_buffer, commandBuffer);
+          return anv_cmd_buffer->device->dispatch.vkCmdBlitImage2KHR(commandBuffer, pBlitImageInfo);
+      }
+      void __attribute__ ((weak))
+      anv_CmdCopyBufferToImage2KHR(VkCommandBuffer commandBuffer, const VkCopyBufferToImageInfo2KHR* pCopyBufferToImageInfo)
+      {
+          ANV_FROM_HANDLE(anv_cmd_buffer, anv_cmd_buffer, commandBuffer);
+          return anv_cmd_buffer->device->dispatch.vkCmdCopyBufferToImage2KHR(commandBuffer, pCopyBufferToImageInfo);
+      }
+      void __attribute__ ((weak))
+      anv_CmdCopyImageToBuffer2KHR(VkCommandBuffer commandBuffer, const VkCopyImageToBufferInfo2KHR* pCopyImageToBufferInfo)
+      {
+          ANV_FROM_HANDLE(anv_cmd_buffer, anv_cmd_buffer, commandBuffer);
+          return anv_cmd_buffer->device->dispatch.vkCmdCopyImageToBuffer2KHR(commandBuffer, pCopyImageToBufferInfo);
+      }
+      void __attribute__ ((weak))
+      anv_CmdResolveImage2KHR(VkCommandBuffer commandBuffer, const VkResolveImageInfo2KHR* pResolveImageInfo)
+      {
+          ANV_FROM_HANDLE(anv_cmd_buffer, anv_cmd_buffer, commandBuffer);
+          return anv_cmd_buffer->device->dispatch.vkCmdResolveImage2KHR(commandBuffer, pResolveImageInfo);
       }
       VkResult __attribute__ ((weak))
       anv_CreateDmaBufImageINTEL(VkDevice device, const VkDmaBufImageCreateInfo* pCreateInfo, const VkAllocationCallbacks* pAllocator, VkDeviceMemory* pMem, VkImage* pImage)
@@ -3128,6 +3328,8 @@ const struct anv_physical_device_dispatch_table anv_physical_device_dispatch_tab
     .vkCmdBeginQueryIndexedEXT = anv_CmdBeginQueryIndexedEXT,
     .vkCmdEndQueryIndexedEXT = anv_CmdEndQueryIndexedEXT,
     .vkCmdDrawIndirectByteCountEXT = anv_CmdDrawIndirectByteCountEXT,
+    .vkAcquireProfilingLockKHR = anv_AcquireProfilingLockKHR,
+    .vkReleaseProfilingLockKHR = anv_ReleaseProfilingLockKHR,
     .vkGetImageDrmFormatModifierPropertiesEXT = anv_GetImageDrmFormatModifierPropertiesEXT,
     .vkGetBufferOpaqueCaptureAddress = anv_GetBufferOpaqueCaptureAddress,
     .vkGetBufferOpaqueCaptureAddressKHR = anv_GetBufferOpaqueCaptureAddress,
@@ -3149,6 +3351,28 @@ const struct anv_physical_device_dispatch_table anv_physical_device_dispatch_tab
     .vkGetPipelineExecutableStatisticsKHR = anv_GetPipelineExecutableStatisticsKHR,
     .vkGetPipelineExecutableInternalRepresentationsKHR = anv_GetPipelineExecutableInternalRepresentationsKHR,
     .vkCmdSetLineStippleEXT = anv_CmdSetLineStippleEXT,
+    .vkCmdSetCullModeEXT = anv_CmdSetCullModeEXT,
+    .vkCmdSetFrontFaceEXT = anv_CmdSetFrontFaceEXT,
+    .vkCmdSetPrimitiveTopologyEXT = anv_CmdSetPrimitiveTopologyEXT,
+    .vkCmdSetViewportWithCountEXT = anv_CmdSetViewportWithCountEXT,
+    .vkCmdSetScissorWithCountEXT = anv_CmdSetScissorWithCountEXT,
+    .vkCmdBindVertexBuffers2EXT = anv_CmdBindVertexBuffers2EXT,
+    .vkCmdSetDepthTestEnableEXT = anv_CmdSetDepthTestEnableEXT,
+    .vkCmdSetDepthWriteEnableEXT = anv_CmdSetDepthWriteEnableEXT,
+    .vkCmdSetDepthCompareOpEXT = anv_CmdSetDepthCompareOpEXT,
+    .vkCmdSetDepthBoundsTestEnableEXT = anv_CmdSetDepthBoundsTestEnableEXT,
+    .vkCmdSetStencilTestEnableEXT = anv_CmdSetStencilTestEnableEXT,
+    .vkCmdSetStencilOpEXT = anv_CmdSetStencilOpEXT,
+    .vkCreatePrivateDataSlotEXT = anv_CreatePrivateDataSlotEXT,
+    .vkDestroyPrivateDataSlotEXT = anv_DestroyPrivateDataSlotEXT,
+    .vkSetPrivateDataEXT = anv_SetPrivateDataEXT,
+    .vkGetPrivateDataEXT = anv_GetPrivateDataEXT,
+    .vkCmdCopyBuffer2KHR = anv_CmdCopyBuffer2KHR,
+    .vkCmdCopyImage2KHR = anv_CmdCopyImage2KHR,
+    .vkCmdBlitImage2KHR = anv_CmdBlitImage2KHR,
+    .vkCmdCopyBufferToImage2KHR = anv_CmdCopyBufferToImage2KHR,
+    .vkCmdCopyImageToBuffer2KHR = anv_CmdCopyImageToBuffer2KHR,
+    .vkCmdResolveImage2KHR = anv_CmdResolveImage2KHR,
     .vkCreateDmaBufImageINTEL = anv_CreateDmaBufImageINTEL,
   };
       PFN_vkVoidFunction gen7_GetDeviceProcAddr(VkDevice device, const char* pName) __attribute__ ((weak));
@@ -3346,6 +3570,8 @@ const struct anv_physical_device_dispatch_table anv_physical_device_dispatch_tab
       void gen7_CmdBeginQueryIndexedEXT(VkCommandBuffer commandBuffer, VkQueryPool queryPool, uint32_t query, VkQueryControlFlags flags, uint32_t index) __attribute__ ((weak));
       void gen7_CmdEndQueryIndexedEXT(VkCommandBuffer commandBuffer, VkQueryPool queryPool, uint32_t query, uint32_t index) __attribute__ ((weak));
       void gen7_CmdDrawIndirectByteCountEXT(VkCommandBuffer commandBuffer, uint32_t instanceCount, uint32_t firstInstance, VkBuffer counterBuffer, VkDeviceSize counterBufferOffset, uint32_t counterOffset, uint32_t vertexStride) __attribute__ ((weak));
+      VkResult gen7_AcquireProfilingLockKHR(VkDevice device, const VkAcquireProfilingLockInfoKHR* pInfo) __attribute__ ((weak));
+      void gen7_ReleaseProfilingLockKHR(VkDevice device) __attribute__ ((weak));
       VkResult gen7_GetImageDrmFormatModifierPropertiesEXT(VkDevice device, VkImage image, VkImageDrmFormatModifierPropertiesEXT* pProperties) __attribute__ ((weak));
       uint64_t gen7_GetBufferOpaqueCaptureAddress(VkDevice device, const VkBufferDeviceAddressInfo* pInfo) __attribute__ ((weak));
             VkDeviceAddress gen7_GetBufferDeviceAddress(VkDevice device, const VkBufferDeviceAddressInfo* pInfo) __attribute__ ((weak));
@@ -3363,6 +3589,28 @@ const struct anv_physical_device_dispatch_table anv_physical_device_dispatch_tab
       VkResult gen7_GetPipelineExecutableStatisticsKHR(VkDevice                        device, const VkPipelineExecutableInfoKHR*  pExecutableInfo, uint32_t* pStatisticCount, VkPipelineExecutableStatisticKHR* pStatistics) __attribute__ ((weak));
       VkResult gen7_GetPipelineExecutableInternalRepresentationsKHR(VkDevice                        device, const VkPipelineExecutableInfoKHR*  pExecutableInfo, uint32_t* pInternalRepresentationCount, VkPipelineExecutableInternalRepresentationKHR* pInternalRepresentations) __attribute__ ((weak));
       void gen7_CmdSetLineStippleEXT(VkCommandBuffer commandBuffer, uint32_t lineStippleFactor, uint16_t lineStipplePattern) __attribute__ ((weak));
+      void gen7_CmdSetCullModeEXT(VkCommandBuffer commandBuffer, VkCullModeFlags cullMode) __attribute__ ((weak));
+      void gen7_CmdSetFrontFaceEXT(VkCommandBuffer commandBuffer, VkFrontFace frontFace) __attribute__ ((weak));
+      void gen7_CmdSetPrimitiveTopologyEXT(VkCommandBuffer commandBuffer, VkPrimitiveTopology primitiveTopology) __attribute__ ((weak));
+      void gen7_CmdSetViewportWithCountEXT(VkCommandBuffer commandBuffer, uint32_t viewportCount, const VkViewport* pViewports) __attribute__ ((weak));
+      void gen7_CmdSetScissorWithCountEXT(VkCommandBuffer commandBuffer, uint32_t scissorCount, const VkRect2D* pScissors) __attribute__ ((weak));
+      void gen7_CmdBindVertexBuffers2EXT(VkCommandBuffer commandBuffer, uint32_t firstBinding, uint32_t bindingCount, const VkBuffer* pBuffers, const VkDeviceSize* pOffsets, const VkDeviceSize* pSizes, const VkDeviceSize* pStrides) __attribute__ ((weak));
+      void gen7_CmdSetDepthTestEnableEXT(VkCommandBuffer commandBuffer, VkBool32 depthTestEnable) __attribute__ ((weak));
+      void gen7_CmdSetDepthWriteEnableEXT(VkCommandBuffer commandBuffer, VkBool32 depthWriteEnable) __attribute__ ((weak));
+      void gen7_CmdSetDepthCompareOpEXT(VkCommandBuffer commandBuffer, VkCompareOp depthCompareOp) __attribute__ ((weak));
+      void gen7_CmdSetDepthBoundsTestEnableEXT(VkCommandBuffer commandBuffer, VkBool32 depthBoundsTestEnable) __attribute__ ((weak));
+      void gen7_CmdSetStencilTestEnableEXT(VkCommandBuffer commandBuffer, VkBool32 stencilTestEnable) __attribute__ ((weak));
+      void gen7_CmdSetStencilOpEXT(VkCommandBuffer commandBuffer, VkStencilFaceFlags faceMask, VkStencilOp failOp, VkStencilOp passOp, VkStencilOp depthFailOp, VkCompareOp compareOp) __attribute__ ((weak));
+      VkResult gen7_CreatePrivateDataSlotEXT(VkDevice device, const VkPrivateDataSlotCreateInfoEXT* pCreateInfo, const VkAllocationCallbacks* pAllocator, VkPrivateDataSlotEXT* pPrivateDataSlot) __attribute__ ((weak));
+      void gen7_DestroyPrivateDataSlotEXT(VkDevice device, VkPrivateDataSlotEXT privateDataSlot, const VkAllocationCallbacks* pAllocator) __attribute__ ((weak));
+      VkResult gen7_SetPrivateDataEXT(VkDevice device, VkObjectType objectType, uint64_t objectHandle, VkPrivateDataSlotEXT privateDataSlot, uint64_t data) __attribute__ ((weak));
+      void gen7_GetPrivateDataEXT(VkDevice device, VkObjectType objectType, uint64_t objectHandle, VkPrivateDataSlotEXT privateDataSlot, uint64_t* pData) __attribute__ ((weak));
+      void gen7_CmdCopyBuffer2KHR(VkCommandBuffer commandBuffer, const VkCopyBufferInfo2KHR* pCopyBufferInfo) __attribute__ ((weak));
+      void gen7_CmdCopyImage2KHR(VkCommandBuffer commandBuffer, const VkCopyImageInfo2KHR* pCopyImageInfo) __attribute__ ((weak));
+      void gen7_CmdBlitImage2KHR(VkCommandBuffer commandBuffer, const VkBlitImageInfo2KHR* pBlitImageInfo) __attribute__ ((weak));
+      void gen7_CmdCopyBufferToImage2KHR(VkCommandBuffer commandBuffer, const VkCopyBufferToImageInfo2KHR* pCopyBufferToImageInfo) __attribute__ ((weak));
+      void gen7_CmdCopyImageToBuffer2KHR(VkCommandBuffer commandBuffer, const VkCopyImageToBufferInfo2KHR* pCopyImageToBufferInfo) __attribute__ ((weak));
+      void gen7_CmdResolveImage2KHR(VkCommandBuffer commandBuffer, const VkResolveImageInfo2KHR* pResolveImageInfo) __attribute__ ((weak));
       VkResult gen7_CreateDmaBufImageINTEL(VkDevice device, const VkDmaBufImageCreateInfo* pCreateInfo, const VkAllocationCallbacks* pAllocator, VkDeviceMemory* pMem, VkImage* pImage) __attribute__ ((weak));
 
   const struct anv_device_dispatch_table gen7_device_dispatch_table = {
@@ -3586,6 +3834,8 @@ const struct anv_physical_device_dispatch_table anv_physical_device_dispatch_tab
     .vkCmdBeginQueryIndexedEXT = gen7_CmdBeginQueryIndexedEXT,
     .vkCmdEndQueryIndexedEXT = gen7_CmdEndQueryIndexedEXT,
     .vkCmdDrawIndirectByteCountEXT = gen7_CmdDrawIndirectByteCountEXT,
+    .vkAcquireProfilingLockKHR = gen7_AcquireProfilingLockKHR,
+    .vkReleaseProfilingLockKHR = gen7_ReleaseProfilingLockKHR,
     .vkGetImageDrmFormatModifierPropertiesEXT = gen7_GetImageDrmFormatModifierPropertiesEXT,
     .vkGetBufferOpaqueCaptureAddress = gen7_GetBufferOpaqueCaptureAddress,
     .vkGetBufferOpaqueCaptureAddressKHR = gen7_GetBufferOpaqueCaptureAddress,
@@ -3607,6 +3857,28 @@ const struct anv_physical_device_dispatch_table anv_physical_device_dispatch_tab
     .vkGetPipelineExecutableStatisticsKHR = gen7_GetPipelineExecutableStatisticsKHR,
     .vkGetPipelineExecutableInternalRepresentationsKHR = gen7_GetPipelineExecutableInternalRepresentationsKHR,
     .vkCmdSetLineStippleEXT = gen7_CmdSetLineStippleEXT,
+    .vkCmdSetCullModeEXT = gen7_CmdSetCullModeEXT,
+    .vkCmdSetFrontFaceEXT = gen7_CmdSetFrontFaceEXT,
+    .vkCmdSetPrimitiveTopologyEXT = gen7_CmdSetPrimitiveTopologyEXT,
+    .vkCmdSetViewportWithCountEXT = gen7_CmdSetViewportWithCountEXT,
+    .vkCmdSetScissorWithCountEXT = gen7_CmdSetScissorWithCountEXT,
+    .vkCmdBindVertexBuffers2EXT = gen7_CmdBindVertexBuffers2EXT,
+    .vkCmdSetDepthTestEnableEXT = gen7_CmdSetDepthTestEnableEXT,
+    .vkCmdSetDepthWriteEnableEXT = gen7_CmdSetDepthWriteEnableEXT,
+    .vkCmdSetDepthCompareOpEXT = gen7_CmdSetDepthCompareOpEXT,
+    .vkCmdSetDepthBoundsTestEnableEXT = gen7_CmdSetDepthBoundsTestEnableEXT,
+    .vkCmdSetStencilTestEnableEXT = gen7_CmdSetStencilTestEnableEXT,
+    .vkCmdSetStencilOpEXT = gen7_CmdSetStencilOpEXT,
+    .vkCreatePrivateDataSlotEXT = gen7_CreatePrivateDataSlotEXT,
+    .vkDestroyPrivateDataSlotEXT = gen7_DestroyPrivateDataSlotEXT,
+    .vkSetPrivateDataEXT = gen7_SetPrivateDataEXT,
+    .vkGetPrivateDataEXT = gen7_GetPrivateDataEXT,
+    .vkCmdCopyBuffer2KHR = gen7_CmdCopyBuffer2KHR,
+    .vkCmdCopyImage2KHR = gen7_CmdCopyImage2KHR,
+    .vkCmdBlitImage2KHR = gen7_CmdBlitImage2KHR,
+    .vkCmdCopyBufferToImage2KHR = gen7_CmdCopyBufferToImage2KHR,
+    .vkCmdCopyImageToBuffer2KHR = gen7_CmdCopyImageToBuffer2KHR,
+    .vkCmdResolveImage2KHR = gen7_CmdResolveImage2KHR,
     .vkCreateDmaBufImageINTEL = gen7_CreateDmaBufImageINTEL,
   };
       PFN_vkVoidFunction gen75_GetDeviceProcAddr(VkDevice device, const char* pName) __attribute__ ((weak));
@@ -3804,6 +4076,8 @@ const struct anv_physical_device_dispatch_table anv_physical_device_dispatch_tab
       void gen75_CmdBeginQueryIndexedEXT(VkCommandBuffer commandBuffer, VkQueryPool queryPool, uint32_t query, VkQueryControlFlags flags, uint32_t index) __attribute__ ((weak));
       void gen75_CmdEndQueryIndexedEXT(VkCommandBuffer commandBuffer, VkQueryPool queryPool, uint32_t query, uint32_t index) __attribute__ ((weak));
       void gen75_CmdDrawIndirectByteCountEXT(VkCommandBuffer commandBuffer, uint32_t instanceCount, uint32_t firstInstance, VkBuffer counterBuffer, VkDeviceSize counterBufferOffset, uint32_t counterOffset, uint32_t vertexStride) __attribute__ ((weak));
+      VkResult gen75_AcquireProfilingLockKHR(VkDevice device, const VkAcquireProfilingLockInfoKHR* pInfo) __attribute__ ((weak));
+      void gen75_ReleaseProfilingLockKHR(VkDevice device) __attribute__ ((weak));
       VkResult gen75_GetImageDrmFormatModifierPropertiesEXT(VkDevice device, VkImage image, VkImageDrmFormatModifierPropertiesEXT* pProperties) __attribute__ ((weak));
       uint64_t gen75_GetBufferOpaqueCaptureAddress(VkDevice device, const VkBufferDeviceAddressInfo* pInfo) __attribute__ ((weak));
             VkDeviceAddress gen75_GetBufferDeviceAddress(VkDevice device, const VkBufferDeviceAddressInfo* pInfo) __attribute__ ((weak));
@@ -3821,6 +4095,28 @@ const struct anv_physical_device_dispatch_table anv_physical_device_dispatch_tab
       VkResult gen75_GetPipelineExecutableStatisticsKHR(VkDevice                        device, const VkPipelineExecutableInfoKHR*  pExecutableInfo, uint32_t* pStatisticCount, VkPipelineExecutableStatisticKHR* pStatistics) __attribute__ ((weak));
       VkResult gen75_GetPipelineExecutableInternalRepresentationsKHR(VkDevice                        device, const VkPipelineExecutableInfoKHR*  pExecutableInfo, uint32_t* pInternalRepresentationCount, VkPipelineExecutableInternalRepresentationKHR* pInternalRepresentations) __attribute__ ((weak));
       void gen75_CmdSetLineStippleEXT(VkCommandBuffer commandBuffer, uint32_t lineStippleFactor, uint16_t lineStipplePattern) __attribute__ ((weak));
+      void gen75_CmdSetCullModeEXT(VkCommandBuffer commandBuffer, VkCullModeFlags cullMode) __attribute__ ((weak));
+      void gen75_CmdSetFrontFaceEXT(VkCommandBuffer commandBuffer, VkFrontFace frontFace) __attribute__ ((weak));
+      void gen75_CmdSetPrimitiveTopologyEXT(VkCommandBuffer commandBuffer, VkPrimitiveTopology primitiveTopology) __attribute__ ((weak));
+      void gen75_CmdSetViewportWithCountEXT(VkCommandBuffer commandBuffer, uint32_t viewportCount, const VkViewport* pViewports) __attribute__ ((weak));
+      void gen75_CmdSetScissorWithCountEXT(VkCommandBuffer commandBuffer, uint32_t scissorCount, const VkRect2D* pScissors) __attribute__ ((weak));
+      void gen75_CmdBindVertexBuffers2EXT(VkCommandBuffer commandBuffer, uint32_t firstBinding, uint32_t bindingCount, const VkBuffer* pBuffers, const VkDeviceSize* pOffsets, const VkDeviceSize* pSizes, const VkDeviceSize* pStrides) __attribute__ ((weak));
+      void gen75_CmdSetDepthTestEnableEXT(VkCommandBuffer commandBuffer, VkBool32 depthTestEnable) __attribute__ ((weak));
+      void gen75_CmdSetDepthWriteEnableEXT(VkCommandBuffer commandBuffer, VkBool32 depthWriteEnable) __attribute__ ((weak));
+      void gen75_CmdSetDepthCompareOpEXT(VkCommandBuffer commandBuffer, VkCompareOp depthCompareOp) __attribute__ ((weak));
+      void gen75_CmdSetDepthBoundsTestEnableEXT(VkCommandBuffer commandBuffer, VkBool32 depthBoundsTestEnable) __attribute__ ((weak));
+      void gen75_CmdSetStencilTestEnableEXT(VkCommandBuffer commandBuffer, VkBool32 stencilTestEnable) __attribute__ ((weak));
+      void gen75_CmdSetStencilOpEXT(VkCommandBuffer commandBuffer, VkStencilFaceFlags faceMask, VkStencilOp failOp, VkStencilOp passOp, VkStencilOp depthFailOp, VkCompareOp compareOp) __attribute__ ((weak));
+      VkResult gen75_CreatePrivateDataSlotEXT(VkDevice device, const VkPrivateDataSlotCreateInfoEXT* pCreateInfo, const VkAllocationCallbacks* pAllocator, VkPrivateDataSlotEXT* pPrivateDataSlot) __attribute__ ((weak));
+      void gen75_DestroyPrivateDataSlotEXT(VkDevice device, VkPrivateDataSlotEXT privateDataSlot, const VkAllocationCallbacks* pAllocator) __attribute__ ((weak));
+      VkResult gen75_SetPrivateDataEXT(VkDevice device, VkObjectType objectType, uint64_t objectHandle, VkPrivateDataSlotEXT privateDataSlot, uint64_t data) __attribute__ ((weak));
+      void gen75_GetPrivateDataEXT(VkDevice device, VkObjectType objectType, uint64_t objectHandle, VkPrivateDataSlotEXT privateDataSlot, uint64_t* pData) __attribute__ ((weak));
+      void gen75_CmdCopyBuffer2KHR(VkCommandBuffer commandBuffer, const VkCopyBufferInfo2KHR* pCopyBufferInfo) __attribute__ ((weak));
+      void gen75_CmdCopyImage2KHR(VkCommandBuffer commandBuffer, const VkCopyImageInfo2KHR* pCopyImageInfo) __attribute__ ((weak));
+      void gen75_CmdBlitImage2KHR(VkCommandBuffer commandBuffer, const VkBlitImageInfo2KHR* pBlitImageInfo) __attribute__ ((weak));
+      void gen75_CmdCopyBufferToImage2KHR(VkCommandBuffer commandBuffer, const VkCopyBufferToImageInfo2KHR* pCopyBufferToImageInfo) __attribute__ ((weak));
+      void gen75_CmdCopyImageToBuffer2KHR(VkCommandBuffer commandBuffer, const VkCopyImageToBufferInfo2KHR* pCopyImageToBufferInfo) __attribute__ ((weak));
+      void gen75_CmdResolveImage2KHR(VkCommandBuffer commandBuffer, const VkResolveImageInfo2KHR* pResolveImageInfo) __attribute__ ((weak));
       VkResult gen75_CreateDmaBufImageINTEL(VkDevice device, const VkDmaBufImageCreateInfo* pCreateInfo, const VkAllocationCallbacks* pAllocator, VkDeviceMemory* pMem, VkImage* pImage) __attribute__ ((weak));
 
   const struct anv_device_dispatch_table gen75_device_dispatch_table = {
@@ -4044,6 +4340,8 @@ const struct anv_physical_device_dispatch_table anv_physical_device_dispatch_tab
     .vkCmdBeginQueryIndexedEXT = gen75_CmdBeginQueryIndexedEXT,
     .vkCmdEndQueryIndexedEXT = gen75_CmdEndQueryIndexedEXT,
     .vkCmdDrawIndirectByteCountEXT = gen75_CmdDrawIndirectByteCountEXT,
+    .vkAcquireProfilingLockKHR = gen75_AcquireProfilingLockKHR,
+    .vkReleaseProfilingLockKHR = gen75_ReleaseProfilingLockKHR,
     .vkGetImageDrmFormatModifierPropertiesEXT = gen75_GetImageDrmFormatModifierPropertiesEXT,
     .vkGetBufferOpaqueCaptureAddress = gen75_GetBufferOpaqueCaptureAddress,
     .vkGetBufferOpaqueCaptureAddressKHR = gen75_GetBufferOpaqueCaptureAddress,
@@ -4065,6 +4363,28 @@ const struct anv_physical_device_dispatch_table anv_physical_device_dispatch_tab
     .vkGetPipelineExecutableStatisticsKHR = gen75_GetPipelineExecutableStatisticsKHR,
     .vkGetPipelineExecutableInternalRepresentationsKHR = gen75_GetPipelineExecutableInternalRepresentationsKHR,
     .vkCmdSetLineStippleEXT = gen75_CmdSetLineStippleEXT,
+    .vkCmdSetCullModeEXT = gen75_CmdSetCullModeEXT,
+    .vkCmdSetFrontFaceEXT = gen75_CmdSetFrontFaceEXT,
+    .vkCmdSetPrimitiveTopologyEXT = gen75_CmdSetPrimitiveTopologyEXT,
+    .vkCmdSetViewportWithCountEXT = gen75_CmdSetViewportWithCountEXT,
+    .vkCmdSetScissorWithCountEXT = gen75_CmdSetScissorWithCountEXT,
+    .vkCmdBindVertexBuffers2EXT = gen75_CmdBindVertexBuffers2EXT,
+    .vkCmdSetDepthTestEnableEXT = gen75_CmdSetDepthTestEnableEXT,
+    .vkCmdSetDepthWriteEnableEXT = gen75_CmdSetDepthWriteEnableEXT,
+    .vkCmdSetDepthCompareOpEXT = gen75_CmdSetDepthCompareOpEXT,
+    .vkCmdSetDepthBoundsTestEnableEXT = gen75_CmdSetDepthBoundsTestEnableEXT,
+    .vkCmdSetStencilTestEnableEXT = gen75_CmdSetStencilTestEnableEXT,
+    .vkCmdSetStencilOpEXT = gen75_CmdSetStencilOpEXT,
+    .vkCreatePrivateDataSlotEXT = gen75_CreatePrivateDataSlotEXT,
+    .vkDestroyPrivateDataSlotEXT = gen75_DestroyPrivateDataSlotEXT,
+    .vkSetPrivateDataEXT = gen75_SetPrivateDataEXT,
+    .vkGetPrivateDataEXT = gen75_GetPrivateDataEXT,
+    .vkCmdCopyBuffer2KHR = gen75_CmdCopyBuffer2KHR,
+    .vkCmdCopyImage2KHR = gen75_CmdCopyImage2KHR,
+    .vkCmdBlitImage2KHR = gen75_CmdBlitImage2KHR,
+    .vkCmdCopyBufferToImage2KHR = gen75_CmdCopyBufferToImage2KHR,
+    .vkCmdCopyImageToBuffer2KHR = gen75_CmdCopyImageToBuffer2KHR,
+    .vkCmdResolveImage2KHR = gen75_CmdResolveImage2KHR,
     .vkCreateDmaBufImageINTEL = gen75_CreateDmaBufImageINTEL,
   };
       PFN_vkVoidFunction gen8_GetDeviceProcAddr(VkDevice device, const char* pName) __attribute__ ((weak));
@@ -4262,6 +4582,8 @@ const struct anv_physical_device_dispatch_table anv_physical_device_dispatch_tab
       void gen8_CmdBeginQueryIndexedEXT(VkCommandBuffer commandBuffer, VkQueryPool queryPool, uint32_t query, VkQueryControlFlags flags, uint32_t index) __attribute__ ((weak));
       void gen8_CmdEndQueryIndexedEXT(VkCommandBuffer commandBuffer, VkQueryPool queryPool, uint32_t query, uint32_t index) __attribute__ ((weak));
       void gen8_CmdDrawIndirectByteCountEXT(VkCommandBuffer commandBuffer, uint32_t instanceCount, uint32_t firstInstance, VkBuffer counterBuffer, VkDeviceSize counterBufferOffset, uint32_t counterOffset, uint32_t vertexStride) __attribute__ ((weak));
+      VkResult gen8_AcquireProfilingLockKHR(VkDevice device, const VkAcquireProfilingLockInfoKHR* pInfo) __attribute__ ((weak));
+      void gen8_ReleaseProfilingLockKHR(VkDevice device) __attribute__ ((weak));
       VkResult gen8_GetImageDrmFormatModifierPropertiesEXT(VkDevice device, VkImage image, VkImageDrmFormatModifierPropertiesEXT* pProperties) __attribute__ ((weak));
       uint64_t gen8_GetBufferOpaqueCaptureAddress(VkDevice device, const VkBufferDeviceAddressInfo* pInfo) __attribute__ ((weak));
             VkDeviceAddress gen8_GetBufferDeviceAddress(VkDevice device, const VkBufferDeviceAddressInfo* pInfo) __attribute__ ((weak));
@@ -4279,6 +4601,28 @@ const struct anv_physical_device_dispatch_table anv_physical_device_dispatch_tab
       VkResult gen8_GetPipelineExecutableStatisticsKHR(VkDevice                        device, const VkPipelineExecutableInfoKHR*  pExecutableInfo, uint32_t* pStatisticCount, VkPipelineExecutableStatisticKHR* pStatistics) __attribute__ ((weak));
       VkResult gen8_GetPipelineExecutableInternalRepresentationsKHR(VkDevice                        device, const VkPipelineExecutableInfoKHR*  pExecutableInfo, uint32_t* pInternalRepresentationCount, VkPipelineExecutableInternalRepresentationKHR* pInternalRepresentations) __attribute__ ((weak));
       void gen8_CmdSetLineStippleEXT(VkCommandBuffer commandBuffer, uint32_t lineStippleFactor, uint16_t lineStipplePattern) __attribute__ ((weak));
+      void gen8_CmdSetCullModeEXT(VkCommandBuffer commandBuffer, VkCullModeFlags cullMode) __attribute__ ((weak));
+      void gen8_CmdSetFrontFaceEXT(VkCommandBuffer commandBuffer, VkFrontFace frontFace) __attribute__ ((weak));
+      void gen8_CmdSetPrimitiveTopologyEXT(VkCommandBuffer commandBuffer, VkPrimitiveTopology primitiveTopology) __attribute__ ((weak));
+      void gen8_CmdSetViewportWithCountEXT(VkCommandBuffer commandBuffer, uint32_t viewportCount, const VkViewport* pViewports) __attribute__ ((weak));
+      void gen8_CmdSetScissorWithCountEXT(VkCommandBuffer commandBuffer, uint32_t scissorCount, const VkRect2D* pScissors) __attribute__ ((weak));
+      void gen8_CmdBindVertexBuffers2EXT(VkCommandBuffer commandBuffer, uint32_t firstBinding, uint32_t bindingCount, const VkBuffer* pBuffers, const VkDeviceSize* pOffsets, const VkDeviceSize* pSizes, const VkDeviceSize* pStrides) __attribute__ ((weak));
+      void gen8_CmdSetDepthTestEnableEXT(VkCommandBuffer commandBuffer, VkBool32 depthTestEnable) __attribute__ ((weak));
+      void gen8_CmdSetDepthWriteEnableEXT(VkCommandBuffer commandBuffer, VkBool32 depthWriteEnable) __attribute__ ((weak));
+      void gen8_CmdSetDepthCompareOpEXT(VkCommandBuffer commandBuffer, VkCompareOp depthCompareOp) __attribute__ ((weak));
+      void gen8_CmdSetDepthBoundsTestEnableEXT(VkCommandBuffer commandBuffer, VkBool32 depthBoundsTestEnable) __attribute__ ((weak));
+      void gen8_CmdSetStencilTestEnableEXT(VkCommandBuffer commandBuffer, VkBool32 stencilTestEnable) __attribute__ ((weak));
+      void gen8_CmdSetStencilOpEXT(VkCommandBuffer commandBuffer, VkStencilFaceFlags faceMask, VkStencilOp failOp, VkStencilOp passOp, VkStencilOp depthFailOp, VkCompareOp compareOp) __attribute__ ((weak));
+      VkResult gen8_CreatePrivateDataSlotEXT(VkDevice device, const VkPrivateDataSlotCreateInfoEXT* pCreateInfo, const VkAllocationCallbacks* pAllocator, VkPrivateDataSlotEXT* pPrivateDataSlot) __attribute__ ((weak));
+      void gen8_DestroyPrivateDataSlotEXT(VkDevice device, VkPrivateDataSlotEXT privateDataSlot, const VkAllocationCallbacks* pAllocator) __attribute__ ((weak));
+      VkResult gen8_SetPrivateDataEXT(VkDevice device, VkObjectType objectType, uint64_t objectHandle, VkPrivateDataSlotEXT privateDataSlot, uint64_t data) __attribute__ ((weak));
+      void gen8_GetPrivateDataEXT(VkDevice device, VkObjectType objectType, uint64_t objectHandle, VkPrivateDataSlotEXT privateDataSlot, uint64_t* pData) __attribute__ ((weak));
+      void gen8_CmdCopyBuffer2KHR(VkCommandBuffer commandBuffer, const VkCopyBufferInfo2KHR* pCopyBufferInfo) __attribute__ ((weak));
+      void gen8_CmdCopyImage2KHR(VkCommandBuffer commandBuffer, const VkCopyImageInfo2KHR* pCopyImageInfo) __attribute__ ((weak));
+      void gen8_CmdBlitImage2KHR(VkCommandBuffer commandBuffer, const VkBlitImageInfo2KHR* pBlitImageInfo) __attribute__ ((weak));
+      void gen8_CmdCopyBufferToImage2KHR(VkCommandBuffer commandBuffer, const VkCopyBufferToImageInfo2KHR* pCopyBufferToImageInfo) __attribute__ ((weak));
+      void gen8_CmdCopyImageToBuffer2KHR(VkCommandBuffer commandBuffer, const VkCopyImageToBufferInfo2KHR* pCopyImageToBufferInfo) __attribute__ ((weak));
+      void gen8_CmdResolveImage2KHR(VkCommandBuffer commandBuffer, const VkResolveImageInfo2KHR* pResolveImageInfo) __attribute__ ((weak));
       VkResult gen8_CreateDmaBufImageINTEL(VkDevice device, const VkDmaBufImageCreateInfo* pCreateInfo, const VkAllocationCallbacks* pAllocator, VkDeviceMemory* pMem, VkImage* pImage) __attribute__ ((weak));
 
   const struct anv_device_dispatch_table gen8_device_dispatch_table = {
@@ -4502,6 +4846,8 @@ const struct anv_physical_device_dispatch_table anv_physical_device_dispatch_tab
     .vkCmdBeginQueryIndexedEXT = gen8_CmdBeginQueryIndexedEXT,
     .vkCmdEndQueryIndexedEXT = gen8_CmdEndQueryIndexedEXT,
     .vkCmdDrawIndirectByteCountEXT = gen8_CmdDrawIndirectByteCountEXT,
+    .vkAcquireProfilingLockKHR = gen8_AcquireProfilingLockKHR,
+    .vkReleaseProfilingLockKHR = gen8_ReleaseProfilingLockKHR,
     .vkGetImageDrmFormatModifierPropertiesEXT = gen8_GetImageDrmFormatModifierPropertiesEXT,
     .vkGetBufferOpaqueCaptureAddress = gen8_GetBufferOpaqueCaptureAddress,
     .vkGetBufferOpaqueCaptureAddressKHR = gen8_GetBufferOpaqueCaptureAddress,
@@ -4523,6 +4869,28 @@ const struct anv_physical_device_dispatch_table anv_physical_device_dispatch_tab
     .vkGetPipelineExecutableStatisticsKHR = gen8_GetPipelineExecutableStatisticsKHR,
     .vkGetPipelineExecutableInternalRepresentationsKHR = gen8_GetPipelineExecutableInternalRepresentationsKHR,
     .vkCmdSetLineStippleEXT = gen8_CmdSetLineStippleEXT,
+    .vkCmdSetCullModeEXT = gen8_CmdSetCullModeEXT,
+    .vkCmdSetFrontFaceEXT = gen8_CmdSetFrontFaceEXT,
+    .vkCmdSetPrimitiveTopologyEXT = gen8_CmdSetPrimitiveTopologyEXT,
+    .vkCmdSetViewportWithCountEXT = gen8_CmdSetViewportWithCountEXT,
+    .vkCmdSetScissorWithCountEXT = gen8_CmdSetScissorWithCountEXT,
+    .vkCmdBindVertexBuffers2EXT = gen8_CmdBindVertexBuffers2EXT,
+    .vkCmdSetDepthTestEnableEXT = gen8_CmdSetDepthTestEnableEXT,
+    .vkCmdSetDepthWriteEnableEXT = gen8_CmdSetDepthWriteEnableEXT,
+    .vkCmdSetDepthCompareOpEXT = gen8_CmdSetDepthCompareOpEXT,
+    .vkCmdSetDepthBoundsTestEnableEXT = gen8_CmdSetDepthBoundsTestEnableEXT,
+    .vkCmdSetStencilTestEnableEXT = gen8_CmdSetStencilTestEnableEXT,
+    .vkCmdSetStencilOpEXT = gen8_CmdSetStencilOpEXT,
+    .vkCreatePrivateDataSlotEXT = gen8_CreatePrivateDataSlotEXT,
+    .vkDestroyPrivateDataSlotEXT = gen8_DestroyPrivateDataSlotEXT,
+    .vkSetPrivateDataEXT = gen8_SetPrivateDataEXT,
+    .vkGetPrivateDataEXT = gen8_GetPrivateDataEXT,
+    .vkCmdCopyBuffer2KHR = gen8_CmdCopyBuffer2KHR,
+    .vkCmdCopyImage2KHR = gen8_CmdCopyImage2KHR,
+    .vkCmdBlitImage2KHR = gen8_CmdBlitImage2KHR,
+    .vkCmdCopyBufferToImage2KHR = gen8_CmdCopyBufferToImage2KHR,
+    .vkCmdCopyImageToBuffer2KHR = gen8_CmdCopyImageToBuffer2KHR,
+    .vkCmdResolveImage2KHR = gen8_CmdResolveImage2KHR,
     .vkCreateDmaBufImageINTEL = gen8_CreateDmaBufImageINTEL,
   };
       PFN_vkVoidFunction gen9_GetDeviceProcAddr(VkDevice device, const char* pName) __attribute__ ((weak));
@@ -4720,6 +5088,8 @@ const struct anv_physical_device_dispatch_table anv_physical_device_dispatch_tab
       void gen9_CmdBeginQueryIndexedEXT(VkCommandBuffer commandBuffer, VkQueryPool queryPool, uint32_t query, VkQueryControlFlags flags, uint32_t index) __attribute__ ((weak));
       void gen9_CmdEndQueryIndexedEXT(VkCommandBuffer commandBuffer, VkQueryPool queryPool, uint32_t query, uint32_t index) __attribute__ ((weak));
       void gen9_CmdDrawIndirectByteCountEXT(VkCommandBuffer commandBuffer, uint32_t instanceCount, uint32_t firstInstance, VkBuffer counterBuffer, VkDeviceSize counterBufferOffset, uint32_t counterOffset, uint32_t vertexStride) __attribute__ ((weak));
+      VkResult gen9_AcquireProfilingLockKHR(VkDevice device, const VkAcquireProfilingLockInfoKHR* pInfo) __attribute__ ((weak));
+      void gen9_ReleaseProfilingLockKHR(VkDevice device) __attribute__ ((weak));
       VkResult gen9_GetImageDrmFormatModifierPropertiesEXT(VkDevice device, VkImage image, VkImageDrmFormatModifierPropertiesEXT* pProperties) __attribute__ ((weak));
       uint64_t gen9_GetBufferOpaqueCaptureAddress(VkDevice device, const VkBufferDeviceAddressInfo* pInfo) __attribute__ ((weak));
             VkDeviceAddress gen9_GetBufferDeviceAddress(VkDevice device, const VkBufferDeviceAddressInfo* pInfo) __attribute__ ((weak));
@@ -4737,6 +5107,28 @@ const struct anv_physical_device_dispatch_table anv_physical_device_dispatch_tab
       VkResult gen9_GetPipelineExecutableStatisticsKHR(VkDevice                        device, const VkPipelineExecutableInfoKHR*  pExecutableInfo, uint32_t* pStatisticCount, VkPipelineExecutableStatisticKHR* pStatistics) __attribute__ ((weak));
       VkResult gen9_GetPipelineExecutableInternalRepresentationsKHR(VkDevice                        device, const VkPipelineExecutableInfoKHR*  pExecutableInfo, uint32_t* pInternalRepresentationCount, VkPipelineExecutableInternalRepresentationKHR* pInternalRepresentations) __attribute__ ((weak));
       void gen9_CmdSetLineStippleEXT(VkCommandBuffer commandBuffer, uint32_t lineStippleFactor, uint16_t lineStipplePattern) __attribute__ ((weak));
+      void gen9_CmdSetCullModeEXT(VkCommandBuffer commandBuffer, VkCullModeFlags cullMode) __attribute__ ((weak));
+      void gen9_CmdSetFrontFaceEXT(VkCommandBuffer commandBuffer, VkFrontFace frontFace) __attribute__ ((weak));
+      void gen9_CmdSetPrimitiveTopologyEXT(VkCommandBuffer commandBuffer, VkPrimitiveTopology primitiveTopology) __attribute__ ((weak));
+      void gen9_CmdSetViewportWithCountEXT(VkCommandBuffer commandBuffer, uint32_t viewportCount, const VkViewport* pViewports) __attribute__ ((weak));
+      void gen9_CmdSetScissorWithCountEXT(VkCommandBuffer commandBuffer, uint32_t scissorCount, const VkRect2D* pScissors) __attribute__ ((weak));
+      void gen9_CmdBindVertexBuffers2EXT(VkCommandBuffer commandBuffer, uint32_t firstBinding, uint32_t bindingCount, const VkBuffer* pBuffers, const VkDeviceSize* pOffsets, const VkDeviceSize* pSizes, const VkDeviceSize* pStrides) __attribute__ ((weak));
+      void gen9_CmdSetDepthTestEnableEXT(VkCommandBuffer commandBuffer, VkBool32 depthTestEnable) __attribute__ ((weak));
+      void gen9_CmdSetDepthWriteEnableEXT(VkCommandBuffer commandBuffer, VkBool32 depthWriteEnable) __attribute__ ((weak));
+      void gen9_CmdSetDepthCompareOpEXT(VkCommandBuffer commandBuffer, VkCompareOp depthCompareOp) __attribute__ ((weak));
+      void gen9_CmdSetDepthBoundsTestEnableEXT(VkCommandBuffer commandBuffer, VkBool32 depthBoundsTestEnable) __attribute__ ((weak));
+      void gen9_CmdSetStencilTestEnableEXT(VkCommandBuffer commandBuffer, VkBool32 stencilTestEnable) __attribute__ ((weak));
+      void gen9_CmdSetStencilOpEXT(VkCommandBuffer commandBuffer, VkStencilFaceFlags faceMask, VkStencilOp failOp, VkStencilOp passOp, VkStencilOp depthFailOp, VkCompareOp compareOp) __attribute__ ((weak));
+      VkResult gen9_CreatePrivateDataSlotEXT(VkDevice device, const VkPrivateDataSlotCreateInfoEXT* pCreateInfo, const VkAllocationCallbacks* pAllocator, VkPrivateDataSlotEXT* pPrivateDataSlot) __attribute__ ((weak));
+      void gen9_DestroyPrivateDataSlotEXT(VkDevice device, VkPrivateDataSlotEXT privateDataSlot, const VkAllocationCallbacks* pAllocator) __attribute__ ((weak));
+      VkResult gen9_SetPrivateDataEXT(VkDevice device, VkObjectType objectType, uint64_t objectHandle, VkPrivateDataSlotEXT privateDataSlot, uint64_t data) __attribute__ ((weak));
+      void gen9_GetPrivateDataEXT(VkDevice device, VkObjectType objectType, uint64_t objectHandle, VkPrivateDataSlotEXT privateDataSlot, uint64_t* pData) __attribute__ ((weak));
+      void gen9_CmdCopyBuffer2KHR(VkCommandBuffer commandBuffer, const VkCopyBufferInfo2KHR* pCopyBufferInfo) __attribute__ ((weak));
+      void gen9_CmdCopyImage2KHR(VkCommandBuffer commandBuffer, const VkCopyImageInfo2KHR* pCopyImageInfo) __attribute__ ((weak));
+      void gen9_CmdBlitImage2KHR(VkCommandBuffer commandBuffer, const VkBlitImageInfo2KHR* pBlitImageInfo) __attribute__ ((weak));
+      void gen9_CmdCopyBufferToImage2KHR(VkCommandBuffer commandBuffer, const VkCopyBufferToImageInfo2KHR* pCopyBufferToImageInfo) __attribute__ ((weak));
+      void gen9_CmdCopyImageToBuffer2KHR(VkCommandBuffer commandBuffer, const VkCopyImageToBufferInfo2KHR* pCopyImageToBufferInfo) __attribute__ ((weak));
+      void gen9_CmdResolveImage2KHR(VkCommandBuffer commandBuffer, const VkResolveImageInfo2KHR* pResolveImageInfo) __attribute__ ((weak));
       VkResult gen9_CreateDmaBufImageINTEL(VkDevice device, const VkDmaBufImageCreateInfo* pCreateInfo, const VkAllocationCallbacks* pAllocator, VkDeviceMemory* pMem, VkImage* pImage) __attribute__ ((weak));
 
   const struct anv_device_dispatch_table gen9_device_dispatch_table = {
@@ -4960,6 +5352,8 @@ const struct anv_physical_device_dispatch_table anv_physical_device_dispatch_tab
     .vkCmdBeginQueryIndexedEXT = gen9_CmdBeginQueryIndexedEXT,
     .vkCmdEndQueryIndexedEXT = gen9_CmdEndQueryIndexedEXT,
     .vkCmdDrawIndirectByteCountEXT = gen9_CmdDrawIndirectByteCountEXT,
+    .vkAcquireProfilingLockKHR = gen9_AcquireProfilingLockKHR,
+    .vkReleaseProfilingLockKHR = gen9_ReleaseProfilingLockKHR,
     .vkGetImageDrmFormatModifierPropertiesEXT = gen9_GetImageDrmFormatModifierPropertiesEXT,
     .vkGetBufferOpaqueCaptureAddress = gen9_GetBufferOpaqueCaptureAddress,
     .vkGetBufferOpaqueCaptureAddressKHR = gen9_GetBufferOpaqueCaptureAddress,
@@ -4981,465 +5375,29 @@ const struct anv_physical_device_dispatch_table anv_physical_device_dispatch_tab
     .vkGetPipelineExecutableStatisticsKHR = gen9_GetPipelineExecutableStatisticsKHR,
     .vkGetPipelineExecutableInternalRepresentationsKHR = gen9_GetPipelineExecutableInternalRepresentationsKHR,
     .vkCmdSetLineStippleEXT = gen9_CmdSetLineStippleEXT,
+    .vkCmdSetCullModeEXT = gen9_CmdSetCullModeEXT,
+    .vkCmdSetFrontFaceEXT = gen9_CmdSetFrontFaceEXT,
+    .vkCmdSetPrimitiveTopologyEXT = gen9_CmdSetPrimitiveTopologyEXT,
+    .vkCmdSetViewportWithCountEXT = gen9_CmdSetViewportWithCountEXT,
+    .vkCmdSetScissorWithCountEXT = gen9_CmdSetScissorWithCountEXT,
+    .vkCmdBindVertexBuffers2EXT = gen9_CmdBindVertexBuffers2EXT,
+    .vkCmdSetDepthTestEnableEXT = gen9_CmdSetDepthTestEnableEXT,
+    .vkCmdSetDepthWriteEnableEXT = gen9_CmdSetDepthWriteEnableEXT,
+    .vkCmdSetDepthCompareOpEXT = gen9_CmdSetDepthCompareOpEXT,
+    .vkCmdSetDepthBoundsTestEnableEXT = gen9_CmdSetDepthBoundsTestEnableEXT,
+    .vkCmdSetStencilTestEnableEXT = gen9_CmdSetStencilTestEnableEXT,
+    .vkCmdSetStencilOpEXT = gen9_CmdSetStencilOpEXT,
+    .vkCreatePrivateDataSlotEXT = gen9_CreatePrivateDataSlotEXT,
+    .vkDestroyPrivateDataSlotEXT = gen9_DestroyPrivateDataSlotEXT,
+    .vkSetPrivateDataEXT = gen9_SetPrivateDataEXT,
+    .vkGetPrivateDataEXT = gen9_GetPrivateDataEXT,
+    .vkCmdCopyBuffer2KHR = gen9_CmdCopyBuffer2KHR,
+    .vkCmdCopyImage2KHR = gen9_CmdCopyImage2KHR,
+    .vkCmdBlitImage2KHR = gen9_CmdBlitImage2KHR,
+    .vkCmdCopyBufferToImage2KHR = gen9_CmdCopyBufferToImage2KHR,
+    .vkCmdCopyImageToBuffer2KHR = gen9_CmdCopyImageToBuffer2KHR,
+    .vkCmdResolveImage2KHR = gen9_CmdResolveImage2KHR,
     .vkCreateDmaBufImageINTEL = gen9_CreateDmaBufImageINTEL,
-  };
-      PFN_vkVoidFunction gen10_GetDeviceProcAddr(VkDevice device, const char* pName) __attribute__ ((weak));
-      void gen10_DestroyDevice(VkDevice device, const VkAllocationCallbacks* pAllocator) __attribute__ ((weak));
-      void gen10_GetDeviceQueue(VkDevice device, uint32_t queueFamilyIndex, uint32_t queueIndex, VkQueue* pQueue) __attribute__ ((weak));
-      VkResult gen10_QueueSubmit(VkQueue queue, uint32_t submitCount, const VkSubmitInfo* pSubmits, VkFence fence) __attribute__ ((weak));
-      VkResult gen10_QueueWaitIdle(VkQueue queue) __attribute__ ((weak));
-      VkResult gen10_DeviceWaitIdle(VkDevice device) __attribute__ ((weak));
-      VkResult gen10_AllocateMemory(VkDevice device, const VkMemoryAllocateInfo* pAllocateInfo, const VkAllocationCallbacks* pAllocator, VkDeviceMemory* pMemory) __attribute__ ((weak));
-      void gen10_FreeMemory(VkDevice device, VkDeviceMemory memory, const VkAllocationCallbacks* pAllocator) __attribute__ ((weak));
-      VkResult gen10_MapMemory(VkDevice device, VkDeviceMemory memory, VkDeviceSize offset, VkDeviceSize size, VkMemoryMapFlags flags, void** ppData) __attribute__ ((weak));
-      void gen10_UnmapMemory(VkDevice device, VkDeviceMemory memory) __attribute__ ((weak));
-      VkResult gen10_FlushMappedMemoryRanges(VkDevice device, uint32_t memoryRangeCount, const VkMappedMemoryRange* pMemoryRanges) __attribute__ ((weak));
-      VkResult gen10_InvalidateMappedMemoryRanges(VkDevice device, uint32_t memoryRangeCount, const VkMappedMemoryRange* pMemoryRanges) __attribute__ ((weak));
-      void gen10_GetDeviceMemoryCommitment(VkDevice device, VkDeviceMemory memory, VkDeviceSize* pCommittedMemoryInBytes) __attribute__ ((weak));
-      void gen10_GetBufferMemoryRequirements(VkDevice device, VkBuffer buffer, VkMemoryRequirements* pMemoryRequirements) __attribute__ ((weak));
-      VkResult gen10_BindBufferMemory(VkDevice device, VkBuffer buffer, VkDeviceMemory memory, VkDeviceSize memoryOffset) __attribute__ ((weak));
-      void gen10_GetImageMemoryRequirements(VkDevice device, VkImage image, VkMemoryRequirements* pMemoryRequirements) __attribute__ ((weak));
-      VkResult gen10_BindImageMemory(VkDevice device, VkImage image, VkDeviceMemory memory, VkDeviceSize memoryOffset) __attribute__ ((weak));
-      void gen10_GetImageSparseMemoryRequirements(VkDevice device, VkImage image, uint32_t* pSparseMemoryRequirementCount, VkSparseImageMemoryRequirements* pSparseMemoryRequirements) __attribute__ ((weak));
-      VkResult gen10_QueueBindSparse(VkQueue queue, uint32_t bindInfoCount, const VkBindSparseInfo* pBindInfo, VkFence fence) __attribute__ ((weak));
-      VkResult gen10_CreateFence(VkDevice device, const VkFenceCreateInfo* pCreateInfo, const VkAllocationCallbacks* pAllocator, VkFence* pFence) __attribute__ ((weak));
-      void gen10_DestroyFence(VkDevice device, VkFence fence, const VkAllocationCallbacks* pAllocator) __attribute__ ((weak));
-      VkResult gen10_ResetFences(VkDevice device, uint32_t fenceCount, const VkFence* pFences) __attribute__ ((weak));
-      VkResult gen10_GetFenceStatus(VkDevice device, VkFence fence) __attribute__ ((weak));
-      VkResult gen10_WaitForFences(VkDevice device, uint32_t fenceCount, const VkFence* pFences, VkBool32 waitAll, uint64_t timeout) __attribute__ ((weak));
-      VkResult gen10_CreateSemaphore(VkDevice device, const VkSemaphoreCreateInfo* pCreateInfo, const VkAllocationCallbacks* pAllocator, VkSemaphore* pSemaphore) __attribute__ ((weak));
-      void gen10_DestroySemaphore(VkDevice device, VkSemaphore semaphore, const VkAllocationCallbacks* pAllocator) __attribute__ ((weak));
-      VkResult gen10_CreateEvent(VkDevice device, const VkEventCreateInfo* pCreateInfo, const VkAllocationCallbacks* pAllocator, VkEvent* pEvent) __attribute__ ((weak));
-      void gen10_DestroyEvent(VkDevice device, VkEvent event, const VkAllocationCallbacks* pAllocator) __attribute__ ((weak));
-      VkResult gen10_GetEventStatus(VkDevice device, VkEvent event) __attribute__ ((weak));
-      VkResult gen10_SetEvent(VkDevice device, VkEvent event) __attribute__ ((weak));
-      VkResult gen10_ResetEvent(VkDevice device, VkEvent event) __attribute__ ((weak));
-      VkResult gen10_CreateQueryPool(VkDevice device, const VkQueryPoolCreateInfo* pCreateInfo, const VkAllocationCallbacks* pAllocator, VkQueryPool* pQueryPool) __attribute__ ((weak));
-      void gen10_DestroyQueryPool(VkDevice device, VkQueryPool queryPool, const VkAllocationCallbacks* pAllocator) __attribute__ ((weak));
-      VkResult gen10_GetQueryPoolResults(VkDevice device, VkQueryPool queryPool, uint32_t firstQuery, uint32_t queryCount, size_t dataSize, void* pData, VkDeviceSize stride, VkQueryResultFlags flags) __attribute__ ((weak));
-      void gen10_ResetQueryPool(VkDevice device, VkQueryPool queryPool, uint32_t firstQuery, uint32_t queryCount) __attribute__ ((weak));
-            VkResult gen10_CreateBuffer(VkDevice device, const VkBufferCreateInfo* pCreateInfo, const VkAllocationCallbacks* pAllocator, VkBuffer* pBuffer) __attribute__ ((weak));
-      void gen10_DestroyBuffer(VkDevice device, VkBuffer buffer, const VkAllocationCallbacks* pAllocator) __attribute__ ((weak));
-      VkResult gen10_CreateBufferView(VkDevice device, const VkBufferViewCreateInfo* pCreateInfo, const VkAllocationCallbacks* pAllocator, VkBufferView* pView) __attribute__ ((weak));
-      void gen10_DestroyBufferView(VkDevice device, VkBufferView bufferView, const VkAllocationCallbacks* pAllocator) __attribute__ ((weak));
-      VkResult gen10_CreateImage(VkDevice device, const VkImageCreateInfo* pCreateInfo, const VkAllocationCallbacks* pAllocator, VkImage* pImage) __attribute__ ((weak));
-      void gen10_DestroyImage(VkDevice device, VkImage image, const VkAllocationCallbacks* pAllocator) __attribute__ ((weak));
-      void gen10_GetImageSubresourceLayout(VkDevice device, VkImage image, const VkImageSubresource* pSubresource, VkSubresourceLayout* pLayout) __attribute__ ((weak));
-      VkResult gen10_CreateImageView(VkDevice device, const VkImageViewCreateInfo* pCreateInfo, const VkAllocationCallbacks* pAllocator, VkImageView* pView) __attribute__ ((weak));
-      void gen10_DestroyImageView(VkDevice device, VkImageView imageView, const VkAllocationCallbacks* pAllocator) __attribute__ ((weak));
-      VkResult gen10_CreateShaderModule(VkDevice device, const VkShaderModuleCreateInfo* pCreateInfo, const VkAllocationCallbacks* pAllocator, VkShaderModule* pShaderModule) __attribute__ ((weak));
-      void gen10_DestroyShaderModule(VkDevice device, VkShaderModule shaderModule, const VkAllocationCallbacks* pAllocator) __attribute__ ((weak));
-      VkResult gen10_CreatePipelineCache(VkDevice device, const VkPipelineCacheCreateInfo* pCreateInfo, const VkAllocationCallbacks* pAllocator, VkPipelineCache* pPipelineCache) __attribute__ ((weak));
-      void gen10_DestroyPipelineCache(VkDevice device, VkPipelineCache pipelineCache, const VkAllocationCallbacks* pAllocator) __attribute__ ((weak));
-      VkResult gen10_GetPipelineCacheData(VkDevice device, VkPipelineCache pipelineCache, size_t* pDataSize, void* pData) __attribute__ ((weak));
-      VkResult gen10_MergePipelineCaches(VkDevice device, VkPipelineCache dstCache, uint32_t srcCacheCount, const VkPipelineCache* pSrcCaches) __attribute__ ((weak));
-      VkResult gen10_CreateGraphicsPipelines(VkDevice device, VkPipelineCache pipelineCache, uint32_t createInfoCount, const VkGraphicsPipelineCreateInfo* pCreateInfos, const VkAllocationCallbacks* pAllocator, VkPipeline* pPipelines) __attribute__ ((weak));
-      VkResult gen10_CreateComputePipelines(VkDevice device, VkPipelineCache pipelineCache, uint32_t createInfoCount, const VkComputePipelineCreateInfo* pCreateInfos, const VkAllocationCallbacks* pAllocator, VkPipeline* pPipelines) __attribute__ ((weak));
-      void gen10_DestroyPipeline(VkDevice device, VkPipeline pipeline, const VkAllocationCallbacks* pAllocator) __attribute__ ((weak));
-      VkResult gen10_CreatePipelineLayout(VkDevice device, const VkPipelineLayoutCreateInfo* pCreateInfo, const VkAllocationCallbacks* pAllocator, VkPipelineLayout* pPipelineLayout) __attribute__ ((weak));
-      void gen10_DestroyPipelineLayout(VkDevice device, VkPipelineLayout pipelineLayout, const VkAllocationCallbacks* pAllocator) __attribute__ ((weak));
-      VkResult gen10_CreateSampler(VkDevice device, const VkSamplerCreateInfo* pCreateInfo, const VkAllocationCallbacks* pAllocator, VkSampler* pSampler) __attribute__ ((weak));
-      void gen10_DestroySampler(VkDevice device, VkSampler sampler, const VkAllocationCallbacks* pAllocator) __attribute__ ((weak));
-      VkResult gen10_CreateDescriptorSetLayout(VkDevice device, const VkDescriptorSetLayoutCreateInfo* pCreateInfo, const VkAllocationCallbacks* pAllocator, VkDescriptorSetLayout* pSetLayout) __attribute__ ((weak));
-      void gen10_DestroyDescriptorSetLayout(VkDevice device, VkDescriptorSetLayout descriptorSetLayout, const VkAllocationCallbacks* pAllocator) __attribute__ ((weak));
-      VkResult gen10_CreateDescriptorPool(VkDevice device, const VkDescriptorPoolCreateInfo* pCreateInfo, const VkAllocationCallbacks* pAllocator, VkDescriptorPool* pDescriptorPool) __attribute__ ((weak));
-      void gen10_DestroyDescriptorPool(VkDevice device, VkDescriptorPool descriptorPool, const VkAllocationCallbacks* pAllocator) __attribute__ ((weak));
-      VkResult gen10_ResetDescriptorPool(VkDevice device, VkDescriptorPool descriptorPool, VkDescriptorPoolResetFlags flags) __attribute__ ((weak));
-      VkResult gen10_AllocateDescriptorSets(VkDevice device, const VkDescriptorSetAllocateInfo* pAllocateInfo, VkDescriptorSet* pDescriptorSets) __attribute__ ((weak));
-      VkResult gen10_FreeDescriptorSets(VkDevice device, VkDescriptorPool descriptorPool, uint32_t descriptorSetCount, const VkDescriptorSet* pDescriptorSets) __attribute__ ((weak));
-      void gen10_UpdateDescriptorSets(VkDevice device, uint32_t descriptorWriteCount, const VkWriteDescriptorSet* pDescriptorWrites, uint32_t descriptorCopyCount, const VkCopyDescriptorSet* pDescriptorCopies) __attribute__ ((weak));
-      VkResult gen10_CreateFramebuffer(VkDevice device, const VkFramebufferCreateInfo* pCreateInfo, const VkAllocationCallbacks* pAllocator, VkFramebuffer* pFramebuffer) __attribute__ ((weak));
-      void gen10_DestroyFramebuffer(VkDevice device, VkFramebuffer framebuffer, const VkAllocationCallbacks* pAllocator) __attribute__ ((weak));
-      VkResult gen10_CreateRenderPass(VkDevice device, const VkRenderPassCreateInfo* pCreateInfo, const VkAllocationCallbacks* pAllocator, VkRenderPass* pRenderPass) __attribute__ ((weak));
-      void gen10_DestroyRenderPass(VkDevice device, VkRenderPass renderPass, const VkAllocationCallbacks* pAllocator) __attribute__ ((weak));
-      void gen10_GetRenderAreaGranularity(VkDevice device, VkRenderPass renderPass, VkExtent2D* pGranularity) __attribute__ ((weak));
-      VkResult gen10_CreateCommandPool(VkDevice device, const VkCommandPoolCreateInfo* pCreateInfo, const VkAllocationCallbacks* pAllocator, VkCommandPool* pCommandPool) __attribute__ ((weak));
-      void gen10_DestroyCommandPool(VkDevice device, VkCommandPool commandPool, const VkAllocationCallbacks* pAllocator) __attribute__ ((weak));
-      VkResult gen10_ResetCommandPool(VkDevice device, VkCommandPool commandPool, VkCommandPoolResetFlags flags) __attribute__ ((weak));
-      VkResult gen10_AllocateCommandBuffers(VkDevice device, const VkCommandBufferAllocateInfo* pAllocateInfo, VkCommandBuffer* pCommandBuffers) __attribute__ ((weak));
-      void gen10_FreeCommandBuffers(VkDevice device, VkCommandPool commandPool, uint32_t commandBufferCount, const VkCommandBuffer* pCommandBuffers) __attribute__ ((weak));
-      VkResult gen10_BeginCommandBuffer(VkCommandBuffer commandBuffer, const VkCommandBufferBeginInfo* pBeginInfo) __attribute__ ((weak));
-      VkResult gen10_EndCommandBuffer(VkCommandBuffer commandBuffer) __attribute__ ((weak));
-      VkResult gen10_ResetCommandBuffer(VkCommandBuffer commandBuffer, VkCommandBufferResetFlags flags) __attribute__ ((weak));
-      void gen10_CmdBindPipeline(VkCommandBuffer commandBuffer, VkPipelineBindPoint pipelineBindPoint, VkPipeline pipeline) __attribute__ ((weak));
-      void gen10_CmdSetViewport(VkCommandBuffer commandBuffer, uint32_t firstViewport, uint32_t viewportCount, const VkViewport* pViewports) __attribute__ ((weak));
-      void gen10_CmdSetScissor(VkCommandBuffer commandBuffer, uint32_t firstScissor, uint32_t scissorCount, const VkRect2D* pScissors) __attribute__ ((weak));
-      void gen10_CmdSetLineWidth(VkCommandBuffer commandBuffer, float lineWidth) __attribute__ ((weak));
-      void gen10_CmdSetDepthBias(VkCommandBuffer commandBuffer, float depthBiasConstantFactor, float depthBiasClamp, float depthBiasSlopeFactor) __attribute__ ((weak));
-      void gen10_CmdSetBlendConstants(VkCommandBuffer commandBuffer, const float blendConstants[4]) __attribute__ ((weak));
-      void gen10_CmdSetDepthBounds(VkCommandBuffer commandBuffer, float minDepthBounds, float maxDepthBounds) __attribute__ ((weak));
-      void gen10_CmdSetStencilCompareMask(VkCommandBuffer commandBuffer, VkStencilFaceFlags faceMask, uint32_t compareMask) __attribute__ ((weak));
-      void gen10_CmdSetStencilWriteMask(VkCommandBuffer commandBuffer, VkStencilFaceFlags faceMask, uint32_t writeMask) __attribute__ ((weak));
-      void gen10_CmdSetStencilReference(VkCommandBuffer commandBuffer, VkStencilFaceFlags faceMask, uint32_t reference) __attribute__ ((weak));
-      void gen10_CmdBindDescriptorSets(VkCommandBuffer commandBuffer, VkPipelineBindPoint pipelineBindPoint, VkPipelineLayout layout, uint32_t firstSet, uint32_t descriptorSetCount, const VkDescriptorSet* pDescriptorSets, uint32_t dynamicOffsetCount, const uint32_t* pDynamicOffsets) __attribute__ ((weak));
-      void gen10_CmdBindIndexBuffer(VkCommandBuffer commandBuffer, VkBuffer buffer, VkDeviceSize offset, VkIndexType indexType) __attribute__ ((weak));
-      void gen10_CmdBindVertexBuffers(VkCommandBuffer commandBuffer, uint32_t firstBinding, uint32_t bindingCount, const VkBuffer* pBuffers, const VkDeviceSize* pOffsets) __attribute__ ((weak));
-      void gen10_CmdDraw(VkCommandBuffer commandBuffer, uint32_t vertexCount, uint32_t instanceCount, uint32_t firstVertex, uint32_t firstInstance) __attribute__ ((weak));
-      void gen10_CmdDrawIndexed(VkCommandBuffer commandBuffer, uint32_t indexCount, uint32_t instanceCount, uint32_t firstIndex, int32_t vertexOffset, uint32_t firstInstance) __attribute__ ((weak));
-      void gen10_CmdDrawIndirect(VkCommandBuffer commandBuffer, VkBuffer buffer, VkDeviceSize offset, uint32_t drawCount, uint32_t stride) __attribute__ ((weak));
-      void gen10_CmdDrawIndexedIndirect(VkCommandBuffer commandBuffer, VkBuffer buffer, VkDeviceSize offset, uint32_t drawCount, uint32_t stride) __attribute__ ((weak));
-      void gen10_CmdDispatch(VkCommandBuffer commandBuffer, uint32_t groupCountX, uint32_t groupCountY, uint32_t groupCountZ) __attribute__ ((weak));
-      void gen10_CmdDispatchIndirect(VkCommandBuffer commandBuffer, VkBuffer buffer, VkDeviceSize offset) __attribute__ ((weak));
-      void gen10_CmdCopyBuffer(VkCommandBuffer commandBuffer, VkBuffer srcBuffer, VkBuffer dstBuffer, uint32_t regionCount, const VkBufferCopy* pRegions) __attribute__ ((weak));
-      void gen10_CmdCopyImage(VkCommandBuffer commandBuffer, VkImage srcImage, VkImageLayout srcImageLayout, VkImage dstImage, VkImageLayout dstImageLayout, uint32_t regionCount, const VkImageCopy* pRegions) __attribute__ ((weak));
-      void gen10_CmdBlitImage(VkCommandBuffer commandBuffer, VkImage srcImage, VkImageLayout srcImageLayout, VkImage dstImage, VkImageLayout dstImageLayout, uint32_t regionCount, const VkImageBlit* pRegions, VkFilter filter) __attribute__ ((weak));
-      void gen10_CmdCopyBufferToImage(VkCommandBuffer commandBuffer, VkBuffer srcBuffer, VkImage dstImage, VkImageLayout dstImageLayout, uint32_t regionCount, const VkBufferImageCopy* pRegions) __attribute__ ((weak));
-      void gen10_CmdCopyImageToBuffer(VkCommandBuffer commandBuffer, VkImage srcImage, VkImageLayout srcImageLayout, VkBuffer dstBuffer, uint32_t regionCount, const VkBufferImageCopy* pRegions) __attribute__ ((weak));
-      void gen10_CmdUpdateBuffer(VkCommandBuffer commandBuffer, VkBuffer dstBuffer, VkDeviceSize dstOffset, VkDeviceSize dataSize, const void* pData) __attribute__ ((weak));
-      void gen10_CmdFillBuffer(VkCommandBuffer commandBuffer, VkBuffer dstBuffer, VkDeviceSize dstOffset, VkDeviceSize size, uint32_t data) __attribute__ ((weak));
-      void gen10_CmdClearColorImage(VkCommandBuffer commandBuffer, VkImage image, VkImageLayout imageLayout, const VkClearColorValue* pColor, uint32_t rangeCount, const VkImageSubresourceRange* pRanges) __attribute__ ((weak));
-      void gen10_CmdClearDepthStencilImage(VkCommandBuffer commandBuffer, VkImage image, VkImageLayout imageLayout, const VkClearDepthStencilValue* pDepthStencil, uint32_t rangeCount, const VkImageSubresourceRange* pRanges) __attribute__ ((weak));
-      void gen10_CmdClearAttachments(VkCommandBuffer commandBuffer, uint32_t attachmentCount, const VkClearAttachment* pAttachments, uint32_t rectCount, const VkClearRect* pRects) __attribute__ ((weak));
-      void gen10_CmdResolveImage(VkCommandBuffer commandBuffer, VkImage srcImage, VkImageLayout srcImageLayout, VkImage dstImage, VkImageLayout dstImageLayout, uint32_t regionCount, const VkImageResolve* pRegions) __attribute__ ((weak));
-      void gen10_CmdSetEvent(VkCommandBuffer commandBuffer, VkEvent event, VkPipelineStageFlags stageMask) __attribute__ ((weak));
-      void gen10_CmdResetEvent(VkCommandBuffer commandBuffer, VkEvent event, VkPipelineStageFlags stageMask) __attribute__ ((weak));
-      void gen10_CmdWaitEvents(VkCommandBuffer commandBuffer, uint32_t eventCount, const VkEvent* pEvents, VkPipelineStageFlags srcStageMask, VkPipelineStageFlags dstStageMask, uint32_t memoryBarrierCount, const VkMemoryBarrier* pMemoryBarriers, uint32_t bufferMemoryBarrierCount, const VkBufferMemoryBarrier* pBufferMemoryBarriers, uint32_t imageMemoryBarrierCount, const VkImageMemoryBarrier* pImageMemoryBarriers) __attribute__ ((weak));
-      void gen10_CmdPipelineBarrier(VkCommandBuffer commandBuffer, VkPipelineStageFlags srcStageMask, VkPipelineStageFlags dstStageMask, VkDependencyFlags dependencyFlags, uint32_t memoryBarrierCount, const VkMemoryBarrier* pMemoryBarriers, uint32_t bufferMemoryBarrierCount, const VkBufferMemoryBarrier* pBufferMemoryBarriers, uint32_t imageMemoryBarrierCount, const VkImageMemoryBarrier* pImageMemoryBarriers) __attribute__ ((weak));
-      void gen10_CmdBeginQuery(VkCommandBuffer commandBuffer, VkQueryPool queryPool, uint32_t query, VkQueryControlFlags flags) __attribute__ ((weak));
-      void gen10_CmdEndQuery(VkCommandBuffer commandBuffer, VkQueryPool queryPool, uint32_t query) __attribute__ ((weak));
-      void gen10_CmdBeginConditionalRenderingEXT(VkCommandBuffer commandBuffer, const VkConditionalRenderingBeginInfoEXT* pConditionalRenderingBegin) __attribute__ ((weak));
-      void gen10_CmdEndConditionalRenderingEXT(VkCommandBuffer commandBuffer) __attribute__ ((weak));
-      void gen10_CmdResetQueryPool(VkCommandBuffer commandBuffer, VkQueryPool queryPool, uint32_t firstQuery, uint32_t queryCount) __attribute__ ((weak));
-      void gen10_CmdWriteTimestamp(VkCommandBuffer commandBuffer, VkPipelineStageFlagBits pipelineStage, VkQueryPool queryPool, uint32_t query) __attribute__ ((weak));
-      void gen10_CmdCopyQueryPoolResults(VkCommandBuffer commandBuffer, VkQueryPool queryPool, uint32_t firstQuery, uint32_t queryCount, VkBuffer dstBuffer, VkDeviceSize dstOffset, VkDeviceSize stride, VkQueryResultFlags flags) __attribute__ ((weak));
-      void gen10_CmdPushConstants(VkCommandBuffer commandBuffer, VkPipelineLayout layout, VkShaderStageFlags stageFlags, uint32_t offset, uint32_t size, const void* pValues) __attribute__ ((weak));
-      void gen10_CmdBeginRenderPass(VkCommandBuffer commandBuffer, const VkRenderPassBeginInfo* pRenderPassBegin, VkSubpassContents contents) __attribute__ ((weak));
-      void gen10_CmdNextSubpass(VkCommandBuffer commandBuffer, VkSubpassContents contents) __attribute__ ((weak));
-      void gen10_CmdEndRenderPass(VkCommandBuffer commandBuffer) __attribute__ ((weak));
-      void gen10_CmdExecuteCommands(VkCommandBuffer commandBuffer, uint32_t commandBufferCount, const VkCommandBuffer* pCommandBuffers) __attribute__ ((weak));
-      VkResult gen10_CreateSwapchainKHR(VkDevice device, const VkSwapchainCreateInfoKHR* pCreateInfo, const VkAllocationCallbacks* pAllocator, VkSwapchainKHR* pSwapchain) __attribute__ ((weak));
-      void gen10_DestroySwapchainKHR(VkDevice device, VkSwapchainKHR swapchain, const VkAllocationCallbacks* pAllocator) __attribute__ ((weak));
-      VkResult gen10_GetSwapchainImagesKHR(VkDevice device, VkSwapchainKHR swapchain, uint32_t* pSwapchainImageCount, VkImage* pSwapchainImages) __attribute__ ((weak));
-      VkResult gen10_AcquireNextImageKHR(VkDevice device, VkSwapchainKHR swapchain, uint64_t timeout, VkSemaphore semaphore, VkFence fence, uint32_t* pImageIndex) __attribute__ ((weak));
-      VkResult gen10_QueuePresentKHR(VkQueue queue, const VkPresentInfoKHR* pPresentInfo) __attribute__ ((weak));
-      void gen10_CmdPushDescriptorSetKHR(VkCommandBuffer commandBuffer, VkPipelineBindPoint pipelineBindPoint, VkPipelineLayout layout, uint32_t set, uint32_t descriptorWriteCount, const VkWriteDescriptorSet* pDescriptorWrites) __attribute__ ((weak));
-      void gen10_TrimCommandPool(VkDevice device, VkCommandPool commandPool, VkCommandPoolTrimFlags flags) __attribute__ ((weak));
-            VkResult gen10_GetMemoryFdKHR(VkDevice device, const VkMemoryGetFdInfoKHR* pGetFdInfo, int* pFd) __attribute__ ((weak));
-      VkResult gen10_GetMemoryFdPropertiesKHR(VkDevice device, VkExternalMemoryHandleTypeFlagBits handleType, int fd, VkMemoryFdPropertiesKHR* pMemoryFdProperties) __attribute__ ((weak));
-      VkResult gen10_GetSemaphoreFdKHR(VkDevice device, const VkSemaphoreGetFdInfoKHR* pGetFdInfo, int* pFd) __attribute__ ((weak));
-      VkResult gen10_ImportSemaphoreFdKHR(VkDevice device, const VkImportSemaphoreFdInfoKHR* pImportSemaphoreFdInfo) __attribute__ ((weak));
-      VkResult gen10_GetFenceFdKHR(VkDevice device, const VkFenceGetFdInfoKHR* pGetFdInfo, int* pFd) __attribute__ ((weak));
-      VkResult gen10_ImportFenceFdKHR(VkDevice device, const VkImportFenceFdInfoKHR* pImportFenceFdInfo) __attribute__ ((weak));
-      VkResult gen10_DisplayPowerControlEXT(VkDevice device, VkDisplayKHR display, const VkDisplayPowerInfoEXT* pDisplayPowerInfo) __attribute__ ((weak));
-      VkResult gen10_RegisterDeviceEventEXT(VkDevice device, const VkDeviceEventInfoEXT* pDeviceEventInfo, const VkAllocationCallbacks* pAllocator, VkFence* pFence) __attribute__ ((weak));
-      VkResult gen10_RegisterDisplayEventEXT(VkDevice device, VkDisplayKHR display, const VkDisplayEventInfoEXT* pDisplayEventInfo, const VkAllocationCallbacks* pAllocator, VkFence* pFence) __attribute__ ((weak));
-      VkResult gen10_GetSwapchainCounterEXT(VkDevice device, VkSwapchainKHR swapchain, VkSurfaceCounterFlagBitsEXT counter, uint64_t* pCounterValue) __attribute__ ((weak));
-      void gen10_GetDeviceGroupPeerMemoryFeatures(VkDevice device, uint32_t heapIndex, uint32_t localDeviceIndex, uint32_t remoteDeviceIndex, VkPeerMemoryFeatureFlags* pPeerMemoryFeatures) __attribute__ ((weak));
-            VkResult gen10_BindBufferMemory2(VkDevice device, uint32_t bindInfoCount, const VkBindBufferMemoryInfo* pBindInfos) __attribute__ ((weak));
-            VkResult gen10_BindImageMemory2(VkDevice device, uint32_t bindInfoCount, const VkBindImageMemoryInfo* pBindInfos) __attribute__ ((weak));
-            void gen10_CmdSetDeviceMask(VkCommandBuffer commandBuffer, uint32_t deviceMask) __attribute__ ((weak));
-            VkResult gen10_GetDeviceGroupPresentCapabilitiesKHR(VkDevice device, VkDeviceGroupPresentCapabilitiesKHR* pDeviceGroupPresentCapabilities) __attribute__ ((weak));
-      VkResult gen10_GetDeviceGroupSurfacePresentModesKHR(VkDevice device, VkSurfaceKHR surface, VkDeviceGroupPresentModeFlagsKHR* pModes) __attribute__ ((weak));
-      VkResult gen10_AcquireNextImage2KHR(VkDevice device, const VkAcquireNextImageInfoKHR* pAcquireInfo, uint32_t* pImageIndex) __attribute__ ((weak));
-      void gen10_CmdDispatchBase(VkCommandBuffer commandBuffer, uint32_t baseGroupX, uint32_t baseGroupY, uint32_t baseGroupZ, uint32_t groupCountX, uint32_t groupCountY, uint32_t groupCountZ) __attribute__ ((weak));
-            VkResult gen10_CreateDescriptorUpdateTemplate(VkDevice device, const VkDescriptorUpdateTemplateCreateInfo* pCreateInfo, const VkAllocationCallbacks* pAllocator, VkDescriptorUpdateTemplate* pDescriptorUpdateTemplate) __attribute__ ((weak));
-            void gen10_DestroyDescriptorUpdateTemplate(VkDevice device, VkDescriptorUpdateTemplate descriptorUpdateTemplate, const VkAllocationCallbacks* pAllocator) __attribute__ ((weak));
-            void gen10_UpdateDescriptorSetWithTemplate(VkDevice device, VkDescriptorSet descriptorSet, VkDescriptorUpdateTemplate descriptorUpdateTemplate, const void* pData) __attribute__ ((weak));
-            void gen10_CmdPushDescriptorSetWithTemplateKHR(VkCommandBuffer commandBuffer, VkDescriptorUpdateTemplate descriptorUpdateTemplate, VkPipelineLayout layout, uint32_t set, const void* pData) __attribute__ ((weak));
-      void gen10_GetBufferMemoryRequirements2(VkDevice device, const VkBufferMemoryRequirementsInfo2* pInfo, VkMemoryRequirements2* pMemoryRequirements) __attribute__ ((weak));
-            void gen10_GetImageMemoryRequirements2(VkDevice device, const VkImageMemoryRequirementsInfo2* pInfo, VkMemoryRequirements2* pMemoryRequirements) __attribute__ ((weak));
-            void gen10_GetImageSparseMemoryRequirements2(VkDevice device, const VkImageSparseMemoryRequirementsInfo2* pInfo, uint32_t* pSparseMemoryRequirementCount, VkSparseImageMemoryRequirements2* pSparseMemoryRequirements) __attribute__ ((weak));
-            VkResult gen10_CreateSamplerYcbcrConversion(VkDevice device, const VkSamplerYcbcrConversionCreateInfo* pCreateInfo, const VkAllocationCallbacks* pAllocator, VkSamplerYcbcrConversion* pYcbcrConversion) __attribute__ ((weak));
-            void gen10_DestroySamplerYcbcrConversion(VkDevice device, VkSamplerYcbcrConversion ycbcrConversion, const VkAllocationCallbacks* pAllocator) __attribute__ ((weak));
-            void gen10_GetDeviceQueue2(VkDevice device, const VkDeviceQueueInfo2* pQueueInfo, VkQueue* pQueue) __attribute__ ((weak));
-      void gen10_GetDescriptorSetLayoutSupport(VkDevice device, const VkDescriptorSetLayoutCreateInfo* pCreateInfo, VkDescriptorSetLayoutSupport* pSupport) __attribute__ ((weak));
-      #ifdef VK_USE_PLATFORM_ANDROID_KHR
-      VkResult gen10_GetSwapchainGrallocUsageANDROID(VkDevice device, VkFormat format, VkImageUsageFlags imageUsage, int* grallocUsage) __attribute__ ((weak));
-#endif // VK_USE_PLATFORM_ANDROID_KHR
-#ifdef VK_USE_PLATFORM_ANDROID_KHR
-      VkResult gen10_GetSwapchainGrallocUsage2ANDROID(VkDevice device, VkFormat format, VkImageUsageFlags imageUsage, VkSwapchainImageUsageFlagsANDROID swapchainImageUsage, uint64_t* grallocConsumerUsage, uint64_t* grallocProducerUsage) __attribute__ ((weak));
-#endif // VK_USE_PLATFORM_ANDROID_KHR
-#ifdef VK_USE_PLATFORM_ANDROID_KHR
-      VkResult gen10_AcquireImageANDROID(VkDevice device, VkImage image, int nativeFenceFd, VkSemaphore semaphore, VkFence fence) __attribute__ ((weak));
-#endif // VK_USE_PLATFORM_ANDROID_KHR
-#ifdef VK_USE_PLATFORM_ANDROID_KHR
-      VkResult gen10_QueueSignalReleaseImageANDROID(VkQueue queue, uint32_t waitSemaphoreCount, const VkSemaphore* pWaitSemaphores, VkImage image, int* pNativeFenceFd) __attribute__ ((weak));
-#endif // VK_USE_PLATFORM_ANDROID_KHR
-      VkResult gen10_GetCalibratedTimestampsEXT(VkDevice device, uint32_t timestampCount, const VkCalibratedTimestampInfoEXT* pTimestampInfos, uint64_t* pTimestamps, uint64_t* pMaxDeviation) __attribute__ ((weak));
-      VkResult gen10_GetMemoryHostPointerPropertiesEXT(VkDevice device, VkExternalMemoryHandleTypeFlagBits handleType, const void* pHostPointer, VkMemoryHostPointerPropertiesEXT* pMemoryHostPointerProperties) __attribute__ ((weak));
-      VkResult gen10_CreateRenderPass2(VkDevice device, const VkRenderPassCreateInfo2* pCreateInfo, const VkAllocationCallbacks* pAllocator, VkRenderPass* pRenderPass) __attribute__ ((weak));
-            void gen10_CmdBeginRenderPass2(VkCommandBuffer commandBuffer, const VkRenderPassBeginInfo*      pRenderPassBegin, const VkSubpassBeginInfo*      pSubpassBeginInfo) __attribute__ ((weak));
-            void gen10_CmdNextSubpass2(VkCommandBuffer commandBuffer, const VkSubpassBeginInfo*      pSubpassBeginInfo, const VkSubpassEndInfo*        pSubpassEndInfo) __attribute__ ((weak));
-            void gen10_CmdEndRenderPass2(VkCommandBuffer commandBuffer, const VkSubpassEndInfo*        pSubpassEndInfo) __attribute__ ((weak));
-            VkResult gen10_GetSemaphoreCounterValue(VkDevice device, VkSemaphore semaphore, uint64_t* pValue) __attribute__ ((weak));
-            VkResult gen10_WaitSemaphores(VkDevice device, const VkSemaphoreWaitInfo* pWaitInfo, uint64_t timeout) __attribute__ ((weak));
-            VkResult gen10_SignalSemaphore(VkDevice device, const VkSemaphoreSignalInfo* pSignalInfo) __attribute__ ((weak));
-      #ifdef VK_USE_PLATFORM_ANDROID_KHR
-      VkResult gen10_GetAndroidHardwareBufferPropertiesANDROID(VkDevice device, const struct AHardwareBuffer* buffer, VkAndroidHardwareBufferPropertiesANDROID* pProperties) __attribute__ ((weak));
-#endif // VK_USE_PLATFORM_ANDROID_KHR
-#ifdef VK_USE_PLATFORM_ANDROID_KHR
-      VkResult gen10_GetMemoryAndroidHardwareBufferANDROID(VkDevice device, const VkMemoryGetAndroidHardwareBufferInfoANDROID* pInfo, struct AHardwareBuffer** pBuffer) __attribute__ ((weak));
-#endif // VK_USE_PLATFORM_ANDROID_KHR
-      void gen10_CmdDrawIndirectCount(VkCommandBuffer commandBuffer, VkBuffer buffer, VkDeviceSize offset, VkBuffer countBuffer, VkDeviceSize countBufferOffset, uint32_t maxDrawCount, uint32_t stride) __attribute__ ((weak));
-            void gen10_CmdDrawIndexedIndirectCount(VkCommandBuffer commandBuffer, VkBuffer buffer, VkDeviceSize offset, VkBuffer countBuffer, VkDeviceSize countBufferOffset, uint32_t maxDrawCount, uint32_t stride) __attribute__ ((weak));
-            void gen10_CmdBindTransformFeedbackBuffersEXT(VkCommandBuffer commandBuffer, uint32_t firstBinding, uint32_t bindingCount, const VkBuffer* pBuffers, const VkDeviceSize* pOffsets, const VkDeviceSize* pSizes) __attribute__ ((weak));
-      void gen10_CmdBeginTransformFeedbackEXT(VkCommandBuffer commandBuffer, uint32_t firstCounterBuffer, uint32_t counterBufferCount, const VkBuffer* pCounterBuffers, const VkDeviceSize* pCounterBufferOffsets) __attribute__ ((weak));
-      void gen10_CmdEndTransformFeedbackEXT(VkCommandBuffer commandBuffer, uint32_t firstCounterBuffer, uint32_t counterBufferCount, const VkBuffer* pCounterBuffers, const VkDeviceSize* pCounterBufferOffsets) __attribute__ ((weak));
-      void gen10_CmdBeginQueryIndexedEXT(VkCommandBuffer commandBuffer, VkQueryPool queryPool, uint32_t query, VkQueryControlFlags flags, uint32_t index) __attribute__ ((weak));
-      void gen10_CmdEndQueryIndexedEXT(VkCommandBuffer commandBuffer, VkQueryPool queryPool, uint32_t query, uint32_t index) __attribute__ ((weak));
-      void gen10_CmdDrawIndirectByteCountEXT(VkCommandBuffer commandBuffer, uint32_t instanceCount, uint32_t firstInstance, VkBuffer counterBuffer, VkDeviceSize counterBufferOffset, uint32_t counterOffset, uint32_t vertexStride) __attribute__ ((weak));
-      VkResult gen10_GetImageDrmFormatModifierPropertiesEXT(VkDevice device, VkImage image, VkImageDrmFormatModifierPropertiesEXT* pProperties) __attribute__ ((weak));
-      uint64_t gen10_GetBufferOpaqueCaptureAddress(VkDevice device, const VkBufferDeviceAddressInfo* pInfo) __attribute__ ((weak));
-            VkDeviceAddress gen10_GetBufferDeviceAddress(VkDevice device, const VkBufferDeviceAddressInfo* pInfo) __attribute__ ((weak));
-                  VkResult gen10_InitializePerformanceApiINTEL(VkDevice device, const VkInitializePerformanceApiInfoINTEL* pInitializeInfo) __attribute__ ((weak));
-      void gen10_UninitializePerformanceApiINTEL(VkDevice device) __attribute__ ((weak));
-      VkResult gen10_CmdSetPerformanceMarkerINTEL(VkCommandBuffer commandBuffer, const VkPerformanceMarkerInfoINTEL* pMarkerInfo) __attribute__ ((weak));
-      VkResult gen10_CmdSetPerformanceStreamMarkerINTEL(VkCommandBuffer commandBuffer, const VkPerformanceStreamMarkerInfoINTEL* pMarkerInfo) __attribute__ ((weak));
-      VkResult gen10_CmdSetPerformanceOverrideINTEL(VkCommandBuffer commandBuffer, const VkPerformanceOverrideInfoINTEL* pOverrideInfo) __attribute__ ((weak));
-      VkResult gen10_AcquirePerformanceConfigurationINTEL(VkDevice device, const VkPerformanceConfigurationAcquireInfoINTEL* pAcquireInfo, VkPerformanceConfigurationINTEL* pConfiguration) __attribute__ ((weak));
-      VkResult gen10_ReleasePerformanceConfigurationINTEL(VkDevice device, VkPerformanceConfigurationINTEL configuration) __attribute__ ((weak));
-      VkResult gen10_QueueSetPerformanceConfigurationINTEL(VkQueue queue, VkPerformanceConfigurationINTEL configuration) __attribute__ ((weak));
-      VkResult gen10_GetPerformanceParameterINTEL(VkDevice device, VkPerformanceParameterTypeINTEL parameter, VkPerformanceValueINTEL* pValue) __attribute__ ((weak));
-      uint64_t gen10_GetDeviceMemoryOpaqueCaptureAddress(VkDevice device, const VkDeviceMemoryOpaqueCaptureAddressInfo* pInfo) __attribute__ ((weak));
-            VkResult gen10_GetPipelineExecutablePropertiesKHR(VkDevice                        device, const VkPipelineInfoKHR*        pPipelineInfo, uint32_t* pExecutableCount, VkPipelineExecutablePropertiesKHR* pProperties) __attribute__ ((weak));
-      VkResult gen10_GetPipelineExecutableStatisticsKHR(VkDevice                        device, const VkPipelineExecutableInfoKHR*  pExecutableInfo, uint32_t* pStatisticCount, VkPipelineExecutableStatisticKHR* pStatistics) __attribute__ ((weak));
-      VkResult gen10_GetPipelineExecutableInternalRepresentationsKHR(VkDevice                        device, const VkPipelineExecutableInfoKHR*  pExecutableInfo, uint32_t* pInternalRepresentationCount, VkPipelineExecutableInternalRepresentationKHR* pInternalRepresentations) __attribute__ ((weak));
-      void gen10_CmdSetLineStippleEXT(VkCommandBuffer commandBuffer, uint32_t lineStippleFactor, uint16_t lineStipplePattern) __attribute__ ((weak));
-      VkResult gen10_CreateDmaBufImageINTEL(VkDevice device, const VkDmaBufImageCreateInfo* pCreateInfo, const VkAllocationCallbacks* pAllocator, VkDeviceMemory* pMem, VkImage* pImage) __attribute__ ((weak));
-
-  const struct anv_device_dispatch_table gen10_device_dispatch_table = {
-    .vkGetDeviceProcAddr = gen10_GetDeviceProcAddr,
-    .vkDestroyDevice = gen10_DestroyDevice,
-    .vkGetDeviceQueue = gen10_GetDeviceQueue,
-    .vkQueueSubmit = gen10_QueueSubmit,
-    .vkQueueWaitIdle = gen10_QueueWaitIdle,
-    .vkDeviceWaitIdle = gen10_DeviceWaitIdle,
-    .vkAllocateMemory = gen10_AllocateMemory,
-    .vkFreeMemory = gen10_FreeMemory,
-    .vkMapMemory = gen10_MapMemory,
-    .vkUnmapMemory = gen10_UnmapMemory,
-    .vkFlushMappedMemoryRanges = gen10_FlushMappedMemoryRanges,
-    .vkInvalidateMappedMemoryRanges = gen10_InvalidateMappedMemoryRanges,
-    .vkGetDeviceMemoryCommitment = gen10_GetDeviceMemoryCommitment,
-    .vkGetBufferMemoryRequirements = gen10_GetBufferMemoryRequirements,
-    .vkBindBufferMemory = gen10_BindBufferMemory,
-    .vkGetImageMemoryRequirements = gen10_GetImageMemoryRequirements,
-    .vkBindImageMemory = gen10_BindImageMemory,
-    .vkGetImageSparseMemoryRequirements = gen10_GetImageSparseMemoryRequirements,
-    .vkQueueBindSparse = gen10_QueueBindSparse,
-    .vkCreateFence = gen10_CreateFence,
-    .vkDestroyFence = gen10_DestroyFence,
-    .vkResetFences = gen10_ResetFences,
-    .vkGetFenceStatus = gen10_GetFenceStatus,
-    .vkWaitForFences = gen10_WaitForFences,
-    .vkCreateSemaphore = gen10_CreateSemaphore,
-    .vkDestroySemaphore = gen10_DestroySemaphore,
-    .vkCreateEvent = gen10_CreateEvent,
-    .vkDestroyEvent = gen10_DestroyEvent,
-    .vkGetEventStatus = gen10_GetEventStatus,
-    .vkSetEvent = gen10_SetEvent,
-    .vkResetEvent = gen10_ResetEvent,
-    .vkCreateQueryPool = gen10_CreateQueryPool,
-    .vkDestroyQueryPool = gen10_DestroyQueryPool,
-    .vkGetQueryPoolResults = gen10_GetQueryPoolResults,
-    .vkResetQueryPool = gen10_ResetQueryPool,
-    .vkResetQueryPoolEXT = gen10_ResetQueryPool,
-    .vkCreateBuffer = gen10_CreateBuffer,
-    .vkDestroyBuffer = gen10_DestroyBuffer,
-    .vkCreateBufferView = gen10_CreateBufferView,
-    .vkDestroyBufferView = gen10_DestroyBufferView,
-    .vkCreateImage = gen10_CreateImage,
-    .vkDestroyImage = gen10_DestroyImage,
-    .vkGetImageSubresourceLayout = gen10_GetImageSubresourceLayout,
-    .vkCreateImageView = gen10_CreateImageView,
-    .vkDestroyImageView = gen10_DestroyImageView,
-    .vkCreateShaderModule = gen10_CreateShaderModule,
-    .vkDestroyShaderModule = gen10_DestroyShaderModule,
-    .vkCreatePipelineCache = gen10_CreatePipelineCache,
-    .vkDestroyPipelineCache = gen10_DestroyPipelineCache,
-    .vkGetPipelineCacheData = gen10_GetPipelineCacheData,
-    .vkMergePipelineCaches = gen10_MergePipelineCaches,
-    .vkCreateGraphicsPipelines = gen10_CreateGraphicsPipelines,
-    .vkCreateComputePipelines = gen10_CreateComputePipelines,
-    .vkDestroyPipeline = gen10_DestroyPipeline,
-    .vkCreatePipelineLayout = gen10_CreatePipelineLayout,
-    .vkDestroyPipelineLayout = gen10_DestroyPipelineLayout,
-    .vkCreateSampler = gen10_CreateSampler,
-    .vkDestroySampler = gen10_DestroySampler,
-    .vkCreateDescriptorSetLayout = gen10_CreateDescriptorSetLayout,
-    .vkDestroyDescriptorSetLayout = gen10_DestroyDescriptorSetLayout,
-    .vkCreateDescriptorPool = gen10_CreateDescriptorPool,
-    .vkDestroyDescriptorPool = gen10_DestroyDescriptorPool,
-    .vkResetDescriptorPool = gen10_ResetDescriptorPool,
-    .vkAllocateDescriptorSets = gen10_AllocateDescriptorSets,
-    .vkFreeDescriptorSets = gen10_FreeDescriptorSets,
-    .vkUpdateDescriptorSets = gen10_UpdateDescriptorSets,
-    .vkCreateFramebuffer = gen10_CreateFramebuffer,
-    .vkDestroyFramebuffer = gen10_DestroyFramebuffer,
-    .vkCreateRenderPass = gen10_CreateRenderPass,
-    .vkDestroyRenderPass = gen10_DestroyRenderPass,
-    .vkGetRenderAreaGranularity = gen10_GetRenderAreaGranularity,
-    .vkCreateCommandPool = gen10_CreateCommandPool,
-    .vkDestroyCommandPool = gen10_DestroyCommandPool,
-    .vkResetCommandPool = gen10_ResetCommandPool,
-    .vkAllocateCommandBuffers = gen10_AllocateCommandBuffers,
-    .vkFreeCommandBuffers = gen10_FreeCommandBuffers,
-    .vkBeginCommandBuffer = gen10_BeginCommandBuffer,
-    .vkEndCommandBuffer = gen10_EndCommandBuffer,
-    .vkResetCommandBuffer = gen10_ResetCommandBuffer,
-    .vkCmdBindPipeline = gen10_CmdBindPipeline,
-    .vkCmdSetViewport = gen10_CmdSetViewport,
-    .vkCmdSetScissor = gen10_CmdSetScissor,
-    .vkCmdSetLineWidth = gen10_CmdSetLineWidth,
-    .vkCmdSetDepthBias = gen10_CmdSetDepthBias,
-    .vkCmdSetBlendConstants = gen10_CmdSetBlendConstants,
-    .vkCmdSetDepthBounds = gen10_CmdSetDepthBounds,
-    .vkCmdSetStencilCompareMask = gen10_CmdSetStencilCompareMask,
-    .vkCmdSetStencilWriteMask = gen10_CmdSetStencilWriteMask,
-    .vkCmdSetStencilReference = gen10_CmdSetStencilReference,
-    .vkCmdBindDescriptorSets = gen10_CmdBindDescriptorSets,
-    .vkCmdBindIndexBuffer = gen10_CmdBindIndexBuffer,
-    .vkCmdBindVertexBuffers = gen10_CmdBindVertexBuffers,
-    .vkCmdDraw = gen10_CmdDraw,
-    .vkCmdDrawIndexed = gen10_CmdDrawIndexed,
-    .vkCmdDrawIndirect = gen10_CmdDrawIndirect,
-    .vkCmdDrawIndexedIndirect = gen10_CmdDrawIndexedIndirect,
-    .vkCmdDispatch = gen10_CmdDispatch,
-    .vkCmdDispatchIndirect = gen10_CmdDispatchIndirect,
-    .vkCmdCopyBuffer = gen10_CmdCopyBuffer,
-    .vkCmdCopyImage = gen10_CmdCopyImage,
-    .vkCmdBlitImage = gen10_CmdBlitImage,
-    .vkCmdCopyBufferToImage = gen10_CmdCopyBufferToImage,
-    .vkCmdCopyImageToBuffer = gen10_CmdCopyImageToBuffer,
-    .vkCmdUpdateBuffer = gen10_CmdUpdateBuffer,
-    .vkCmdFillBuffer = gen10_CmdFillBuffer,
-    .vkCmdClearColorImage = gen10_CmdClearColorImage,
-    .vkCmdClearDepthStencilImage = gen10_CmdClearDepthStencilImage,
-    .vkCmdClearAttachments = gen10_CmdClearAttachments,
-    .vkCmdResolveImage = gen10_CmdResolveImage,
-    .vkCmdSetEvent = gen10_CmdSetEvent,
-    .vkCmdResetEvent = gen10_CmdResetEvent,
-    .vkCmdWaitEvents = gen10_CmdWaitEvents,
-    .vkCmdPipelineBarrier = gen10_CmdPipelineBarrier,
-    .vkCmdBeginQuery = gen10_CmdBeginQuery,
-    .vkCmdEndQuery = gen10_CmdEndQuery,
-    .vkCmdBeginConditionalRenderingEXT = gen10_CmdBeginConditionalRenderingEXT,
-    .vkCmdEndConditionalRenderingEXT = gen10_CmdEndConditionalRenderingEXT,
-    .vkCmdResetQueryPool = gen10_CmdResetQueryPool,
-    .vkCmdWriteTimestamp = gen10_CmdWriteTimestamp,
-    .vkCmdCopyQueryPoolResults = gen10_CmdCopyQueryPoolResults,
-    .vkCmdPushConstants = gen10_CmdPushConstants,
-    .vkCmdBeginRenderPass = gen10_CmdBeginRenderPass,
-    .vkCmdNextSubpass = gen10_CmdNextSubpass,
-    .vkCmdEndRenderPass = gen10_CmdEndRenderPass,
-    .vkCmdExecuteCommands = gen10_CmdExecuteCommands,
-    .vkCreateSwapchainKHR = gen10_CreateSwapchainKHR,
-    .vkDestroySwapchainKHR = gen10_DestroySwapchainKHR,
-    .vkGetSwapchainImagesKHR = gen10_GetSwapchainImagesKHR,
-    .vkAcquireNextImageKHR = gen10_AcquireNextImageKHR,
-    .vkQueuePresentKHR = gen10_QueuePresentKHR,
-    .vkCmdPushDescriptorSetKHR = gen10_CmdPushDescriptorSetKHR,
-    .vkTrimCommandPool = gen10_TrimCommandPool,
-    .vkTrimCommandPoolKHR = gen10_TrimCommandPool,
-    .vkGetMemoryFdKHR = gen10_GetMemoryFdKHR,
-    .vkGetMemoryFdPropertiesKHR = gen10_GetMemoryFdPropertiesKHR,
-    .vkGetSemaphoreFdKHR = gen10_GetSemaphoreFdKHR,
-    .vkImportSemaphoreFdKHR = gen10_ImportSemaphoreFdKHR,
-    .vkGetFenceFdKHR = gen10_GetFenceFdKHR,
-    .vkImportFenceFdKHR = gen10_ImportFenceFdKHR,
-    .vkDisplayPowerControlEXT = gen10_DisplayPowerControlEXT,
-    .vkRegisterDeviceEventEXT = gen10_RegisterDeviceEventEXT,
-    .vkRegisterDisplayEventEXT = gen10_RegisterDisplayEventEXT,
-    .vkGetSwapchainCounterEXT = gen10_GetSwapchainCounterEXT,
-    .vkGetDeviceGroupPeerMemoryFeatures = gen10_GetDeviceGroupPeerMemoryFeatures,
-    .vkGetDeviceGroupPeerMemoryFeaturesKHR = gen10_GetDeviceGroupPeerMemoryFeatures,
-    .vkBindBufferMemory2 = gen10_BindBufferMemory2,
-    .vkBindBufferMemory2KHR = gen10_BindBufferMemory2,
-    .vkBindImageMemory2 = gen10_BindImageMemory2,
-    .vkBindImageMemory2KHR = gen10_BindImageMemory2,
-    .vkCmdSetDeviceMask = gen10_CmdSetDeviceMask,
-    .vkCmdSetDeviceMaskKHR = gen10_CmdSetDeviceMask,
-    .vkGetDeviceGroupPresentCapabilitiesKHR = gen10_GetDeviceGroupPresentCapabilitiesKHR,
-    .vkGetDeviceGroupSurfacePresentModesKHR = gen10_GetDeviceGroupSurfacePresentModesKHR,
-    .vkAcquireNextImage2KHR = gen10_AcquireNextImage2KHR,
-    .vkCmdDispatchBase = gen10_CmdDispatchBase,
-    .vkCmdDispatchBaseKHR = gen10_CmdDispatchBase,
-    .vkCreateDescriptorUpdateTemplate = gen10_CreateDescriptorUpdateTemplate,
-    .vkCreateDescriptorUpdateTemplateKHR = gen10_CreateDescriptorUpdateTemplate,
-    .vkDestroyDescriptorUpdateTemplate = gen10_DestroyDescriptorUpdateTemplate,
-    .vkDestroyDescriptorUpdateTemplateKHR = gen10_DestroyDescriptorUpdateTemplate,
-    .vkUpdateDescriptorSetWithTemplate = gen10_UpdateDescriptorSetWithTemplate,
-    .vkUpdateDescriptorSetWithTemplateKHR = gen10_UpdateDescriptorSetWithTemplate,
-    .vkCmdPushDescriptorSetWithTemplateKHR = gen10_CmdPushDescriptorSetWithTemplateKHR,
-    .vkGetBufferMemoryRequirements2 = gen10_GetBufferMemoryRequirements2,
-    .vkGetBufferMemoryRequirements2KHR = gen10_GetBufferMemoryRequirements2,
-    .vkGetImageMemoryRequirements2 = gen10_GetImageMemoryRequirements2,
-    .vkGetImageMemoryRequirements2KHR = gen10_GetImageMemoryRequirements2,
-    .vkGetImageSparseMemoryRequirements2 = gen10_GetImageSparseMemoryRequirements2,
-    .vkGetImageSparseMemoryRequirements2KHR = gen10_GetImageSparseMemoryRequirements2,
-    .vkCreateSamplerYcbcrConversion = gen10_CreateSamplerYcbcrConversion,
-    .vkCreateSamplerYcbcrConversionKHR = gen10_CreateSamplerYcbcrConversion,
-    .vkDestroySamplerYcbcrConversion = gen10_DestroySamplerYcbcrConversion,
-    .vkDestroySamplerYcbcrConversionKHR = gen10_DestroySamplerYcbcrConversion,
-    .vkGetDeviceQueue2 = gen10_GetDeviceQueue2,
-    .vkGetDescriptorSetLayoutSupport = gen10_GetDescriptorSetLayoutSupport,
-    .vkGetDescriptorSetLayoutSupportKHR = gen10_GetDescriptorSetLayoutSupport,
-#ifdef VK_USE_PLATFORM_ANDROID_KHR
-    .vkGetSwapchainGrallocUsageANDROID = gen10_GetSwapchainGrallocUsageANDROID,
-#endif // VK_USE_PLATFORM_ANDROID_KHR
-#ifdef VK_USE_PLATFORM_ANDROID_KHR
-    .vkGetSwapchainGrallocUsage2ANDROID = gen10_GetSwapchainGrallocUsage2ANDROID,
-#endif // VK_USE_PLATFORM_ANDROID_KHR
-#ifdef VK_USE_PLATFORM_ANDROID_KHR
-    .vkAcquireImageANDROID = gen10_AcquireImageANDROID,
-#endif // VK_USE_PLATFORM_ANDROID_KHR
-#ifdef VK_USE_PLATFORM_ANDROID_KHR
-    .vkQueueSignalReleaseImageANDROID = gen10_QueueSignalReleaseImageANDROID,
-#endif // VK_USE_PLATFORM_ANDROID_KHR
-    .vkGetCalibratedTimestampsEXT = gen10_GetCalibratedTimestampsEXT,
-    .vkGetMemoryHostPointerPropertiesEXT = gen10_GetMemoryHostPointerPropertiesEXT,
-    .vkCreateRenderPass2 = gen10_CreateRenderPass2,
-    .vkCreateRenderPass2KHR = gen10_CreateRenderPass2,
-    .vkCmdBeginRenderPass2 = gen10_CmdBeginRenderPass2,
-    .vkCmdBeginRenderPass2KHR = gen10_CmdBeginRenderPass2,
-    .vkCmdNextSubpass2 = gen10_CmdNextSubpass2,
-    .vkCmdNextSubpass2KHR = gen10_CmdNextSubpass2,
-    .vkCmdEndRenderPass2 = gen10_CmdEndRenderPass2,
-    .vkCmdEndRenderPass2KHR = gen10_CmdEndRenderPass2,
-    .vkGetSemaphoreCounterValue = gen10_GetSemaphoreCounterValue,
-    .vkGetSemaphoreCounterValueKHR = gen10_GetSemaphoreCounterValue,
-    .vkWaitSemaphores = gen10_WaitSemaphores,
-    .vkWaitSemaphoresKHR = gen10_WaitSemaphores,
-    .vkSignalSemaphore = gen10_SignalSemaphore,
-    .vkSignalSemaphoreKHR = gen10_SignalSemaphore,
-#ifdef VK_USE_PLATFORM_ANDROID_KHR
-    .vkGetAndroidHardwareBufferPropertiesANDROID = gen10_GetAndroidHardwareBufferPropertiesANDROID,
-#endif // VK_USE_PLATFORM_ANDROID_KHR
-#ifdef VK_USE_PLATFORM_ANDROID_KHR
-    .vkGetMemoryAndroidHardwareBufferANDROID = gen10_GetMemoryAndroidHardwareBufferANDROID,
-#endif // VK_USE_PLATFORM_ANDROID_KHR
-    .vkCmdDrawIndirectCount = gen10_CmdDrawIndirectCount,
-    .vkCmdDrawIndirectCountKHR = gen10_CmdDrawIndirectCount,
-    .vkCmdDrawIndexedIndirectCount = gen10_CmdDrawIndexedIndirectCount,
-    .vkCmdDrawIndexedIndirectCountKHR = gen10_CmdDrawIndexedIndirectCount,
-    .vkCmdBindTransformFeedbackBuffersEXT = gen10_CmdBindTransformFeedbackBuffersEXT,
-    .vkCmdBeginTransformFeedbackEXT = gen10_CmdBeginTransformFeedbackEXT,
-    .vkCmdEndTransformFeedbackEXT = gen10_CmdEndTransformFeedbackEXT,
-    .vkCmdBeginQueryIndexedEXT = gen10_CmdBeginQueryIndexedEXT,
-    .vkCmdEndQueryIndexedEXT = gen10_CmdEndQueryIndexedEXT,
-    .vkCmdDrawIndirectByteCountEXT = gen10_CmdDrawIndirectByteCountEXT,
-    .vkGetImageDrmFormatModifierPropertiesEXT = gen10_GetImageDrmFormatModifierPropertiesEXT,
-    .vkGetBufferOpaqueCaptureAddress = gen10_GetBufferOpaqueCaptureAddress,
-    .vkGetBufferOpaqueCaptureAddressKHR = gen10_GetBufferOpaqueCaptureAddress,
-    .vkGetBufferDeviceAddress = gen10_GetBufferDeviceAddress,
-    .vkGetBufferDeviceAddressKHR = gen10_GetBufferDeviceAddress,
-    .vkGetBufferDeviceAddressEXT = gen10_GetBufferDeviceAddress,
-    .vkInitializePerformanceApiINTEL = gen10_InitializePerformanceApiINTEL,
-    .vkUninitializePerformanceApiINTEL = gen10_UninitializePerformanceApiINTEL,
-    .vkCmdSetPerformanceMarkerINTEL = gen10_CmdSetPerformanceMarkerINTEL,
-    .vkCmdSetPerformanceStreamMarkerINTEL = gen10_CmdSetPerformanceStreamMarkerINTEL,
-    .vkCmdSetPerformanceOverrideINTEL = gen10_CmdSetPerformanceOverrideINTEL,
-    .vkAcquirePerformanceConfigurationINTEL = gen10_AcquirePerformanceConfigurationINTEL,
-    .vkReleasePerformanceConfigurationINTEL = gen10_ReleasePerformanceConfigurationINTEL,
-    .vkQueueSetPerformanceConfigurationINTEL = gen10_QueueSetPerformanceConfigurationINTEL,
-    .vkGetPerformanceParameterINTEL = gen10_GetPerformanceParameterINTEL,
-    .vkGetDeviceMemoryOpaqueCaptureAddress = gen10_GetDeviceMemoryOpaqueCaptureAddress,
-    .vkGetDeviceMemoryOpaqueCaptureAddressKHR = gen10_GetDeviceMemoryOpaqueCaptureAddress,
-    .vkGetPipelineExecutablePropertiesKHR = gen10_GetPipelineExecutablePropertiesKHR,
-    .vkGetPipelineExecutableStatisticsKHR = gen10_GetPipelineExecutableStatisticsKHR,
-    .vkGetPipelineExecutableInternalRepresentationsKHR = gen10_GetPipelineExecutableInternalRepresentationsKHR,
-    .vkCmdSetLineStippleEXT = gen10_CmdSetLineStippleEXT,
-    .vkCreateDmaBufImageINTEL = gen10_CreateDmaBufImageINTEL,
   };
       PFN_vkVoidFunction gen11_GetDeviceProcAddr(VkDevice device, const char* pName) __attribute__ ((weak));
       void gen11_DestroyDevice(VkDevice device, const VkAllocationCallbacks* pAllocator) __attribute__ ((weak));
@@ -5636,6 +5594,8 @@ const struct anv_physical_device_dispatch_table anv_physical_device_dispatch_tab
       void gen11_CmdBeginQueryIndexedEXT(VkCommandBuffer commandBuffer, VkQueryPool queryPool, uint32_t query, VkQueryControlFlags flags, uint32_t index) __attribute__ ((weak));
       void gen11_CmdEndQueryIndexedEXT(VkCommandBuffer commandBuffer, VkQueryPool queryPool, uint32_t query, uint32_t index) __attribute__ ((weak));
       void gen11_CmdDrawIndirectByteCountEXT(VkCommandBuffer commandBuffer, uint32_t instanceCount, uint32_t firstInstance, VkBuffer counterBuffer, VkDeviceSize counterBufferOffset, uint32_t counterOffset, uint32_t vertexStride) __attribute__ ((weak));
+      VkResult gen11_AcquireProfilingLockKHR(VkDevice device, const VkAcquireProfilingLockInfoKHR* pInfo) __attribute__ ((weak));
+      void gen11_ReleaseProfilingLockKHR(VkDevice device) __attribute__ ((weak));
       VkResult gen11_GetImageDrmFormatModifierPropertiesEXT(VkDevice device, VkImage image, VkImageDrmFormatModifierPropertiesEXT* pProperties) __attribute__ ((weak));
       uint64_t gen11_GetBufferOpaqueCaptureAddress(VkDevice device, const VkBufferDeviceAddressInfo* pInfo) __attribute__ ((weak));
             VkDeviceAddress gen11_GetBufferDeviceAddress(VkDevice device, const VkBufferDeviceAddressInfo* pInfo) __attribute__ ((weak));
@@ -5653,6 +5613,28 @@ const struct anv_physical_device_dispatch_table anv_physical_device_dispatch_tab
       VkResult gen11_GetPipelineExecutableStatisticsKHR(VkDevice                        device, const VkPipelineExecutableInfoKHR*  pExecutableInfo, uint32_t* pStatisticCount, VkPipelineExecutableStatisticKHR* pStatistics) __attribute__ ((weak));
       VkResult gen11_GetPipelineExecutableInternalRepresentationsKHR(VkDevice                        device, const VkPipelineExecutableInfoKHR*  pExecutableInfo, uint32_t* pInternalRepresentationCount, VkPipelineExecutableInternalRepresentationKHR* pInternalRepresentations) __attribute__ ((weak));
       void gen11_CmdSetLineStippleEXT(VkCommandBuffer commandBuffer, uint32_t lineStippleFactor, uint16_t lineStipplePattern) __attribute__ ((weak));
+      void gen11_CmdSetCullModeEXT(VkCommandBuffer commandBuffer, VkCullModeFlags cullMode) __attribute__ ((weak));
+      void gen11_CmdSetFrontFaceEXT(VkCommandBuffer commandBuffer, VkFrontFace frontFace) __attribute__ ((weak));
+      void gen11_CmdSetPrimitiveTopologyEXT(VkCommandBuffer commandBuffer, VkPrimitiveTopology primitiveTopology) __attribute__ ((weak));
+      void gen11_CmdSetViewportWithCountEXT(VkCommandBuffer commandBuffer, uint32_t viewportCount, const VkViewport* pViewports) __attribute__ ((weak));
+      void gen11_CmdSetScissorWithCountEXT(VkCommandBuffer commandBuffer, uint32_t scissorCount, const VkRect2D* pScissors) __attribute__ ((weak));
+      void gen11_CmdBindVertexBuffers2EXT(VkCommandBuffer commandBuffer, uint32_t firstBinding, uint32_t bindingCount, const VkBuffer* pBuffers, const VkDeviceSize* pOffsets, const VkDeviceSize* pSizes, const VkDeviceSize* pStrides) __attribute__ ((weak));
+      void gen11_CmdSetDepthTestEnableEXT(VkCommandBuffer commandBuffer, VkBool32 depthTestEnable) __attribute__ ((weak));
+      void gen11_CmdSetDepthWriteEnableEXT(VkCommandBuffer commandBuffer, VkBool32 depthWriteEnable) __attribute__ ((weak));
+      void gen11_CmdSetDepthCompareOpEXT(VkCommandBuffer commandBuffer, VkCompareOp depthCompareOp) __attribute__ ((weak));
+      void gen11_CmdSetDepthBoundsTestEnableEXT(VkCommandBuffer commandBuffer, VkBool32 depthBoundsTestEnable) __attribute__ ((weak));
+      void gen11_CmdSetStencilTestEnableEXT(VkCommandBuffer commandBuffer, VkBool32 stencilTestEnable) __attribute__ ((weak));
+      void gen11_CmdSetStencilOpEXT(VkCommandBuffer commandBuffer, VkStencilFaceFlags faceMask, VkStencilOp failOp, VkStencilOp passOp, VkStencilOp depthFailOp, VkCompareOp compareOp) __attribute__ ((weak));
+      VkResult gen11_CreatePrivateDataSlotEXT(VkDevice device, const VkPrivateDataSlotCreateInfoEXT* pCreateInfo, const VkAllocationCallbacks* pAllocator, VkPrivateDataSlotEXT* pPrivateDataSlot) __attribute__ ((weak));
+      void gen11_DestroyPrivateDataSlotEXT(VkDevice device, VkPrivateDataSlotEXT privateDataSlot, const VkAllocationCallbacks* pAllocator) __attribute__ ((weak));
+      VkResult gen11_SetPrivateDataEXT(VkDevice device, VkObjectType objectType, uint64_t objectHandle, VkPrivateDataSlotEXT privateDataSlot, uint64_t data) __attribute__ ((weak));
+      void gen11_GetPrivateDataEXT(VkDevice device, VkObjectType objectType, uint64_t objectHandle, VkPrivateDataSlotEXT privateDataSlot, uint64_t* pData) __attribute__ ((weak));
+      void gen11_CmdCopyBuffer2KHR(VkCommandBuffer commandBuffer, const VkCopyBufferInfo2KHR* pCopyBufferInfo) __attribute__ ((weak));
+      void gen11_CmdCopyImage2KHR(VkCommandBuffer commandBuffer, const VkCopyImageInfo2KHR* pCopyImageInfo) __attribute__ ((weak));
+      void gen11_CmdBlitImage2KHR(VkCommandBuffer commandBuffer, const VkBlitImageInfo2KHR* pBlitImageInfo) __attribute__ ((weak));
+      void gen11_CmdCopyBufferToImage2KHR(VkCommandBuffer commandBuffer, const VkCopyBufferToImageInfo2KHR* pCopyBufferToImageInfo) __attribute__ ((weak));
+      void gen11_CmdCopyImageToBuffer2KHR(VkCommandBuffer commandBuffer, const VkCopyImageToBufferInfo2KHR* pCopyImageToBufferInfo) __attribute__ ((weak));
+      void gen11_CmdResolveImage2KHR(VkCommandBuffer commandBuffer, const VkResolveImageInfo2KHR* pResolveImageInfo) __attribute__ ((weak));
       VkResult gen11_CreateDmaBufImageINTEL(VkDevice device, const VkDmaBufImageCreateInfo* pCreateInfo, const VkAllocationCallbacks* pAllocator, VkDeviceMemory* pMem, VkImage* pImage) __attribute__ ((weak));
 
   const struct anv_device_dispatch_table gen11_device_dispatch_table = {
@@ -5876,6 +5858,8 @@ const struct anv_physical_device_dispatch_table anv_physical_device_dispatch_tab
     .vkCmdBeginQueryIndexedEXT = gen11_CmdBeginQueryIndexedEXT,
     .vkCmdEndQueryIndexedEXT = gen11_CmdEndQueryIndexedEXT,
     .vkCmdDrawIndirectByteCountEXT = gen11_CmdDrawIndirectByteCountEXT,
+    .vkAcquireProfilingLockKHR = gen11_AcquireProfilingLockKHR,
+    .vkReleaseProfilingLockKHR = gen11_ReleaseProfilingLockKHR,
     .vkGetImageDrmFormatModifierPropertiesEXT = gen11_GetImageDrmFormatModifierPropertiesEXT,
     .vkGetBufferOpaqueCaptureAddress = gen11_GetBufferOpaqueCaptureAddress,
     .vkGetBufferOpaqueCaptureAddressKHR = gen11_GetBufferOpaqueCaptureAddress,
@@ -5897,6 +5881,28 @@ const struct anv_physical_device_dispatch_table anv_physical_device_dispatch_tab
     .vkGetPipelineExecutableStatisticsKHR = gen11_GetPipelineExecutableStatisticsKHR,
     .vkGetPipelineExecutableInternalRepresentationsKHR = gen11_GetPipelineExecutableInternalRepresentationsKHR,
     .vkCmdSetLineStippleEXT = gen11_CmdSetLineStippleEXT,
+    .vkCmdSetCullModeEXT = gen11_CmdSetCullModeEXT,
+    .vkCmdSetFrontFaceEXT = gen11_CmdSetFrontFaceEXT,
+    .vkCmdSetPrimitiveTopologyEXT = gen11_CmdSetPrimitiveTopologyEXT,
+    .vkCmdSetViewportWithCountEXT = gen11_CmdSetViewportWithCountEXT,
+    .vkCmdSetScissorWithCountEXT = gen11_CmdSetScissorWithCountEXT,
+    .vkCmdBindVertexBuffers2EXT = gen11_CmdBindVertexBuffers2EXT,
+    .vkCmdSetDepthTestEnableEXT = gen11_CmdSetDepthTestEnableEXT,
+    .vkCmdSetDepthWriteEnableEXT = gen11_CmdSetDepthWriteEnableEXT,
+    .vkCmdSetDepthCompareOpEXT = gen11_CmdSetDepthCompareOpEXT,
+    .vkCmdSetDepthBoundsTestEnableEXT = gen11_CmdSetDepthBoundsTestEnableEXT,
+    .vkCmdSetStencilTestEnableEXT = gen11_CmdSetStencilTestEnableEXT,
+    .vkCmdSetStencilOpEXT = gen11_CmdSetStencilOpEXT,
+    .vkCreatePrivateDataSlotEXT = gen11_CreatePrivateDataSlotEXT,
+    .vkDestroyPrivateDataSlotEXT = gen11_DestroyPrivateDataSlotEXT,
+    .vkSetPrivateDataEXT = gen11_SetPrivateDataEXT,
+    .vkGetPrivateDataEXT = gen11_GetPrivateDataEXT,
+    .vkCmdCopyBuffer2KHR = gen11_CmdCopyBuffer2KHR,
+    .vkCmdCopyImage2KHR = gen11_CmdCopyImage2KHR,
+    .vkCmdBlitImage2KHR = gen11_CmdBlitImage2KHR,
+    .vkCmdCopyBufferToImage2KHR = gen11_CmdCopyBufferToImage2KHR,
+    .vkCmdCopyImageToBuffer2KHR = gen11_CmdCopyImageToBuffer2KHR,
+    .vkCmdResolveImage2KHR = gen11_CmdResolveImage2KHR,
     .vkCreateDmaBufImageINTEL = gen11_CreateDmaBufImageINTEL,
   };
       PFN_vkVoidFunction gen12_GetDeviceProcAddr(VkDevice device, const char* pName) __attribute__ ((weak));
@@ -6094,6 +6100,8 @@ const struct anv_physical_device_dispatch_table anv_physical_device_dispatch_tab
       void gen12_CmdBeginQueryIndexedEXT(VkCommandBuffer commandBuffer, VkQueryPool queryPool, uint32_t query, VkQueryControlFlags flags, uint32_t index) __attribute__ ((weak));
       void gen12_CmdEndQueryIndexedEXT(VkCommandBuffer commandBuffer, VkQueryPool queryPool, uint32_t query, uint32_t index) __attribute__ ((weak));
       void gen12_CmdDrawIndirectByteCountEXT(VkCommandBuffer commandBuffer, uint32_t instanceCount, uint32_t firstInstance, VkBuffer counterBuffer, VkDeviceSize counterBufferOffset, uint32_t counterOffset, uint32_t vertexStride) __attribute__ ((weak));
+      VkResult gen12_AcquireProfilingLockKHR(VkDevice device, const VkAcquireProfilingLockInfoKHR* pInfo) __attribute__ ((weak));
+      void gen12_ReleaseProfilingLockKHR(VkDevice device) __attribute__ ((weak));
       VkResult gen12_GetImageDrmFormatModifierPropertiesEXT(VkDevice device, VkImage image, VkImageDrmFormatModifierPropertiesEXT* pProperties) __attribute__ ((weak));
       uint64_t gen12_GetBufferOpaqueCaptureAddress(VkDevice device, const VkBufferDeviceAddressInfo* pInfo) __attribute__ ((weak));
             VkDeviceAddress gen12_GetBufferDeviceAddress(VkDevice device, const VkBufferDeviceAddressInfo* pInfo) __attribute__ ((weak));
@@ -6111,6 +6119,28 @@ const struct anv_physical_device_dispatch_table anv_physical_device_dispatch_tab
       VkResult gen12_GetPipelineExecutableStatisticsKHR(VkDevice                        device, const VkPipelineExecutableInfoKHR*  pExecutableInfo, uint32_t* pStatisticCount, VkPipelineExecutableStatisticKHR* pStatistics) __attribute__ ((weak));
       VkResult gen12_GetPipelineExecutableInternalRepresentationsKHR(VkDevice                        device, const VkPipelineExecutableInfoKHR*  pExecutableInfo, uint32_t* pInternalRepresentationCount, VkPipelineExecutableInternalRepresentationKHR* pInternalRepresentations) __attribute__ ((weak));
       void gen12_CmdSetLineStippleEXT(VkCommandBuffer commandBuffer, uint32_t lineStippleFactor, uint16_t lineStipplePattern) __attribute__ ((weak));
+      void gen12_CmdSetCullModeEXT(VkCommandBuffer commandBuffer, VkCullModeFlags cullMode) __attribute__ ((weak));
+      void gen12_CmdSetFrontFaceEXT(VkCommandBuffer commandBuffer, VkFrontFace frontFace) __attribute__ ((weak));
+      void gen12_CmdSetPrimitiveTopologyEXT(VkCommandBuffer commandBuffer, VkPrimitiveTopology primitiveTopology) __attribute__ ((weak));
+      void gen12_CmdSetViewportWithCountEXT(VkCommandBuffer commandBuffer, uint32_t viewportCount, const VkViewport* pViewports) __attribute__ ((weak));
+      void gen12_CmdSetScissorWithCountEXT(VkCommandBuffer commandBuffer, uint32_t scissorCount, const VkRect2D* pScissors) __attribute__ ((weak));
+      void gen12_CmdBindVertexBuffers2EXT(VkCommandBuffer commandBuffer, uint32_t firstBinding, uint32_t bindingCount, const VkBuffer* pBuffers, const VkDeviceSize* pOffsets, const VkDeviceSize* pSizes, const VkDeviceSize* pStrides) __attribute__ ((weak));
+      void gen12_CmdSetDepthTestEnableEXT(VkCommandBuffer commandBuffer, VkBool32 depthTestEnable) __attribute__ ((weak));
+      void gen12_CmdSetDepthWriteEnableEXT(VkCommandBuffer commandBuffer, VkBool32 depthWriteEnable) __attribute__ ((weak));
+      void gen12_CmdSetDepthCompareOpEXT(VkCommandBuffer commandBuffer, VkCompareOp depthCompareOp) __attribute__ ((weak));
+      void gen12_CmdSetDepthBoundsTestEnableEXT(VkCommandBuffer commandBuffer, VkBool32 depthBoundsTestEnable) __attribute__ ((weak));
+      void gen12_CmdSetStencilTestEnableEXT(VkCommandBuffer commandBuffer, VkBool32 stencilTestEnable) __attribute__ ((weak));
+      void gen12_CmdSetStencilOpEXT(VkCommandBuffer commandBuffer, VkStencilFaceFlags faceMask, VkStencilOp failOp, VkStencilOp passOp, VkStencilOp depthFailOp, VkCompareOp compareOp) __attribute__ ((weak));
+      VkResult gen12_CreatePrivateDataSlotEXT(VkDevice device, const VkPrivateDataSlotCreateInfoEXT* pCreateInfo, const VkAllocationCallbacks* pAllocator, VkPrivateDataSlotEXT* pPrivateDataSlot) __attribute__ ((weak));
+      void gen12_DestroyPrivateDataSlotEXT(VkDevice device, VkPrivateDataSlotEXT privateDataSlot, const VkAllocationCallbacks* pAllocator) __attribute__ ((weak));
+      VkResult gen12_SetPrivateDataEXT(VkDevice device, VkObjectType objectType, uint64_t objectHandle, VkPrivateDataSlotEXT privateDataSlot, uint64_t data) __attribute__ ((weak));
+      void gen12_GetPrivateDataEXT(VkDevice device, VkObjectType objectType, uint64_t objectHandle, VkPrivateDataSlotEXT privateDataSlot, uint64_t* pData) __attribute__ ((weak));
+      void gen12_CmdCopyBuffer2KHR(VkCommandBuffer commandBuffer, const VkCopyBufferInfo2KHR* pCopyBufferInfo) __attribute__ ((weak));
+      void gen12_CmdCopyImage2KHR(VkCommandBuffer commandBuffer, const VkCopyImageInfo2KHR* pCopyImageInfo) __attribute__ ((weak));
+      void gen12_CmdBlitImage2KHR(VkCommandBuffer commandBuffer, const VkBlitImageInfo2KHR* pBlitImageInfo) __attribute__ ((weak));
+      void gen12_CmdCopyBufferToImage2KHR(VkCommandBuffer commandBuffer, const VkCopyBufferToImageInfo2KHR* pCopyBufferToImageInfo) __attribute__ ((weak));
+      void gen12_CmdCopyImageToBuffer2KHR(VkCommandBuffer commandBuffer, const VkCopyImageToBufferInfo2KHR* pCopyImageToBufferInfo) __attribute__ ((weak));
+      void gen12_CmdResolveImage2KHR(VkCommandBuffer commandBuffer, const VkResolveImageInfo2KHR* pResolveImageInfo) __attribute__ ((weak));
       VkResult gen12_CreateDmaBufImageINTEL(VkDevice device, const VkDmaBufImageCreateInfo* pCreateInfo, const VkAllocationCallbacks* pAllocator, VkDeviceMemory* pMem, VkImage* pImage) __attribute__ ((weak));
 
   const struct anv_device_dispatch_table gen12_device_dispatch_table = {
@@ -6334,6 +6364,8 @@ const struct anv_physical_device_dispatch_table anv_physical_device_dispatch_tab
     .vkCmdBeginQueryIndexedEXT = gen12_CmdBeginQueryIndexedEXT,
     .vkCmdEndQueryIndexedEXT = gen12_CmdEndQueryIndexedEXT,
     .vkCmdDrawIndirectByteCountEXT = gen12_CmdDrawIndirectByteCountEXT,
+    .vkAcquireProfilingLockKHR = gen12_AcquireProfilingLockKHR,
+    .vkReleaseProfilingLockKHR = gen12_ReleaseProfilingLockKHR,
     .vkGetImageDrmFormatModifierPropertiesEXT = gen12_GetImageDrmFormatModifierPropertiesEXT,
     .vkGetBufferOpaqueCaptureAddress = gen12_GetBufferOpaqueCaptureAddress,
     .vkGetBufferOpaqueCaptureAddressKHR = gen12_GetBufferOpaqueCaptureAddress,
@@ -6355,6 +6387,28 @@ const struct anv_physical_device_dispatch_table anv_physical_device_dispatch_tab
     .vkGetPipelineExecutableStatisticsKHR = gen12_GetPipelineExecutableStatisticsKHR,
     .vkGetPipelineExecutableInternalRepresentationsKHR = gen12_GetPipelineExecutableInternalRepresentationsKHR,
     .vkCmdSetLineStippleEXT = gen12_CmdSetLineStippleEXT,
+    .vkCmdSetCullModeEXT = gen12_CmdSetCullModeEXT,
+    .vkCmdSetFrontFaceEXT = gen12_CmdSetFrontFaceEXT,
+    .vkCmdSetPrimitiveTopologyEXT = gen12_CmdSetPrimitiveTopologyEXT,
+    .vkCmdSetViewportWithCountEXT = gen12_CmdSetViewportWithCountEXT,
+    .vkCmdSetScissorWithCountEXT = gen12_CmdSetScissorWithCountEXT,
+    .vkCmdBindVertexBuffers2EXT = gen12_CmdBindVertexBuffers2EXT,
+    .vkCmdSetDepthTestEnableEXT = gen12_CmdSetDepthTestEnableEXT,
+    .vkCmdSetDepthWriteEnableEXT = gen12_CmdSetDepthWriteEnableEXT,
+    .vkCmdSetDepthCompareOpEXT = gen12_CmdSetDepthCompareOpEXT,
+    .vkCmdSetDepthBoundsTestEnableEXT = gen12_CmdSetDepthBoundsTestEnableEXT,
+    .vkCmdSetStencilTestEnableEXT = gen12_CmdSetStencilTestEnableEXT,
+    .vkCmdSetStencilOpEXT = gen12_CmdSetStencilOpEXT,
+    .vkCreatePrivateDataSlotEXT = gen12_CreatePrivateDataSlotEXT,
+    .vkDestroyPrivateDataSlotEXT = gen12_DestroyPrivateDataSlotEXT,
+    .vkSetPrivateDataEXT = gen12_SetPrivateDataEXT,
+    .vkGetPrivateDataEXT = gen12_GetPrivateDataEXT,
+    .vkCmdCopyBuffer2KHR = gen12_CmdCopyBuffer2KHR,
+    .vkCmdCopyImage2KHR = gen12_CmdCopyImage2KHR,
+    .vkCmdBlitImage2KHR = gen12_CmdBlitImage2KHR,
+    .vkCmdCopyBufferToImage2KHR = gen12_CmdCopyBufferToImage2KHR,
+    .vkCmdCopyImageToBuffer2KHR = gen12_CmdCopyImageToBuffer2KHR,
+    .vkCmdResolveImage2KHR = gen12_CmdResolveImage2KHR,
     .vkCreateDmaBufImageINTEL = gen12_CreateDmaBufImageINTEL,
   };
 
@@ -6645,6 +6699,16 @@ anv_physical_device_entrypoint_is_enabled(int index, uint32_t core_version,
       return false;
    case 54:
       /* vkGetPhysicalDeviceCalibrateableTimeDomainsEXT */
+      /* All device extensions are considered enabled at the instance level */
+      return true;
+      return false;
+   case 55:
+      /* vkEnumeratePhysicalDeviceQueueFamilyPerformanceQueryCountersKHR */
+      /* All device extensions are considered enabled at the instance level */
+      return true;
+      return false;
+   case 56:
+      /* vkGetPhysicalDeviceQueueFamilyPerformanceQueryPassesKHR */
       /* All device extensions are considered enabled at the instance level */
       return true;
       return false;
@@ -7187,6 +7251,7 @@ anv_device_entrypoint_is_enabled(int index, uint32_t core_version,
    case 162:
       /* vkCmdPushDescriptorSetWithTemplateKHR */
       if (!device || device->KHR_push_descriptor) return true;
+      if (!device || device->KHR_push_descriptor) return true;
       if (!device || device->KHR_descriptor_update_template) return true;
       return false;
    case 163:
@@ -7354,87 +7419,183 @@ anv_device_entrypoint_is_enabled(int index, uint32_t core_version,
       if (!device || device->EXT_transform_feedback) return true;
       return false;
    case 208:
+      /* vkAcquireProfilingLockKHR */
+      if (!device || device->KHR_performance_query) return true;
+      return false;
+   case 209:
+      /* vkReleaseProfilingLockKHR */
+      if (!device || device->KHR_performance_query) return true;
+      return false;
+   case 210:
       /* vkGetImageDrmFormatModifierPropertiesEXT */
       if (!device || device->EXT_image_drm_format_modifier) return true;
       return false;
-   case 209:
+   case 211:
       /* vkGetBufferOpaqueCaptureAddress */
       return VK_MAKE_VERSION(1, 2, 0) <= core_version;
-   case 210:
+   case 212:
       /* vkGetBufferOpaqueCaptureAddressKHR */
       if (!device || device->KHR_buffer_device_address) return true;
       return false;
-   case 211:
+   case 213:
       /* vkGetBufferDeviceAddress */
       return VK_MAKE_VERSION(1, 2, 0) <= core_version;
-   case 212:
+   case 214:
       /* vkGetBufferDeviceAddressKHR */
       if (!device || device->KHR_buffer_device_address) return true;
       return false;
-   case 213:
+   case 215:
       /* vkGetBufferDeviceAddressEXT */
       if (!device || device->EXT_buffer_device_address) return true;
       return false;
-   case 214:
+   case 216:
       /* vkInitializePerformanceApiINTEL */
       if (!device || device->INTEL_performance_query) return true;
       return false;
-   case 215:
+   case 217:
       /* vkUninitializePerformanceApiINTEL */
       if (!device || device->INTEL_performance_query) return true;
       return false;
-   case 216:
+   case 218:
       /* vkCmdSetPerformanceMarkerINTEL */
       if (!device || device->INTEL_performance_query) return true;
       return false;
-   case 217:
+   case 219:
       /* vkCmdSetPerformanceStreamMarkerINTEL */
       if (!device || device->INTEL_performance_query) return true;
       return false;
-   case 218:
+   case 220:
       /* vkCmdSetPerformanceOverrideINTEL */
       if (!device || device->INTEL_performance_query) return true;
       return false;
-   case 219:
+   case 221:
       /* vkAcquirePerformanceConfigurationINTEL */
       if (!device || device->INTEL_performance_query) return true;
       return false;
-   case 220:
+   case 222:
       /* vkReleasePerformanceConfigurationINTEL */
       if (!device || device->INTEL_performance_query) return true;
       return false;
-   case 221:
+   case 223:
       /* vkQueueSetPerformanceConfigurationINTEL */
       if (!device || device->INTEL_performance_query) return true;
       return false;
-   case 222:
+   case 224:
       /* vkGetPerformanceParameterINTEL */
       if (!device || device->INTEL_performance_query) return true;
       return false;
-   case 223:
+   case 225:
       /* vkGetDeviceMemoryOpaqueCaptureAddress */
       return VK_MAKE_VERSION(1, 2, 0) <= core_version;
-   case 224:
+   case 226:
       /* vkGetDeviceMemoryOpaqueCaptureAddressKHR */
       if (!device || device->KHR_buffer_device_address) return true;
       return false;
-   case 225:
+   case 227:
       /* vkGetPipelineExecutablePropertiesKHR */
       if (!device || device->KHR_pipeline_executable_properties) return true;
       return false;
-   case 226:
+   case 228:
       /* vkGetPipelineExecutableStatisticsKHR */
       if (!device || device->KHR_pipeline_executable_properties) return true;
       return false;
-   case 227:
+   case 229:
       /* vkGetPipelineExecutableInternalRepresentationsKHR */
       if (!device || device->KHR_pipeline_executable_properties) return true;
       return false;
-   case 228:
+   case 230:
       /* vkCmdSetLineStippleEXT */
       if (!device || device->EXT_line_rasterization) return true;
       return false;
-   case 229:
+   case 231:
+      /* vkCmdSetCullModeEXT */
+      if (!device || device->EXT_extended_dynamic_state) return true;
+      return false;
+   case 232:
+      /* vkCmdSetFrontFaceEXT */
+      if (!device || device->EXT_extended_dynamic_state) return true;
+      return false;
+   case 233:
+      /* vkCmdSetPrimitiveTopologyEXT */
+      if (!device || device->EXT_extended_dynamic_state) return true;
+      return false;
+   case 234:
+      /* vkCmdSetViewportWithCountEXT */
+      if (!device || device->EXT_extended_dynamic_state) return true;
+      return false;
+   case 235:
+      /* vkCmdSetScissorWithCountEXT */
+      if (!device || device->EXT_extended_dynamic_state) return true;
+      return false;
+   case 236:
+      /* vkCmdBindVertexBuffers2EXT */
+      if (!device || device->EXT_extended_dynamic_state) return true;
+      return false;
+   case 237:
+      /* vkCmdSetDepthTestEnableEXT */
+      if (!device || device->EXT_extended_dynamic_state) return true;
+      return false;
+   case 238:
+      /* vkCmdSetDepthWriteEnableEXT */
+      if (!device || device->EXT_extended_dynamic_state) return true;
+      return false;
+   case 239:
+      /* vkCmdSetDepthCompareOpEXT */
+      if (!device || device->EXT_extended_dynamic_state) return true;
+      return false;
+   case 240:
+      /* vkCmdSetDepthBoundsTestEnableEXT */
+      if (!device || device->EXT_extended_dynamic_state) return true;
+      return false;
+   case 241:
+      /* vkCmdSetStencilTestEnableEXT */
+      if (!device || device->EXT_extended_dynamic_state) return true;
+      return false;
+   case 242:
+      /* vkCmdSetStencilOpEXT */
+      if (!device || device->EXT_extended_dynamic_state) return true;
+      return false;
+   case 243:
+      /* vkCreatePrivateDataSlotEXT */
+      if (!device || device->EXT_private_data) return true;
+      return false;
+   case 244:
+      /* vkDestroyPrivateDataSlotEXT */
+      if (!device || device->EXT_private_data) return true;
+      return false;
+   case 245:
+      /* vkSetPrivateDataEXT */
+      if (!device || device->EXT_private_data) return true;
+      return false;
+   case 246:
+      /* vkGetPrivateDataEXT */
+      if (!device || device->EXT_private_data) return true;
+      return false;
+   case 247:
+      /* vkCmdCopyBuffer2KHR */
+      if (!device || device->KHR_copy_commands2) return true;
+      return false;
+   case 248:
+      /* vkCmdCopyImage2KHR */
+      if (!device || device->KHR_copy_commands2) return true;
+      return false;
+   case 249:
+      /* vkCmdBlitImage2KHR */
+      if (!device || device->KHR_copy_commands2) return true;
+      return false;
+   case 250:
+      /* vkCmdCopyBufferToImage2KHR */
+      if (!device || device->KHR_copy_commands2) return true;
+      return false;
+   case 251:
+      /* vkCmdCopyImageToBuffer2KHR */
+      if (!device || device->KHR_copy_commands2) return true;
+      return false;
+   case 252:
+      /* vkCmdResolveImage2KHR */
+      if (!device || device->KHR_copy_commands2) return true;
+      return false;
+   case 253:
       /* vkCreateDmaBufImageINTEL */
       return true;
    default:
@@ -7478,7 +7639,7 @@ anv_get_device_entry_name(int index)
    return device_entry_name(index);
 }
 
-static void * __attribute__ ((noinline))
+void * __attribute__ ((noinline))
 anv_resolve_device_entrypoint(const struct gen_device_info *devinfo, uint32_t index)
 {
    const struct anv_device_dispatch_table *genX_table;
@@ -7488,9 +7649,6 @@ anv_resolve_device_entrypoint(const struct gen_device_info *devinfo, uint32_t in
       break;
    case 11:
       genX_table = &gen11_device_dispatch_table;
-      break;
-   case 10:
-      genX_table = &gen10_device_dispatch_table;
       break;
    case 9:
       genX_table = &gen9_device_dispatch_table;

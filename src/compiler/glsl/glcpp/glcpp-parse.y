@@ -781,7 +781,10 @@ replacement_list:
 junk:
 	/* empty */
 |	pp_tokens {
-		glcpp_error(&@1, parser, "extra tokens at end of directive");
+		if (parser->gl_ctx->Const.AllowExtraPPTokens)
+			glcpp_warning(&@1, parser, "extra tokens at end of directive");
+		else
+			glcpp_error(&@1, parser, "extra tokens at end of directive");
 	}
 ;
 
@@ -1187,6 +1190,9 @@ _token_list_equal_ignoring_space(token_list_t *a, token_list_t *b)
             node_b = node_b->next;
       }
 
+      if (node_a == NULL && node_b == NULL)
+         break;
+
       if (node_b == NULL && node_a->token->type == SPACE) {
          while (node_a && node_a->token->type == SPACE)
             node_a = node_a->next;
@@ -1248,6 +1254,7 @@ _token_print(struct _mesa_string_buffer *out, token_t *token)
       break;
    case IDENTIFIER:
    case INTEGER_STRING:
+   case PATH:
    case OTHER:
       _mesa_string_buffer_append(out, token->value.str);
       break;

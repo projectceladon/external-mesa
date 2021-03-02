@@ -159,11 +159,16 @@ nv50_screen_get_param(struct pipe_screen *pscreen, enum pipe_cap param)
       return 16 * 1024 * 1024;
    case PIPE_CAP_MAX_VARYINGS:
       return 15;
+   case PIPE_CAP_MAX_VERTEX_BUFFERS:
+      return 16;
+   case PIPE_CAP_GL_BEGIN_END_BUFFER_SIZE:
+      return 512 * 1024; /* TODO: Investigate tuning this */
 
    /* supported caps */
    case PIPE_CAP_TEXTURE_MIRROR_CLAMP:
    case PIPE_CAP_TEXTURE_MIRROR_CLAMP_TO_EDGE:
    case PIPE_CAP_TEXTURE_SWIZZLE:
+   case PIPE_CAP_TEXTURE_SHADOW_MAP:
    case PIPE_CAP_NPOT_TEXTURES:
    case PIPE_CAP_MIXED_FRAMEBUFFER_SIZES:
    case PIPE_CAP_MIXED_COLOR_DEPTH_BITS:
@@ -186,6 +191,7 @@ nv50_screen_get_param(struct pipe_screen *pscreen, enum pipe_cap param)
    case PIPE_CAP_TGSI_FS_COORD_ORIGIN_UPPER_LEFT:
    case PIPE_CAP_TGSI_FS_COORD_PIXEL_CENTER_HALF_INTEGER:
    case PIPE_CAP_PRIMITIVE_RESTART:
+   case PIPE_CAP_PRIMITIVE_RESTART_FIXED_INDEX:
    case PIPE_CAP_TGSI_INSTANCEID:
    case PIPE_CAP_VERTEX_ELEMENT_INSTANCE_DIVISOR:
    case PIPE_CAP_MIXED_COLORBUFFER_FORMATS:
@@ -221,6 +227,14 @@ nv50_screen_get_param(struct pipe_screen *pscreen, enum pipe_cap param)
    case PIPE_CAP_ALLOW_MAPPED_BUFFERS_DURING_EXECUTION:
    case PIPE_CAP_DEST_SURFACE_SRGB_CONTROL:
    case PIPE_CAP_TGSI_DIV:
+   case PIPE_CAP_PREFER_IMM_ARRAYS_AS_CONSTBUF:
+   case PIPE_CAP_FLATSHADE:
+   case PIPE_CAP_ALPHA_TEST:
+   case PIPE_CAP_POINT_SIZE_FIXED:
+   case PIPE_CAP_TWO_SIDED_COLOR:
+   case PIPE_CAP_CLIP_PLANES:
+   case PIPE_CAP_PACKED_STREAM_OUTPUT:
+   case PIPE_CAP_DRAW_INFO_START_WITH_USER_INDICES:
       return 1;
    case PIPE_CAP_SEAMLESS_CUBE_MAP:
       return 1; /* class_3d >= NVA0_3D_CLASS; */
@@ -262,6 +276,7 @@ nv50_screen_get_param(struct pipe_screen *pscreen, enum pipe_cap param)
    case PIPE_CAP_DRAW_PARAMETERS:
    case PIPE_CAP_TGSI_PACK_HALF_FLOAT:
    case PIPE_CAP_TGSI_FS_POSITION_IS_SYSVAL:
+   case PIPE_CAP_TGSI_FS_POINT_IS_SYSVAL:
    case PIPE_CAP_SHADER_BUFFER_OFFSET_ALIGNMENT:
    case PIPE_CAP_GENERATE_MIPMAP:
    case PIPE_CAP_BUFFER_SAMPLER_VIEW_RGBA_ONLY:
@@ -331,6 +346,17 @@ nv50_screen_get_param(struct pipe_screen *pscreen, enum pipe_cap param)
    case PIPE_CAP_TGSI_SKIP_SHRINK_IO_ARRAYS:
    case PIPE_CAP_TGSI_ATOMINC_WRAP:
    case PIPE_CAP_DEMOTE_TO_HELPER_INVOCATION:
+   case PIPE_CAP_TGSI_TG4_COMPONENT_IN_SWIZZLE:
+   case PIPE_CAP_OPENCL_INTEGER_FUNCTIONS:
+   case PIPE_CAP_INTEGER_MULTIPLY_32X16: /* could be done */
+   case PIPE_CAP_FRONTEND_NOOP:
+   case PIPE_CAP_GL_SPIRV:
+   case PIPE_CAP_SHADER_SAMPLES_IDENTICAL:
+   case PIPE_CAP_TEXTURE_SHADOW_LOD:
+   case PIPE_CAP_VIEWPORT_TRANSFORM_LOWERED:
+   case PIPE_CAP_PSIZ_CLAMPED:
+   case PIPE_CAP_VIEWPORT_SWIZZLE:
+   case PIPE_CAP_VIEWPORT_MASK:
       return 0;
 
    case PIPE_CAP_VENDOR_ID:
@@ -410,6 +436,9 @@ nv50_screen_get_shader_param(struct pipe_screen *pscreen,
       return 1;
    case PIPE_SHADER_CAP_INT64_ATOMICS:
    case PIPE_SHADER_CAP_FP16:
+   case PIPE_SHADER_CAP_FP16_DERIVATIVES:
+   case PIPE_SHADER_CAP_INT16:
+   case PIPE_SHADER_CAP_GLSL_16BIT_CONSTS:
    case PIPE_SHADER_CAP_SUBROUTINES:
       return 0; /* please inline, or provide function declarations */
    case PIPE_SHADER_CAP_INTEGERS:
@@ -455,7 +484,7 @@ nv50_screen_get_paramf(struct pipe_screen *pscreen, enum pipe_capf param)
    case PIPE_CAPF_MAX_TEXTURE_ANISOTROPY:
       return 16.0f;
    case PIPE_CAPF_MAX_TEXTURE_LOD_BIAS:
-      return 4.0f;
+      return 15.0f;
    case PIPE_CAPF_MIN_CONSERVATIVE_RASTER_DILATE:
    case PIPE_CAPF_MAX_CONSERVATIVE_RASTER_DILATE:
    case PIPE_CAPF_CONSERVATIVE_RASTER_DILATE_GRANULARITY:
@@ -628,7 +657,7 @@ nv50_screen_init_hwctx(struct nv50_screen *screen)
    PUSH_DATA (push, 0);
    BEGIN_NV04(push, NV50_2D(COLOR_KEY_ENABLE), 1);
    PUSH_DATA (push, 0);
-   BEGIN_NV04(push, SUBC_2D(0x0888), 1);
+   BEGIN_NV04(push, NV50_2D(SET_PIXELS_FROM_MEMORY_SAFE_OVERLAP), 1);
    PUSH_DATA (push, 1);
    BEGIN_NV04(push, NV50_2D(COND_MODE), 1);
    PUSH_DATA (push, NV50_2D_COND_MODE_ALWAYS);
@@ -894,7 +923,9 @@ int nv50_tls_realloc(struct nv50_screen *screen, unsigned tls_space)
 }
 
 static const nir_shader_compiler_options nir_options = {
-   .fuse_ffma = false, /* nir doesn't track mad vs fma */
+   .fuse_ffma16 = false, /* nir doesn't track mad vs fma */
+   .fuse_ffma32 = false, /* nir doesn't track mad vs fma */
+   .fuse_ffma64 = false, /* nir doesn't track mad vs fma */
    .lower_flrp32 = true,
    .lower_flrp64 = true,
    .lower_fpow = false,

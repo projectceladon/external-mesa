@@ -34,6 +34,7 @@
 #include "main/macros.h"
 #include "pipe/p_context.h"
 #include "pipe/p_screen.h"
+#include "util/u_memory.h"
 #include "st_context.h"
 #include "st_cb_syncobj.h"
 
@@ -74,7 +75,8 @@ static void st_fence_sync(struct gl_context *ctx, struct gl_sync_object *obj,
    assert(condition == GL_SYNC_GPU_COMMANDS_COMPLETE && flags == 0);
    assert(so->fence == NULL);
 
-   pipe->flush(pipe, &so->fence, PIPE_FLUSH_DEFERRED);
+   /* Deferred flush are only allowed when there's a single context. See issue 1430 */
+   pipe->flush(pipe, &so->fence, ctx->Shared->RefCount == 1 ? PIPE_FLUSH_DEFERRED : 0);
 }
 
 static void st_client_wait_sync(struct gl_context *ctx,

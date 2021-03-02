@@ -618,14 +618,12 @@ gbm_dri_is_format_supported(struct gbm_device *gbm,
       }
    }
 
-   /* Check if the driver returns any modifiers for this format; since linear
-    * is counted as a modifier, we will have at least one modifier for any
-    * supported format. */
+   /* This returns false if the format isn't supported */
    if (!dri->image->queryDmaBufModifiers(dri->screen, format, 0, NULL, NULL,
                                          &count))
       return 0;
 
-   return (count > 0);
+   return 1;
 }
 
 static int
@@ -1144,6 +1142,8 @@ gbm_dri_bo_create(struct gbm_device *gbm,
       dri_use |= __DRI_IMAGE_USE_CURSOR;
    if (usage & GBM_BO_USE_LINEAR)
       dri_use |= __DRI_IMAGE_USE_LINEAR;
+   if (usage & GBM_BO_USE_PROTECTED)
+      dri_use |= __DRI_IMAGE_USE_PROTECTED;
 
    /* Gallium drivers requires shared in order to get the handle/stride */
    dri_use |= __DRI_IMAGE_USE_SHARE;

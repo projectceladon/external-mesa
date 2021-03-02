@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# Copyright © 2019 Intel Corporation
+# Copyright © 2019-2020 Intel Corporation
 
 # Permission is hereby granted, free of charge, to any person obtaining a copy
 # of this software and associated documentation files (the "Software"), to deal
@@ -25,6 +25,8 @@ import asyncio
 import datetime
 import os
 import pathlib
+import re
+import subprocess
 import sys
 import textwrap
 import typing
@@ -36,96 +38,84 @@ from mako import exceptions
 
 
 CURRENT_GL_VERSION = '4.6'
-CURRENT_VK_VERSION = '1.1'
+CURRENT_VK_VERSION = '1.2'
 
 TEMPLATE = Template(textwrap.dedent("""\
-    <%!
-        import html
-    %>
-    <!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN" "http://www.w3.org/TR/html4/loose.dtd">
-    <html lang="en">
-    <head>
-    <meta http-equiv="content-type" content="text/html; charset=utf-8">
-    <title>Mesa Release Notes</title>
-    <link rel="stylesheet" type="text/css" href="../mesa.css">
-    </head>
-    <body>
+    ${header}
+    ${header_underline}
 
-    <div class="header">
-    <h1>The Mesa 3D Graphics Library</h1>
-    </div>
-
-    <iframe src="../contents.html"></iframe>
-    <div class="content">
-
-    <h1>Mesa ${next_version} Release Notes / ${today}</h1>
-
-    <p>
     %if not bugfix:
-        Mesa ${next_version} is a new development release. People who are concerned
-        with stability and reliability should stick with a previous release or
-        wait for Mesa ${version[:-1]}1.
+    Mesa ${this_version} is a new development release. People who are concerned
+    with stability and reliability should stick with a previous release or
+    wait for Mesa ${this_version[:-1]}1.
     %else:
-        Mesa ${next_version} is a bug fix release which fixes bugs found since the ${version} release.
+    Mesa ${this_version} is a bug fix release which fixes bugs found since the ${previous_version} release.
     %endif
-    </p>
-    <p>
-    Mesa ${next_version} implements the OpenGL ${gl_version} API, but the version reported by
+
+    Mesa ${this_version} implements the OpenGL ${gl_version} API, but the version reported by
     glGetString(GL_VERSION) or glGetIntegerv(GL_MAJOR_VERSION) /
     glGetIntegerv(GL_MINOR_VERSION) depends on the particular driver being used.
     Some drivers don't support all the features required in OpenGL ${gl_version}. OpenGL
-    ${gl_version} is <strong>only</strong> available if requested at context creation.
+    ${gl_version} is **only** available if requested at context creation.
     Compatibility contexts may report a lower version depending on each driver.
-    </p>
-    <p>
-    Mesa ${next_version} implements the Vulkan ${vk_version} API, but the version reported by
+
+    Mesa ${this_version} implements the Vulkan ${vk_version} API, but the version reported by
     the apiVersion property of the VkPhysicalDeviceProperties struct
     depends on the particular driver being used.
-    </p>
 
-    <h2>SHA256 checksum</h2>
-    <pre>
-    TBD.
-    </pre>
+    SHA256 checksum
+    ---------------
+
+    ::
+
+        TBD.
 
 
-    <h2>New features</h2>
+    New features
+    ------------
 
-    <ul>
     %for f in features:
-        <li>${html.escape(f)}</li>
+    - ${rst_escape(f)}
     %endfor
-    </ul>
 
-    <h2>Bug fixes</h2>
 
-    <ul>
+    Bug fixes
+    ---------
+
     %for b in bugs:
-        <li>${html.escape(b)}</li>
+    - ${rst_escape(b)}
     %endfor
-    </ul>
 
-    <h2>Changes</h2>
 
-    <ul>
-    %for c, author in changes:
-      %if author:
-        <p>${html.escape(c)}</p>
+    Changes
+    -------
+    %for c, author_line in changes:
+      %if author_line:
+
+    ${rst_escape(c)}
+
       %else:
-        <li>${html.escape(c)}</li>
+    - ${rst_escape(c)}
       %endif
     %endfor
-    </ul>
-
-    </div>
-    </body>
-    </html>
     """))
+
+
+def rst_escape(unsafe_str: str) -> str:
+    "Escape rST special chars when they follow or preceed a whitespace"
+    special = re.escape(r'`<>*_#[]|')
+    unsafe_str = re.sub(r'(^|\s)([' + special + r'])',
+                        r'\1\\\2',
+                        unsafe_str)
+    unsafe_str = re.sub(r'([' + special + r'])(\s|$)',
+                        r'\\\1\2',
+                        unsafe_str)
+    return unsafe_str
 
 
 async def gather_commits(version: str) -> str:
     p = await asyncio.create_subprocess_exec(
-        'git', 'log', f'mesa-{version}..', '--grep', r'Closes: \(https\|#\).*',
+        'git', 'log', '--oneline', f'mesa-{version}..', '--grep', r'Closes: \(https\|#\).*',
         stdout=asyncio.subprocess.PIPE)
     out, _ = await p.communicate()
     assert p.returncode == 0, f"git log didn't work: {version}"
@@ -159,7 +149,10 @@ async def gather_bugs(version: str) -> typing.List[str]:
     async with aiohttp.ClientSession(loop=loop) as session:
         results = await asyncio.gather(*[get_bug(session, i) for i in issues])
     typing.cast(typing.Tuple[str, ...], results)
-    return list(results)
+    bugs = list(results)
+    if not bugs:
+        bugs = ['None']
+    return bugs
 
 
 async def get_bug(session: aiohttp.ClientSession, bug_id: str) -> str:
@@ -185,8 +178,8 @@ async def get_shortlog(version: str) -> str:
 def walk_shortlog(log: str) -> typing.Generator[typing.Tuple[str, bool], None, None]:
     for l in log.split('\n'):
         if l.startswith(' '): # this means we have a patch description
-            yield l, False
-        else:
+            yield l.lstrip(), False
+        elif l.strip():
             yield l, True
 
 
@@ -230,6 +223,9 @@ def get_features(is_point_release: bool) -> typing.Generator[str, None, None]:
         with p.open('rt') as f:
             for line in f:
                 yield line
+            else:
+                yield "None"
+        p.unlink()
     else:
         yield "None"
 
@@ -242,14 +238,17 @@ async def main() -> None:
     assert '-devel' not in raw_version, 'Do not run this script on -devel'
     version = raw_version.split('-')[0]
     previous_version = calculate_previous_version(version, is_point_release)
-    next_version = calculate_next_version(version, is_point_release)
+    this_version = calculate_next_version(version, is_point_release)
+    today = datetime.date.today()
+    header = f'Mesa {this_version} Release Notes / {today}'
+    header_underline = '=' * len(header)
 
     shortlog, bugs = await asyncio.gather(
         get_shortlog(previous_version),
         gather_bugs(previous_version),
     )
 
-    final = pathlib.Path(__file__).parent.parent / 'docs' / 'relnotes' / f'{next_version}.html'
+    final = pathlib.Path(__file__).parent.parent / 'docs' / 'relnotes' / f'{this_version}.rst'
     with final.open('wt') as f:
         try:
             f.write(TEMPLATE.render(
@@ -258,13 +257,19 @@ async def main() -> None:
                 changes=walk_shortlog(shortlog),
                 features=get_features(is_point_release),
                 gl_version=CURRENT_GL_VERSION,
-                next_version=next_version,
-                today=datetime.date.today(),
-                version=previous_version,
+                this_version=this_version,
+                header=header,
+                header_underline=header_underline,
+                previous_version=previous_version,
                 vk_version=CURRENT_VK_VERSION,
+                rst_escape=rst_escape,
             ))
         except:
             print(exceptions.text_error_template().render())
+
+    subprocess.run(['git', 'add', final])
+    subprocess.run(['git', 'commit', '-m',
+                    f'docs: add release notes for {this_version}'])
 
 
 if __name__ == "__main__":

@@ -106,6 +106,7 @@ struct _egl_extensions
    EGLBoolean EXT_image_dma_buf_import;
    EGLBoolean EXT_image_dma_buf_import_modifiers;
    EGLBoolean EXT_pixel_format_float;
+   EGLBoolean EXT_protected_surface;
    EGLBoolean EXT_surface_CTA861_3_metadata;
    EGLBoolean EXT_surface_SMPTE2086_metadata;
    EGLBoolean EXT_swap_buffers_with_damage;
@@ -161,7 +162,7 @@ struct _egl_display
    void *PlatformDisplay;     /**< A pointer to the platform display */
 
    _EGLDevice *Device;        /**< Device backing the display */
-   _EGLDriver *Driver;        /**< Matched driver of the display */
+   const _EGLDriver *Driver;  /**< Matched driver of the display */
    EGLBoolean Initialized;    /**< True if the display is initialized */
 
    /* options that affect how the driver initializes the display */
@@ -207,7 +208,7 @@ _eglFindDisplay(_EGLPlatformType plat, void *plat_dpy, const EGLAttrib *attr);
 
 
 extern void
-_eglReleaseDisplayResources(_EGLDriver *drv, _EGLDisplay *disp);
+_eglReleaseDisplayResources(_EGLDisplay *disp);
 
 
 extern void
@@ -309,11 +310,9 @@ _eglGetWaylandDisplay(struct wl_display *native_display,
                       const EGLAttrib *attrib_list);
 #endif
 
-#ifdef HAVE_SURFACELESS_PLATFORM
 _EGLDisplay*
 _eglGetSurfacelessDisplay(void *native_display,
                           const EGLAttrib *attrib_list);
-#endif
 
 #ifdef HAVE_ANDROID_PLATFORM
 _EGLDisplay*

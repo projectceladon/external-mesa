@@ -47,11 +47,31 @@
 #include "hash_table.h"
 #include "ralloc.h"
 #include "macros.h"
-#include "main/hash.h"
+#include "u_memory.h"
 #include "fast_urem_by_const.h"
+#include "util/u_memory.h"
 
 #define XXH_INLINE_ALL
 #include "xxhash.h"
+
+/**
+ * Magic number that gets stored outside of the struct hash_table.
+ *
+ * The hash table needs a particular pointer to be the marker for a key that
+ * was deleted from the table, along with NULL for the "never allocated in the
+ * table" marker.  Legacy GL allows any GLuint to be used as a GL object name,
+ * and we use a 1:1 mapping from GLuints to key pointers, so we need to be
+ * able to track a GLuint that happens to match the deleted key outside of
+ * struct hash_table.  We tell the hash table to use "1" as the deleted key
+ * value, so that we test the deleted-key-in-the-table path as best we can.
+ */
+#define DELETED_KEY_VALUE 1
+
+static inline void *
+uint_key(unsigned id)
+{
+   return (void *)(uintptr_t) id;
+}
 
 static const uint32_t deleted_key_value;
 
@@ -101,7 +121,7 @@ static const struct {
    ENTRY(2147483648ul, 2362232233ul, 2362232231ul )
 };
 
-static inline bool
+ASSERTED static inline bool
 key_pointer_is_reserved(const struct hash_table *ht, const void *key)
 {
    return key == NULL || key == ht->deleted_key;
@@ -577,14 +597,14 @@ _mesa_hash_u32(const void *key)
 uint32_t
 _mesa_hash_string(const void *_key)
 {
-   uint32_t hash = _mesa_fnv32_1a_offset_bias;
+   uint32_t hash = 0;
    const char *key = _key;
-
-   while (*key != 0) {
-      hash = _mesa_fnv32_1a_accumulate(hash, *key);
-      key++;
-   }
-
+   size_t len = strlen(key);
+#if defined(_WIN64) || defined(__x86_64__)
+   hash = (uint32_t)XXH64(key, len, hash);
+#else
+   hash = XXH32(key, len, hash);
+#endif
    return hash;
 }
 
@@ -638,6 +658,21 @@ _mesa_pointer_hash_table_create(void *mem_ctx)
 {
    return _mesa_hash_table_create(mem_ctx, _mesa_hash_pointer,
                                   _mesa_key_pointer_equal);
+}
+
+
+bool
+_mesa_hash_table_reserve(struct hash_table *ht, unsigned size)
+{
+   if (size < ht->max_entries)
+      return true;
+   for (unsigned i = ht->size_index + 1; i < ARRAY_SIZE(hash_sizes); i++) {
+      if (hash_sizes[i].max_entries >= size) {
+         _mesa_hash_table_rehash(ht, i);
+         break;
+      }
+   }
+   return ht->max_entries >= size;
 }
 
 /**

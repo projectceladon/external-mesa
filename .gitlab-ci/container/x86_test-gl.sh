@@ -5,92 +5,93 @@ set -o xtrace
 
 export DEBIAN_FRONTEND=noninteractive
 
-apt-get install -y \
-        ca-certificates \
-        gnupg \
-
-# Upstream LLVM package repository
-apt-key add .gitlab-ci/container/llvm-snapshot.gpg.key
-echo "deb https://apt.llvm.org/buster/ llvm-toolchain-buster-9 main" >/etc/apt/sources.list.d/llvm9.list
-
-sed -i -e 's/http:\/\/deb/https:\/\/deb/g' /etc/apt/sources.list
-echo 'deb https://deb.debian.org/debian buster-backports main' >/etc/apt/sources.list.d/backports.list
-
-apt-get update
-
-# Use newer packages from backports by default
-cat >/etc/apt/preferences <<EOF
-Package: *
-Pin: release a=buster-backports
-Pin-Priority: 500
-EOF
-
-apt-get dist-upgrade -y
-
-apt-get install -y --no-remove \
+# Ephemeral packages (installed for this script and removed again at the end)
+STABLE_EPHEMERAL=" \
+      autoconf \
+      automake \
+      ccache \
+      clang-10 \
       cmake \
       g++ \
-      git \
-      gcc \
-      libexpat1 \
+      libclang-cpp10-dev \
       libgbm-dev \
       libgles2-mesa-dev \
-      libpng16-16 \
+      libpcre3-dev \
+      libpciaccess-dev \
       libpng-dev \
-      libvulkan1 \
       libvulkan-dev \
       libwaffle-dev \
-      libwayland-server0 \
-      libxcb-xfixes0 \
-      libxkbcommon0 \
+      libxcb-keysyms1-dev \
       libxkbcommon-dev \
-      libxrender1 \
       libxrender-dev \
-      libllvm9 \
+      llvm-10-dev \
+      make \
       meson \
+      ocl-icd-opencl-dev \
       patch \
       pkg-config \
-      python3-mako \
-      python3-numpy \
-      python3-six \
-      python \
-      waffle-utils \
-      xauth \
-      xvfb \
-      zlib1g
+      python3-distutils \
+      python3.7-dev \
+      wget \
+      xz-utils \
+      "
 
+apt-get install -y --no-remove \
+      clinfo \
+      libclang-common-10-dev \
+      libclang-cpp10 \
+      libxcb-shm0 \
+      ocl-icd-libopencl1 \
+      python3-lxml \
+      python3-simplejson \
+      $STABLE_EPHEMERAL
+
+
+. .gitlab-ci/container/container_pre_build.sh
+
+
+############### Build spirv-tools (debian too old)
+
+. .gitlab-ci/build-spirv-tools.sh
+
+############### Build libclc
+
+. .gitlab-ci/build-libclc.sh
+
+############### Build virglrenderer
+
+. .gitlab-ci/build-virglrenderer.sh
 
 ############### Build piglit
 
-. .gitlab-ci/build-piglit.sh
+INCLUDE_OPENCL_TESTS=1 . .gitlab-ci/build-piglit.sh
 
-############### Build dEQP runner
-
-. .gitlab-ci/build-cts-runner.sh
+############### Build dEQP runner (and install rust temporarily for it)
+. .gitlab-ci/build-rust.sh
+. .gitlab-ci/build-deqp-runner.sh
+rm -rf /root/.rustup /root/.cargo
 
 ############### Build dEQP GL
 
-. .gitlab-ci/build-deqp-gl.sh
+DEQP_TARGET=surfaceless . .gitlab-ci/build-deqp.sh
 
+############### Build apitrace
+
+. .gitlab-ci/build-apitrace.sh
+
+############### Build renderdoc
+
+. .gitlab-ci/build-renderdoc.sh
+
+############### Build libdrm
+
+. .gitlab-ci/build-libdrm.sh
 
 ############### Uninstall the build software
 
+ccache --show-stats
+
 apt-get purge -y \
-      cmake \
-      g++ \
-      gcc \
-      git \
-      gnupg \
-      libc6-dev \
-      libgbm-dev \
-      libgles2-mesa-dev \
-      libpng-dev \
-      libwaffle-dev \
-      libxkbcommon-dev \
-      libxrender-dev \
-      meson \
-      patch \
-      pkg-config \
-      python
+      $STABLE_EPHEMERAL
 
 apt-get autoremove -y --purge

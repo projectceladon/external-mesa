@@ -42,12 +42,15 @@
 
 #include "util/list.h"
 #include "util/macros.h"
+#include "util/timespec.h"
 #include "util/u_atomic.h"
 #include "util/u_debug.h"
 #include "util/vma.h"
 
 #include "etnaviv_drmif.h"
 #include "drm-uapi/etnaviv_drm.h"
+
+extern pthread_mutex_t etna_drm_table_lock;
 
 struct etna_bo_bucket {
 	uint32_t size;
@@ -205,8 +208,12 @@ static inline void get_abs_timeout(struct drm_etnaviv_timespec *tv, uint64_t ns)
 {
 	struct timespec t;
 	clock_gettime(CLOCK_MONOTONIC, &t);
-	tv->tv_sec = t.tv_sec + ns / 1000000000;
-	tv->tv_nsec = t.tv_nsec + ns % 1000000000;
+	tv->tv_sec = t.tv_sec + ns / NSEC_PER_SEC;
+	tv->tv_nsec = t.tv_nsec + ns % NSEC_PER_SEC;
+	if (tv->tv_nsec >= NSEC_PER_SEC) {
+		tv->tv_nsec -= NSEC_PER_SEC;
+		tv->tv_sec++;
+	}
 }
 
 #if HAVE_VALGRIND

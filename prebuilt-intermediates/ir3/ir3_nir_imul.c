@@ -18,7 +18,7 @@
    false,
    nir_type_invalid,
    NULL,
-   {0, 1, 2, 3},
+   {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15},
 };
 
 static const nir_search_variable search0_1 = {
@@ -27,7 +27,7 @@ static const nir_search_variable search0_1 = {
    false,
    nir_type_invalid,
    NULL,
-   {0, 1, 2, 3},
+   {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15},
 };
 static const nir_search_expression search0 = {
    { nir_search_value_expression, 32 },
@@ -92,7 +92,7 @@ static const nir_search_variable search1_1 = {
    false,
    nir_type_invalid,
    NULL,
-   {0, 1, 2, 3},
+   {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15},
 };
 static const nir_search_expression search1 = {
    { nir_search_value_expression, 32 },

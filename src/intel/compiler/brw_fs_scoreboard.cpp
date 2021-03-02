@@ -77,6 +77,7 @@ namespace {
       case BRW_OPCODE_DO:
       case SHADER_OPCODE_UNDEF:
       case FS_OPCODE_PLACEHOLDER_HALT:
+      case FS_OPCODE_SCHEDULING_FENCE:
          return 0;
       default:
          /* Note that the following is inaccurate for virtual instructions
@@ -658,6 +659,16 @@ namespace {
 
          /* Try to combine the specified dependency with any existing ones. */
          for (unsigned i = 0; i < deps.size(); i++) {
+            /* Don't combine otherwise matching dependencies if there is an
+             * exec_all mismatch which would cause a SET dependency to gain an
+             * exec_all flag, since that would prevent it from being baked
+             * into the instruction we want to allocate an SBID for.
+             */
+            if (deps[i].exec_all != dep.exec_all &&
+                (!deps[i].exec_all || (dep.unordered & TGL_SBID_SET)) &&
+                (!dep.exec_all || (deps[i].unordered & TGL_SBID_SET)))
+               continue;
+
             if (dep.ordered && deps[i].ordered) {
                deps[i].jp = MAX2(deps[i].jp, dep.jp);
                deps[i].ordered |= dep.ordered;
@@ -665,16 +676,7 @@ namespace {
                dep.ordered = TGL_REGDIST_NULL;
             }
 
-            /* Don't combine otherwise matching unordered dependencies if
-             * there is an exec_all mismatch which would cause a SET
-             * dependency to gain an exec_all flag, since that would prevent
-             * it from being baked into the instruction we want to allocate an
-             * SBID for.
-             */
-            if (dep.unordered && deps[i].unordered && deps[i].id == dep.id &&
-                (deps[i].exec_all == dep.exec_all ||
-                 (deps[i].exec_all && !(dep.unordered & TGL_SBID_SET)) ||
-                 (dep.exec_all && !(deps[i].unordered & TGL_SBID_SET)))) {
+            if (dep.unordered && deps[i].unordered && deps[i].id == dep.id) {
                deps[i].unordered |= dep.unordered;
                deps[i].exec_all |= dep.exec_all;
                dep.unordered = TGL_SBID_NULL;
@@ -789,7 +791,7 @@ namespace {
     * instruction \p inst.
     */
    void
-   update_inst_scoreboard(const fs_visitor *shader, const ordered_address *jps,
+   update_inst_scoreboard(const ordered_address *jps,
                           const fs_inst *inst, unsigned ip, scoreboard &sb)
    {
       const bool exec_all = inst->force_writemask_all;
@@ -842,7 +844,7 @@ namespace {
       unsigned ip = 0;
 
       foreach_block_and_inst(block, fs_inst, inst, shader->cfg)
-         update_inst_scoreboard(shader, jps, inst, ip++, sbs[block->num]);
+         update_inst_scoreboard(jps, inst, ip++, sbs[block->num]);
 
       return sbs;
    }
@@ -942,7 +944,7 @@ namespace {
             }
          }
 
-         update_inst_scoreboard(shader, jps, inst, ip, sb);
+         update_inst_scoreboard(jps, inst, ip, sb);
          ip++;
       }
 

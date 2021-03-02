@@ -25,6 +25,7 @@
 #include <inttypes.h>
 #include "util/format/u_format.h"
 #include "util/crc32.h"
+#include "util/u_helpers.h"
 #include "util/u_math.h"
 #include "util/u_memory.h"
 #include "util/ralloc.h"
@@ -114,7 +115,7 @@ indirect_uniform_load(struct vc4_compile *c, nir_intrinsic_instr *intr)
 static struct qreg
 vc4_ubo_load(struct vc4_compile *c, nir_intrinsic_instr *intr)
 {
-        int buffer_index = nir_src_as_uint(intr->src[0]);
+        ASSERTED int buffer_index = nir_src_as_uint(intr->src[0]);
         assert(buffer_index == 1);
         assert(c->stage == QSTAGE_FRAG);
 
@@ -957,7 +958,7 @@ ntq_emit_comparison(struct vc4_compile *c, struct qreg *dest,
         case nir_op_seq:
                 cond = QPU_COND_ZS;
                 break;
-        case nir_op_fne32:
+        case nir_op_fneu32:
         case nir_op_ine32:
         case nir_op_sne:
                 cond = QPU_COND_ZC;
@@ -1212,7 +1213,7 @@ ntq_emit_alu(struct vc4_compile *c, nir_alu_instr *instr)
         case nir_op_sge:
         case nir_op_slt:
         case nir_op_feq32:
-        case nir_op_fne32:
+        case nir_op_fneu32:
         case nir_op_fge32:
         case nir_op_flt32:
         case nir_op_ieq32:
@@ -1545,8 +1546,7 @@ vc4_optimize_nir(struct nir_shader *s)
 
                         NIR_PASS(lower_flrp_progress, s, nir_lower_flrp,
                                  lower_flrp,
-                                 false /* always_precise */,
-                                 s->options->lower_ffma);
+                                 false /* always_precise */);
                         if (lower_flrp_progress) {
                                 NIR_PASS(progress, s, nir_opt_constant_folding);
                                 progress = true;
@@ -1579,13 +1579,13 @@ static void
 ntq_setup_inputs(struct vc4_compile *c)
 {
         unsigned num_entries = 0;
-        nir_foreach_variable(var, &c->s->inputs)
+        nir_foreach_shader_in_variable(var, c->s)
                 num_entries++;
 
         nir_variable *vars[num_entries];
 
         unsigned i = 0;
-        nir_foreach_variable(var, &c->s->inputs)
+        nir_foreach_shader_in_variable(var, c->s)
                 vars[i++] = var;
 
         /* Sort the variables so that we emit the input setup in
@@ -1608,11 +1608,8 @@ ntq_setup_inputs(struct vc4_compile *c)
                 if (c->stage == QSTAGE_FRAG) {
                         if (var->data.location == VARYING_SLOT_POS) {
                                 emit_fragcoord_input(c, loc);
-                        } else if (var->data.location == VARYING_SLOT_PNTC ||
-                                   (var->data.location >= VARYING_SLOT_VAR0 &&
-                                    (c->fs_key->point_sprite_mask &
-                                     (1 << (var->data.location -
-                                            VARYING_SLOT_VAR0))))) {
+                        } else if (util_varying_is_point_coord(var->data.location,
+                                                               c->fs_key->point_sprite_mask)) {
                                 c->inputs[loc * 4 + 0] = c->point_x;
                                 c->inputs[loc * 4 + 1] = c->point_y;
                         } else {
@@ -1627,7 +1624,7 @@ ntq_setup_inputs(struct vc4_compile *c)
 static void
 ntq_setup_outputs(struct vc4_compile *c)
 {
-        nir_foreach_variable(var, &c->s->outputs) {
+        nir_foreach_shader_out_variable(var, c->s) {
                 unsigned array_len = MAX2(glsl_get_length(var->type), 1);
                 unsigned loc = var->data.driver_location * 4;
 
@@ -1775,7 +1772,7 @@ ntq_emit_intrinsic(struct vc4_compile *c, nir_intrinsic_instr *instr)
                 break;
 
         case nir_intrinsic_load_user_clip_plane:
-                for (int i = 0; i < instr->num_components; i++) {
+                for (int i = 0; i < nir_intrinsic_dest_components(instr); i++) {
                         ntq_store_dest(c, &instr->dest, i,
                                        qir_uniform(c, QUNIFORM_USER_CLIP_PLANE,
                                                    nir_intrinsic_ucp_id(instr) *
@@ -1804,11 +1801,6 @@ ntq_emit_intrinsic(struct vc4_compile *c, nir_intrinsic_instr *instr)
                 ntq_store_dest(c, &instr->dest, 0,
                                qir_uniform(c, QUNIFORM_BLEND_CONST_COLOR_AAAA,
                                            0));
-                break;
-
-        case nir_intrinsic_load_alpha_ref_float:
-                ntq_store_dest(c, &instr->dest, 0,
-                               qir_uniform(c, QUNIFORM_ALPHA_REF, 0));
                 break;
 
         case nir_intrinsic_load_sample_mask_in:
@@ -2182,7 +2174,9 @@ static const nir_shader_compiler_options nir_options = {
         .lower_extract_byte = true,
         .lower_extract_word = true,
         .lower_fdiv = true,
-        .lower_ffma = true,
+        .lower_ffma16 = true,
+        .lower_ffma32 = true,
+        .lower_ffma64 = true,
         .lower_flrp32 = true,
         .lower_fmod = true,
         .lower_fpow = true,
@@ -2192,6 +2186,9 @@ static const nir_shader_compiler_options nir_options = {
         .lower_negate = true,
         .lower_rotate = true,
         .lower_to_scalar = true,
+        .lower_umax = true,
+        .lower_umin = true,
+        .lower_isign = true,
         .max_unroll_iterations = 32,
 };
 
@@ -2254,13 +2251,6 @@ vc4_shader_ntq(struct vc4_context *vc4, enum qstage stage,
         c->s = nir_shader_clone(c, key->shader_state->base.ir.nir);
 
         if (stage == QSTAGE_FRAG) {
-                if (c->fs_key->alpha_test_func != COMPARE_FUNC_ALWAYS) {
-                        NIR_PASS_V(c->s, nir_lower_alpha_test,
-                                   c->fs_key->alpha_test_func,
-                                   c->fs_key->sample_alpha_to_one &&
-                                   c->fs_key->msaa,
-                                   NULL);
-                }
                 NIR_PASS_V(c->s, vc4_nir_lower_blend, c);
         }
 
@@ -2306,7 +2296,7 @@ vc4_shader_ntq(struct vc4_context *vc4, enum qstage stage,
         NIR_PASS_V(c->s, nir_lower_tex, &tex_options);
 
         if (c->fs_key && c->fs_key->light_twoside)
-                NIR_PASS_V(c->s, nir_lower_two_sided_color);
+                NIR_PASS_V(c->s, nir_lower_two_sided_color, true);
 
         if (c->vs_key && c->vs_key->clamp_color)
                 NIR_PASS_V(c->s, nir_lower_clamp_color_outputs);
@@ -2466,14 +2456,15 @@ vc4_shader_state_create(struct pipe_context *pctx,
                         tgsi_dump(cso->tokens, 0);
                         fprintf(stderr, "\n");
                 }
-                s = tgsi_to_nir(cso->tokens, pctx->screen);
+                s = tgsi_to_nir(cso->tokens, pctx->screen, false);
         }
 
         if (s->info.stage == MESA_SHADER_VERTEX)
                 NIR_PASS_V(s, nir_lower_point_size, 1.0f, 0.0f);
 
-        NIR_PASS_V(s, nir_lower_io, nir_var_all, type_size,
-                   (nir_lower_io_options)0);
+        NIR_PASS_V(s, nir_lower_io,
+                   nir_var_shader_in | nir_var_shader_out | nir_var_uniform,
+                   type_size, (nir_lower_io_options)0);
 
         NIR_PASS_V(s, nir_lower_regs_to_ssa);
         NIR_PASS_V(s, nir_normalize_cubemap_coords);
@@ -2482,7 +2473,7 @@ vc4_shader_state_create(struct pipe_context *pctx,
 
         vc4_optimize_nir(s);
 
-        NIR_PASS_V(s, nir_remove_dead_variables, nir_var_function_temp);
+        NIR_PASS_V(s, nir_remove_dead_variables, nir_var_function_temp, NULL);
 
         /* Garbage collect dead instructions */
         nir_sweep(s);

@@ -328,6 +328,7 @@ set_yuv_layer(struct vl_compositor_state *s, struct vl_compositor *c,
 
    assert(layer < VL_COMPOSITOR_MAX_LAYERS);
 
+   s->interlaced = buffer->interlaced;
    s->used_layers |= 1 << layer;
    sampler_views = buffer->get_sampler_view_components(buffer);
    for (i = 0; i < 3; ++i) {
@@ -435,7 +436,7 @@ vl_compositor_clear_layers(struct vl_compositor_state *s)
    unsigned i, j;
 
    assert(s);
-
+   s->interlaced = false;
    s->used_layers = 0;
    for ( i = 0; i < VL_COMPOSITOR_MAX_LAYERS; ++i) {
       struct vertex4f v_one = { 1.0f, 1.0f, 1.0f, 1.0f };
@@ -474,7 +475,7 @@ vl_compositor_set_csc_matrix(struct vl_compositor_state *s,
    assert(s);
 
    float *ptr = pipe_buffer_map(s->pipe, s->shader_params,
-                               PIPE_TRANSFER_WRITE | PIPE_TRANSFER_DISCARD_RANGE,
+                               PIPE_MAP_WRITE | PIPE_MAP_DISCARD_RANGE,
                                &buf_transfer);
 
    if (!ptr)
@@ -551,6 +552,7 @@ vl_compositor_set_buffer_layer(struct vl_compositor_state *s,
 
    assert(layer < VL_COMPOSITOR_MAX_LAYERS);
 
+   s->interlaced = buffer->interlaced;
    s->used_layers |= 1 << layer;
    sampler_views = buffer->get_sampler_view_components(buffer);
    for (i = 0; i < 3; ++i) {
@@ -813,7 +815,7 @@ vl_compositor_init_state(struct vl_compositor_state *s, struct pipe_context *pip
       pipe->screen,
       PIPE_BIND_CONSTANT_BUFFER,
       PIPE_USAGE_DEFAULT,
-      sizeof(csc_matrix) + 6*sizeof(float) + 6*sizeof(int)
+      sizeof(csc_matrix) + 6*sizeof(float) + 10*sizeof(int)
    );
 
    if (!s->shader_params)
