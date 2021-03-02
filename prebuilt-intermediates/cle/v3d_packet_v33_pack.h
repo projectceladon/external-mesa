@@ -4352,6 +4352,7 @@ enum V3D33_Texture_Data_Formats {
         TEXTURE_DATA_FORMAT_RGBA32I          =    112,
         TEXTURE_DATA_FORMAT_RGBA32UI         =    113,
         TEXTURE_DATA_FORMAT_RGB10_A2UI       =    114,
+        TEXTURE_DATA_FORMAT_A1_RGB5          =    115,
 };
 
 #endif /* V3D33_PACK_H */

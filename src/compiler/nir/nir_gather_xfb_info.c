@@ -28,7 +28,7 @@
 static void
 add_var_xfb_varying(nir_xfb_info *xfb,
                     nir_xfb_varyings_info *varyings,
-                    nir_variable *var,
+                    unsigned buffer,
                     unsigned offset,
                     const struct glsl_type *type)
 {
@@ -38,9 +38,9 @@ add_var_xfb_varying(nir_xfb_info *xfb,
    nir_xfb_varying_info *varying = &varyings->varyings[varyings->varying_count++];
 
    varying->type = type;
-   varying->buffer = var->data.xfb.buffer;
+   varying->buffer = buffer;
    varying->offset = offset;
-   xfb->buffers[var->data.xfb.buffer].varying_count++;
+   xfb->buffers[buffer].varying_count++;
 }
 
 
@@ -83,7 +83,7 @@ add_var_xfb_outputs(nir_xfb_info *xfb,
       if (!glsl_type_is_array(child_type) &&
           !glsl_type_is_struct(child_type)) {
 
-         add_var_xfb_varying(xfb, varyings, var, *offset, type);
+         add_var_xfb_varying(xfb, varyings, buffer, *offset, type);
          varying_added = true;
       }
 
@@ -138,7 +138,7 @@ add_var_xfb_outputs(nir_xfb_info *xfb,
       unsigned comp_offset = var->data.location_frac;
 
       if (!varying_added) {
-         add_var_xfb_varying(xfb, varyings, var, *offset, type);
+         add_var_xfb_varying(xfb, varyings, buffer, *offset, type);
       }
 
       while (comp_mask) {
@@ -202,7 +202,7 @@ nir_gather_xfb_info_with_varyings(const nir_shader *shader,
    unsigned num_outputs = 0;
    unsigned num_varyings = 0;
    nir_xfb_varyings_info *varyings_info = NULL;
-   nir_foreach_variable(var, &shader->outputs) {
+   nir_foreach_shader_out_variable(var, shader) {
       if (var->data.explicit_xfb_buffer) {
          num_outputs += glsl_count_attribute_slots(var->type, false);
          num_varyings += glsl_varying_count(var->type);
@@ -218,7 +218,7 @@ nir_gather_xfb_info_with_varyings(const nir_shader *shader,
    }
 
    /* Walk the list of outputs and add them to the array */
-   nir_foreach_variable(var, &shader->outputs) {
+   nir_foreach_shader_out_variable(var, shader) {
       if (!var->data.explicit_xfb_buffer)
          continue;
 

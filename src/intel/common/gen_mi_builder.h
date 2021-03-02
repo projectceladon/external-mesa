@@ -24,6 +24,7 @@
 #ifndef GEN_MI_BUILDER_H
 #define GEN_MI_BUILDER_H
 
+#include "genxml/genX_bits.h"
 #include "util/bitscan.h"
 #include "util/fast_idiv_by_const.h"
 #include "util/u_math.h"
@@ -45,6 +46,18 @@
  * __gen_address_type
  * __gen_address_offset(__gen_address_type addr, uint64_t offset);
  *
+ *
+ * If self-modifying batches are supported, we must be able to pass batch
+ * addresses around as void*s so pinning as well as batch chaining or some
+ * other mechanism for ensuring batch pointers remain valid during building is
+ * required. The following function must also be defined, it returns an
+ * address in canonical form:
+ *
+ * uint64_t
+ * __gen_get_batch_address(__gen_user_data *user_data, void *location);
+ *
+ * Also, __gen_combine_address must accept a location value of NULL and return
+ * a fully valid 64-bit address.
  */
 
 /*
@@ -86,6 +99,27 @@ struct gen_mi_value {
    bool invert;
 #endif
 };
+
+struct gen_mi_reg_num {
+   uint32_t num;
+#if GEN_GEN >= 11
+   bool cs;
+#endif
+};
+
+static inline struct gen_mi_reg_num
+gen_mi_adjust_reg_num(uint32_t reg)
+{
+#if GEN_GEN >= 11
+   bool cs = reg >= 0x2000 && reg < 0x4000;
+   return (struct gen_mi_reg_num) {
+      .num = reg - (cs ? 0x2000 : 0),
+      .cs = cs,
+   };
+#else
+   return (struct gen_mi_reg_num) { .num = reg, };
+#endif
+}
 
 #if GEN_GEN >= 9
 #define GEN_MI_BUILDER_MAX_MATH_DWORDS 256
@@ -387,7 +421,11 @@ _gen_mi_copy_no_unref(struct gen_mi_builder *b,
       case GEN_MI_VALUE_TYPE_REG32:
       case GEN_MI_VALUE_TYPE_REG64:
          gen_mi_builder_emit(b, GENX(MI_STORE_REGISTER_MEM), srm) {
-            srm.RegisterAddress = src.reg;
+            struct gen_mi_reg_num reg = gen_mi_adjust_reg_num(src.reg);
+            srm.RegisterAddress = reg.num;
+#if GEN_GEN >= 11
+            srm.AddCSMMIOStartOffset = reg.cs;
+#endif
             srm.MemoryAddress = dst.addr;
          }
          break;
@@ -401,7 +439,11 @@ _gen_mi_copy_no_unref(struct gen_mi_builder *b,
       switch (src.type) {
       case GEN_MI_VALUE_TYPE_IMM:
          gen_mi_builder_emit(b, GENX(MI_LOAD_REGISTER_IMM), lri) {
-            lri.RegisterOffset = dst.reg;
+            struct gen_mi_reg_num reg = gen_mi_adjust_reg_num(dst.reg);
+            lri.RegisterOffset = reg.num;
+#if GEN_GEN >= 11
+            lri.AddCSMMIOStartOffset = reg.cs;
+#endif
             lri.DataDWord = src.imm;
          }
          break;
@@ -409,7 +451,11 @@ _gen_mi_copy_no_unref(struct gen_mi_builder *b,
       case GEN_MI_VALUE_TYPE_MEM32:
       case GEN_MI_VALUE_TYPE_MEM64:
          gen_mi_builder_emit(b, GENX(MI_LOAD_REGISTER_MEM), lrm) {
-            lrm.RegisterAddress = dst.reg;
+            struct gen_mi_reg_num reg = gen_mi_adjust_reg_num(dst.reg);
+            lrm.RegisterAddress = reg.num;
+#if GEN_GEN >= 11
+            lrm.AddCSMMIOStartOffset = reg.cs;
+#endif
             lrm.MemoryAddress = src.addr;
          }
          break;
@@ -419,8 +465,16 @@ _gen_mi_copy_no_unref(struct gen_mi_builder *b,
 #if GEN_GEN >= 8 || GEN_IS_HASWELL
          if (src.reg != dst.reg) {
             gen_mi_builder_emit(b, GENX(MI_LOAD_REGISTER_REG), lrr) {
-               lrr.SourceRegisterAddress = src.reg;
-               lrr.DestinationRegisterAddress = dst.reg;
+               struct gen_mi_reg_num reg = gen_mi_adjust_reg_num(src.reg);
+               lrr.SourceRegisterAddress = reg.num;
+#if GEN_GEN >= 11
+               lrr.AddCSMMIOStartOffsetSource = reg.cs;
+#endif
+               reg = gen_mi_adjust_reg_num(dst.reg);
+               lrr.DestinationRegisterAddress = reg.num;
+#if GEN_GEN >= 11
+               lrr.AddCSMMIOStartOffsetDestination = reg.cs;
+#endif
             }
          }
 #else
@@ -538,18 +592,30 @@ gen_mi_store_if(struct gen_mi_builder *b,
 
    if (dst.type == GEN_MI_VALUE_TYPE_MEM64) {
       gen_mi_builder_emit(b, GENX(MI_STORE_REGISTER_MEM), srm) {
-         srm.RegisterAddress = src.reg;
+         struct gen_mi_reg_num reg = gen_mi_adjust_reg_num(src.reg);
+         srm.RegisterAddress = reg.num;
+#if GEN_GEN >= 11
+         srm.AddCSMMIOStartOffset = reg.cs;
+#endif
          srm.MemoryAddress = dst.addr;
          srm.PredicateEnable = true;
       }
       gen_mi_builder_emit(b, GENX(MI_STORE_REGISTER_MEM), srm) {
-         srm.RegisterAddress = src.reg + 4;
+         struct gen_mi_reg_num reg = gen_mi_adjust_reg_num(src.reg + 4);
+         srm.RegisterAddress = reg.num;
+#if GEN_GEN >= 11
+         srm.AddCSMMIOStartOffset = reg.cs;
+#endif
          srm.MemoryAddress = __gen_address_offset(dst.addr, 4);
          srm.PredicateEnable = true;
       }
    } else {
       gen_mi_builder_emit(b, GENX(MI_STORE_REGISTER_MEM), srm) {
-         srm.RegisterAddress = src.reg;
+         struct gen_mi_reg_num reg = gen_mi_adjust_reg_num(src.reg);
+         srm.RegisterAddress = reg.num;
+#if GEN_GEN >= 11
+         srm.AddCSMMIOStartOffset = reg.cs;
+#endif
          srm.MemoryAddress = dst.addr;
          srm.PredicateEnable = true;
       }
@@ -830,5 +896,68 @@ gen_mi_udiv32_imm(struct gen_mi_builder *b,
 }
 
 #endif /* MI_MATH section */
+
+/* This assumes addresses of strictly more than 32bits (aka. Gen8+). */
+#if GEN_MI_BUILDER_CAN_WRITE_BATCH
+
+struct gen_mi_address_token {
+   /* Pointers to address memory fields in the batch. */
+   uint64_t *ptrs[2];
+};
+
+static inline struct gen_mi_address_token
+gen_mi_store_address(struct gen_mi_builder *b,
+                     struct gen_mi_value addr_reg)
+{
+   gen_mi_builder_flush_math(b);
+
+   assert(addr_reg.type == GEN_MI_VALUE_TYPE_REG64);
+
+   struct gen_mi_address_token token = {};
+
+   for (unsigned i = 0; i < 2; i++) {
+      gen_mi_builder_emit(b, GENX(MI_STORE_REGISTER_MEM), srm) {
+         srm.RegisterAddress = addr_reg.reg + (i * 4);
+
+         const unsigned addr_dw =
+            GENX(MI_STORE_REGISTER_MEM_MemoryAddress_start) / 8;
+         token.ptrs[i] = (void *)_dst + addr_dw;
+      }
+   }
+
+   gen_mi_value_unref(b, addr_reg);
+   return token;
+}
+
+static inline void
+gen_mi_self_mod_barrier(struct gen_mi_builder *b)
+{
+   /* First make sure all the memory writes from previous modifying commands
+    * have landed. We want to do this before going through the CS cache,
+    * otherwise we could be fetching memory that hasn't been written to yet.
+    */
+   gen_mi_builder_emit(b, GENX(PIPE_CONTROL), pc) {
+      pc.CommandStreamerStallEnable = true;
+   }
+   /* Documentation says Gen11+ should be able to invalidate the command cache
+    * but experiment show it doesn't work properly, so for now just get over
+    * the CS prefetch.
+    */
+   for (uint32_t i = 0; i < 128; i++)
+      gen_mi_builder_emit(b, GENX(MI_NOOP), noop);
+}
+
+static inline void
+_gen_mi_resolve_address_token(struct gen_mi_builder *b,
+                              struct gen_mi_address_token token,
+                              void *batch_location)
+{
+   uint64_t addr_addr_u64 = __gen_get_batch_address(b->user_data,
+                                                    batch_location);
+   *(token.ptrs[0]) = addr_addr_u64;
+   *(token.ptrs[1]) = addr_addr_u64 + 4;
+}
+
+#endif /* GEN_MI_BUILDER_CAN_WRITE_BATCH */
 
 #endif /* GEN_MI_BUILDER_H */

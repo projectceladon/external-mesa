@@ -91,8 +91,10 @@ spirv_builtin_to_string(SpvBuiltIn v)
    case SpvBuiltInBaseVertex: return "SpvBuiltInBaseVertex";
    case SpvBuiltInBaseInstance: return "SpvBuiltInBaseInstance";
    case SpvBuiltInDrawIndex: return "SpvBuiltInDrawIndex";
+   case SpvBuiltInPrimitiveShadingRateKHR: return "SpvBuiltInPrimitiveShadingRateKHR";
    case SpvBuiltInDeviceIndex: return "SpvBuiltInDeviceIndex";
    case SpvBuiltInViewIndex: return "SpvBuiltInViewIndex";
+   case SpvBuiltInShadingRateKHR: return "SpvBuiltInShadingRateKHR";
    case SpvBuiltInBaryCoordNoPerspAMD: return "SpvBuiltInBaryCoordNoPerspAMD";
    case SpvBuiltInBaryCoordNoPerspCentroidAMD: return "SpvBuiltInBaryCoordNoPerspCentroidAMD";
    case SpvBuiltInBaryCoordNoPerspSampleAMD: return "SpvBuiltInBaryCoordNoPerspSampleAMD";
@@ -133,6 +135,7 @@ spirv_builtin_to_string(SpvBuiltIn v)
    case SpvBuiltInHitTNV: return "SpvBuiltInHitTNV";
    case SpvBuiltInHitKindNV: return "SpvBuiltInHitKindNV";
    case SpvBuiltInIncomingRayFlagsNV: return "SpvBuiltInIncomingRayFlagsNV";
+   case SpvBuiltInRayGeometryIndexKHR: return "SpvBuiltInRayGeometryIndexKHR";
    case SpvBuiltInWarpsPerSMNV: return "SpvBuiltInWarpsPerSMNV";
    case SpvBuiltInSMCountNV: return "SpvBuiltInSMCountNV";
    case SpvBuiltInWarpIDNV: return "SpvBuiltInWarpIDNV";
@@ -216,6 +219,7 @@ spirv_capability_to_string(SpvCapability v)
    case SpvCapabilityGroupNonUniformQuad: return "SpvCapabilityGroupNonUniformQuad";
    case SpvCapabilityShaderLayer: return "SpvCapabilityShaderLayer";
    case SpvCapabilityShaderViewportIndex: return "SpvCapabilityShaderViewportIndex";
+   case SpvCapabilityFragmentShadingRateKHR: return "SpvCapabilityFragmentShadingRateKHR";
    case SpvCapabilitySubgroupBallotKHR: return "SpvCapabilitySubgroupBallotKHR";
    case SpvCapabilityDrawParameters: return "SpvCapabilityDrawParameters";
    case SpvCapabilitySubgroupVoteKHR: return "SpvCapabilitySubgroupVoteKHR";
@@ -237,11 +241,14 @@ spirv_capability_to_string(SpvCapability v)
    case SpvCapabilitySignedZeroInfNanPreserve: return "SpvCapabilitySignedZeroInfNanPreserve";
    case SpvCapabilityRoundingModeRTE: return "SpvCapabilityRoundingModeRTE";
    case SpvCapabilityRoundingModeRTZ: return "SpvCapabilityRoundingModeRTZ";
+   case SpvCapabilityRayQueryProvisionalKHR: return "SpvCapabilityRayQueryProvisionalKHR";
+   case SpvCapabilityRayTraversalPrimitiveCullingProvisionalKHR: return "SpvCapabilityRayTraversalPrimitiveCullingProvisionalKHR";
    case SpvCapabilityFloat16ImageAMD: return "SpvCapabilityFloat16ImageAMD";
    case SpvCapabilityImageGatherBiasLodAMD: return "SpvCapabilityImageGatherBiasLodAMD";
    case SpvCapabilityFragmentMaskAMD: return "SpvCapabilityFragmentMaskAMD";
    case SpvCapabilityStencilExportEXT: return "SpvCapabilityStencilExportEXT";
    case SpvCapabilityImageReadWriteLodAMD: return "SpvCapabilityImageReadWriteLodAMD";
+   case SpvCapabilityInt64ImageEXT: return "SpvCapabilityInt64ImageEXT";
    case SpvCapabilityShaderClockKHR: return "SpvCapabilityShaderClockKHR";
    case SpvCapabilitySampleMaskOverrideCoverageNV: return "SpvCapabilitySampleMaskOverrideCoverageNV";
    case SpvCapabilityGeometryShaderPassthroughNV: return "SpvCapabilityGeometryShaderPassthroughNV";
@@ -273,6 +280,7 @@ spirv_capability_to_string(SpvCapability v)
    case SpvCapabilityVulkanMemoryModelDeviceScope: return "SpvCapabilityVulkanMemoryModelDeviceScope";
    case SpvCapabilityPhysicalStorageBufferAddresses: return "SpvCapabilityPhysicalStorageBufferAddresses";
    case SpvCapabilityComputeDerivativeGroupLinearNV: return "SpvCapabilityComputeDerivativeGroupLinearNV";
+   case SpvCapabilityRayTracingProvisionalKHR: return "SpvCapabilityRayTracingProvisionalKHR";
    case SpvCapabilityCooperativeMatrixNV: return "SpvCapabilityCooperativeMatrixNV";
    case SpvCapabilityFragmentShaderSampleInterlockEXT: return "SpvCapabilityFragmentShaderSampleInterlockEXT";
    case SpvCapabilityFragmentShaderShadingRateInterlockEXT: return "SpvCapabilityFragmentShaderShadingRateInterlockEXT";
@@ -284,9 +292,20 @@ spirv_capability_to_string(SpvCapability v)
    case SpvCapabilitySubgroupImageBlockIOINTEL: return "SpvCapabilitySubgroupImageBlockIOINTEL";
    case SpvCapabilitySubgroupImageMediaBlockIOINTEL: return "SpvCapabilitySubgroupImageMediaBlockIOINTEL";
    case SpvCapabilityIntegerFunctions2INTEL: return "SpvCapabilityIntegerFunctions2INTEL";
+   case SpvCapabilityFunctionPointersINTEL: return "SpvCapabilityFunctionPointersINTEL";
+   case SpvCapabilityIndirectReferencesINTEL: return "SpvCapabilityIndirectReferencesINTEL";
    case SpvCapabilitySubgroupAvcMotionEstimationINTEL: return "SpvCapabilitySubgroupAvcMotionEstimationINTEL";
    case SpvCapabilitySubgroupAvcMotionEstimationIntraINTEL: return "SpvCapabilitySubgroupAvcMotionEstimationIntraINTEL";
    case SpvCapabilitySubgroupAvcMotionEstimationChromaINTEL: return "SpvCapabilitySubgroupAvcMotionEstimationChromaINTEL";
+   case SpvCapabilityFPGAMemoryAttributesINTEL: return "SpvCapabilityFPGAMemoryAttributesINTEL";
+   case SpvCapabilityUnstructuredLoopControlsINTEL: return "SpvCapabilityUnstructuredLoopControlsINTEL";
+   case SpvCapabilityFPGALoopControlsINTEL: return "SpvCapabilityFPGALoopControlsINTEL";
+   case SpvCapabilityKernelAttributesINTEL: return "SpvCapabilityKernelAttributesINTEL";
+   case SpvCapabilityFPGAKernelAttributesINTEL: return "SpvCapabilityFPGAKernelAttributesINTEL";
+   case SpvCapabilityBlockingPipesINTEL: return "SpvCapabilityBlockingPipesINTEL";
+   case SpvCapabilityFPGARegINTEL: return "SpvCapabilityFPGARegINTEL";
+   case SpvCapabilityAtomicFloat32AddEXT: return "SpvCapabilityAtomicFloat32AddEXT";
+   case SpvCapabilityAtomicFloat64AddEXT: return "SpvCapabilityAtomicFloat64AddEXT";
    case SpvCapabilityMax: break; /* silence warnings about unhandled enums. */
    }
 
@@ -358,9 +377,22 @@ spirv_decoration_to_string(SpvDecoration v)
    case SpvDecorationNonUniform: return "SpvDecorationNonUniform";
    case SpvDecorationRestrictPointer: return "SpvDecorationRestrictPointer";
    case SpvDecorationAliasedPointer: return "SpvDecorationAliasedPointer";
+   case SpvDecorationReferencedIndirectlyINTEL: return "SpvDecorationReferencedIndirectlyINTEL";
    case SpvDecorationCounterBuffer: return "SpvDecorationCounterBuffer";
    case SpvDecorationUserSemantic: return "SpvDecorationUserSemantic";
    case SpvDecorationUserTypeGOOGLE: return "SpvDecorationUserTypeGOOGLE";
+   case SpvDecorationRegisterINTEL: return "SpvDecorationRegisterINTEL";
+   case SpvDecorationMemoryINTEL: return "SpvDecorationMemoryINTEL";
+   case SpvDecorationNumbanksINTEL: return "SpvDecorationNumbanksINTEL";
+   case SpvDecorationBankwidthINTEL: return "SpvDecorationBankwidthINTEL";
+   case SpvDecorationMaxPrivateCopiesINTEL: return "SpvDecorationMaxPrivateCopiesINTEL";
+   case SpvDecorationSinglepumpINTEL: return "SpvDecorationSinglepumpINTEL";
+   case SpvDecorationDoublepumpINTEL: return "SpvDecorationDoublepumpINTEL";
+   case SpvDecorationMaxReplicatesINTEL: return "SpvDecorationMaxReplicatesINTEL";
+   case SpvDecorationSimpleDualPortINTEL: return "SpvDecorationSimpleDualPortINTEL";
+   case SpvDecorationMergeINTEL: return "SpvDecorationMergeINTEL";
+   case SpvDecorationBankBitsINTEL: return "SpvDecorationBankBitsINTEL";
+   case SpvDecorationForcePow2DepthINTEL: return "SpvDecorationForcePow2DepthINTEL";
    case SpvDecorationMax: break; /* silence warnings about unhandled enums. */
    }
 
@@ -444,6 +476,10 @@ spirv_executionmode_to_string(SpvExecutionMode v)
    case SpvExecutionModeSampleInterlockUnorderedEXT: return "SpvExecutionModeSampleInterlockUnorderedEXT";
    case SpvExecutionModeShadingRateInterlockOrderedEXT: return "SpvExecutionModeShadingRateInterlockOrderedEXT";
    case SpvExecutionModeShadingRateInterlockUnorderedEXT: return "SpvExecutionModeShadingRateInterlockUnorderedEXT";
+   case SpvExecutionModeMaxWorkgroupSizeINTEL: return "SpvExecutionModeMaxWorkgroupSizeINTEL";
+   case SpvExecutionModeMaxWorkDimINTEL: return "SpvExecutionModeMaxWorkDimINTEL";
+   case SpvExecutionModeNoGlobalOffsetINTEL: return "SpvExecutionModeNoGlobalOffsetINTEL";
+   case SpvExecutionModeNumSIMDWorkitemsINTEL: return "SpvExecutionModeNumSIMDWorkitemsINTEL";
    case SpvExecutionModeMax: break; /* silence warnings about unhandled enums. */
    }
 
@@ -519,6 +555,8 @@ spirv_imageformat_to_string(SpvImageFormat v)
    case SpvImageFormatRg8ui: return "SpvImageFormatRg8ui";
    case SpvImageFormatR16ui: return "SpvImageFormatR16ui";
    case SpvImageFormatR8ui: return "SpvImageFormatR8ui";
+   case SpvImageFormatR64ui: return "SpvImageFormatR64ui";
+   case SpvImageFormatR64i: return "SpvImageFormatR64i";
    case SpvImageFormatMax: break; /* silence warnings about unhandled enums. */
    }
 
@@ -563,6 +601,7 @@ spirv_storageclass_to_string(SpvStorageClass v)
    case SpvStorageClassIncomingRayPayloadNV: return "SpvStorageClassIncomingRayPayloadNV";
    case SpvStorageClassShaderRecordBufferNV: return "SpvStorageClassShaderRecordBufferNV";
    case SpvStorageClassPhysicalStorageBuffer: return "SpvStorageClassPhysicalStorageBuffer";
+   case SpvStorageClassCodeSectionINTEL: return "SpvStorageClassCodeSectionINTEL";
    case SpvStorageClassMax: break; /* silence warnings about unhandled enums. */
    }
 
@@ -588,6 +627,20 @@ spirv_imageoperands_to_string(SpvImageOperandsMask v)
    case SpvImageOperandsVolatileTexelMask: return "SpvImageOperandsVolatileTexel";
    case SpvImageOperandsSignExtendMask: return "SpvImageOperandsSignExtend";
    case SpvImageOperandsZeroExtendMask: return "SpvImageOperandsZeroExtend";
+   }
+
+   return "unknown";
+}
+
+const char *
+spirv_fproundingmode_to_string(SpvFPRoundingMode v)
+{
+   switch (v) {
+   case SpvFPRoundingModeRTE: return "SpvFPRoundingModeRTE";
+   case SpvFPRoundingModeRTZ: return "SpvFPRoundingModeRTZ";
+   case SpvFPRoundingModeRTP: return "SpvFPRoundingModeRTP";
+   case SpvFPRoundingModeRTN: return "SpvFPRoundingModeRTN";
+   case SpvFPRoundingModeMax: break; /* silence warnings about unhandled enums. */
    }
 
    return "unknown";
@@ -941,12 +994,20 @@ spirv_op_to_string(SpvOp v)
    case SpvOpPtrEqual: return "SpvOpPtrEqual";
    case SpvOpPtrNotEqual: return "SpvOpPtrNotEqual";
    case SpvOpPtrDiff: return "SpvOpPtrDiff";
+   case SpvOpTerminateInvocation: return "SpvOpTerminateInvocation";
    case SpvOpSubgroupBallotKHR: return "SpvOpSubgroupBallotKHR";
    case SpvOpSubgroupFirstInvocationKHR: return "SpvOpSubgroupFirstInvocationKHR";
    case SpvOpSubgroupAllKHR: return "SpvOpSubgroupAllKHR";
    case SpvOpSubgroupAnyKHR: return "SpvOpSubgroupAnyKHR";
    case SpvOpSubgroupAllEqualKHR: return "SpvOpSubgroupAllEqualKHR";
    case SpvOpSubgroupReadInvocationKHR: return "SpvOpSubgroupReadInvocationKHR";
+   case SpvOpTypeRayQueryProvisionalKHR: return "SpvOpTypeRayQueryProvisionalKHR";
+   case SpvOpRayQueryInitializeKHR: return "SpvOpRayQueryInitializeKHR";
+   case SpvOpRayQueryTerminateKHR: return "SpvOpRayQueryTerminateKHR";
+   case SpvOpRayQueryGenerateIntersectionKHR: return "SpvOpRayQueryGenerateIntersectionKHR";
+   case SpvOpRayQueryConfirmIntersectionKHR: return "SpvOpRayQueryConfirmIntersectionKHR";
+   case SpvOpRayQueryProceedKHR: return "SpvOpRayQueryProceedKHR";
+   case SpvOpRayQueryGetIntersectionTypeKHR: return "SpvOpRayQueryGetIntersectionTypeKHR";
    case SpvOpGroupIAddNonUniformAMD: return "SpvOpGroupIAddNonUniformAMD";
    case SpvOpGroupFAddNonUniformAMD: return "SpvOpGroupFAddNonUniformAMD";
    case SpvOpGroupFMinNonUniformAMD: return "SpvOpGroupFMinNonUniformAMD";
@@ -1000,6 +1061,8 @@ spirv_op_to_string(SpvOp v)
    case SpvOpUSubSatINTEL: return "SpvOpUSubSatINTEL";
    case SpvOpIMul32x16INTEL: return "SpvOpIMul32x16INTEL";
    case SpvOpUMul32x16INTEL: return "SpvOpUMul32x16INTEL";
+   case SpvOpFunctionPointerINTEL: return "SpvOpFunctionPointerINTEL";
+   case SpvOpFunctionPointerCallINTEL: return "SpvOpFunctionPointerCallINTEL";
    case SpvOpDecorateString: return "SpvOpDecorateString";
    case SpvOpMemberDecorateString: return "SpvOpMemberDecorateString";
    case SpvOpVmeImageINTEL: return "SpvOpVmeImageINTEL";
@@ -1120,6 +1183,28 @@ spirv_op_to_string(SpvOp v)
    case SpvOpSubgroupAvcSicGetPackedSkcLumaCountThresholdINTEL: return "SpvOpSubgroupAvcSicGetPackedSkcLumaCountThresholdINTEL";
    case SpvOpSubgroupAvcSicGetPackedSkcLumaSumThresholdINTEL: return "SpvOpSubgroupAvcSicGetPackedSkcLumaSumThresholdINTEL";
    case SpvOpSubgroupAvcSicGetInterRawSadsINTEL: return "SpvOpSubgroupAvcSicGetInterRawSadsINTEL";
+   case SpvOpLoopControlINTEL: return "SpvOpLoopControlINTEL";
+   case SpvOpReadPipeBlockingINTEL: return "SpvOpReadPipeBlockingINTEL";
+   case SpvOpWritePipeBlockingINTEL: return "SpvOpWritePipeBlockingINTEL";
+   case SpvOpFPGARegINTEL: return "SpvOpFPGARegINTEL";
+   case SpvOpRayQueryGetRayTMinKHR: return "SpvOpRayQueryGetRayTMinKHR";
+   case SpvOpRayQueryGetRayFlagsKHR: return "SpvOpRayQueryGetRayFlagsKHR";
+   case SpvOpRayQueryGetIntersectionTKHR: return "SpvOpRayQueryGetIntersectionTKHR";
+   case SpvOpRayQueryGetIntersectionInstanceCustomIndexKHR: return "SpvOpRayQueryGetIntersectionInstanceCustomIndexKHR";
+   case SpvOpRayQueryGetIntersectionInstanceIdKHR: return "SpvOpRayQueryGetIntersectionInstanceIdKHR";
+   case SpvOpRayQueryGetIntersectionInstanceShaderBindingTableRecordOffsetKHR: return "SpvOpRayQueryGetIntersectionInstanceShaderBindingTableRecordOffsetKHR";
+   case SpvOpRayQueryGetIntersectionGeometryIndexKHR: return "SpvOpRayQueryGetIntersectionGeometryIndexKHR";
+   case SpvOpRayQueryGetIntersectionPrimitiveIndexKHR: return "SpvOpRayQueryGetIntersectionPrimitiveIndexKHR";
+   case SpvOpRayQueryGetIntersectionBarycentricsKHR: return "SpvOpRayQueryGetIntersectionBarycentricsKHR";
+   case SpvOpRayQueryGetIntersectionFrontFaceKHR: return "SpvOpRayQueryGetIntersectionFrontFaceKHR";
+   case SpvOpRayQueryGetIntersectionCandidateAABBOpaqueKHR: return "SpvOpRayQueryGetIntersectionCandidateAABBOpaqueKHR";
+   case SpvOpRayQueryGetIntersectionObjectRayDirectionKHR: return "SpvOpRayQueryGetIntersectionObjectRayDirectionKHR";
+   case SpvOpRayQueryGetIntersectionObjectRayOriginKHR: return "SpvOpRayQueryGetIntersectionObjectRayOriginKHR";
+   case SpvOpRayQueryGetWorldRayDirectionKHR: return "SpvOpRayQueryGetWorldRayDirectionKHR";
+   case SpvOpRayQueryGetWorldRayOriginKHR: return "SpvOpRayQueryGetWorldRayOriginKHR";
+   case SpvOpRayQueryGetIntersectionObjectToWorldKHR: return "SpvOpRayQueryGetIntersectionObjectToWorldKHR";
+   case SpvOpRayQueryGetIntersectionWorldToObjectKHR: return "SpvOpRayQueryGetIntersectionWorldToObjectKHR";
+   case SpvOpAtomicFAddEXT: return "SpvOpAtomicFAddEXT";
    case SpvOpMax: break; /* silence warnings about unhandled enums. */
    }
 

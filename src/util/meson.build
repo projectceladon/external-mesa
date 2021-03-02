@@ -21,7 +21,6 @@
 inc_util = include_directories('.')
 
 subdir('format')
-subdir('xmlpool')
 
 files_mesa_util = files(
   'anon_file.h',
@@ -34,6 +33,7 @@ files_mesa_util = files(
   'blob.h',
   'build_id.c',
   'build_id.h',
+  'compiler.h',
   'crc32.c',
   'crc32.h',
   'dag.c',
@@ -41,11 +41,13 @@ files_mesa_util = files(
   'debug.h',
   'disk_cache.c',
   'disk_cache.h',
+  'disk_cache_os.c',
+  'disk_cache_os.h',
   'double.c',
   'double.h',
+  'enum_operators.h',
   'fast_idiv_by_const.c',
   'fast_idiv_by_const.h',
-  'fnv1a.h',
   'format_r11g11b10f.h',
   'format_rgb9e5.h',
   'format_srgb.h',
@@ -54,8 +56,13 @@ files_mesa_util = files(
   'half_float.h',
   'hash_table.c',
   'hash_table.h',
+  'u_idalloc.c',
+  'u_idalloc.h',
   'list.h',
+  'log.c',
   'macros.h',
+  'memstream.c',
+  'memstream.h',
   'mesa-sha1.c',
   'mesa-sha1.h',
   'os_time.c',
@@ -67,6 +74,7 @@ files_mesa_util = files(
   'os_socket.h',
   'u_process.c',
   'u_process.h',
+  'rwlock.h',
   'sha1/sha1.c',
   'sha1/sha1.h',
   'ralloc.c',
@@ -109,6 +117,7 @@ files_mesa_util = files(
   'u_vector.h',
   'u_math.c',
   'u_math.h',
+  'u_memset.h',
   'u_mm.c',
   'u_mm.h',
   'u_debug.c',
@@ -158,19 +167,29 @@ deps_for_libmesa_util = [
   dep_m,
   dep_valgrind,
   dep_zstd,
+  dep_dl,
+  dep_unwind,
 ]
 
 if with_platform_android
   deps_for_libmesa_util += dep_android
+  files_debug_stack = files('u_debug_stack_android.cpp')
+ else
+  files_debug_stack = files(
+    'u_debug_stack.c',
+    'u_debug_symbol.c',
+    'u_debug_symbol.h',
+  )
 endif
 
 _libmesa_util = static_library(
   'mesa_util',
-  [files_mesa_util, format_srgb],
-  include_directories : inc_common,
+  [files_mesa_util, files_debug_stack, format_srgb],
+  include_directories : [inc_include, inc_src, inc_mapi, inc_mesa, inc_gallium, inc_gallium_aux],
   dependencies : deps_for_libmesa_util,
   link_with: libmesa_format,
-  c_args : [c_msvc_compat_args, c_vis_args],
+  c_args : [c_msvc_compat_args],
+  gnu_symbol_visibility : 'hidden',
   build_by_default : false
 )
 
@@ -180,13 +199,18 @@ idep_mesautil = declare_dependency(
   dependencies : [dep_zlib, dep_clock, dep_thread, dep_atomic, dep_m],
 )
 
+xmlconfig_deps = []
+if not (with_platform_android or with_platform_windows)
+  xmlconfig_deps += dep_expat
+endif
+
 _libxmlconfig = static_library(
   'xmlconfig',
   files_xmlconfig,
-  include_directories : inc_common,
-  dependencies : [idep_mesautil, dep_expat, dep_m],
+  include_directories : [inc_include, inc_src, inc_mapi, inc_mesa, inc_gallium, inc_gallium_aux],
+  dependencies : [idep_mesautil, dep_m, xmlconfig_deps],
   c_args : [
-    c_msvc_compat_args, c_vis_args,
+    c_msvc_compat_args,
     '-DSYSCONFDIR="@0@"'.format(
       join_paths(get_option('prefix'), get_option('sysconfdir'))
     ),
@@ -194,21 +218,39 @@ _libxmlconfig = static_library(
       join_paths(get_option('prefix'), get_option('datadir'))
     ),
   ],
+  gnu_symbol_visibility : 'hidden',
   build_by_default : false,
 )
 
 idep_xmlconfig = declare_dependency(
-  dependencies : [idep_xmlconfig_headers, dep_expat],
+  dependencies : xmlconfig_deps,
   link_with : _libxmlconfig,
 )
 
+files_xxd = files('xxd.py')
+
 if with_tests
+  # DRI_CONF macros use designated initializers (required for union
+  # initializaiton), so we need c++2a since gtest forces us to use c++
+  if host_machine.system() != 'windows' and cpp.has_argument('-std=c++2a')
+    test('xmlconfig',
+      executable('xmlconfig_test',
+        files('tests/xmlconfig.cpp'),
+        include_directories : [inc_include, inc_src],
+        dependencies : [idep_mesautil, idep_xmlconfig, idep_gtest],
+        override_options : ['cpp_std=c++2a'],
+        cpp_args: ['-Wno-write-strings']
+      ),
+      suite : ['util'],
+        )
+  endif
+
   test(
     'u_atomic',
     executable(
       'u_atomic_test',
       files('u_atomic_test.c'),
-      include_directories : inc_common,
+      include_directories : [inc_include, inc_src, inc_mapi, inc_mesa, inc_gallium, inc_gallium_aux],
       dependencies : idep_mesautil,
       c_args : [c_msvc_compat_args],
     ),
@@ -220,7 +262,7 @@ if with_tests
     executable(
       'blob_test',
       files('blob_test.c'),
-      include_directories : inc_common,
+      include_directories : [inc_include, inc_src, inc_mapi, inc_mesa, inc_gallium, inc_gallium_aux],
       dependencies : idep_mesautil,
       c_args : [c_msvc_compat_args],
     ),
@@ -232,7 +274,7 @@ if with_tests
     executable(
       'rb_tree_test',
       files('rb_tree_test.c'),
-      include_directories : inc_common,
+      include_directories : [inc_include, inc_src, inc_mapi, inc_mesa, inc_gallium, inc_gallium_aux],
       dependencies : idep_mesautil,
       c_args : [c_msvc_compat_args],
     ),
@@ -244,11 +286,12 @@ if with_tests
     executable(
       'roundeven_test',
       files('roundeven_test.c'),
-      include_directories : inc_common,
+      include_directories : [inc_include, inc_src, inc_mapi, inc_mesa, inc_gallium, inc_gallium_aux],
       c_args : [c_msvc_compat_args],
       dependencies : [dep_m],
     ),
     suite : ['util'],
+    should_fail : meson.get_cross_property('xfail', '').contains('roundeven'),
   )
 
   # FIXME: this test crashes on windows
@@ -258,7 +301,7 @@ if with_tests
       executable(
         'mesa-sha1_test',
         files('mesa-sha1_test.c'),
-        include_directories : inc_common,
+        include_directories : [inc_include, inc_src, inc_mapi, inc_mesa, inc_gallium, inc_gallium_aux],
         link_with : _libmesa_util,
         c_args : [c_msvc_compat_args],
       ),
@@ -271,10 +314,48 @@ if with_tests
     executable(
        'bitset_test',
        files('bitset_test.cpp'),
-       include_directories : inc_common,
+       include_directories : [inc_include, inc_src, inc_mapi, inc_mesa, inc_gallium, inc_gallium_aux],
        dependencies : [idep_mesautil, idep_gtest],
      ),
      suite : ['util'],
+  )
+
+  test(
+    'u_debug_stack',
+    executable(
+      'u_debug_stack_test',
+      files('u_debug_stack_test.cpp'),
+      include_directories : [inc_include, inc_src, inc_mapi, inc_mesa, inc_gallium, inc_gallium_aux],
+      dependencies : [idep_mesautil, idep_gtest],
+      c_args : [c_msvc_compat_args],
+    ),
+     suite : ['util'],
+  )
+
+  process_test_exe = executable(
+    'process_test',
+    files('process_test.c'),
+    include_directories : [inc_include, inc_src, inc_mapi, inc_mesa, inc_gallium, inc_gallium_aux],
+    dependencies : idep_mesautil,
+    c_args : [c_msvc_compat_args],
+  )
+  if (host_machine.system() == 'windows' and build_machine.system() != 'windows')
+    # This conversion is only required on mingw crosscompilers, otherwise we hit at least one of these issues
+    # https://gitlab.freedesktop.org/mesa/mesa/-/issues/2690
+    # https://gitlab.freedesktop.org/mesa/mesa/-/issues/2788
+    prog_winepath = find_program('winepath')
+    process_test_exe_full_path = run_command(
+      prog_winepath, '-w', process_test_exe.full_path()
+    ).stdout().strip()
+  else
+    process_test_exe_full_path = process_test_exe.full_path()
+  endif
+
+  test(
+    'process',
+    process_test_exe,
+    suite : ['util'],
+    env: ['BUILD_FULL_PATH='+process_test_exe_full_path]
   )
 
   subdir('tests/fast_idiv_by_const')

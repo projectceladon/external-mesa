@@ -10,8 +10,9 @@ export LD_LIBRARY_PATH=$LIBDIR
 
 cd /usr/local/shader-db
 
-for driver in freedreno v3d; do
+for driver in freedreno intel v3d; do
+    echo "Running drm-shim for $driver"
     env LD_PRELOAD=$LIBDIR/lib${driver}_noop_drm_shim.so \
-        ./run -j 4 ./shaders \
+        ./run -j${FDO_CI_CONCURRENT:-4} ./shaders \
             > $ARTIFACTSDIR/${driver}-shader-db.txt
 done

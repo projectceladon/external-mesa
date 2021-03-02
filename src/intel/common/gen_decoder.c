@@ -26,86 +26,7 @@
 #include <stdint.h>
 #include <stdarg.h>
 #include <string.h>
-
-#ifndef ANDROID
 #include <expat.h>
-#else
-#include <stdlib.h>
-/* define dummy XML_Parser stuff
- */
-#define XML_Parser char *
-#define XML_Char char
-
-static XML_Parser temp;
-
-static XML_Parser XML_ParserCreate(const XML_Char *encoding) {
-	return temp;
-}
-
-static unsigned long XML_GetCurrentLineNumber(XML_Parser parser) {
-	return 1;
-}
-
-static unsigned long XML_GetCurrentColumnNumber(XML_Parser parser){
-	return 1;
-}
-
-static long XML_GetCurrentByteIndex(XML_Parser parser){
-	return 1;
-}
-
-static void XML_SetUserData(XML_Parser parser, void *userData){
-	return;
-}
-
-typedef void ( *XML_StartElementHandler) (void *userData,
-                                                 const XML_Char *name,
-                                                 const XML_Char **atts);
-
-typedef void ( *XML_EndElementHandler) (void *userData,
-                                               const XML_Char *name);
-
-typedef void ( *XML_CharacterDataHandler) (void *userData,
-                                                  const XML_Char *s,
-                                                  int len);
-static void
-XML_SetElementHandler(XML_Parser parser,
-                      XML_StartElementHandler start,
-                      XML_EndElementHandler end) {
-	return;
-}
-
-static void
-XML_SetCharacterDataHandler(XML_Parser parser,
-                            XML_CharacterDataHandler handler) {
-	return;
-}
-
-static void *
-XML_GetBuffer(XML_Parser parser, int len) {
-	return NULL;
-}
-
-static int XML_ParseBuffer(XML_Parser parser, int len, int isFinal) {
-	return 1;
-}
-
-static XML_Char * error_str = "error";
-static const XML_Char *
-XML_ErrorString(int code) {
-	return error_str;
-}
-
-static void
-XML_ParserFree(XML_Parser parser) {
-	return;
-}
-
-static int XML_GetErrorCode(XML_Parser parser) {
-	return 1;
-}
-#endif // ANDROID
-
 #include <inttypes.h>
 #include <zlib.h>
 
@@ -1287,10 +1208,12 @@ gen_field_is_header(struct gen_field *field)
 {
    uint32_t bits;
 
-   if (field->start >= 32)
+   /* Instructions are identified by the first DWord. */
+   if (field->start >= 32 ||
+       field->end >= 32)
       return false;
 
-   bits = (1U << (field->end - field->start + 1)) - 1;
+   bits = (1ULL << (field->end - field->start + 1)) - 1;
    bits <<= field->start;
 
    return (field->parent->opcode_mask & bits) != 0;

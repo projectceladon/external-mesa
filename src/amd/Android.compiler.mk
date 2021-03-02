@@ -35,10 +35,8 @@ LOCAL_LICENSE_KINDS := SPDX-license-identifier-ISC SPDX-license-identifier-MIT
 LOCAL_LICENSE_CONDITIONS := notice
 LOCAL_NOTICE_FILE := $(LOCAL_PATH)/../../LICENSE
 
-# filter-out compiler/aco_instruction_selection_setup.cpp because
-# it's already included by compiler/aco_instruction_selection.cpp
 LOCAL_SRC_FILES := \
-	$(filter-out compiler/aco_instruction_selection_setup.cpp, $(ACO_FILES))
+	$(ACO_FILES)
 
 LOCAL_CFLAGS += -DFORCE_BUILD_AMDGPU   # instructs LLVM to declare LLVMInitializeAMDGPU* functions
 
@@ -75,6 +73,7 @@ LOCAL_C_INCLUDES := \
 	$(MESA_TOP)/src/amd/common \
 	$(MESA_TOP)/src/amd/compiler \
 	$(MESA_TOP)/src/compiler/nir \
+	$(MESA_TOP)/src/gallium/include \
 	$(MESA_TOP)/src/mapi \
 	$(MESA_TOP)/src/mesa \
 	$(intermediates)/compiler

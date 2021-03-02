@@ -30,6 +30,7 @@
 
 #include "pipe/p_state.h"
 #include "c11/threads.h"
+#include "compiler/shader_enums.h"
 #include <stdio.h>
 
 #ifdef __cplusplus
@@ -56,9 +57,23 @@ bool util_upload_index_buffer(struct pipe_context *pipe,
                               struct pipe_resource **out_buffer,
                               unsigned *out_offset, unsigned alignment);
 
-void
-util_pin_driver_threads_to_random_L3(struct pipe_context *ctx,
-                                     thrd_t *upper_thread);
+/* Helper function to determine if the varying should contain the point
+ * coordinates, given the sprite_coord_enable mask.  Requires
+ * PIPE_CAP_TGSI_TEXCOORD to be enabled.
+ */
+static inline bool
+util_varying_is_point_coord(gl_varying_slot slot, uint32_t sprite_coord_enable)
+{
+   if (slot == VARYING_SLOT_PNTC)
+      return true;
+
+   if (slot >= VARYING_SLOT_TEX0 && slot <= VARYING_SLOT_TEX7 &&
+       (sprite_coord_enable & (1 << (slot - VARYING_SLOT_TEX0)))) {
+      return true;
+   }
+
+   return false;
+}
 
 struct pipe_query *
 util_begin_pipestat_query(struct pipe_context *ctx);

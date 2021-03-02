@@ -223,7 +223,7 @@ struct pipe_screen {
                                                        void *user_memory);
 
    /**
-    * Unlike pipe_resource::bind, which describes what state trackers want,
+    * Unlike pipe_resource::bind, which describes what gallium frontends want,
     * resources can have much greater capabilities in practice, often implied
     * by the tiling layout or memory placement. This function allows querying
     * whether a capability is supported beyond what was requested by state
@@ -249,6 +249,12 @@ struct pipe_screen {
     * will use it. Some drivers may also use the context to convert
     * the resource into a format compatible for sharing. The use case is
     * OpenGL-OpenCL interop. The context parameter is allowed to be NULL.
+    *
+    * NOTE: for multi-planar resources (which may or may not have the planes
+    * chained through the pipe_resource next pointer) the frontend will
+    * always call this function with the first resource of the chain. It is
+    * the pipe drivers responsibility to walk the resources as needed when
+    * called with handle->plane != 0.
     *
     * NOTE: in the case of WINSYS_HANDLE_TYPE_FD handles, the caller
     * takes ownership of the FD.  (This is consistent with
@@ -277,6 +283,7 @@ struct pipe_screen {
                               struct pipe_resource *resource,
                               unsigned plane,
                               unsigned layer,
+                              unsigned level,
                               enum pipe_resource_param param,
                               unsigned handle_usage,
                               uint64_t *value);
@@ -504,13 +511,54 @@ struct pipe_screen {
    /**
     * Run driver-specific NIR lowering and optimization passes.
     *
-    * State trackers should call this before passing shaders to drivers,
+    * gallium frontends should call this before passing shaders to drivers,
     * and ideally also before shader caching.
     *
     * \param optimize  Whether the input shader hasn't been optimized and
     *                  should be.
     */
    void (*finalize_nir)(struct pipe_screen *screen, void *nir, bool optimize);
+
+   /*Separated memory/resource allocations interfaces for Vulkan */
+
+   /**
+    * Create a resource, and retrieve the required size for it but don't allocate
+    * any backing memory.
+    */
+   struct pipe_resource * (*resource_create_unbacked)(struct pipe_screen *,
+                                                      const struct pipe_resource *templat,
+                                                      uint64_t *size_required);
+
+   /**
+    * Allocate backing memory to be bound to resources.
+    */
+   struct pipe_memory_allocation *(*allocate_memory)(struct pipe_screen *screen,
+                                                     uint64_t size);
+   /**
+    * Free previously allocated backing memory.
+    */
+   void (*free_memory)(struct pipe_screen *screen,
+                       struct pipe_memory_allocation *);
+
+   /**
+    * Bind memory to a resource.
+    */
+   void (*resource_bind_backing)(struct pipe_screen *screen,
+                                 struct pipe_resource *pt,
+                                 struct pipe_memory_allocation *pmem,
+                                 uint64_t offset);
+
+   /**
+    * Map backing memory.
+    */
+   void *(*map_memory)(struct pipe_screen *screen,
+                       struct pipe_memory_allocation *pmem);
+
+   /**
+    * Unmap backing memory.
+    */
+   void (*unmap_memory)(struct pipe_screen *screen,
+                        struct pipe_memory_allocation *pmem);
 };
 
 

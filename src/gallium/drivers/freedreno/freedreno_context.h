@@ -30,6 +30,7 @@
 #include "pipe/p_context.h"
 #include "indices/u_primconvert.h"
 #include "util/u_blitter.h"
+#include "util/libsync.h"
 #include "util/list.h"
 #include "util/slab.h"
 #include "util/u_string.h"
@@ -66,6 +67,7 @@ struct fd_constbuf_stateobj {
 struct fd_shaderbuf_stateobj {
 	struct pipe_shader_buffer sb[PIPE_MAX_SHADER_BUFFERS];
 	uint32_t enabled_mask;
+	uint32_t writable_mask;
 };
 
 struct fd_shaderimg_stateobj {
@@ -130,7 +132,6 @@ enum fd_dirty_3d_state {
 	FD_DIRTY_VTXSTATE    = BIT(9),
 	FD_DIRTY_VTXBUF      = BIT(10),
 	FD_DIRTY_MIN_SAMPLES = BIT(11),
-
 	FD_DIRTY_SCISSOR     = BIT(12),
 	FD_DIRTY_STREAMOUT   = BIT(13),
 	FD_DIRTY_UCP         = BIT(14),
@@ -142,9 +143,16 @@ enum fd_dirty_3d_state {
 	FD_DIRTY_PROG        = BIT(16),
 	FD_DIRTY_CONST       = BIT(17),
 	FD_DIRTY_TEX         = BIT(18),
+	FD_DIRTY_IMAGE       = BIT(19),
+	FD_DIRTY_SSBO        = BIT(20),
 
 	/* only used by a2xx.. possibly can be removed.. */
-	FD_DIRTY_TEXSTATE    = BIT(19),
+	FD_DIRTY_TEXSTATE    = BIT(21),
+
+	/* fine grained state changes, for cases where state is not orthogonal
+	 * from hw perspective:
+	 */
+	FD_DIRTY_RASTERIZER_DISCARD = BIT(24),
 };
 
 /* per shader-stage dirty state: */
@@ -158,6 +166,8 @@ enum fd_dirty_shader_state {
 
 struct fd_context {
 	struct pipe_context base;
+
+	struct list_head node;   /* node in screen->context_list */
 
 	/* We currently need to serialize emitting GMEM batches, because of
 	 * VSC state access in the context.
@@ -174,7 +184,7 @@ struct fd_context {
 	struct fd_pipe *pipe;
 
 	struct blitter_context *blitter;
-	void *clear_rs_state;
+	void *clear_rs_state[2];
 	struct primconvert_context *primconvert;
 
 	/* slab for pipe_transfer allocations: */
@@ -200,6 +210,16 @@ struct fd_context {
 	/* list of active accumulating queries: */
 	struct list_head acc_active_queries;
 	/*@}*/
+
+	/* Whether we need to walk the acc_active_queries next fd_set_stage() to
+	 * update active queries (even if stage doesn't change).
+	 */
+	bool update_active_queries;
+
+	/* Current state of pctx->set_active_query_state() (i.e. "should drawing
+	 * be counted against non-perfcounter queries")
+	 */
+	bool active_queries;
 
 	/* table with PIPE_PRIM_MAX entries mapping PIPE_PRIM_x to
 	 * DI_PT_x value to use for draw initiator.  There are some
@@ -240,6 +260,21 @@ struct fd_context {
 	 */
 	struct pipe_fence_handle *last_fence;
 
+	/* Fence fd we are told to wait on via ->fence_server_sync() (or -1
+	 * if none).  The in-fence is transferred over to the batch on the
+	 * next draw/blit/grid.
+	 *
+	 * The reason for this extra complexity is that apps will typically
+	 * do eglWaitSyncKHR()/etc at the beginning of the frame, before the
+	 * first draw.  But mesa/st doesn't flush down framebuffer state
+	 * change until we hit a draw, so at ->fence_server_sync() time, we
+	 * don't yet have the correct batch.  If we created a batch at that
+	 * point, it would be the wrong one, and we'd have to flush it pre-
+	 * maturely, causing us to stall early in the frame where we could
+	 * be building up cmdstream.
+	 */
+	int in_fence_fd;
+
 	/* track last known reset status globally and per-context to
 	 * determine if more resets occurred since then.  If global reset
 	 * count increases, it means some other context crashed.  If
@@ -257,7 +292,10 @@ struct fd_context {
 	 * contents.  Main point is to eliminate blits from fd_try_shadow_resource().
 	 * For example, in case of texture upload + gen-mipmaps.
 	 */
-	bool in_blit : 1;
+	bool in_discard_blit : 1;
+
+	/* points to either scissor or disabled_scissor depending on rast state: */
+	struct pipe_scissor_state *current_scissor;
 
 	struct pipe_scissor_state scissor;
 
@@ -309,6 +347,9 @@ struct fd_context {
 
 	struct pipe_debug_callback debug;
 
+	/* Called on rebind_resource() for any per-gen cleanup required: */
+	void (*rebind_resource)(struct fd_context *ctx, struct fd_resource *rsc);
+
 	/* GMEM/tile handling fxns: */
 	void (*emit_tile_init)(struct fd_batch *batch);
 	void (*emit_tile_prep)(struct fd_batch *batch, const struct fd_tile *tile);
@@ -340,9 +381,18 @@ struct fd_context {
 
 	/* blitter: */
 	bool (*blit)(struct fd_context *ctx, const struct pipe_blit_info *info);
+	void (*clear_ubwc)(struct fd_batch *batch, struct fd_resource *rsc);
 
 	/* handling for barriers: */
 	void (*framebuffer_barrier)(struct fd_context *ctx);
+
+	/* logger: */
+	void (*record_timestamp)(struct fd_ringbuffer *ring, struct fd_bo *bo, unsigned offset);
+	uint64_t (*ts_to_ns)(uint64_t ts);
+
+	struct list_head log_chunks;  /* list of flushed log chunks in fifo order */
+	unsigned frame_nr;            /* frame counter (for fd_log) */
+	FILE *log_out;
 
 	/*
 	 * Common pre-cooked VBO state (used for a3xx and later):
@@ -377,6 +427,7 @@ struct fd_context {
 		uint32_t index_start;
 		uint32_t instance_start;
 		uint32_t restart_index;
+		uint32_t streamout_mask;
 	} last;
 };
 
@@ -389,19 +440,19 @@ fd_context(struct pipe_context *pctx)
 static inline void
 fd_context_assert_locked(struct fd_context *ctx)
 {
-	pipe_mutex_assert_locked(ctx->screen->lock);
+	fd_screen_assert_locked(ctx->screen);
 }
 
 static inline void
 fd_context_lock(struct fd_context *ctx)
 {
-	mtx_lock(&ctx->screen->lock);
+	fd_screen_lock(ctx->screen);
 }
 
 static inline void
 fd_context_unlock(struct fd_context *ctx)
 {
-	mtx_unlock(&ctx->screen->lock);
+	fd_screen_unlock(ctx->screen);
 }
 
 /* mark all state dirty: */
@@ -417,6 +468,7 @@ fd_context_all_dirty(struct fd_context *ctx)
 static inline void
 fd_context_all_clean(struct fd_context *ctx)
 {
+	ctx->last.dirty = false;
 	ctx->dirty = 0;
 	for (unsigned i = 0; i < PIPE_SHADER_TYPES; i++) {
 		/* don't mark compute state as clean, since it is not emitted
@@ -433,15 +485,42 @@ fd_context_all_clean(struct fd_context *ctx)
 static inline struct pipe_scissor_state *
 fd_context_get_scissor(struct fd_context *ctx)
 {
-	if (ctx->rasterizer && ctx->rasterizer->scissor)
-		return &ctx->scissor;
-	return &ctx->disabled_scissor;
+	return ctx->current_scissor;
 }
 
 static inline bool
 fd_supported_prim(struct fd_context *ctx, unsigned prim)
 {
 	return (1 << prim) & ctx->primtype_mask;
+}
+
+/**
+ * If we have a pending fence_server_sync() (GPU side sync), flush now.
+ * The alternative to try to track this with batch dependencies gets
+ * hairy quickly.
+ *
+ * Call this before switching to a different batch, to handle this case.
+ */
+static inline void
+fd_context_switch_from(struct fd_context *ctx)
+{
+	if (ctx->batch && (ctx->batch->in_fence_fd != -1))
+		fd_batch_flush(ctx->batch);
+}
+
+/**
+ * If there is a pending fence-fd that we need to sync on, this will
+ * transfer the reference to the next batch we are going to render
+ * to.
+ */
+static inline void
+fd_context_switch_to(struct fd_context *ctx, struct fd_batch *batch)
+{
+	if (ctx->in_fence_fd != -1) {
+		sync_accumulate("freedreno", &batch->in_fence_fd, ctx->in_fence_fd);
+		close(ctx->in_fence_fd);
+		ctx->in_fence_fd = -1;
+	}
 }
 
 static inline struct fd_batch *
@@ -454,6 +533,7 @@ fd_context_batch(struct fd_context *ctx)
 		ctx->batch = batch;
 		fd_context_all_dirty(ctx);
 	}
+	fd_context_switch_to(ctx, ctx->batch);
 	return ctx->batch;
 }
 
@@ -461,16 +541,6 @@ static inline void
 fd_batch_set_stage(struct fd_batch *batch, enum fd_render_stage stage)
 {
 	struct fd_context *ctx = batch->ctx;
-
-	/* special case: internal blits (like mipmap level generation)
-	 * go through normal draw path (via util_blitter_blit()).. but
-	 * we need to ignore the FD_STAGE_DRAW which will be set, so we
-	 * don't enable queries which should be paused during internal
-	 * blits:
-	 */
-	if ((batch->stage == FD_STAGE_BLIT) &&
-			(stage != FD_STAGE_NULL))
-		return;
 
 	if (ctx->query_set_stage)
 		ctx->query_set_stage(batch, stage);
@@ -480,6 +550,8 @@ fd_batch_set_stage(struct fd_batch *batch, enum fd_render_stage stage)
 
 void fd_context_setup_common_vbos(struct fd_context *ctx);
 void fd_context_cleanup_common_vbos(struct fd_context *ctx);
+void fd_emit_string(struct fd_ringbuffer *ring, const char *string, int len);
+void fd_emit_string5(struct fd_ringbuffer *ring, const char *string, int len);
 
 struct pipe_context * fd_context_init(struct fd_context *ctx,
 		struct pipe_screen *pscreen, const uint8_t *primtypes,

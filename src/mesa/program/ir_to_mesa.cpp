@@ -1030,15 +1030,6 @@ ir_to_mesa_visitor::visit(ir_expression *ir)
       inst->saturate = true;
       break;
    }
-   case ir_unop_noise: {
-      const enum prog_opcode opcode =
-	 prog_opcode(OPCODE_NOISE1
-		     + (ir->operands[0]->type->vector_elements) - 1);
-      assert((opcode >= OPCODE_NOISE1) && (opcode <= OPCODE_NOISE4));
-
-      emit(ir, opcode, result_dst, op[0]);
-      break;
-   }
 
    case ir_binop_add:
       emit(ir, OPCODE_ADD, result_dst, op[0], op[1]);
@@ -1347,6 +1338,15 @@ ir_to_mesa_visitor::visit(ir_expression *ir)
    case ir_unop_atan:
    case ir_binop_atan2:
    case ir_unop_clz:
+   case ir_unop_f162f:
+   case ir_unop_f2f16:
+   case ir_unop_f2fmp:
+   case ir_unop_f162b:
+   case ir_unop_b2f16:
+   case ir_unop_i2i:
+   case ir_unop_i2imp:
+   case ir_unop_u2u:
+   case ir_unop_u2ump:
       assert(!"not supported");
       break;
 
@@ -1367,7 +1367,7 @@ ir_to_mesa_visitor::visit(ir_swizzle *ir)
 {
    src_reg src;
    int i;
-   int swizzle[4];
+   int swizzle[4] = {0};
 
    /* Note that this is only swizzles in expressions, not those on the left
     * hand side of an assignment, which do write masking.  See ir_assignment
@@ -2190,6 +2190,10 @@ ir_to_mesa_visitor::ir_to_mesa_visitor()
    next_signature_id = 1;
    current_function = NULL;
    mem_ctx = ralloc_context(NULL);
+   ctx = NULL;
+   prog = NULL;
+   shader_program = NULL;
+   options = NULL;
 }
 
 ir_to_mesa_visitor::~ir_to_mesa_visitor()
@@ -2332,7 +2336,8 @@ public:
    add_uniform_to_shader(struct gl_context *ctx,
                          struct gl_shader_program *shader_program,
 			 struct gl_program_parameter_list *params)
-      : ctx(ctx), shader_program(shader_program), params(params), idx(-1)
+      : ctx(ctx), shader_program(shader_program), params(params), idx(-1),
+        var(NULL)
    {
       /* empty */
    }
@@ -2420,8 +2425,8 @@ add_uniform_to_shader::visit_field(const glsl_type *type, const char *name,
     * This avoids relying on names to match parameters and uniform
     * storages later when associating uniform storage.
     */
-   unsigned location;
-   const bool found =
+   unsigned location = -1;
+   ASSERTED const bool found =
       shader_program->UniformHash->get(location, params->Parameters[index].Name);
    assert(found);
 
@@ -3016,8 +3021,6 @@ _mesa_ir_link_shader(struct gl_context *ctx, struct gl_shader_program *prog)
 
 	 progress = lower_if_to_cond_assign((gl_shader_stage)i, ir,
                                             options->MaxIfDepth) || progress;
-
-         progress = lower_noise(ir) || progress;
 
 	 /* If there are forms of indirect addressing that the driver
 	  * cannot handle, perform the lowering pass.
