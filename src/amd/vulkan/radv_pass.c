@@ -59,6 +59,32 @@ radv_render_pass_add_subpass_dep(struct radv_render_pass *pass,
 	}
 }
 
+static bool
+radv_pass_has_layout_transitions(const struct radv_render_pass *pass)
+{
+	for (unsigned i = 0; i < pass->subpass_count; i++) {
+		const struct radv_subpass *subpass = &pass->subpasses[i];
+		for (unsigned j = 0; j < subpass->attachment_count; j++) {
+			const uint32_t a = subpass->attachments[j].attachment;
+			if (a == VK_ATTACHMENT_UNUSED)
+				continue;
+
+			uint32_t initial_layout = pass->attachments[a].initial_layout;
+			uint32_t stencil_initial_layout = pass->attachments[a].stencil_initial_layout;
+			uint32_t final_layout = pass->attachments[a].final_layout;
+			uint32_t stencil_final_layout = pass->attachments[a].stencil_final_layout;
+
+			if (subpass->attachments[j].layout != initial_layout ||
+			    subpass->attachments[j].layout != stencil_initial_layout ||
+			    subpass->attachments[j].layout != final_layout ||
+			    subpass->attachments[j].layout != stencil_final_layout)
+				return true;
+		}
+	}
+
+	return false;
+}
+
 static void
 radv_render_pass_add_implicit_deps(struct radv_render_pass *pass,
 				   bool has_ingoing_dep, bool has_outgoing_dep)
@@ -68,7 +94,9 @@ radv_render_pass_add_implicit_deps(struct radv_render_pass *pass,
 	*    If there is no subpass dependency from VK_SUBPASS_EXTERNAL to the
 	*    first subpass that uses an attachment, then an implicit subpass
 	*    dependency exists from VK_SUBPASS_EXTERNAL to the first subpass it is
-	*    used in. The subpass dependency operates as if defined with the
+	*    used in. The implicit subpass dependency only exists if there
+	*    exists an automatic layout transition away from initialLayout.
+	*    The subpass dependency operates as if defined with the
 	*    following parameters:
 	*
 	*    VkSubpassDependency implicitDependency = {
@@ -88,8 +116,10 @@ radv_render_pass_add_implicit_deps(struct radv_render_pass *pass,
 	*    Similarly, if there is no subpass dependency from the last subpass
 	*    that uses an attachment to VK_SUBPASS_EXTERNAL, then an implicit
 	*    subpass dependency exists from the last subpass it is used in to
-	*    VK_SUBPASS_EXTERNAL. The subpass dependency operates as if defined
-	*    with the following parameters:
+	*    VK_SUBPASS_EXTERNAL. The implicit subpass dependency only exists
+	*    if there exists an automatic layout transition into finalLayout.
+	*    The subpass dependency operates as if defined with the following
+	*    parameters:
 	*
 	*    VkSubpassDependency implicitDependency = {
 	*        .srcSubpass = lastSubpass; // Last subpass attachment is used in
@@ -105,6 +135,12 @@ radv_render_pass_add_implicit_deps(struct radv_render_pass *pass,
 	*        .dependencyFlags = 0;
 	*    };
 	*/
+
+	/* Implicit subpass dependencies only make sense if automatic layout
+	 * transitions are performed.
+	 */
+	if (!radv_pass_has_layout_transitions(pass))
+		return;
 
 	if (!has_ingoing_dep) {
 		const VkSubpassDependency2KHR implicit_ingoing_dep = {
@@ -264,6 +300,16 @@ radv_num_subpass_attachments(const VkSubpassDescription *desc)
 	       (desc->pDepthStencilAttachment != NULL);
 }
 
+static void
+radv_destroy_render_pass(struct radv_device *device,
+			 const VkAllocationCallbacks *pAllocator,
+			 struct radv_render_pass *pass)
+{
+	vk_object_base_finish(&pass->base);
+	vk_free2(&device->vk.alloc, pAllocator, pass->subpass_attachments);
+	vk_free2(&device->vk.alloc, pAllocator, pass);
+}
+
 VkResult radv_CreateRenderPass(
 	VkDevice                                    _device,
 	const VkRenderPassCreateInfo*               pCreateInfo,
@@ -283,12 +329,16 @@ VkResult radv_CreateRenderPass(
 	attachments_offset = size;
 	size += pCreateInfo->attachmentCount * sizeof(pass->attachments[0]);
 
-	pass = vk_alloc2(&device->alloc, pAllocator, size, 8,
+	pass = vk_alloc2(&device->vk.alloc, pAllocator, size, 8,
 			   VK_SYSTEM_ALLOCATION_SCOPE_OBJECT);
 	if (pass == NULL)
 		return vk_error(device->instance, VK_ERROR_OUT_OF_HOST_MEMORY);
 
 	memset(pass, 0, size);
+
+	vk_object_base_init(&device->vk, &pass->base,
+			    VK_OBJECT_TYPE_RENDER_PASS);
+
 	pass->attachment_count = pCreateInfo->attachmentCount;
 	pass->subpass_count = pCreateInfo->subpassCount;
 	pass->attachments = (void *) pass + attachments_offset;
@@ -326,11 +376,11 @@ VkResult radv_CreateRenderPass(
 
 	if (subpass_attachment_count) {
 		pass->subpass_attachments =
-			vk_alloc2(&device->alloc, pAllocator,
+			vk_alloc2(&device->vk.alloc, pAllocator,
 				    subpass_attachment_count * sizeof(struct radv_subpass_attachment), 8,
 				    VK_SYSTEM_ALLOCATION_SCOPE_OBJECT);
 		if (pass->subpass_attachments == NULL) {
-			vk_free2(&device->alloc, pAllocator, pass);
+			radv_destroy_render_pass(device, pAllocator, pass);
 			return vk_error(device->instance, VK_ERROR_OUT_OF_HOST_MEMORY);
 		}
 	} else
@@ -465,12 +515,16 @@ VkResult radv_CreateRenderPass2(
 	attachments_offset = size;
 	size += pCreateInfo->attachmentCount * sizeof(pass->attachments[0]);
 
-	pass = vk_alloc2(&device->alloc, pAllocator, size, 8,
+	pass = vk_alloc2(&device->vk.alloc, pAllocator, size, 8,
 			   VK_SYSTEM_ALLOCATION_SCOPE_OBJECT);
 	if (pass == NULL)
 		return vk_error(device->instance, VK_ERROR_OUT_OF_HOST_MEMORY);
 
 	memset(pass, 0, size);
+
+	vk_object_base_init(&device->vk, &pass->base,
+			    VK_OBJECT_TYPE_RENDER_PASS);
+
 	pass->attachment_count = pCreateInfo->attachmentCount;
 	pass->subpass_count = pCreateInfo->subpassCount;
 	pass->attachments = (void *) pass + attachments_offset;
@@ -505,11 +559,11 @@ VkResult radv_CreateRenderPass2(
 
 	if (subpass_attachment_count) {
 		pass->subpass_attachments =
-			vk_alloc2(&device->alloc, pAllocator,
+			vk_alloc2(&device->vk.alloc, pAllocator,
 				    subpass_attachment_count * sizeof(struct radv_subpass_attachment), 8,
 				    VK_SYSTEM_ALLOCATION_SCOPE_OBJECT);
 		if (pass->subpass_attachments == NULL) {
-			vk_free2(&device->alloc, pAllocator, pass);
+			radv_destroy_render_pass(device, pAllocator, pass);
 			return vk_error(device->instance, VK_ERROR_OUT_OF_HOST_MEMORY);
 		}
 	} else
@@ -645,8 +699,8 @@ void radv_DestroyRenderPass(
 
 	if (!_pass)
 		return;
-	vk_free2(&device->alloc, pAllocator, pass->subpass_attachments);
-	vk_free2(&device->alloc, pAllocator, pass);
+
+	radv_destroy_render_pass(device, pAllocator, pass);
 }
 
 void radv_GetRenderAreaGranularity(

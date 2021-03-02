@@ -44,8 +44,8 @@
 
 #include <errno.h>
 
-#define U642VOID(x) ((void *)(unsigned long)(x))
-#define VOID2U64(x) ((uint64_t)(unsigned long)(x))
+#define U642VOID(x) ((void *)(uintptr_t)(x))
+#define VOID2U64(x) ((uint64_t)(uintptr_t)(x))
 
 #define container_of(ptr, type, field) \
    (type*)((char*)ptr - offsetof(type, field))
@@ -272,7 +272,7 @@ rbug_texture_read(struct rbug_rbug *tr_rbug, struct rbug_header *header, uint32_
    tex = tr_tex->resource;
    map = pipe_transfer_map(context, tex,
                            gptr->level, gptr->face + gptr->zslice,
-                           PIPE_TRANSFER_READ,
+                           PIPE_MAP_READ,
                            gptr->x, gptr->y, gptr->w, gptr->h, &t);
 
    rbug_send_texture_read_reply(tr_rbug->con, serial,

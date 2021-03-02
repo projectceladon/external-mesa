@@ -116,6 +116,12 @@ void
 util_format_z24_unorm_s8_uint_pack_separate(uint8_t *dst_row, unsigned dst_stride, const uint32_t *z_src_row, unsigned z_src_stride, const uint8_t *s_src_row, unsigned s_src_stride, unsigned width, unsigned height);
 
 void
+util_format_z24_unorm_s8_uint_unpack_z24(uint8_t *dst_row, unsigned dst_stride, const uint8_t *src_row, unsigned src_stride, unsigned width, unsigned height);
+
+void
+util_format_z24_unorm_s8_uint_pack_z24(uint8_t *dst_row, unsigned dst_stride, const uint8_t *src_row, unsigned src_stride, unsigned width, unsigned height);
+
+void
 util_format_s8_uint_z24_unorm_unpack_z_float(float *dst_row, unsigned dst_stride, const uint8_t *src_row, unsigned src_stride, unsigned width, unsigned height);
 
 
@@ -193,6 +199,29 @@ util_format_z32_float_s8x24_uint_unpack_s_8uint(uint8_t *dst_row, unsigned dst_s
 
 void
 util_format_z32_float_s8x24_uint_pack_s_8uint(uint8_t *dst_row, unsigned dst_stride, const uint8_t *src_row, unsigned src_stride, unsigned width, unsigned height);
+
+void
+util_format_z16_unorm_s8_uint_unpack_z_float(float *dst_row, unsigned dst_stride, const uint8_t *src_row, unsigned src_stride, unsigned width, unsigned height);
+
+
+void
+util_format_z16_unorm_s8_uint_pack_z_float(uint8_t *dst_row, unsigned dst_stride, const float *src_row, unsigned src_stride, unsigned width, unsigned height);
+
+
+void
+util_format_z16_unorm_s8_uint_unpack_z_32unorm(uint32_t *dst_row, unsigned dst_stride, const uint8_t *src_row, unsigned src_stride, unsigned width, unsigned height);
+
+
+void
+util_format_z16_unorm_s8_uint_pack_z_32unorm(uint8_t *dst_row, unsigned dst_stride, const uint32_t *src_row, unsigned src_stride, unsigned width, unsigned height);
+
+
+void
+util_format_z16_unorm_s8_uint_unpack_s_8uint(uint8_t *dst_row, unsigned dst_stride, const uint8_t *src_row, unsigned src_stride, unsigned width, unsigned height);
+
+
+void
+util_format_z16_unorm_s8_uint_pack_s_8uint(uint8_t *dst_row, unsigned dst_stride, const uint8_t *src_row, unsigned src_stride, unsigned width, unsigned height);
 
 void
 util_format_x24s8_uint_unpack_s_8uint(uint8_t *dst_row, unsigned dst_stride, const uint8_t *src_row, unsigned src_stride, unsigned width, unsigned height);

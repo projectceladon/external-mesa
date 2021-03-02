@@ -135,7 +135,6 @@ process_glsl_ir(struct brw_context *brw,
    do_vec_index_to_cond_assign(shader->ir);
    lower_vector_insert(shader->ir, true);
    lower_offset_arrays(shader->ir);
-   lower_noise(shader->ir);
    lower_quadop_vector(shader->ir, false);
 
    validate_ir_tree(shader->ir);
@@ -347,7 +346,7 @@ brw_link_shader(struct gl_context *ctx, struct gl_shader_program *shProg)
        * too late.  At that point, the values for the built-in uniforms won't
        * get sent to the shader.
        */
-      nir_foreach_variable(var, &prog->nir->uniforms) {
+      nir_foreach_uniform_variable(var, prog->nir) {
          const nir_state_slot *const slots = var->state_slots;
          for (unsigned int i = 0; i < var->num_state_slots; i++) {
             assert(slots != NULL);

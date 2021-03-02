@@ -48,12 +48,14 @@
 void
 etna_blit_save_state(struct etna_context *ctx)
 {
+   util_blitter_save_fragment_constant_buffer_slot(ctx->blitter,
+                                                   ctx->constant_buffer[PIPE_SHADER_FRAGMENT].cb);
    util_blitter_save_vertex_buffer_slot(ctx->blitter, ctx->vertex_buffer.vb);
    util_blitter_save_vertex_elements(ctx->blitter, ctx->vertex_elements);
    util_blitter_save_vertex_shader(ctx->blitter, ctx->shader.bind_vs);
    util_blitter_save_rasterizer(ctx->blitter, ctx->rasterizer);
    util_blitter_save_viewport(ctx->blitter, &ctx->viewport_s);
-   util_blitter_save_scissor(ctx->blitter, &ctx->scissor_s);
+   util_blitter_save_scissor(ctx->blitter, &ctx->scissor);
    util_blitter_save_fragment_shader(ctx->blitter, ctx->shader.bind_fs);
    util_blitter_save_blend(ctx->blitter, ctx->blend);
    util_blitter_save_depth_stencil_alpha(ctx->blitter, ctx->zsa);
@@ -71,24 +73,49 @@ etna_clear_blit_pack_rgba(enum pipe_format format, const union pipe_color_union 
 {
    union util_color uc;
 
-   if (util_format_is_pure_uint(format)) {
-      util_format_write_4ui(format, color->ui, 0, &uc, 0, 0, 0, 1, 1);
-   } else if (util_format_is_pure_sint(format)) {
-      util_format_write_4i(format, color->i, 0, &uc, 0, 0, 0, 1, 1);
-   } else {
-      util_pack_color(color->f, format, &uc);
-   }
+   util_pack_color_union(format, &uc, color);
 
    switch (util_format_get_blocksize(format)) {
    case 1:
       uc.ui[0] = uc.ui[0] << 8 | (uc.ui[0] & 0xff);
+      /* fallthrough */
    case 2:
       uc.ui[0] =  uc.ui[0] << 16 | (uc.ui[0] & 0xffff);
+      /* fallthrough */
    case 4:
       uc.ui[1] = uc.ui[0];
+      /* fallthrough */
    default:
       return (uint64_t) uc.ui[1] << 32 | uc.ui[0];
    }
+}
+
+static void
+etna_blit(struct pipe_context *pctx, const struct pipe_blit_info *blit_info)
+{
+   struct etna_context *ctx = etna_context(pctx);
+   struct pipe_blit_info info = *blit_info;
+
+   if (ctx->blit(pctx, &info))
+      return;
+
+   if (util_try_blit_via_copy_region(pctx, &info))
+      return;
+
+   if (info.mask & PIPE_MASK_S) {
+      DBG("cannot blit stencil, skipping");
+      info.mask &= ~PIPE_MASK_S;
+   }
+
+   if (!util_blitter_is_blit_supported(ctx->blitter, &info)) {
+      DBG("blit unsupported %s -> %s",
+          util_format_short_name(info.src.resource->format),
+          util_format_short_name(info.dst.resource->format));
+      return;
+   }
+
+   etna_blit_save_state(ctx);
+   util_blitter_blit(ctx->blitter, &info);
 }
 
 static void
@@ -234,13 +261,15 @@ void
 etna_clear_blit_init(struct pipe_context *pctx)
 {
    struct etna_context *ctx = etna_context(pctx);
+   struct etna_screen *screen = ctx->screen;
 
+   pctx->blit = etna_blit;
    pctx->clear_render_target = etna_clear_render_target;
    pctx->clear_depth_stencil = etna_clear_depth_stencil;
    pctx->resource_copy_region = etna_resource_copy_region;
    pctx->flush_resource = etna_flush_resource;
 
-   if (ctx->specs.use_blt)
+   if (screen->specs.use_blt)
       etna_clear_blit_blt_init(pctx);
    else
       etna_clear_blit_rs_init(pctx);

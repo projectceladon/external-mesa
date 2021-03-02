@@ -25,7 +25,7 @@
 import argparse
 import math
 import os
-import xml.etree.cElementTree as et
+import xml.etree.ElementTree as et
 
 from collections import OrderedDict, namedtuple
 from mako.template import Template
@@ -43,7 +43,6 @@ LAYERS = [
     'gen75',
     'gen8',
     'gen9',
-    'gen10',
     'gen11',
     'gen12',
 ]
@@ -513,7 +512,7 @@ anv_get_device_entry_name(int index)
    return device_entry_name(index);
 }
 
-static void * __attribute__ ((noinline))
+void * __attribute__ ((noinline))
 anv_resolve_device_entrypoint(const struct gen_device_info *devinfo, uint32_t index)
 {
    const struct anv_device_dispatch_table *genX_table;
@@ -523,9 +522,6 @@ anv_resolve_device_entrypoint(const struct gen_device_info *devinfo, uint32_t in
       break;
    case 11:
       genX_table = &gen11_device_dispatch_table;
-      break;
-   case 10:
-      genX_table = &gen10_device_dispatch_table;
       break;
    case 9:
       genX_table = &gen9_device_dispatch_table;

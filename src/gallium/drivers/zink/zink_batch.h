@@ -26,11 +26,13 @@
 
 #include <vulkan/vulkan.h>
 
+#include "util/list.h"
 #include "util/u_dynarray.h"
 
 struct zink_context;
 struct zink_fence;
 struct zink_framebuffer;
+struct zink_gfx_program;
 struct zink_render_pass;
 struct zink_resource;
 struct zink_sampler_view;
@@ -38,6 +40,7 @@ struct zink_sampler_view;
 #define ZINK_BATCH_DESC_SIZE 1000
 
 struct zink_batch {
+   unsigned batch_id : 2;
    VkCommandBuffer cmdbuf;
    VkDescriptorPool descpool;
    int descs_left;
@@ -45,11 +48,14 @@ struct zink_batch {
 
    struct zink_render_pass *rp;
    struct zink_framebuffer *fb;
+   struct set *programs;
 
    struct set *resources;
    struct set *sampler_views;
 
    struct util_dynarray zombie_samplers;
+
+   struct set *active_queries; /* zink_query objects which were active at some point in this batch */
 };
 
 void
@@ -59,11 +65,15 @@ void
 zink_end_batch(struct zink_context *ctx, struct zink_batch *batch);
 
 void
-zink_batch_reference_resoure(struct zink_batch *batch,
-                             struct zink_resource *res);
+zink_batch_reference_resource_rw(struct zink_batch *batch,
+                                 struct zink_resource *res,
+                                 bool write);
 
 void
 zink_batch_reference_sampler_view(struct zink_batch *batch,
                                   struct zink_sampler_view *sv);
 
+void
+zink_batch_reference_program(struct zink_batch *batch,
+                             struct zink_gfx_program *prog);
 #endif

@@ -147,7 +147,7 @@ glx_dri3_show_fps(struct loader_dri3_drawable *draw, uint64_t current_ust)
    /* DRI3+Present together uses microseconds for UST. */
    if (priv->previous_ust + interval * 1000000 <= current_ust) {
       if (priv->previous_ust) {
-         fprintf(stderr, "libGL: FPS = %.1f\n",
+         fprintf(stderr, "libGL: FPS = %.2f\n",
                  ((uint64_t) priv->frames * 1000000) /
                  (double)(current_ust - priv->previous_ust));
       }
@@ -593,7 +593,7 @@ dri3_swap_buffers(__GLXDRIdrawable *pdraw, int64_t target_msc, int64_t divisor,
 
    return loader_dri3_swap_buffers_msc(&priv->loader_drawable,
                                        target_msc, divisor, remainder,
-                                       flags, false);
+                                       flags, NULL, 0, false);
 }
 
 static int
@@ -741,6 +741,8 @@ dri3_bind_extensions(struct dri3_screen *psc, struct glx_display * priv,
 
    extensions = psc->core->getExtensions(psc->driScreen);
 
+   __glXEnableDirectExtension(&psc->base, "GLX_EXT_swap_control");
+   __glXEnableDirectExtension(&psc->base, "GLX_EXT_swap_control_tear");
    __glXEnableDirectExtension(&psc->base, "GLX_SGI_swap_control");
    __glXEnableDirectExtension(&psc->base, "GLX_MESA_swap_control");
    __glXEnableDirectExtension(&psc->base, "GLX_SGI_make_current_read");
@@ -804,11 +806,20 @@ dri3_bind_extensions(struct dri3_screen *psc, struct glx_display * priv,
    }
 }
 
+static char *
+dri3_get_driver_name(struct glx_screen *glx_screen)
+{
+    struct dri3_screen *psc = (struct dri3_screen *)glx_screen;
+
+    return loader_get_driver_for_fd(psc->fd);
+}
+
 static const struct glx_screen_vtable dri3_screen_vtable = {
    .create_context         = dri3_create_context,
    .create_context_attribs = dri3_create_context_attribs,
    .query_renderer_integer = dri3_query_renderer_integer,
    .query_renderer_string  = dri3_query_renderer_string,
+   .get_driver_name        = dri3_get_driver_name,
 };
 
 /** dri3_create_screen
@@ -987,6 +998,17 @@ dri3_create_screen(int screen, struct glx_display * priv)
                                  &disable) || !disable)
       __glXEnableDirectExtension(&psc->base, "GLX_EXT_buffer_age");
 
+   if (psc->config->base.version > 1 &&
+          psc->config->configQuerys(psc->driScreen, "glx_extension_override",
+                                    &tmp) == 0)
+      __glXParseExtensionOverride(&psc->base, tmp);
+
+   if (psc->config->base.version > 1 &&
+          psc->config->configQuerys(psc->driScreen,
+                                    "indirect_gl_extension_override",
+                                    &tmp) == 0)
+      __IndirectGlParseExtensionOverride(&psc->base, tmp);
+
    free(driverName);
 
    tmp = getenv("LIBGL_SHOW_FPS");
@@ -1104,8 +1126,6 @@ dri3_create_display(Display * dpy)
 
    pdp->base.destroyDisplay = dri3_destroy_display;
    pdp->base.createScreen = dri3_create_screen;
-
-   loader_set_logger(dri_message);
 
    pdp->loader_extensions = loader_extensions;
 

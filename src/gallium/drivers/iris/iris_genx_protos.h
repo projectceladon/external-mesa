@@ -29,6 +29,7 @@
 
 /* iris_state.c */
 void genX(init_state)(struct iris_context *ice);
+void genX(init_screen_state)(struct iris_screen *screen);
 void genX(emit_hashing_mode)(struct iris_context *ice,
                              struct iris_batch *batch,
                              unsigned width, unsigned height,
@@ -37,7 +38,7 @@ void genX(update_pma_fix)(struct iris_context *ice,
                           struct iris_batch *batch,
                           bool enable);
 
-void genX(emit_aux_map_state)(struct iris_batch *batch);
+void genX(invalidate_aux_map_state)(struct iris_batch *batch);
 
 /* iris_blorp.c */
 void genX(init_blorp)(struct iris_context *ice);

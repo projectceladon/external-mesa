@@ -37,14 +37,14 @@
 #include "virgl_resource.h"
 #include "virgl_public.h"
 #include "virgl_context.h"
-#include "virgl_protocol.h"
+#include "virtio-gpu/virgl_protocol.h"
 
 int virgl_debug = 0;
 static const struct debug_named_value debug_options[] = {
    { "verbose",   VIRGL_DEBUG_VERBOSE,             NULL },
    { "tgsi",      VIRGL_DEBUG_TGSI,                NULL },
-   { "emubgra",   VIRGL_DEBUG_EMULATE_BGRA,        "Enable tweak to emulate BGRA as RGBA on GLES hosts"},
-   { "bgraswz",   VIRGL_DEBUG_BGRA_DEST_SWIZZLE,   "Enable tweak to swizzle emulated BGRA on GLES hosts" },
+   { "noemubgra", VIRGL_DEBUG_NO_EMULATE_BGRA,     "Disable tweak to emulate BGRA as RGBA on GLES hosts"},
+   { "nobgraswz", VIRGL_DEBUG_NO_BGRA_DEST_SWIZZLE,"Disable tweak to swizzle emulated BGRA on GLES hosts" },
    { "sync",      VIRGL_DEBUG_SYNC,                "Sync after every flush" },
    { "xfer",      VIRGL_DEBUG_XFER,                "Do not optimize for transfers" },
    DEBUG_NAMED_VALUE_END
@@ -54,7 +54,7 @@ DEBUG_GET_ONCE_FLAGS_OPTION(virgl_debug, "VIRGL_DEBUG", debug_options, 0)
 static const char *
 virgl_get_vendor(struct pipe_screen *screen)
 {
-   return "Red Hat";
+   return "Mesa/X.org";
 }
 
 
@@ -126,6 +126,7 @@ virgl_get_param(struct pipe_screen *screen, enum pipe_cap param)
    case PIPE_CAP_MAX_STREAM_OUTPUT_INTERLEAVED_COMPONENTS:
       return 16*4;
    case PIPE_CAP_PRIMITIVE_RESTART:
+   case PIPE_CAP_PRIMITIVE_RESTART_FIXED_INDEX:
       return vscreen->caps.caps.v1.bset.primitive_restart;
    case PIPE_CAP_SHADER_STENCIL_EXPORT:
       return vscreen->caps.caps.v1.bset.shader_stencil_export;
@@ -261,6 +262,8 @@ virgl_get_param(struct pipe_screen *screen, enum pipe_cap param)
    case PIPE_CAP_FBFETCH:
       return (vscreen->caps.caps.v2.capability_bits &
               VIRGL_CAP_TGSI_FBFETCH) ? 1 : 0;
+   case PIPE_CAP_BLEND_EQUATION_ADVANCED:
+      return vscreen->caps.caps.v2.capability_bits_v2 & VIRGL_CAP_V2_BLEND_EQUATION;
    case PIPE_CAP_TGSI_CLOCK:
       return vscreen->caps.caps.v2.capability_bits & VIRGL_CAP_SHADER_CLOCK;
    case PIPE_CAP_TGSI_ARRAY_COMPONENTS:
@@ -288,70 +291,19 @@ virgl_get_param(struct pipe_screen *screen, enum pipe_cap param)
       return !!(vscreen->caps.caps.v2.capability_bits & VIRGL_CAP_MULTI_DRAW_INDIRECT);
    case PIPE_CAP_MULTI_DRAW_INDIRECT_PARAMS:
       return !!(vscreen->caps.caps.v2.capability_bits & VIRGL_CAP_INDIRECT_PARAMS);
-   case PIPE_CAP_TEXTURE_GATHER_SM5:
    case PIPE_CAP_BUFFER_MAP_PERSISTENT_COHERENT:
-   case PIPE_CAP_TEXTURE_GATHER_OFFSETS:
-   case PIPE_CAP_TGSI_VS_WINDOW_SPACE_POSITION:
-   case PIPE_CAP_VERTEXID_NOBASE:
-   case PIPE_CAP_MULTISAMPLE_Z_RESOLVE:
-   case PIPE_CAP_RESOURCE_FROM_USER_MEMORY:
-   case PIPE_CAP_DEVICE_RESET_STATUS_QUERY:
-   case PIPE_CAP_DEPTH_BOUNDS_TEST:
-   case PIPE_CAP_SHAREABLE_SHADERS:
-   case PIPE_CAP_CLEAR_TEXTURE:
-   case PIPE_CAP_DRAW_PARAMETERS:
-   case PIPE_CAP_TGSI_PACK_HALF_FLOAT:
-   case PIPE_CAP_TGSI_FS_POSITION_IS_SYSVAL:
-   case PIPE_CAP_TGSI_FS_FACE_IS_INTEGER_SYSVAL:
-   case PIPE_CAP_INVALIDATE_BUFFER:
-   case PIPE_CAP_GENERATE_MIPMAP:
-   case PIPE_CAP_SURFACE_REINTERPRET_BLOCKS:
-   case PIPE_CAP_STRING_MARKER:
-   case PIPE_CAP_QUERY_MEMORY_INFO:
+      return (vscreen->caps.caps.v2.capability_bits & VIRGL_CAP_ARB_BUFFER_STORAGE) &&
+             (vscreen->caps.caps.v2.host_feature_check_version >= 4) &&
+              vscreen->vws->supports_coherent;
    case PIPE_CAP_PCI_GROUP:
    case PIPE_CAP_PCI_BUS:
    case PIPE_CAP_PCI_DEVICE:
    case PIPE_CAP_PCI_FUNCTION:
-   case PIPE_CAP_PRIMITIVE_RESTART_FOR_PATCHES:
-   case PIPE_CAP_TGSI_VOTE:
-   case PIPE_CAP_MAX_WINDOW_RECTANGLES:
-   case PIPE_CAP_POLYGON_OFFSET_UNITS_UNSCALED:
-   case PIPE_CAP_VIEWPORT_SUBPIXEL_BITS:
-   case PIPE_CAP_TGSI_CAN_READ_OUTPUTS:
    case PIPE_CAP_GLSL_OPTIMIZE_CONSERVATIVELY:
-   case PIPE_CAP_TGSI_MUL_ZERO_WINS:
-   case PIPE_CAP_INT64:
-   case PIPE_CAP_INT64_DIVMOD:
-   case PIPE_CAP_TGSI_TEX_TXF_LZ:
-   case PIPE_CAP_POLYGON_MODE_FILL_RECTANGLE:
-   case PIPE_CAP_SPARSE_BUFFER_PAGE_SIZE:
-   case PIPE_CAP_TGSI_BALLOT:
-   case PIPE_CAP_TGSI_TES_LAYER_VIEWPORT:
-   case PIPE_CAP_CAN_BIND_CONST_BUFFER_AS_VERTEX:
    case PIPE_CAP_ALLOW_MAPPED_BUFFERS_DURING_EXECUTION:
-   case PIPE_CAP_POST_DEPTH_COVERAGE:
-   case PIPE_CAP_BINDLESS_TEXTURE:
-   case PIPE_CAP_NIR_SAMPLERS_AS_DEREF:
-   case PIPE_CAP_MEMOBJ:
-   case PIPE_CAP_LOAD_CONSTBUF:
-   case PIPE_CAP_TGSI_ANY_REG_AS_ADDRESS:
-   case PIPE_CAP_TILE_RASTER_ORDER:
-   case PIPE_CAP_MAX_COMBINED_SHADER_OUTPUT_RESOURCES:
-   case PIPE_CAP_FRAMEBUFFER_MSAA_CONSTRAINTS:
-   case PIPE_CAP_SIGNED_VERTEX_BUFFER_OFFSET:
-   case PIPE_CAP_CONTEXT_PRIORITY_MASK:
-   case PIPE_CAP_FENCE_SIGNAL:
-   case PIPE_CAP_CONSTBUF0_FLAGS:
-   case PIPE_CAP_PACKED_UNIFORMS:
-   case PIPE_CAP_CONSERVATIVE_RASTER_POST_SNAP_TRIANGLES:
-   case PIPE_CAP_CONSERVATIVE_RASTER_POST_SNAP_POINTS_LINES:
-   case PIPE_CAP_CONSERVATIVE_RASTER_PRE_SNAP_TRIANGLES:
-   case PIPE_CAP_CONSERVATIVE_RASTER_PRE_SNAP_POINTS_LINES:
-   case PIPE_CAP_CONSERVATIVE_RASTER_POST_DEPTH_COVERAGE:
-   case PIPE_CAP_MAX_CONSERVATIVE_RASTER_SUBPIXEL_PRECISION_BIAS:
-   case PIPE_CAP_PROGRAMMABLE_SAMPLE_LOCATIONS:
-   case PIPE_CAP_MAX_TEXTURE_UPLOAD_MEMORY_BUDGET:
       return 0;
+   case PIPE_CAP_CLEAR_TEXTURE:
+      return vscreen->caps.caps.v2.capability_bits & VIRGL_CAP_CLEAR_TEXTURE;
    case PIPE_CAP_CLIP_HALFZ:
       return vscreen->caps.caps.v2.capability_bits & VIRGL_CAP_CLIP_HALFZ;
    case PIPE_CAP_MAX_GS_INVOCATIONS:
@@ -462,6 +414,9 @@ virgl_get_shader_param(struct pipe_screen *screen,
       case PIPE_SHADER_CAP_TGSI_SKIP_MERGE_REGISTERS:
       case PIPE_SHADER_CAP_INT64_ATOMICS:
       case PIPE_SHADER_CAP_FP16:
+      case PIPE_SHADER_CAP_FP16_DERIVATIVES:
+      case PIPE_SHADER_CAP_INT16:
+      case PIPE_SHADER_CAP_GLSL_16BIT_CONSTS:
          return 0;
       default:
          return 0;
@@ -724,7 +679,7 @@ virgl_is_format_supported( struct pipe_screen *screen,
       /*
        * Although possible, it is unnatural to render into compressed or YUV
        * surfaces. So disable these here to avoid going into weird paths
-       * inside the state trackers.
+       * inside gallium frontends.
        */
       if (format_desc->block.width != 1 ||
           format_desc->block.height != 1)
@@ -757,6 +712,9 @@ virgl_is_format_supported( struct pipe_screen *screen,
       goto out_lookup;
    }
    if (format_desc->layout == UTIL_FORMAT_LAYOUT_BPTC) {
+      goto out_lookup;
+   }
+   if (format_desc->layout == UTIL_FORMAT_LAYOUT_ETC) {
       goto out_lookup;
    }
 
@@ -887,9 +845,8 @@ virgl_create_screen(struct virgl_winsys *vws, const struct pipe_screen_config *c
       screen->tweak_gles_tf3_value =
             driQueryOptioni(config->options, VIRGL_GLES_SAMPLES_PASSED_VALUE);
    }
-
-   screen->tweak_gles_emulate_bgra |= !!(virgl_debug & VIRGL_DEBUG_EMULATE_BGRA);
-   screen->tweak_gles_apply_bgra_dest_swizzle |= !!(virgl_debug & VIRGL_DEBUG_BGRA_DEST_SWIZZLE);
+   screen->tweak_gles_emulate_bgra &= !(virgl_debug & VIRGL_DEBUG_NO_EMULATE_BGRA);
+   screen->tweak_gles_apply_bgra_dest_swizzle &= !(virgl_debug & VIRGL_DEBUG_NO_BGRA_DEST_SWIZZLE);
 
    screen->vws = vws;
    screen->base.get_name = virgl_get_name;
@@ -915,6 +872,10 @@ virgl_create_screen(struct virgl_winsys *vws, const struct pipe_screen_config *c
                  &screen->caps.caps.v2.supported_readback_formats);
    fixup_formats(&screen->caps.caps, &screen->caps.caps.v2.scanout);
 
+   union virgl_caps *caps = &screen->caps.caps;
+   bool may_emulate_bgra = (caps->v2.capability_bits & VIRGL_CAP_APP_TWEAK_SUPPORT);
+   screen->tweak_gles_emulate_bgra &= !virgl_format_check_bitmask(
+       PIPE_FORMAT_B8G8R8A8_SRGB, caps->v1.render.bitmask, may_emulate_bgra);
    screen->refcnt = 1;
 
    slab_create_parent(&screen->transfer_pool, sizeof(struct virgl_transfer), 16);

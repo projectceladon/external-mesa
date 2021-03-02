@@ -276,12 +276,11 @@ is_uniform(const fs_reg &reg)
 
 /**
  * Get the specified 8-component quarter of a register.
- * XXX - Maybe come up with a less misleading name for this (e.g. quarter())?
  */
 static inline fs_reg
-half(const fs_reg &reg, unsigned idx)
+quarter(const fs_reg &reg, unsigned idx)
 {
-   assert(idx < 2);
+   assert(idx < 4);
    return horiz_offset(reg, 8 * idx);
 }
 
@@ -298,8 +297,8 @@ subscript(fs_reg reg, brw_reg_type type, unsigned i)
       /* The stride is encoded inconsistently for fixed GRF and ARF registers
        * as the log2 of the actual vertical and horizontal strides.
        */
-      const int delta = _mesa_logbase2(type_sz(reg.type)) -
-                        _mesa_logbase2(type_sz(type));
+      const int delta = util_logbase2(type_sz(reg.type)) -
+                        util_logbase2(type_sz(type));
       reg.hstride += (reg.hstride ? delta : 0);
       reg.vstride += (reg.vstride ? delta : 0);
 
@@ -452,13 +451,15 @@ regs_written(const fs_inst *inst)
  * Return the number of dataflow registers read by the instruction (either
  * fully or partially) counted from 'floor(reg_offset(inst->src[i]) /
  * register_size)'.  The somewhat arbitrary register size unit is 4B for the
- * UNIFORM and IMM files and 32B for all other files.
+ * UNIFORM files and 32B for all other files.
  */
 inline unsigned
 regs_read(const fs_inst *inst, unsigned i)
 {
-   const unsigned reg_size =
-      inst->src[i].file == UNIFORM || inst->src[i].file == IMM ? 4 : REG_SIZE;
+   if (inst->src[i].file == IMM)
+      return 1;
+
+   const unsigned reg_size = inst->src[i].file == UNIFORM ? 4 : REG_SIZE;
    return DIV_ROUND_UP(reg_offset(inst->src[i]) % reg_size +
                        inst->size_read(i) -
                        MIN2(inst->size_read(i), reg_padding(inst->src[i])),
@@ -667,5 +668,8 @@ is_coalescing_payload(const brw::simple_allocator &alloc, const fs_inst *inst)
           inst->src[0].offset == 0 &&
           alloc.sizes[inst->src[0].nr] * REG_SIZE == inst->size_written;
 }
+
+bool
+has_bank_conflict(const gen_device_info *devinfo, const fs_inst *inst);
 
 #endif
