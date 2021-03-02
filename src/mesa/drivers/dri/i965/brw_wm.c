@@ -99,7 +99,7 @@ brw_codegen_wm_prog(struct brw_context *brw,
    } else {
       brw_nir_setup_arb_uniforms(mem_ctx, nir, &fp->program, &prog_data.base);
 
-      if (unlikely(INTEL_DEBUG & DEBUG_WM))
+      if (INTEL_DEBUG & DEBUG_WM)
          brw_dump_arb_asm("fragment", &fp->program);
    }
 
@@ -153,7 +153,7 @@ brw_codegen_wm_prog(struct brw_context *brw,
 
    brw_alloc_stage_scratch(brw, &brw->wm.base, prog_data.base.total_scratch);
 
-   if (unlikely((INTEL_DEBUG & DEBUG_WM) && fp->program.is_arb_asm))
+   if (((INTEL_DEBUG & DEBUG_WM) && fp->program.is_arb_asm))
       fprintf(stderr, "\n");
 
    /* The param and pull_param arrays will be freed by the shader cache. */
@@ -253,8 +253,8 @@ brw_populate_sampler_prog_key_data(struct gl_context *ctx,
                      key->swizzles[i] |= SWIZZLE_ONE << (3 * i);
                   }
                }
-               /* fallthrough */
             }
+            /* fallthrough */
             case GL_RG32F:
                /* The channel select for green doesn't work - we have to
                 * request blue.  Haswell can use SCS for this, but Ivybridge
@@ -322,6 +322,17 @@ brw_populate_sampler_prog_key_data(struct gl_context *ctx,
                break;
             default:
                break;
+            }
+
+            switch (intel_tex->yuv_color_space) {
+            case __DRI_YUV_COLOR_SPACE_ITU_REC709:
+              key->bt709_mask |= 1 << s;
+              break;
+            case __DRI_YUV_COLOR_SPACE_ITU_REC2020:
+              key->bt2020_mask |= 1 << s;
+              break;
+            default:
+              break;
             }
          }
 
@@ -490,6 +501,8 @@ brw_wm_populate_key(struct brw_context *brw, struct brw_wm_prog_key *key)
       key->multisample_fbo = _mesa_geometric_samples(ctx->DrawBuffer) > 1;
    }
 
+   key->ignore_sample_mask_out = !key->multisample_fbo;
+
    /* BRW_NEW_VUE_MAP_GEOM_OUT */
    if (devinfo->gen < 6 || util_bitcount64(prog->info.inputs_read &
                                              BRW_FS_VARYING_INPUT_MASK) > 16) {
@@ -602,7 +615,7 @@ brw_fs_precompile(struct gl_context *ctx, struct gl_program *prog)
    if (devinfo->gen < 6) {
       brw_compute_vue_map(&brw->screen->devinfo, &vue_map,
                           prog->info.inputs_read | VARYING_BIT_POS,
-                          false);
+                          false, 1);
    }
 
    bool success = brw_codegen_wm_prog(brw, bfp, &key, &vue_map);

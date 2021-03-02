@@ -48,7 +48,6 @@ I965_PERGEN_LIBS := \
 	libmesa_i965_gen75 \
 	libmesa_i965_gen8 \
 	libmesa_i965_gen9 \
-	libmesa_i965_gen10 \
 	libmesa_i965_gen11
 
 # ---------------------------------------
@@ -58,9 +57,6 @@ I965_PERGEN_LIBS := \
 include $(CLEAR_VARS)
 
 LOCAL_MODULE := libmesa_i965_gen4
-LOCAL_LICENSE_KINDS := SPDX-license-identifier-MIT
-LOCAL_LICENSE_CONDITIONS := notice
-LOCAL_NOTICE_FILE := $(LOCAL_PATH)/../../../../../LICENSE
 
 LOCAL_C_INCLUDES := $(I965_PERGEN_COMMON_INCLUDES)
 
@@ -82,9 +78,6 @@ include $(BUILD_STATIC_LIBRARY)
 include $(CLEAR_VARS)
 
 LOCAL_MODULE := libmesa_i965_gen45
-LOCAL_LICENSE_KINDS := SPDX-license-identifier-MIT
-LOCAL_LICENSE_CONDITIONS := notice
-LOCAL_NOTICE_FILE := $(LOCAL_PATH)/../../../../../LICENSE
 
 LOCAL_C_INCLUDES := $(I965_PERGEN_COMMON_INCLUDES)
 
@@ -106,9 +99,6 @@ include $(BUILD_STATIC_LIBRARY)
 include $(CLEAR_VARS)
 
 LOCAL_MODULE := libmesa_i965_gen5
-LOCAL_LICENSE_KINDS := SPDX-license-identifier-MIT
-LOCAL_LICENSE_CONDITIONS := notice
-LOCAL_NOTICE_FILE := $(LOCAL_PATH)/../../../../../LICENSE
 
 LOCAL_C_INCLUDES := $(I965_PERGEN_COMMON_INCLUDES)
 
@@ -130,9 +120,6 @@ include $(BUILD_STATIC_LIBRARY)
 include $(CLEAR_VARS)
 
 LOCAL_MODULE := libmesa_i965_gen6
-LOCAL_LICENSE_KINDS := SPDX-license-identifier-MIT
-LOCAL_LICENSE_CONDITIONS := notice
-LOCAL_NOTICE_FILE := $(LOCAL_PATH)/../../../../../LICENSE
 
 LOCAL_C_INCLUDES := $(I965_PERGEN_COMMON_INCLUDES)
 
@@ -154,9 +141,6 @@ include $(BUILD_STATIC_LIBRARY)
 include $(CLEAR_VARS)
 
 LOCAL_MODULE := libmesa_i965_gen7
-LOCAL_LICENSE_KINDS := SPDX-license-identifier-MIT
-LOCAL_LICENSE_CONDITIONS := notice
-LOCAL_NOTICE_FILE := $(LOCAL_PATH)/../../../../../LICENSE
 
 LOCAL_C_INCLUDES := $(I965_PERGEN_COMMON_INCLUDES)
 
@@ -178,9 +162,6 @@ include $(BUILD_STATIC_LIBRARY)
 include $(CLEAR_VARS)
 
 LOCAL_MODULE := libmesa_i965_gen75
-LOCAL_LICENSE_KINDS := SPDX-license-identifier-MIT
-LOCAL_LICENSE_CONDITIONS := notice
-LOCAL_NOTICE_FILE := $(LOCAL_PATH)/../../../../../LICENSE
 
 LOCAL_C_INCLUDES := $(I965_PERGEN_COMMON_INCLUDES)
 
@@ -202,9 +183,6 @@ include $(BUILD_STATIC_LIBRARY)
 include $(CLEAR_VARS)
 
 LOCAL_MODULE := libmesa_i965_gen8
-LOCAL_LICENSE_KINDS := SPDX-license-identifier-MIT
-LOCAL_LICENSE_CONDITIONS := notice
-LOCAL_NOTICE_FILE := $(LOCAL_PATH)/../../../../../LICENSE
 
 LOCAL_C_INCLUDES := $(I965_PERGEN_COMMON_INCLUDES)
 
@@ -226,9 +204,6 @@ include $(BUILD_STATIC_LIBRARY)
 include $(CLEAR_VARS)
 
 LOCAL_MODULE := libmesa_i965_gen9
-LOCAL_LICENSE_KINDS := SPDX-license-identifier-MIT
-LOCAL_LICENSE_CONDITIONS := notice
-LOCAL_NOTICE_FILE := $(LOCAL_PATH)/../../../../../LICENSE
 
 LOCAL_C_INCLUDES := $(I965_PERGEN_COMMON_INCLUDES)
 
@@ -244,39 +219,12 @@ include $(MESA_COMMON_MK)
 include $(BUILD_STATIC_LIBRARY)
 
 # ---------------------------------------
-# Build libmesa_i965_gen10
-# ---------------------------------------
-
-include $(CLEAR_VARS)
-
-LOCAL_MODULE := libmesa_i965_gen10
-LOCAL_LICENSE_KINDS := SPDX-license-identifier-MIT
-LOCAL_LICENSE_CONDITIONS := notice
-LOCAL_NOTICE_FILE := $(LOCAL_PATH)/../../../../../LICENSE
-
-LOCAL_C_INCLUDES := $(I965_PERGEN_COMMON_INCLUDES)
-
-LOCAL_SRC_FILES := $(i965_gen10_FILES)
-
-LOCAL_SHARED_LIBRARIES := $(I965_PERGEN_SHARED_LIBRARIES)
-
-LOCAL_STATIC_LIBRARIES := $(I965_PERGEN_STATIC_LIBRARIES)
-
-LOCAL_CFLAGS := -DGEN_VERSIONx10=100
-
-include $(MESA_COMMON_MK)
-include $(BUILD_STATIC_LIBRARY)
-
-# ---------------------------------------
 # Build libmesa_i965_gen11
 # ---------------------------------------
 
 include $(CLEAR_VARS)
 
 LOCAL_MODULE := libmesa_i965_gen11
-LOCAL_LICENSE_KINDS := SPDX-license-identifier-MIT
-LOCAL_LICENSE_CONDITIONS := notice
-LOCAL_NOTICE_FILE := $(LOCAL_PATH)/../../../../../LICENSE
 
 LOCAL_C_INCLUDES := $(I965_PERGEN_COMMON_INCLUDES)
 
@@ -298,9 +246,6 @@ include $(BUILD_STATIC_LIBRARY)
 include $(CLEAR_VARS)
 
 LOCAL_MODULE := i965_dri
-LOCAL_LICENSE_KINDS := SPDX-license-identifier-MIT
-LOCAL_LICENSE_CONDITIONS := notice
-LOCAL_NOTICE_FILE := $(LOCAL_PATH)/../../../../../LICENSE
 LOCAL_MODULE_RELATIVE_PATH := $(MESA_DRI_MODULE_REL_PATH)
 LOCAL_LDFLAGS += $(MESA_DRI_LDFLAGS)
 

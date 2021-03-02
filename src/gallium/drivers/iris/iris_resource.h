@@ -31,6 +31,7 @@
 
 struct iris_batch;
 struct iris_context;
+struct shader_info;
 
 #define IRIS_MAX_MIPLEVELS 15
 
@@ -291,9 +292,11 @@ iris_resource_bo(struct pipe_resource *p_res)
 }
 
 static inline uint32_t
-iris_mocs(const struct iris_bo *bo, const struct isl_device *dev)
+iris_mocs(const struct iris_bo *bo,
+          const struct isl_device *dev,
+          isl_surf_usage_flags_t usage)
 {
-   return bo && bo->external ? dev->mocs.external : dev->mocs.internal;
+   return bo && bo->external ? dev->mocs.external : isl_mocs(dev, usage);
 }
 
 struct iris_format_info iris_format_for_usage(const struct gen_device_info *,
@@ -317,7 +320,8 @@ void iris_init_screen_resource_functions(struct pipe_screen *pscreen);
 
 void iris_dirty_for_history(struct iris_context *ice,
                             struct iris_resource *res);
-uint32_t iris_flush_bits_for_history(struct iris_resource *res);
+uint32_t iris_flush_bits_for_history(struct iris_context *ice,
+                                     struct iris_resource *res);
 
 void iris_flush_and_dirty_for_history(struct iris_context *ice,
                                       struct iris_batch *batch,
@@ -369,7 +373,6 @@ iris_hiz_exec(struct iris_context *ice,
  */
 void
 iris_resource_prepare_access(struct iris_context *ice,
-                             struct iris_batch *batch,
                              struct iris_resource *res,
                              uint32_t start_level, uint32_t num_levels,
                              uint32_t start_layer, uint32_t num_layers,
@@ -432,13 +435,12 @@ iris_resource_set_aux_state(struct iris_context *ice,
  */
 static inline void
 iris_resource_access_raw(struct iris_context *ice,
-                         struct iris_batch *batch,
                          struct iris_resource *res,
                          uint32_t level, uint32_t layer,
                          uint32_t num_layers,
                          bool write)
 {
-   iris_resource_prepare_access(ice, batch, res, level, 1, layer, num_layers,
+   iris_resource_prepare_access(ice, res, level, 1, layer, num_layers,
                                 ISL_AUX_USAGE_NONE, false);
    if (write) {
       iris_resource_finish_write(ice, res, level, layer, num_layers,
@@ -457,25 +459,30 @@ enum isl_aux_usage iris_resource_texture_aux_usage(struct iris_context *ice,
                                                    const struct iris_resource *res,
                                                    enum isl_format view_fmt);
 void iris_resource_prepare_texture(struct iris_context *ice,
-                                   struct iris_batch *batch,
                                    struct iris_resource *res,
                                    enum isl_format view_format,
                                    uint32_t start_level, uint32_t num_levels,
                                    uint32_t start_layer, uint32_t num_layers);
 
+enum isl_aux_usage iris_image_view_aux_usage(struct iris_context *ice,
+                                             const struct pipe_image_view *pview,
+                                             const struct shader_info *info);
+enum isl_format iris_image_view_get_format(struct iris_context *ice,
+                                           const struct pipe_image_view *img);
+
 static inline bool
 iris_resource_unfinished_aux_import(struct iris_resource *res)
 {
-   return res->base.next != NULL && res->mod_info &&
+   return res->aux.bo == NULL && res->mod_info &&
       res->mod_info->aux_usage != ISL_AUX_USAGE_NONE;
 }
 
 void iris_resource_finish_aux_import(struct pipe_screen *pscreen,
                                      struct iris_resource *res);
 
-bool iris_has_color_unresolved(const struct iris_resource *res,
-                               unsigned start_level, unsigned num_levels,
-                               unsigned start_layer, unsigned num_layers);
+bool iris_has_invalid_primary(const struct iris_resource *res,
+                              unsigned start_level, unsigned num_levels,
+                              unsigned start_layer, unsigned num_layers);
 
 void iris_resource_check_level_layer(const struct iris_resource *res,
                                      uint32_t level, uint32_t layer);
@@ -490,10 +497,12 @@ bool iris_has_color_unresolved(const struct iris_resource *res,
                                unsigned start_level, unsigned num_levels,
                                unsigned start_layer, unsigned num_layers);
 
+bool iris_render_formats_color_compatible(enum isl_format a,
+                                          enum isl_format b,
+                                          union isl_color_value color);
 enum isl_aux_usage iris_resource_render_aux_usage(struct iris_context *ice,
                                                   struct iris_resource *res,
                                                   enum isl_format render_fmt,
-                                                  bool blend_enabled,
                                                   bool draw_aux_disabled);
 void iris_resource_prepare_render(struct iris_context *ice,
                                   struct iris_batch *batch,

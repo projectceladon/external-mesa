@@ -69,9 +69,6 @@ endif
 
 include $(CLEAR_VARS)
 LOCAL_MODULE := libmesa_anv_gen7
-LOCAL_LICENSE_KINDS := SPDX-license-identifier-ISC SPDX-license-identifier-MIT legacy_by_exception_only legacy_notice
-LOCAL_LICENSE_CONDITIONS := by_exception_only notice
-LOCAL_NOTICE_FILE := $(LOCAL_PATH)/../../LICENSE
 LOCAL_MODULE_CLASS := STATIC_LIBRARIES
 
 LOCAL_SRC_FILES := $(VULKAN_GEN7_FILES)
@@ -93,9 +90,6 @@ include $(BUILD_STATIC_LIBRARY)
 
 include $(CLEAR_VARS)
 LOCAL_MODULE := libmesa_anv_gen75
-LOCAL_LICENSE_KINDS := SPDX-license-identifier-ISC SPDX-license-identifier-MIT legacy_by_exception_only legacy_notice
-LOCAL_LICENSE_CONDITIONS := by_exception_only notice
-LOCAL_NOTICE_FILE := $(LOCAL_PATH)/../../LICENSE
 LOCAL_MODULE_CLASS := STATIC_LIBRARIES
 
 LOCAL_SRC_FILES := $(VULKAN_GEN75_FILES)
@@ -117,9 +111,6 @@ include $(BUILD_STATIC_LIBRARY)
 
 include $(CLEAR_VARS)
 LOCAL_MODULE := libmesa_anv_gen8
-LOCAL_LICENSE_KINDS := SPDX-license-identifier-ISC SPDX-license-identifier-MIT legacy_by_exception_only legacy_notice
-LOCAL_LICENSE_CONDITIONS := by_exception_only notice
-LOCAL_NOTICE_FILE := $(LOCAL_PATH)/../../LICENSE
 LOCAL_MODULE_CLASS := STATIC_LIBRARIES
 
 LOCAL_SRC_FILES := $(VULKAN_GEN8_FILES)
@@ -141,37 +132,10 @@ include $(BUILD_STATIC_LIBRARY)
 
 include $(CLEAR_VARS)
 LOCAL_MODULE := libmesa_anv_gen9
-LOCAL_LICENSE_KINDS := SPDX-license-identifier-ISC SPDX-license-identifier-MIT legacy_by_exception_only legacy_notice
-LOCAL_LICENSE_CONDITIONS := by_exception_only notice
-LOCAL_NOTICE_FILE := $(LOCAL_PATH)/../../LICENSE
 LOCAL_MODULE_CLASS := STATIC_LIBRARIES
 
 LOCAL_SRC_FILES := $(VULKAN_GEN9_FILES)
 LOCAL_CFLAGS := -DGEN_VERSIONx10=90
-
-LOCAL_C_INCLUDES := $(VULKAN_COMMON_INCLUDES)
-
-LOCAL_STATIC_LIBRARIES := $(ANV_STATIC_LIBRARIES)
-
-LOCAL_SHARED_LIBRARIES := $(ANV_SHARED_LIBRARIES)
-LOCAL_HEADER_LIBRARIES += $(VULKAN_COMMON_HEADER_LIBRARIES)
-
-include $(MESA_COMMON_MK)
-include $(BUILD_STATIC_LIBRARY)
-
-#
-# libanv for gen10
-#
-
-include $(CLEAR_VARS)
-LOCAL_MODULE := libmesa_anv_gen10
-LOCAL_LICENSE_KINDS := SPDX-license-identifier-ISC SPDX-license-identifier-MIT legacy_by_exception_only legacy_notice
-LOCAL_LICENSE_CONDITIONS := by_exception_only notice
-LOCAL_NOTICE_FILE := $(LOCAL_PATH)/../../LICENSE
-LOCAL_MODULE_CLASS := STATIC_LIBRARIES
-
-LOCAL_SRC_FILES := $(VULKAN_GEN10_FILES)
-LOCAL_CFLAGS := -DGEN_VERSIONx10=100
 
 LOCAL_C_INCLUDES := $(VULKAN_COMMON_INCLUDES)
 
@@ -189,9 +153,6 @@ include $(BUILD_STATIC_LIBRARY)
 
 include $(CLEAR_VARS)
 LOCAL_MODULE := libmesa_anv_gen11
-LOCAL_LICENSE_KINDS := SPDX-license-identifier-ISC SPDX-license-identifier-MIT legacy_by_exception_only legacy_notice
-LOCAL_LICENSE_CONDITIONS := by_exception_only notice
-LOCAL_NOTICE_FILE := $(LOCAL_PATH)/../../LICENSE
 LOCAL_MODULE_CLASS := STATIC_LIBRARIES
 
 LOCAL_SRC_FILES := $(VULKAN_GEN11_FILES)
@@ -213,9 +174,6 @@ include $(BUILD_STATIC_LIBRARY)
 
 include $(CLEAR_VARS)
 LOCAL_MODULE := libmesa_anv_gen12
-LOCAL_LICENSE_KINDS := SPDX-license-identifier-ISC SPDX-license-identifier-MIT legacy_by_exception_only legacy_notice
-LOCAL_LICENSE_CONDITIONS := by_exception_only notice
-LOCAL_NOTICE_FILE := $(LOCAL_PATH)/../../LICENSE
 LOCAL_MODULE_CLASS := STATIC_LIBRARIES
 
 LOCAL_SRC_FILES := $(VULKAN_GEN12_FILES)
@@ -238,9 +196,6 @@ include $(BUILD_STATIC_LIBRARY)
 
 include $(CLEAR_VARS)
 LOCAL_MODULE := libmesa_vulkan_common
-LOCAL_LICENSE_KINDS := SPDX-license-identifier-ISC SPDX-license-identifier-MIT legacy_by_exception_only legacy_notice
-LOCAL_LICENSE_CONDITIONS := by_exception_only notice
-LOCAL_NOTICE_FILE := $(LOCAL_PATH)/../../LICENSE
 LOCAL_MODULE_CLASS := STATIC_LIBRARIES
 
 intermediates := $(call local-generated-sources-dir)
@@ -298,9 +253,6 @@ include $(BUILD_STATIC_LIBRARY)
 include $(CLEAR_VARS)
 
 LOCAL_MODULE := vulkan.$(TARGET_BOARD_PLATFORM)
-LOCAL_LICENSE_KINDS := SPDX-license-identifier-ISC SPDX-license-identifier-MIT legacy_by_exception_only legacy_notice
-LOCAL_LICENSE_CONDITIONS := by_exception_only notice
-LOCAL_NOTICE_FILE := $(LOCAL_PATH)/../../LICENSE
 LOCAL_MODULE_CLASS := SHARED_LIBRARIES
 LOCAL_PROPRIETARY_MODULE := true
 LOCAL_MODULE_RELATIVE_PATH := hw
@@ -330,7 +282,6 @@ LOCAL_WHOLE_STATIC_LIBRARIES := \
 	libmesa_anv_gen75 \
 	libmesa_anv_gen8 \
 	libmesa_anv_gen9 \
-	libmesa_anv_gen10 \
 	libmesa_anv_gen11 \
 	libmesa_anv_gen12 \
 	libmesa_intel_compiler

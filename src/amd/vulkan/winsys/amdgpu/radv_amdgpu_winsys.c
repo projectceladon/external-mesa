@@ -33,8 +33,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <llvm/Config/llvm-config.h>
-#include <amdgpu_drm.h>
+#include "drm-uapi/amdgpu_drm.h"
 #include <assert.h>
 #include "radv_amdgpu_cs.h"
 #include "radv_amdgpu_bo.h"
@@ -46,8 +45,14 @@ do_winsys_init(struct radv_amdgpu_winsys *ws, int fd)
 	if (!ac_query_gpu_info(fd, ws->dev, &ws->info, &ws->amdinfo))
 		return false;
 
+	/* LLVM 11 is required for GFX10.3. */
+	if (ws->info.chip_class == GFX10_3 && ws->use_llvm && LLVM_VERSION_MAJOR < 11) {
+		fprintf(stderr, "radv: GFX 10.3 requires LLVM 11 or higher\n");
+		return false;
+	}
+
 	/* LLVM 9.0 is required for GFX10. */
-	if (ws->info.chip_class == GFX10 && LLVM_VERSION_MAJOR < 9) {
+	if (ws->info.chip_class == GFX10 && ws->use_llvm && LLVM_VERSION_MAJOR < 9) {
 		fprintf(stderr, "radv: Navi family support requires LLVM 9 or higher\n");
 		return false;
 	}
@@ -56,7 +61,7 @@ do_winsys_init(struct radv_amdgpu_winsys *ws, int fd)
 	ws->info.use_display_dcc_unaligned = false;
 	ws->info.use_display_dcc_with_retile_blit = false;
 
-	ws->addrlib = amdgpu_addr_create(&ws->info, &ws->amdinfo, &ws->info.max_alignment);
+	ws->addrlib = ac_addrlib_create(&ws->info, &ws->amdinfo, &ws->info.max_alignment);
 	if (!ws->addrlib) {
 		fprintf(stderr, "amdgpu: Cannot create addrlib.\n");
 		return false;
@@ -157,7 +162,13 @@ static void radv_amdgpu_winsys_destroy(struct radeon_winsys *rws)
 {
 	struct radv_amdgpu_winsys *ws = (struct radv_amdgpu_winsys*)rws;
 
-	AddrDestroy(ws->addrlib);
+	for (unsigned i = 0; i < ws->syncobj_count; ++i)
+		amdgpu_cs_destroy_syncobj(ws->dev, ws->syncobj[i]);
+	free(ws->syncobj);
+
+	pthread_mutex_destroy(&ws->syncobj_lock);
+	u_rwlock_destroy(&ws->global_bo_list_lock);
+	ac_addrlib_destroy(ws->addrlib);
 	amdgpu_device_deinitialize(ws->dev);
 	FREE(rws);
 }
@@ -189,9 +200,10 @@ radv_amdgpu_winsys_create(int fd, uint64_t debug_flags, uint64_t perftest_flags)
 
 	ws->use_local_bos = perftest_flags & RADV_PERFTEST_LOCAL_BOS;
 	ws->zero_all_vram_allocs = debug_flags & RADV_DEBUG_ZERO_VRAM;
-	ws->batchchain = !(perftest_flags & RADV_PERFTEST_NO_BATCHCHAIN);
+	ws->use_llvm = debug_flags & RADV_DEBUG_LLVM;
 	list_inithead(&ws->global_bo_list);
-	pthread_mutex_init(&ws->global_bo_list_lock, NULL);
+	u_rwlock_init(&ws->global_bo_list_lock);
+	pthread_mutex_init(&ws->syncobj_lock, NULL);
 	ws->base.query_info = radv_amdgpu_winsys_query_info;
 	ws->base.query_value = radv_amdgpu_winsys_query_value;
 	ws->base.read_registers = radv_amdgpu_winsys_read_registers;

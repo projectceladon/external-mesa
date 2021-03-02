@@ -44,66 +44,72 @@
 
 #include "utils.h"
 #include "util/disk_cache.h"
-#include "util/xmlpool.h"
+#include "util/driconf.h"
+#include "util/u_memory.h"
 
 #include "common/gen_defines.h"
 
-static const __DRIconfigOptionsExtension brw_config_options = {
-   .base = { __DRI_CONFIG_OPTIONS, 1 },
-   .xml =
-DRI_CONF_BEGIN
+static const driOptionDescription brw_driconf[] = {
    DRI_CONF_SECTION_PERFORMANCE
       /* Options correspond to DRI_CONF_BO_REUSE_DISABLED,
        * DRI_CONF_BO_REUSE_ALL
        */
-      DRI_CONF_OPT_BEGIN_V(bo_reuse, enum, 1, "0:1")
-	 DRI_CONF_DESC_BEGIN(en, "Buffer object reuse")
-	    DRI_CONF_ENUM(0, "Disable buffer object reuse")
-	    DRI_CONF_ENUM(1, "Enable reuse of all sizes of buffer objects")
-	 DRI_CONF_DESC_END
-      DRI_CONF_OPT_END
-      DRI_CONF_MESA_NO_ERROR("false")
-      DRI_CONF_MESA_GLTHREAD("false")
+      DRI_CONF_OPT_E(bo_reuse, 1, 0, 1,
+                     "Buffer object reuse",
+                     DRI_CONF_ENUM(0, "Disable buffer object reuse")
+                     DRI_CONF_ENUM(1, "Enable reuse of all sizes of buffer objects"))
+      DRI_CONF_MESA_NO_ERROR(false)
+      DRI_CONF_MESA_GLTHREAD(false)
    DRI_CONF_SECTION_END
 
    DRI_CONF_SECTION_QUALITY
-      DRI_CONF_PRECISE_TRIG("false")
+      DRI_CONF_PRECISE_TRIG(false)
 
-      DRI_CONF_OPT_BEGIN(clamp_max_samples, int, -1)
-              DRI_CONF_DESC(en, "Clamp the value of GL_MAX_SAMPLES to the "
-                            "given integer. If negative, then do not clamp.")
-      DRI_CONF_OPT_END
+      DRI_CONF_OPT_I(clamp_max_samples, -1, 0, 0,
+                     "Clamp the value of GL_MAX_SAMPLES to the "
+                     "given integer. If negative, then do not clamp.")
    DRI_CONF_SECTION_END
 
    DRI_CONF_SECTION_DEBUG
-      DRI_CONF_ALWAYS_FLUSH_BATCH("false")
-      DRI_CONF_ALWAYS_FLUSH_CACHE("false")
-      DRI_CONF_DISABLE_THROTTLING("false")
-      DRI_CONF_FORCE_GLSL_EXTENSIONS_WARN("false")
+      DRI_CONF_ALWAYS_FLUSH_BATCH(false)
+      DRI_CONF_ALWAYS_FLUSH_CACHE(false)
+      DRI_CONF_DISABLE_THROTTLING(false)
+      DRI_CONF_FORCE_GLSL_EXTENSIONS_WARN(false)
       DRI_CONF_FORCE_GLSL_VERSION(0)
-      DRI_CONF_DISABLE_GLSL_LINE_CONTINUATIONS("false")
-      DRI_CONF_DISABLE_BLEND_FUNC_EXTENDED("false")
-      DRI_CONF_DUAL_COLOR_BLEND_BY_LOCATION("false")
-      DRI_CONF_ALLOW_GLSL_EXTENSION_DIRECTIVE_MIDSHADER("false")
-      DRI_CONF_ALLOW_GLSL_BUILTIN_VARIABLE_REDECLARATION("false")
-      DRI_CONF_ALLOW_GLSL_CROSS_STAGE_INTERPOLATION_MISMATCH("false")
-      DRI_CONF_ALLOW_HIGHER_COMPAT_VERSION("false")
-      DRI_CONF_FORCE_COMPAT_PROFILE("false")
-      DRI_CONF_FORCE_GLSL_ABS_SQRT("false")
+      DRI_CONF_DISABLE_GLSL_LINE_CONTINUATIONS(false)
+      DRI_CONF_DISABLE_BLEND_FUNC_EXTENDED(false)
+      DRI_CONF_DUAL_COLOR_BLEND_BY_LOCATION(false)
+      DRI_CONF_ALLOW_EXTRA_PP_TOKENS(false)
+      DRI_CONF_ALLOW_GLSL_EXTENSION_DIRECTIVE_MIDSHADER(false)
+      DRI_CONF_ALLOW_GLSL_BUILTIN_VARIABLE_REDECLARATION(false)
+      DRI_CONF_ALLOW_GLSL_CROSS_STAGE_INTERPOLATION_MISMATCH(false)
+      DRI_CONF_ALLOW_HIGHER_COMPAT_VERSION(false)
+      DRI_CONF_FORCE_COMPAT_PROFILE(false)
+      DRI_CONF_FORCE_GLSL_ABS_SQRT(false)
+      DRI_CONF_FORCE_GL_VENDOR()
 
-      DRI_CONF_OPT_BEGIN_B(shader_precompile, "true")
-	 DRI_CONF_DESC(en, "Perform code generation at shader link time.")
-      DRI_CONF_OPT_END
+      DRI_CONF_OPT_B(shader_precompile, true, "Perform code generation at shader link time.")
    DRI_CONF_SECTION_END
 
    DRI_CONF_SECTION_MISCELLANEOUS
-      DRI_CONF_GLSL_ZERO_INIT("false")
-      DRI_CONF_VS_POSITION_ALWAYS_INVARIANT("false")
-      DRI_CONF_ALLOW_RGB10_CONFIGS("false")
-      DRI_CONF_ALLOW_RGB565_CONFIGS("true")
-      DRI_CONF_ALLOW_FP16_CONFIGS("false")
+      DRI_CONF_GLSL_ZERO_INIT(false)
+      DRI_CONF_VS_POSITION_ALWAYS_INVARIANT(false)
+      DRI_CONF_ALLOW_RGB10_CONFIGS(false)
+      DRI_CONF_ALLOW_RGB565_CONFIGS(true)
+      DRI_CONF_ALLOW_FP16_CONFIGS(false)
    DRI_CONF_SECTION_END
-DRI_CONF_END
+};
+
+static char *
+brw_driconf_get_xml(UNUSED const char *driver_name)
+{
+   return driGetOptionsXml(brw_driconf, ARRAY_SIZE(brw_driconf));
+}
+
+static const __DRIconfigOptionsExtension brw_config_options = {
+   .base = { __DRI_CONFIG_OPTIONS, 2 },
+   .xml = NULL,
+   .getXml = brw_driconf_get_xml,
 };
 
 #include "intel_batchbuffer.h"
@@ -362,7 +368,7 @@ modifier_is_supported(const struct gen_device_info *devinfo,
 
    if (modinfo->aux_usage == ISL_AUX_USAGE_CCS_E) {
       /* If INTEL_DEBUG=norbc is set, don't support any CCS_E modifiers */
-      if (unlikely(INTEL_DEBUG & DEBUG_NO_RBC))
+      if (INTEL_DEBUG & DEBUG_NO_RBC)
          return false;
 
       /* CCS_E is not supported for planar images */
@@ -710,8 +716,7 @@ intel_create_image_common(__DRIscreen *dri_screen,
    bool ok;
 
    /* Callers of this may specify a modifier, or a dri usage, but not both. The
-    * newer modifier interface deprecates the older usage flags newer modifier
-    * interface deprecates the older usage flags.
+    * newer modifier interface deprecates the older usage flags.
     */
    assert(!(use && count));
 
@@ -875,7 +880,8 @@ intel_map_image(__DRIcontext *context, __DRIimage *image,
 }
 
 static void
-intel_unmap_image(__DRIcontext *context, __DRIimage *image, void *map_info)
+intel_unmap_image(UNUSED __DRIcontext *context, UNUSED __DRIimage *image,
+                  void *map_info)
 {
    struct brw_bo *bo = map_info;
 
@@ -901,9 +907,16 @@ intel_query_image(__DRIimage *image, int attrib, int *value)
    case __DRI_IMAGE_ATTRIB_STRIDE:
       *value = image->pitch;
       return true;
-   case __DRI_IMAGE_ATTRIB_HANDLE:
-      *value = brw_bo_export_gem_handle(image->bo);
+   case __DRI_IMAGE_ATTRIB_HANDLE: {
+      __DRIscreen *dri_screen = image->screen->driScrnPriv;
+      uint32_t handle;
+      if (brw_bo_export_gem_handle_for_device(image->bo,
+                                              dri_screen->fd,
+                                              &handle))
+         return false;
+      *value = handle;
       return true;
+   }
    case __DRI_IMAGE_ATTRIB_NAME:
       return !brw_bo_flink(image->bo, (uint32_t *) value);
    case __DRI_IMAGE_ATTRIB_FORMAT:
@@ -980,6 +993,7 @@ intel_dup_image(__DRIimage *orig_image, void *loaderPrivate)
       return NULL;
 
    brw_bo_reference(orig_image->bo);
+   image->screen          = orig_image->screen;
    image->bo              = orig_image->bo;
    image->internal_format = orig_image->internal_format;
    image->planar_format   = orig_image->planar_format;
@@ -1505,17 +1519,6 @@ static const __DRIimageExtension intelImageExtension = {
     .queryDmaBufFormatModifierAttribs   = intel_query_format_modifier_attribs,
 };
 
-static uint64_t
-get_aperture_size(int fd)
-{
-   struct drm_i915_gem_get_aperture aperture;
-
-   if (drmIoctl(fd, DRM_IOCTL_I915_GEM_GET_APERTURE, &aperture) != 0)
-      return 0;
-
-   return aperture.aper_size;
-}
-
 static int
 brw_query_renderer_integer(__DRIscreen *dri_screen,
                            int param, unsigned int *value)
@@ -1676,7 +1679,7 @@ intel_get_param(struct intel_screen *screen, int param, int *value)
    gp.param = param;
    gp.value = value;
 
-   if (drmIoctl(screen->driScrnPriv->fd, DRM_IOCTL_I915_GETPARAM, &gp) == -1) {
+   if (drmIoctl(screen->fd, DRM_IOCTL_I915_GETPARAM, &gp) == -1) {
       ret = -errno;
       if (ret != -EINVAL)
          _mesa_warning(NULL, "drm_i915_getparam: %d", ret);
@@ -1708,7 +1711,7 @@ intelDestroyScreen(__DRIscreen * sPriv)
 {
    struct intel_screen *screen = sPriv->driverPrivate;
 
-   brw_bufmgr_destroy(screen->bufmgr);
+   brw_bufmgr_unref(screen->bufmgr);
    driDestroyOptionInfo(&screen->optionCache);
 
    disk_cache_destroy(screen->disk_cache);
@@ -1926,12 +1929,13 @@ intel_init_bufmgr(struct intel_screen *screen)
       break;
    }
 
-   screen->bufmgr = brw_bufmgr_init(&screen->devinfo, dri_screen->fd, bo_reuse);
+   screen->bufmgr = brw_bufmgr_get_for_fd(&screen->devinfo, dri_screen->fd, bo_reuse);
    if (screen->bufmgr == NULL) {
       fprintf(stderr, "[%s:%u] Error initializing buffer manager.\n",
 	      __func__, __LINE__);
       return false;
    }
+   screen->fd = brw_bufmgr_get_fd(screen->bufmgr);
 
    if (!intel_get_boolean(screen, I915_PARAM_HAS_EXEC_NO_RELOC)) {
       fprintf(stderr, "[%s: %u] Kernel 3.9 required.\n", __func__, __LINE__);
@@ -2098,8 +2102,7 @@ intel_detect_pipelined_register(struct intel_screen *screen,
    /* Don't bother with error checking - if the execbuf fails, the
     * value won't be written and we'll just report that there's no access.
     */
-   __DRIscreen *dri_screen = screen->driScrnPriv;
-   drmIoctl(dri_screen->fd, DRM_IOCTL_I915_GEM_EXECBUFFER2, &execbuf);
+   drmIoctl(screen->fd, DRM_IOCTL_I915_GEM_EXECBUFFER2, &execbuf);
 
    /* Check whether the value got written. */
    void *results_map = brw_bo_map(NULL, results, MAP_READ);
@@ -2498,7 +2501,7 @@ shader_perf_log_mesa(void *data, const char *fmt, ...)
    va_list args;
    va_start(args, fmt);
 
-   if (unlikely(INTEL_DEBUG & DEBUG_PERF)) {
+   if (INTEL_DEBUG & DEBUG_PERF) {
       va_list args_copy;
       va_copy(args_copy, args);
       vfprintf(stderr, fmt, args_copy);
@@ -2545,9 +2548,9 @@ __DRIconfig **intelInitScreen2(__DRIscreen *dri_screen)
    driOptionCache options;
    memset(&options, 0, sizeof(options));
 
-   driParseOptionInfo(&options, brw_config_options.xml);
+   driParseOptionInfo(&options, brw_driconf, ARRAY_SIZE(brw_driconf));
    driParseConfigFiles(&screen->optionCache, &options, dri_screen->myNum,
-                       "i965", NULL, NULL, 0);
+                       "i965", NULL, NULL, 0, NULL, 0);
    driDestroyOptionCache(&options);
 
    screen->driScrnPriv = dri_screen;
@@ -2573,7 +2576,7 @@ __DRIconfig **intelInitScreen2(__DRIscreen *dri_screen)
    if ((INTEL_DEBUG & DEBUG_SHADER_TIME) && devinfo->gen < 7) {
       fprintf(stderr,
               "shader_time debugging requires gen7 (Ivybridge) or better.\n");
-      INTEL_DEBUG &= ~DEBUG_SHADER_TIME;
+      intel_debug &= ~DEBUG_SHADER_TIME;
    }
 
    if (intel_get_integer(screen, I915_PARAM_MMAP_GTT_VERSION) >= 1) {
@@ -2610,7 +2613,7 @@ __DRIconfig **intelInitScreen2(__DRIscreen *dri_screen)
       screen->max_gtt_map_object_size = gtt_size / 4;
    }
 
-   screen->aperture_threshold = get_aperture_size(dri_screen->fd) * 3 / 4;
+   screen->aperture_threshold = devinfo->aperture_bytes * 3 / 4;
 
    screen->hw_has_swizzling = intel_detect_swizzling(screen);
    screen->hw_has_timestamp = intel_detect_timestamp(screen);
@@ -2799,7 +2802,7 @@ __DRIconfig **intelInitScreen2(__DRIscreen *dri_screen)
       struct drm_i915_reset_stats stats;
       memset(&stats, 0, sizeof(stats));
 
-      const int ret = drmIoctl(dri_screen->fd, DRM_IOCTL_I915_GET_RESET_STATS, &stats);
+      const int ret = drmIoctl(screen->fd, DRM_IOCTL_I915_GET_RESET_STATS, &stats);
 
       screen->has_context_reset_notification =
          (ret != -1 || errno != EINVAL);
@@ -2823,6 +2826,7 @@ __DRIconfig **intelInitScreen2(__DRIscreen *dri_screen)
 
    screen->compiler->supports_pull_constants = true;
    screen->compiler->compact_params = true;
+   screen->compiler->lower_variable_group_size = true;
 
    screen->has_exec_fence =
      intel_get_boolean(screen, I915_PARAM_HAS_EXEC_FENCE);
@@ -2894,7 +2898,7 @@ intelAllocateBuffer(__DRIscreen *dri_screen,
 }
 
 static void
-intelReleaseBuffer(__DRIscreen *dri_screen, __DRIbuffer *buffer)
+intelReleaseBuffer(UNUSED __DRIscreen *dri_screen, __DRIbuffer *buffer)
 {
    struct intel_buffer *intelBuffer = (struct intel_buffer *) buffer;
 
