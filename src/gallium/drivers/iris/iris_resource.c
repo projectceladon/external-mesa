@@ -54,6 +54,8 @@
 #include "isl/isl.h"
 #include "drm-uapi/drm_fourcc.h"
 #include "drm-uapi/i915_drm.h"
+#include "renderonly/renderonly.h"
+#include "util/u_drm.h"
 
 enum modifier_priority {
    MODIFIER_PRIORITY_INVALID = 0,
@@ -560,7 +562,12 @@ static void
 iris_resource_destroy(struct pipe_screen *screen,
                       struct pipe_resource *p_res)
 {
+
    struct iris_resource *res = (struct iris_resource *) p_res;
+   struct iris_screen *pscreen = (struct iris_screen *)screen;
+
+   if (res->scanout)
+      renderonly_scanout_destroy(res->scanout, pscreen->ro);
 
    if (p_res->target == PIPE_BUFFER)
       util_range_destroy(&res->valid_buffer_range);
@@ -1124,6 +1131,43 @@ iris_resource_create_for_buffer(struct pipe_screen *pscreen,
 }
 
 static struct pipe_resource *
+iris_resource_create_renderonly(struct pipe_screen *pscreen,
+                                const struct pipe_resource *templ)
+{
+   struct iris_screen *screen = (struct iris_screen *)pscreen;
+   struct pipe_resource scanout_templat = *templ;
+   struct renderonly_scanout *scanout;
+   struct winsys_handle handle;
+   struct pipe_resource *pres;
+
+   if (templ->bind & (PIPE_BIND_RENDER_TARGET |
+                      PIPE_BIND_DEPTH_STENCIL)) {
+      scanout_templat.width0 = align(templ->width0, 16);
+      scanout_templat.height0 = align(templ->height0, 16);
+   }
+
+   scanout = renderonly_scanout_for_resource(&scanout_templat,
+                                             screen->ro, &handle);
+   if (!scanout)
+      return NULL;
+
+   assert(handle.type == WINSYS_HANDLE_TYPE_FD);
+   pres = pscreen->resource_from_handle(pscreen, templ, &handle,
+                                        PIPE_HANDLE_USAGE_FRAMEBUFFER_WRITE);
+
+   close(handle.handle);
+   if (!pres) {
+      renderonly_scanout_destroy(scanout, screen->ro);
+      return NULL;
+   }
+
+   struct iris_resource *res = (struct iris_resource *)pres;
+   res->scanout = scanout;
+
+   return pres;
+}
+
+static struct pipe_resource *
 iris_resource_create_for_image(struct pipe_screen *pscreen,
                                const struct pipe_resource *templ,
                                const uint64_t *modifiers,
@@ -1132,8 +1176,14 @@ iris_resource_create_for_image(struct pipe_screen *pscreen,
 {
    struct iris_screen *screen = (struct iris_screen *)pscreen;
    const struct intel_device_info *devinfo = screen->devinfo;
-   struct iris_resource *res = iris_alloc_resource(pscreen, templ);
 
+   if (screen->ro &&
+       (templ->bind & (PIPE_BIND_DISPLAY_TARGET |
+                       PIPE_BIND_SCANOUT | PIPE_BIND_SHARED))) {
+      return iris_resource_create_renderonly(pscreen, templ);
+   }
+
+   struct iris_resource *res = iris_alloc_resource(pscreen, templ);
    if (!res)
       return NULL;
 
@@ -1904,6 +1954,10 @@ iris_resource_get_handle(struct pipe_screen *pscreen,
    case WINSYS_HANDLE_TYPE_KMS: {
       iris_gem_set_tiling(bo, &res->surf);
 
+      if (screen->ro) {
+         assert(res->scanout);
+         return renderonly_get_handle(res->scanout, whandle);
+      }
       /* Because we share the same drm file across multiple iris_screen, when
        * we export a GEM handle we must make sure it is valid in the DRM file
        * descriptor the caller is using (this is the FD given at screen
