@@ -55,6 +55,7 @@ struct iris_format_info {
 struct iris_resource {
    struct threaded_resource base;
    enum pipe_format internal_format;
+   struct renderonly_scanout *scanout;
 
    /**
     * The ISL surface layout information for this resource.
