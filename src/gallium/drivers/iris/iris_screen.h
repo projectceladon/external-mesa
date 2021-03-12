@@ -171,6 +171,7 @@ struct iris_address {
 
 struct iris_screen {
    struct pipe_screen base;
+   struct renderonly *ro;
 
    uint32_t refcount;
 
