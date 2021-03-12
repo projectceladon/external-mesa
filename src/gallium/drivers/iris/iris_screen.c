@@ -59,6 +59,7 @@
 #include "intel/common/intel_l3_config.h"
 #include "intel/common/intel_uuid.h"
 #include "iris_monitor.h"
+#include "renderonly/renderonly.h"
 
 #define genX_call(devinfo, func, ...)             \
    switch ((devinfo)->verx10) {                   \
@@ -677,6 +678,7 @@ iris_screen_destroy(struct iris_screen *screen)
    iris_bufmgr_unref(screen->bufmgr);
    disk_cache_destroy(screen->disk_cache);
    close(screen->winsys_fd);
+   free(screen->ro);
    ralloc_free(screen);
 }
 
