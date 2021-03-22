@@ -51,6 +51,7 @@
 #include "intel_screen.h"
 #include "intel_tex_obj.h"
 #include "perf/gen_perf.h"
+#include "perf/gen_perf_query.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -146,6 +147,7 @@ struct brw_wm_prog_key;
 struct brw_wm_prog_data;
 struct brw_cs_prog_key;
 struct brw_cs_prog_data;
+struct brw_label;
 
 enum brw_pipeline {
    BRW_RENDER_PIPELINE,
@@ -386,7 +388,7 @@ struct brw_cache {
 
 #define perf_debug(...) do {                                    \
    static GLuint msg_id = 0;                                    \
-   if (unlikely(INTEL_DEBUG & DEBUG_PERF))                      \
+   if (INTEL_DEBUG & DEBUG_PERF)                                \
       dbg_printf(__VA_ARGS__);                                  \
    if (brw->perf_debug)                                         \
       _mesa_gl_debugf(&brw->ctx, &msg_id,                       \
@@ -446,8 +448,7 @@ struct brw_vertex_buffer {
    GLuint step_rate;
 };
 struct brw_vertex_element {
-   const struct gl_array_attributes *glattrib;
-   const struct gl_vertex_buffer_binding *glbinding;
+   const struct gl_vertex_format *glformat;
 
    int buffer;
    bool is_dual_slot;
@@ -723,8 +724,19 @@ struct brw_context
 
    uint32_t hw_ctx;
 
-   /** BO for post-sync nonzero writes for gen6 workaround. */
+   /**
+    * BO for post-sync nonzero writes for gen6 workaround.
+    *
+    * This buffer also contains a marker + description of the driver. This
+    * buffer is added to all execbufs syscalls so that we can identify the
+    * driver that generated a hang by looking at the content of the buffer in
+    * the error state.
+    *
+    * Read/write should go at workaround_bo_offset in that buffer to avoid
+    * overriding the debug data.
+    */
    struct brw_bo *workaround_bo;
+   uint32_t workaround_bo_offset;
    uint8_t pipe_controls_since_last_cs_stall;
 
    /**
@@ -853,6 +865,9 @@ struct brw_context
    /* The last PMA stall bits programmed. */
    uint32_t pma_stall_bits;
 
+   /* Whether INTEL_black_render is active. */
+   bool frontend_noop;
+
    struct {
       struct {
          /**
@@ -904,6 +919,13 @@ struct brw_context
        */
       struct brw_bo *draw_params_count_bo;
       uint32_t draw_params_count_offset;
+
+      /**
+       * Draw indirect buffer.
+       */
+      unsigned draw_indirect_stride;
+      GLsizeiptr draw_indirect_offset;
+      struct gl_buffer_object *draw_indirect_data;
    } draw;
 
    struct {
@@ -915,6 +937,11 @@ struct brw_context
       struct brw_bo *num_work_groups_bo;
       GLintptr num_work_groups_offset;
       const GLuint *num_work_groups;
+      /**
+       * This is only used alongside ARB_compute_variable_group_size when the
+       * local work group size is variable, otherwise it's NULL.
+       */
+      const GLuint *group_size;
    } compute;
 
    struct {
@@ -1498,8 +1525,6 @@ gen6_get_sample_position(struct gl_context *ctx,
                          struct gl_framebuffer *fb,
                          GLuint index,
                          GLfloat *result);
-void
-gen6_set_sample_maps(struct gl_context *ctx);
 
 /* gen8_multisample_state.c */
 void gen8_emit_3dstate_sample_pattern(struct brw_context *brw);

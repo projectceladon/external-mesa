@@ -51,6 +51,7 @@
 #define MAX_SO_OUTPUTS 64
 #define MAX_INLINE_UNIFORM_BLOCK_SIZE (4ull * 1024 * 1024)
 #define MAX_INLINE_UNIFORM_BLOCK_COUNT 64
+#define MAX_BIND_POINTS 2 /* compute + graphics */
 
 #define NUM_DEPTH_CLEAR_PIPELINES 3
 #define NUM_DEPTH_DECOMPRESS_PIPELINES 3
@@ -76,15 +77,15 @@
 /* max number of descriptor sets */
 #define MAX_SETS 32
 
-#define RADV_NUM_PHYSICAL_VGPRS 256
-
 /* Make sure everything is addressable by a signed 32-bit int, and
  * our largest descriptors are 96 bytes.
  */
 #define RADV_MAX_PER_SET_DESCRIPTORS ((1ull << 31 ) / 96)
 
-/* Our buffer size fields allow only this much */
-#define RADV_MAX_MEMORY_ALLOCATION_SIZE 0xFFFFFFFFull
+/* Our buffer size fields allow only 2**32 - 1. We round that down to a multiple
+ * of 4 bytes so we can align buffer sizes up.
+ */
+#define RADV_MAX_MEMORY_ALLOCATION_SIZE 0xFFFFFFFCull
 
 /* Number of invocations in each subgroup. */
 #define RADV_SUBGROUP_SIZE 64

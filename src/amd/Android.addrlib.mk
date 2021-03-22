@@ -27,6 +27,9 @@
 include $(CLEAR_VARS)
 
 LOCAL_MODULE := libmesa_amdgpu_addrlib
+LOCAL_LICENSE_KINDS := SPDX-license-identifier-ISC SPDX-license-identifier-MIT
+LOCAL_LICENSE_CONDITIONS := notice
+LOCAL_NOTICE_FILE := $(LOCAL_PATH)/../../LICENSE
 
 LOCAL_SRC_FILES := $(ADDRLIB_FILES)
 

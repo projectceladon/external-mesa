@@ -28,17 +28,45 @@
 #include <stdint.h>
 #include <vulkan/vulkan.h>
 
+#include "compiler/nir/nir.h"
+#include "compiler/shader_enums.h"
+#include "pipe/p_state.h"
+
+#include "zink_compiler.h"
+
 struct spirv_shader {
    uint32_t *words;
    size_t num_words;
 };
 
 struct nir_shader;
+struct pipe_stream_output_info;
 
 struct spirv_shader *
-nir_to_spirv(struct nir_shader *s);
+nir_to_spirv(struct nir_shader *s, const struct zink_so_info *so_info,
+             unsigned char *shader_slot_map, unsigned char *shader_slots_reserved);
 
 void
 spirv_shader_delete(struct spirv_shader *s);
+
+uint32_t
+zink_binding(gl_shader_stage stage, VkDescriptorType type, int index);
+
+static inline VkDescriptorType
+zink_sampler_type(const struct glsl_type *type)
+{
+   assert(glsl_type_is_sampler(type));
+   if (glsl_get_sampler_dim(type) < GLSL_SAMPLER_DIM_BUF || glsl_get_sampler_dim(type) == GLSL_SAMPLER_DIM_MS)
+      return VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+   if (glsl_get_sampler_dim(type) == GLSL_SAMPLER_DIM_BUF)
+      return VK_DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER;
+   unreachable("unimplemented");
+   return 0;
+}
+
+struct nir_shader;
+
+bool
+zink_nir_lower_b2b(struct nir_shader *shader);
 
 #endif

@@ -512,8 +512,12 @@ build_depthstencil_shader(struct nir_shader **out_vs,
 	nir_builder_init_simple_shader(&vs_b, NULL, MESA_SHADER_VERTEX, NULL);
 	nir_builder_init_simple_shader(&fs_b, NULL, MESA_SHADER_FRAGMENT, NULL);
 
-	vs_b.shader->info.name = ralloc_strdup(vs_b.shader, "meta_clear_depthstencil_vs");
-	fs_b.shader->info.name = ralloc_strdup(fs_b.shader, "meta_clear_depthstencil_fs");
+	vs_b.shader->info.name = ralloc_strdup(vs_b.shader,
+					       unrestricted ? "meta_clear_depthstencil_unrestricted_vs"
+							    : "meta_clear_depthstencil_vs");
+	fs_b.shader->info.name = ralloc_strdup(fs_b.shader,
+					       unrestricted ? "meta_clear_depthstencil_unrestricted_fs"
+							    : "meta_clear_depthstencil_fs");
 	const struct glsl_type *position_out_type = glsl_vec4_type();
 
 	nir_variable *vs_out_pos =
@@ -660,11 +664,11 @@ create_depthstencil_pipeline(struct radv_device *device,
 
 	const VkPipelineDepthStencilStateCreateInfo ds_state = {
 		.sType = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO,
-		.depthTestEnable = (aspects & VK_IMAGE_ASPECT_DEPTH_BIT),
+		.depthTestEnable = !!(aspects & VK_IMAGE_ASPECT_DEPTH_BIT),
 		.depthCompareOp = VK_COMPARE_OP_ALWAYS,
-		.depthWriteEnable = (aspects & VK_IMAGE_ASPECT_DEPTH_BIT),
+		.depthWriteEnable = !!(aspects & VK_IMAGE_ASPECT_DEPTH_BIT),
 		.depthBoundsTestEnable = false,
-		.stencilTestEnable = (aspects & VK_IMAGE_ASPECT_STENCIL_BIT),
+		.stencilTestEnable = !!(aspects & VK_IMAGE_ASPECT_STENCIL_BIT),
 		.front = {
 			.passOp = VK_STENCIL_OP_REPLACE,
 			.compareOp = VK_COMPARE_OP_ALWAYS,
@@ -729,7 +733,7 @@ static bool depth_view_can_fast_clear(struct radv_cmd_buffer *cmd_buffer,
 	    iview->base_mip == 0 &&
 	    iview->base_layer == 0 &&
 	    iview->layer_count == iview->image->info.array_size &&
-	    radv_layout_is_htile_compressed(iview->image, layout, in_render_loop, queue_mask) &&
+	    radv_layout_is_htile_compressed(cmd_buffer->device, iview->image, layout, in_render_loop, queue_mask) &&
 	    radv_image_extent_compare(iview->image, &iview->extent))
 		return true;
 	return false;
@@ -1086,7 +1090,7 @@ radv_can_fast_clear_depth(struct radv_cmd_buffer *cmd_buffer,
 	if (!radv_image_view_can_fast_clear(cmd_buffer->device, iview))
 		return false;
 
-	if (!radv_layout_is_htile_compressed(iview->image, image_layout, in_render_loop,
+	if (!radv_layout_is_htile_compressed(cmd_buffer->device, iview->image, image_layout, in_render_loop,
 	                                     radv_image_queue_family_mask(iview->image,
 	                                                                  cmd_buffer->queue_family_index,
 	                                                                  cmd_buffer->queue_family_index)))
@@ -1171,7 +1175,7 @@ build_clear_htile_mask_shader()
 	b.shader->info.cs.local_size[2] = 1;
 
 	nir_ssa_def *invoc_id = nir_load_local_invocation_id(&b);
-	nir_ssa_def *wg_id = nir_load_work_group_id(&b);
+	nir_ssa_def *wg_id = nir_load_work_group_id(&b, 32);
 	nir_ssa_def *block_size = nir_imm_ivec4(&b,
 						b.shader->info.cs.local_size[0],
 						b.shader->info.cs.local_size[1],
@@ -1182,16 +1186,7 @@ build_clear_htile_mask_shader()
 	nir_ssa_def *offset = nir_imul(&b, global_id, nir_imm_int(&b, 16));
 	offset = nir_channel(&b, offset, 0);
 
-	nir_intrinsic_instr *buf =
-		nir_intrinsic_instr_create(b.shader,
-					   nir_intrinsic_vulkan_resource_index);
-
-	buf->src[0] = nir_src_for_ssa(nir_imm_int(&b, 0));
-	buf->num_components = 1;
-	nir_intrinsic_set_desc_set(buf, 0);
-	nir_intrinsic_set_binding(buf, 0);
-	nir_ssa_dest_init(&buf->instr, &buf->dest, buf->num_components, 32, NULL);
-	nir_builder_instr_insert(&b, &buf->instr);
+	nir_ssa_def *buf = radv_meta_load_descriptor(&b, 0, 0);
 
 	nir_intrinsic_instr *constants =
 		nir_intrinsic_instr_create(b.shader,
@@ -1205,7 +1200,7 @@ build_clear_htile_mask_shader()
 
 	nir_intrinsic_instr *load =
 		nir_intrinsic_instr_create(b.shader, nir_intrinsic_load_ssbo);
-	load->src[0] = nir_src_for_ssa(&buf->dest.ssa);
+	load->src[0] = nir_src_for_ssa(buf);
 	load->src[1] = nir_src_for_ssa(offset);
 	nir_ssa_dest_init(&load->instr, &load->dest, 4, 32, NULL);
 	load->num_components = 4;
@@ -1221,7 +1216,7 @@ build_clear_htile_mask_shader()
 	nir_intrinsic_instr *store =
 		nir_intrinsic_instr_create(b.shader, nir_intrinsic_store_ssbo);
 	store->src[0] = nir_src_for_ssa(data);
-	store->src[1] = nir_src_for_ssa(&buf->dest.ssa);
+	store->src[1] = nir_src_for_ssa(buf);
 	store->src[2] = nir_src_for_ssa(offset);
 	nir_intrinsic_set_write_mask(store, 0xf);
 	nir_intrinsic_set_access(store, ACCESS_NON_READABLE);
@@ -1477,7 +1472,7 @@ radv_clear_cmask(struct radv_cmd_buffer *cmd_buffer,
 		 struct radv_image *image,
 		 const VkImageSubresourceRange *range, uint32_t value)
 {
-	uint64_t offset = image->offset + image->cmask_offset;
+	uint64_t offset = image->offset + image->planes[0].surface.cmask_offset;
 	uint64_t size;
 
 	if (cmd_buffer->device->physical_device->rad_info.chip_class >= GFX9) {
@@ -1500,7 +1495,7 @@ radv_clear_fmask(struct radv_cmd_buffer *cmd_buffer,
 		 struct radv_image *image,
 		 const VkImageSubresourceRange *range, uint32_t value)
 {
-	uint64_t offset = image->offset + image->fmask_offset;
+	uint64_t offset = image->offset + image->planes[0].surface.fmask_offset;
 	uint64_t size;
 
 	/* MSAA images do not support mipmap levels. */
@@ -1534,7 +1529,7 @@ radv_clear_dcc(struct radv_cmd_buffer *cmd_buffer,
 	radv_update_dcc_metadata(cmd_buffer, image, range, true);
 
 	for (uint32_t l = 0; l < level_count; l++) {
-		uint64_t offset = image->offset + image->dcc_offset;
+		uint64_t offset = image->offset + image->planes[0].surface.dcc_offset;
 		uint32_t level = range->baseMipLevel + l;
 		uint64_t size;
 
@@ -1572,7 +1567,7 @@ radv_clear_htile(struct radv_cmd_buffer *cmd_buffer,
 {
 	unsigned layer_count = radv_get_layerCount(image, range);
 	uint64_t size = image->planes[0].surface.htile_slice_size * layer_count;
-	uint64_t offset = image->offset + image->htile_offset +
+	uint64_t offset = image->offset + image->planes[0].surface.htile_offset +
 	                  image->planes[0].surface.htile_slice_size * range->baseArrayLayer;
 	uint32_t htile_mask, flush_bits;
 
@@ -1604,7 +1599,7 @@ static void vi_get_fast_clear_parameters(struct radv_device *device,
 					 uint32_t* reset_value,
 					 bool *can_avoid_fast_clear_elim)
 {
-	bool values[4] = {};
+	bool values[4] = {0};
 	int extra_channel;
 	bool main_value = false;
 	bool extra_value = false;
@@ -1957,12 +1952,16 @@ radv_subpass_clear_attachment(struct radv_cmd_buffer *cmd_buffer,
 		.layerCount = cmd_state->framebuffer->layers,
 	};
 
+	radv_describe_begin_render_pass_clear(cmd_buffer, clear_att->aspectMask);
+
 	emit_clear(cmd_buffer, clear_att, &clear_rect, pre_flush, post_flush,
 		   view_mask & ~attachment->cleared_views, ds_resolve_clear);
 	if (view_mask)
 		attachment->cleared_views |= view_mask;
 	else
 		attachment->pending_clear_aspects = 0;
+
+	radv_describe_end_render_pass_clear(cmd_buffer);
 }
 
 /**
@@ -2149,22 +2148,24 @@ radv_clear_image_layer(struct radv_cmd_buffer *cmd_buffer,
 			      &cmd_buffer->pool->alloc,
 			      &pass);
 
-	radv_CmdBeginRenderPass(radv_cmd_buffer_to_handle(cmd_buffer),
-				&(VkRenderPassBeginInfo) {
-					.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO,
+	radv_cmd_buffer_begin_render_pass(cmd_buffer,
+					  &(VkRenderPassBeginInfo) {
+						.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO,
 						.renderArea = {
 						.offset = { 0, 0, },
 						.extent = {
 							.width = width,
 							.height = height,
+							},
 						},
-					},
 						.renderPass = pass,
 						.framebuffer = fb,
 						.clearValueCount = 0,
 						.pClearValues = NULL,
-						},
-				VK_SUBPASS_CONTENTS_INLINE);
+					 });
+
+	radv_cmd_buffer_set_subpass(cmd_buffer,
+				    &cmd_buffer->state.pass->subpasses[0]);
 
 	VkClearAttachment clear_att = {
 		.aspectMask = range->aspectMask,
@@ -2183,7 +2184,7 @@ radv_clear_image_layer(struct radv_cmd_buffer *cmd_buffer,
 
 	emit_clear(cmd_buffer, &clear_att, &clear_rect, NULL, NULL, 0, false);
 
-	radv_CmdEndRenderPass(radv_cmd_buffer_to_handle(cmd_buffer));
+	radv_cmd_buffer_end_render_pass(cmd_buffer);
 	radv_DestroyRenderPass(device_h, pass,
 			       &cmd_buffer->pool->alloc);
 	radv_DestroyFramebuffer(device_h, fb,

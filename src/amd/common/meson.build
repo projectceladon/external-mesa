@@ -18,10 +18,25 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
+amd_json_files = [
+  # Generated:
+  '../registers/gfx6.json',
+  '../registers/gfx7.json',
+  '../registers/gfx8.json',
+  '../registers/gfx81.json',
+  '../registers/gfx9.json',
+  '../registers/gfx10.json',
+  '../registers/gfx103.json',
+
+  # Manually written:
+  '../registers/pkt3.json',
+  '../registers/gfx10-rsrc.json',
+  '../registers/registers-manually-defined.json',
+]
+
 sid_tables_h = custom_target(
   'sid_tables_h',
-  input : ['sid_tables.py', 'sid.h', '../registers/amdgfxregs.json', '../registers/pkt3.json',
-           '../registers/gfx10.json', '../registers/gfx10-rsrc.json'],
+  input : ['sid_tables.py', 'sid.h'] + amd_json_files,
   output : 'sid_tables.h',
   command : [prog_python, '@INPUT@'],
   capture : true,
@@ -29,11 +44,22 @@ sid_tables_h = custom_target(
 
 amdgfxregs_h = custom_target(
   'amdgfxregs_h',
-  input : ['../registers/makeregheader.py', '../registers/amdgfxregs.json', '../registers/pkt3.json',
-           '../registers/gfx10.json', '../registers/gfx10-rsrc.json'],
+  input : ['../registers/makeregheader.py'] + amd_json_files,
   output : 'amdgfxregs.h',
   command : [prog_python, '@INPUT@', '--sort', 'address', '--guard', 'AMDGFXREGS_H'],
   capture : true,
+)
+
+gfx10_format_table_c = custom_target(
+  'gfx10_format_table.c',
+  input : files(
+    'gfx10_format_table.py',
+    '../../util/format/u_format.csv', '../registers/gfx10-rsrc.json'
+  ),
+  output : 'gfx10_format_table.c',
+  command : [prog_python, '@INPUT@'],
+  capture : true,
+  depend_files : ['../registers/regdb.py']
 )
 
 amd_common_files = files(
@@ -52,20 +78,21 @@ amd_common_files = files(
   'ac_surface.h',
   'ac_debug.c',
   'ac_debug.h',
+  'ac_shadowed_regs.c',
+  'ac_shadowed_regs.h',
 )
 
 libamd_common = static_library(
   'amd_common',
-  [amd_common_files, sid_tables_h, amdgfxregs_h],
+  [amd_common_files, sid_tables_h, amdgfxregs_h, gfx10_format_table_c],
   include_directories : [
-    inc_common, inc_compiler, inc_mesa, inc_mapi, inc_amd,
+    inc_include, inc_src, inc_mapi, inc_mesa, inc_gallium, inc_gallium_aux, inc_compiler, inc_mapi, inc_amd,
   ],
   dependencies : [
     dep_thread, dep_elf, dep_libdrm_amdgpu, dep_valgrind,
     idep_nir_headers,
   ],
-  c_args : [c_vis_args],
-  cpp_args : [cpp_vis_args],
+  gnu_symbol_visibility : 'hidden',
 )
 
 idep_amdgfxregs_h = declare_dependency(sources : [amdgfxregs_h])

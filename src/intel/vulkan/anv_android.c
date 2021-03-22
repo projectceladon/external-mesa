@@ -308,7 +308,7 @@ anv_import_ahw_memory(VkDevice device_h,
    VkResult result = anv_device_import_bo(device, dma_buf, 0,
                                           0 /* client_address */,
                                           &mem->bo);
-   assert(VK_SUCCESS);
+   assert(result == VK_SUCCESS);
 
    /* "If the vkAllocateMemory command succeeds, the implementation must
     * acquire a reference to the imported hardware buffer, which it must
@@ -572,8 +572,8 @@ format_supported_with_usage(VkDevice device_h, VkFormat format,
 
 
 static VkResult
-setup_gralloc0_usage(VkFormat format, VkImageUsageFlags imageUsage,
-                     int *grallocUsage)
+setup_gralloc0_usage(struct anv_device *device, VkFormat format,
+                     VkImageUsageFlags imageUsage, int *grallocUsage)
 {
    /* WARNING: Android's libvulkan.so hardcodes the VkImageUsageFlags
     * returned to applications via VkSurfaceCapabilitiesKHR::supportedUsageFlags.
@@ -616,7 +616,7 @@ setup_gralloc0_usage(VkFormat format, VkImageUsageFlags imageUsage,
     */
    switch (format) {
       case VK_FORMAT_B8G8R8A8_UNORM:
-      case VK_FORMAT_B5G6R5_UNORM_PACK16:
+      case VK_FORMAT_R5G6B5_UNORM_PACK16:
       case VK_FORMAT_R8G8B8A8_UNORM:
       case VK_FORMAT_R8G8B8A8_SRGB:
          *grallocUsage |= GRALLOC_USAGE_HW_FB |
@@ -624,7 +624,7 @@ setup_gralloc0_usage(VkFormat format, VkImageUsageFlags imageUsage,
                           GRALLOC_USAGE_EXTERNAL_DISP;
          break;
       default:
-         intel_logw("%s: unsupported format=%d", __func__, format);
+         mesa_logw("%s: unsupported format=%d", __func__, format);
    }
 
    if (*grallocUsage == 0)
@@ -647,14 +647,14 @@ VkResult anv_GetSwapchainGrallocUsage2ANDROID(
 
    *grallocConsumerUsage = 0;
    *grallocProducerUsage = 0;
-   intel_logd("%s: format=%d, usage=0x%x", __func__, format, imageUsage);
+   mesa_logd("%s: format=%d, usage=0x%x", __func__, format, imageUsage);
 
    result = format_supported_with_usage(device_h, format, imageUsage);
    if (result != VK_SUCCESS)
       return result;
 
    int32_t grallocUsage = 0;
-   result = setup_gralloc0_usage(format, imageUsage, &grallocUsage);
+   result = setup_gralloc0_usage(device, format, imageUsage, &grallocUsage);
    if (result != VK_SUCCESS)
       return result;
 
@@ -686,16 +686,17 @@ VkResult anv_GetSwapchainGrallocUsageANDROID(
     VkImageUsageFlags   imageUsage,
     int*                grallocUsage)
 {
+   ANV_FROM_HANDLE(anv_device, device, device_h);
    VkResult result;
 
    *grallocUsage = 0;
-   intel_logd("%s: format=%d, usage=0x%x", __func__, format, imageUsage);
+   mesa_logd("%s: format=%d, usage=0x%x", __func__, format, imageUsage);
 
    result = format_supported_with_usage(device_h, format, imageUsage);
    if (result != VK_SUCCESS)
       return result;
 
-   return setup_gralloc0_usage(format, imageUsage, grallocUsage);
+   return setup_gralloc0_usage(device, format, imageUsage, grallocUsage);
 }
 
 VkResult

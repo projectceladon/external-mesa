@@ -85,6 +85,7 @@ files_llvmpipe = files(
   'lp_state_setup.h',
   'lp_state_so.c',
   'lp_state_surface.c',
+  'lp_state_tess.c',
   'lp_state_vertex.c',
   'lp_state_vs.c',
   'lp_surface.c',
@@ -98,8 +99,9 @@ files_llvmpipe = files(
 libllvmpipe = static_library(
   'llvmpipe',
   files_llvmpipe,
-  c_args : [c_vis_args, c_msvc_compat_args],
-  cpp_args : [cpp_vis_args, cpp_msvc_compat_args],
+  c_args : [c_msvc_compat_args],
+  cpp_args : [cpp_msvc_compat_args],
+  gnu_symbol_visibility : 'hidden',
   include_directories : [inc_gallium, inc_gallium_aux, inc_include, inc_src],
   dependencies : [ dep_llvm, idep_nir_headers, ],
 )
@@ -125,6 +127,8 @@ if with_tests and with_gallium_softpipe and with_llvm
         link_with : [libllvmpipe, libgallium],
       ),
       suite : ['llvmpipe'],
+      should_fail : meson.get_cross_property('xfail', '').contains(t),
+      timeout: 180,
     )
   endforeach
 endif

@@ -226,7 +226,7 @@ st_texture_release_all_sampler_views(struct st_context *st,
    for (unsigned i = 0; i < views->count; ++i) {
       struct st_sampler_view *stsv = &views->views[i];
       if (stsv->view) {
-         if (stsv->st != st) {
+         if (stsv->st && stsv->st != st) {
             /* Transfer this reference to the zombie list.  It will
              * likely be freed when the zombie list is freed.
              */
@@ -496,10 +496,16 @@ get_sampler_view_format(struct st_context *st,
    /* Use R8_UNORM for video formats */
    switch (format) {
    case PIPE_FORMAT_NV12:
+      if (stObj->pt->format == PIPE_FORMAT_R8_G8B8_420_UNORM) {
+         format = PIPE_FORMAT_R8_G8B8_420_UNORM;
+         break;
+      }
+      /* fallthrough */
    case PIPE_FORMAT_IYUV:
       format = PIPE_FORMAT_R8_UNORM;
       break;
    case PIPE_FORMAT_P010:
+   case PIPE_FORMAT_P012:
    case PIPE_FORMAT_P016:
       format = PIPE_FORMAT_R16_UNORM;
       break;

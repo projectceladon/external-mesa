@@ -26,7 +26,7 @@
 #include "compiler/nir/nir.h"
 #include "compiler/nir/nir_builder.h"
 #include "compiler/glsl/list.h"
-#include "main/imports.h"
+
 #include "main/mtypes.h"
 #include "util/ralloc.h"
 
@@ -534,31 +534,16 @@ ptn_tex(struct ptn_compile *c, nir_alu_dest dest, nir_ssa_def **src,
       abort();
    }
 
-   switch (instr->sampler_dim) {
-   case GLSL_SAMPLER_DIM_1D:
-   case GLSL_SAMPLER_DIM_BUF:
-      instr->coord_components = 1;
-      break;
-   case GLSL_SAMPLER_DIM_2D:
-   case GLSL_SAMPLER_DIM_RECT:
-   case GLSL_SAMPLER_DIM_EXTERNAL:
-   case GLSL_SAMPLER_DIM_MS:
-      instr->coord_components = 2;
-      break;
-   case GLSL_SAMPLER_DIM_3D:
-   case GLSL_SAMPLER_DIM_CUBE:
-      instr->coord_components = 3;
-      break;
-   case GLSL_SAMPLER_DIM_SUBPASS:
-   case GLSL_SAMPLER_DIM_SUBPASS_MS:
-      unreachable("can't reach");
-   }
+   instr->coord_components =
+      glsl_get_sampler_dim_coordinate_components(instr->sampler_dim);
 
    nir_variable *var = c->sampler_vars[prog_inst->TexSrcUnit];
    if (!var) {
       const struct glsl_type *type =
-         glsl_sampler_type(instr->sampler_dim, false, false, GLSL_TYPE_FLOAT);
-      var = nir_variable_create(b->shader, nir_var_uniform, type, "sampler");
+         glsl_sampler_type(instr->sampler_dim, instr->is_shadow, false, GLSL_TYPE_FLOAT);
+      char samplerName[20];
+      snprintf(samplerName, sizeof(samplerName), "sampler_%d", prog_inst->TexSrcUnit);
+      var = nir_variable_create(b->shader, nir_var_uniform, type, samplerName);
       var->data.binding = prog_inst->TexSrcUnit;
       var->data.explicit_binding = true;
       c->sampler_vars[prog_inst->TexSrcUnit] = var;
@@ -830,7 +815,7 @@ ptn_add_output_stores(struct ptn_compile *c)
 {
    nir_builder *b = &c->build;
 
-   nir_foreach_variable(var, &b->shader->outputs) {
+   nir_foreach_shader_out_variable(var, b->shader) {
       nir_ssa_def *src = nir_load_reg(b, c->output_regs[var->data.location]);
       if (c->prog->Target == GL_FRAGMENT_PROGRAM_ARB &&
           var->data.location == FRAG_RESULT_DEPTH) {
@@ -900,10 +885,8 @@ setup_registers_and_variables(struct ptn_compile *c)
    }
 
    /* Create system value variables */
-   uint64_t system_values_read = c->prog->info.system_values_read;
-   while (system_values_read) {
-      const int i = u_bit_scan64(&system_values_read);
-
+   int i;
+   BITSET_FOREACH_SET(i, c->prog->info.system_values_read, SYSTEM_VALUE_MAX) {
       nir_variable *var =
          nir_variable_create(shader, nir_var_system_value, glsl_vec4_type(),
                              ralloc_asprintf(shader, "sv_%d", i));
@@ -928,22 +911,21 @@ setup_registers_and_variables(struct ptn_compile *c)
       nir_register *reg = nir_local_reg_create(b->impl);
       reg->num_components = 4;
 
-      nir_variable *var = rzalloc(shader, nir_variable);
+      const struct glsl_type *type;
       if ((c->prog->Target == GL_FRAGMENT_PROGRAM_ARB && i == FRAG_RESULT_DEPTH) ||
           (c->prog->Target == GL_VERTEX_PROGRAM_ARB && i == VARYING_SLOT_FOGC) ||
           (c->prog->Target == GL_VERTEX_PROGRAM_ARB && i == VARYING_SLOT_PSIZ))
-         var->type = glsl_float_type();
+         type = glsl_float_type();
       else
-         var->type = glsl_vec4_type();
-      var->data.mode = nir_var_shader_out;
-      var->name = ralloc_asprintf(var, "out_%d", i);
+         type = glsl_vec4_type();
 
+      nir_variable *var =
+         nir_variable_create(shader, nir_var_shader_out, type,
+                             ralloc_asprintf(shader, "out_%d", i));
       var->data.location = i;
       var->data.index = 0;
 
       c->output_regs[i] = reg;
-
-      exec_list_push_tail(&shader->outputs, &var->node);
       c->output_vars[i] = var;
    }
 
