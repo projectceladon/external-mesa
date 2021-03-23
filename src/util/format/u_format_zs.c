@@ -334,6 +334,54 @@ util_format_z32_float_pack_z_32unorm(uint8_t *dst_row, unsigned dst_stride,
 }
 
 void
+util_format_z16_unorm_s8_uint_unpack_z_float(float *dst_row, unsigned dst_stride,
+                                             const uint8_t *src_row, unsigned src_stride,
+                                             unsigned width, unsigned height)
+{
+   unreachable("z16_s8 packing/unpacking is not implemented.");
+}
+
+void
+util_format_z16_unorm_s8_uint_pack_z_float(uint8_t *dst_row, unsigned dst_stride,
+                                           const float *src_row, unsigned src_stride,
+                                           unsigned width, unsigned height)
+{
+   unreachable("z16_s8 packing/unpacking is not implemented.");
+}
+
+void
+util_format_z16_unorm_s8_uint_unpack_z_32unorm(uint32_t *dst_row, unsigned dst_stride,
+                                               const uint8_t *src_row, unsigned src_stride,
+                                               unsigned width, unsigned height)
+{
+   unreachable("z16_s8 packing/unpacking is not implemented.");
+}
+
+void
+util_format_z16_unorm_s8_uint_pack_z_32unorm(uint8_t *dst_row, unsigned dst_stride,
+                                             const uint32_t *src_row, unsigned src_stride,
+                                             unsigned width, unsigned height)
+{
+   unreachable("z16_s8 packing/unpacking is not implemented.");
+}
+
+void
+util_format_z16_unorm_s8_uint_unpack_s_8uint(uint8_t *dst_row, unsigned dst_stride,
+                                             const uint8_t *src_row, unsigned src_stride,
+                                             unsigned width, unsigned height)
+{
+   unreachable("z16_s8 packing/unpacking is not implemented.");
+}
+
+void
+util_format_z16_unorm_s8_uint_pack_s_8uint(uint8_t *dst_row, unsigned dst_stride,
+                                           const uint8_t *src_row, unsigned src_stride,
+                                           unsigned width, unsigned height)
+{
+   unreachable("z16_s8 packing/unpacking is not implemented.");
+}
+
+void
 util_format_z24_unorm_s8_uint_unpack_z_float(float *dst_row, unsigned dst_stride,
                                                 const uint8_t *src_row, unsigned src_stride,
                                                 unsigned width, unsigned height)
@@ -364,6 +412,46 @@ util_format_z24_unorm_s8_uint_pack_z_float(uint8_t *dst_row, unsigned dst_stride
          uint32_t value = util_le32_to_cpu(*dst);
          value &= 0xff000000;
          value |= z32_float_to_z24_unorm(*src++);
+         *dst++ = util_cpu_to_le32(value);
+      }
+      dst_row += dst_stride/sizeof(*dst_row);
+      src_row += src_stride/sizeof(*src_row);
+   }
+}
+
+
+void
+util_format_z24_unorm_s8_uint_unpack_z24(uint8_t *dst_row, unsigned dst_stride,
+                                         const uint8_t *src_row, unsigned src_stride,
+                                         unsigned width, unsigned height)
+{
+   unsigned x, y;
+   for(y = 0; y < height; ++y) {
+      uint32_t *dst = (uint32_t *)dst_row;
+      const uint32_t *src = (const uint32_t *)src_row;
+      for(x = 0; x < width; ++x) {
+         uint32_t value =  util_cpu_to_le32(*src++);
+         *dst++ = (value & 0xffffff);
+      }
+      src_row += src_stride/sizeof(*src_row);
+      dst_row += dst_stride/sizeof(*dst_row);
+   }
+}
+
+void
+util_format_z24_unorm_s8_uint_pack_z24(uint8_t *dst_row, unsigned dst_stride,
+                                       const uint8_t *src_row, unsigned src_stride,
+                                       unsigned width, unsigned height)
+{
+   unsigned x, y;
+   for(y = 0; y < height; ++y) {
+      const uint32_t *src = (const uint32_t *)src_row;
+      uint32_t *dst = (uint32_t *)dst_row;
+      for(x = 0; x < width; ++x) {
+         uint32_t value = util_le32_to_cpu(*dst);
+         value &= 0xff000000;
+         value |= *src & 0xffffff;
+         src++;
          *dst++ = util_cpu_to_le32(value);
       }
       dst_row += dst_stride/sizeof(*dst_row);

@@ -67,14 +67,14 @@ dump_validation_list(struct intel_batchbuffer *batch)
       uint64_t flags = batch->validation_list[i].flags;
       assert(batch->validation_list[i].handle ==
              batch->exec_bos[i]->gem_handle);
-      fprintf(stderr, "[%2d]: %2d %-14s %p %s%-7s @ 0x%016llx%s (%"PRIu64"B)\n",
+      fprintf(stderr, "[%2d]: %2d %-14s %p %s%-7s @ 0x%"PRIx64"%s (%"PRIu64"B)\n",
               i,
               batch->validation_list[i].handle,
               batch->exec_bos[i]->name,
               batch->exec_bos[i],
               (flags & EXEC_OBJECT_SUPPORTS_48B_ADDRESS) ? "(48b" : "(32b",
               (flags & EXEC_OBJECT_WRITE) ? " write)" : ")",
-              batch->validation_list[i].offset,
+              (uint64_t)batch->validation_list[i].offset,
               (flags & EXEC_OBJECT_PINNED) ? " (pinned)" : "",
               batch->exec_bos[i]->size);
    }
@@ -130,7 +130,11 @@ intel_batchbuffer_init(struct brw_context *brw)
    struct intel_batchbuffer *batch = &brw->batch;
    const struct gen_device_info *devinfo = &screen->devinfo;
 
-   batch->use_shadow_copy = !devinfo->has_llc;
+   if (INTEL_DEBUG & DEBUG_BATCH) {
+      /* The shadow doesn't get relocs written so state decode fails. */
+      batch->use_shadow_copy = false;
+   } else
+      batch->use_shadow_copy = !devinfo->has_llc;
 
    init_reloc_list(&batch->batch_relocs, 250);
    init_reloc_list(&batch->state_relocs, 250);
@@ -273,6 +277,13 @@ intel_batchbuffer_reset(struct brw_context *brw)
 
    if (batch->state_batch_sizes)
       _mesa_hash_table_u64_clear(batch->state_batch_sizes, NULL);
+
+   /* Always add workaround_bo which contains a driver identifier to be
+    * recorded in error states.
+    */
+   struct brw_bo *identifier_bo = brw->workaround_bo;
+   if (identifier_bo)
+      add_exec_bo(batch, identifier_bo);
 }
 
 static void
@@ -503,10 +514,16 @@ grow_buffer(struct brw_context *brw,
    new_bo->refcount = bo->refcount;
    bo->refcount = 1;
 
+   assert(list_is_empty(&bo->exports));
+   assert(list_is_empty(&new_bo->exports));
+
    struct brw_bo tmp;
    memcpy(&tmp, bo, sizeof(struct brw_bo));
    memcpy(bo, new_bo, sizeof(struct brw_bo));
    memcpy(new_bo, &tmp, sizeof(struct brw_bo));
+
+   list_inithead(&bo->exports);
+   list_inithead(&new_bo->exports);
 
    grow->partial_bo = new_bo; /* the one reference of the OLD bo */
    grow->partial_bytes = existing_bytes;
@@ -573,6 +590,8 @@ brw_new_batch(struct brw_context *brw)
     */
    if (INTEL_DEBUG & DEBUG_SHADER_TIME)
       brw_collect_and_report_shader_time(brw);
+
+   intel_batchbuffer_maybe_noop(brw);
 }
 
 /**
@@ -625,7 +644,7 @@ brw_finish_batch(struct brw_context *brw)
 
    /* Do not restore push constant packets during context restore. */
    if (devinfo->gen >= 7)
-      gen10_emit_isp_disable(brw);
+      gen7_emit_isp_disable(brw);
 
    /* Emit MI_BATCH_BUFFER_END to finish our batch.  Note that execbuf2
     * requires our batch size to be QWord aligned, so we pad it out if
@@ -673,8 +692,7 @@ throttle(struct brw_context *brw)
    }
 
    if (brw->need_flush_throttle) {
-      __DRIscreen *dri_screen = brw->screen->driScrnPriv;
-      drmCommandNone(dri_screen->fd, DRM_I915_GEM_THROTTLE);
+      drmCommandNone(brw->screen->fd, DRM_I915_GEM_THROTTLE);
       brw->need_flush_throttle = false;
    }
 }
@@ -722,9 +740,9 @@ execbuffer(int fd,
 
       /* Update brw_bo::gtt_offset */
       if (batch->validation_list[i].offset != bo->gtt_offset) {
-         DBG("BO %d migrated: 0x%" PRIx64 " -> 0x%llx\n",
+         DBG("BO %d migrated: 0x%" PRIx64 " -> 0x%" PRIx64 "\n",
              bo->gem_handle, bo->gtt_offset,
-             batch->validation_list[i].offset);
+             (uint64_t)batch->validation_list[i].offset);
          assert(!(bo->kflags & EXEC_OBJECT_PINNED));
          bo->gtt_offset = batch->validation_list[i].offset;
       }
@@ -739,7 +757,6 @@ execbuffer(int fd,
 static int
 submit_batch(struct brw_context *brw, int in_fence_fd, int *out_fence_fd)
 {
-   __DRIscreen *dri_screen = brw->screen->driScrnPriv;
    struct intel_batchbuffer *batch = &brw->batch;
    int ret = 0;
 
@@ -806,14 +823,14 @@ submit_batch(struct brw_context *brw, int in_fence_fd, int *out_fence_fd)
          batch->exec_bos[index] = tmp_bo;
       }
 
-      ret = execbuffer(dri_screen->fd, batch, brw->hw_ctx,
+      ret = execbuffer(brw->screen->fd, batch, brw->hw_ctx,
                        4 * USED_BATCH(*batch),
                        in_fence_fd, out_fence_fd, flags);
 
       throttle(brw);
    }
 
-   if (unlikely(INTEL_DEBUG & DEBUG_BATCH)) {
+   if (INTEL_DEBUG & DEBUG_BATCH) {
       gen_print_batch(&batch->decoder, batch->batch.map,
                       4 * USED_BATCH(*batch),
                       batch->batch.bo->gtt_offset, false);
@@ -862,7 +879,7 @@ _intel_batchbuffer_flush_fence(struct brw_context *brw,
       brw_bo_reference(brw->throttle_batch[0]);
    }
 
-   if (unlikely(INTEL_DEBUG & (DEBUG_BATCH | DEBUG_SUBMIT))) {
+   if (INTEL_DEBUG & (DEBUG_BATCH | DEBUG_SUBMIT)) {
       int bytes_for_commands = 4 * USED_BATCH(brw->batch);
       int bytes_for_state = brw->batch.state_used;
       fprintf(stderr, "%19s:%-3d: Batchbuffer flush with %5db (%0.1f%%) (pkt),"
@@ -880,7 +897,7 @@ _intel_batchbuffer_flush_fence(struct brw_context *brw,
 
    ret = submit_batch(brw, in_fence_fd, out_fence_fd);
 
-   if (unlikely(INTEL_DEBUG & DEBUG_SYNC)) {
+   if (INTEL_DEBUG & DEBUG_SYNC) {
       fprintf(stderr, "waiting for idle\n");
       brw_bo_wait_rendering(brw->batch.batch.bo);
    }
@@ -889,6 +906,17 @@ _intel_batchbuffer_flush_fence(struct brw_context *brw,
    brw_new_batch(brw);
 
    return ret;
+}
+
+void
+intel_batchbuffer_maybe_noop(struct brw_context *brw)
+{
+   if (!brw->frontend_noop || USED_BATCH(brw->batch) != 0)
+      return;
+
+   BEGIN_BATCH(1);
+   OUT_BATCH(MI_BATCH_BUFFER_END);
+   ADVANCE_BATCH();
 }
 
 bool
@@ -1039,7 +1067,7 @@ brw_state_batch(struct brw_context *brw,
       assert(offset + size < batch->state.bo->size);
    }
 
-   if (unlikely(INTEL_DEBUG & DEBUG_BATCH)) {
+   if (INTEL_DEBUG & DEBUG_BATCH) {
       _mesa_hash_table_u64_insert(batch->state_batch_sizes,
                                   offset, (void *) (uintptr_t) size);
    }

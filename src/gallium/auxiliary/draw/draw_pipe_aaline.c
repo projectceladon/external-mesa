@@ -502,7 +502,7 @@ aaline_first_line(struct draw_stage *stage, struct prim_header *header)
    const struct pipe_rasterizer_state *rast = draw->rasterizer;
    void *r;
 
-   assert(draw->rasterizer->line_smooth);
+   assert(draw->rasterizer->line_smooth && !draw->rasterizer->multisample);
 
    if (draw->rasterizer->line_width <= 1.0)
       aaline->half_line_width = 1.0;
@@ -529,7 +529,7 @@ aaline_first_line(struct draw_stage *stage, struct prim_header *header)
    draw->suspend_flushing = TRUE;
 
    /* Disable triangle culling, stippling, unfilled mode etc. */
-   r = draw_get_rasterizer_no_cull(draw, rast->scissor, rast->flatshade);
+   r = draw_get_rasterizer_no_cull(draw, rast);
    pipe->bind_rasterizer_state(pipe, r);
 
    draw->suspend_flushing = FALSE;
@@ -633,7 +633,7 @@ aaline_stage_from_pipe(struct pipe_context *pipe)
 
 /**
  * This function overrides the driver's create_fs_state() function and
- * will typically be called by the state tracker.
+ * will typically be called by the gallium frontend.
  */
 static void *
 aaline_create_fs_state(struct pipe_context *pipe,
@@ -718,11 +718,11 @@ draw_aaline_prepare_outputs(struct draw_context *draw,
    /* update vertex attrib info */
    aaline->pos_slot = draw_current_shader_position_output(draw);
 
-   if (!rast->line_smooth)
+   if (!rast->line_smooth || rast->multisample)
       return;
 
    /* allocate the extra post-transformed vertex attribute */
-   if (aaline->fs->aaline_fs)
+   if (aaline->fs && aaline->fs->aaline_fs)
       aaline->coord_slot = draw_alloc_extra_vertex_attrib(draw,
                                                           TGSI_SEMANTIC_GENERIC,
                                                           aaline->fs->generic_attrib);
@@ -747,7 +747,7 @@ draw_install_aaline_stage(struct draw_context *draw, struct pipe_context *pipe)
     */
    aaline = draw_aaline_stage(draw);
    if (!aaline)
-      goto fail;
+      return FALSE;
 
    /* save original driver functions */
    aaline->driver_create_fs_state = pipe->create_fs_state;
@@ -764,10 +764,4 @@ draw_install_aaline_stage(struct draw_context *draw, struct pipe_context *pipe)
    draw->pipeline.aaline = &aaline->stage;
 
    return TRUE;
-
-fail:
-   if (aaline)
-      aaline->stage.destroy(&aaline->stage);
-
-   return FALSE;
 }

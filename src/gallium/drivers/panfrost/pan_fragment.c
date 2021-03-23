@@ -1,4 +1,5 @@
 /*
+ * Copyright (C) 2019-2020 Collabora, Ltd.
  * Copyright 2018-2019 Alyssa Rosenzweig
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
@@ -24,7 +25,6 @@
 
 #include "pan_context.h"
 #include "pan_util.h"
-#include "pan_format.h"
 #include "panfrost-quirks.h"
 
 #include "util/format/u_format.h"
@@ -49,12 +49,11 @@ panfrost_initialize_surface(
  * presentations, this is supposed to correspond to eglSwapBuffers) */
 
 mali_ptr
-panfrost_fragment_job(struct panfrost_batch *batch, bool has_draws,
-                      struct mali_job_descriptor_header **header_cpu)
+panfrost_fragment_job(struct panfrost_batch *batch, bool has_draws)
 {
-        struct panfrost_screen *screen = pan_screen(batch->ctx->base.screen);
+        struct panfrost_device *dev = pan_device(batch->ctx->base.screen);
 
-        mali_ptr framebuffer = (screen->quirks & MIDGARD_SFBD) ?
+        mali_ptr framebuffer = (dev->quirks & MIDGARD_SFBD) ?
                                panfrost_sfbd_fragment(batch, has_draws) :
                                panfrost_mfbd_fragment(batch, has_draws);
 
@@ -69,12 +68,6 @@ panfrost_fragment_job(struct panfrost_batch *batch, bool has_draws,
 
         if (fb->zsbuf)
                 panfrost_initialize_surface(batch, fb->zsbuf);
-
-        struct mali_job_descriptor_header header = {
-                .job_type = JOB_TYPE_FRAGMENT,
-                .job_index = 1,
-                .job_descriptor_size = 1
-        };
 
         /* The passed tile coords can be out of range in some cases, so we need
          * to clamp them to the framebuffer size to avoid a TILE_RANGE_FAULT.
@@ -96,15 +89,24 @@ panfrost_fragment_job(struct panfrost_batch *batch, bool has_draws,
         assert(batch->maxx > batch->minx);
         assert(batch->maxy > batch->miny);
 
-        struct mali_payload_fragment payload = {
-                .min_tile_coord = MALI_COORDINATE_TO_TILE_MIN(batch->minx, batch->miny),
-                .max_tile_coord = MALI_COORDINATE_TO_TILE_MAX(batch->maxx, batch->maxy),
-                .framebuffer = framebuffer,
-        };
+        struct panfrost_ptr transfer =
+                panfrost_pool_alloc_aligned(&batch->pool,
+                                            MALI_FRAGMENT_JOB_LENGTH, 64);
 
-        struct panfrost_transfer transfer = panfrost_allocate_transient(batch, sizeof(header) + sizeof(payload));
-        memcpy(transfer.cpu, &header, sizeof(header));
-        memcpy(transfer.cpu + sizeof(header), &payload, sizeof(payload));
-        *header_cpu = (struct mali_job_descriptor_header *)transfer.cpu;
+        pan_section_pack(transfer.cpu, FRAGMENT_JOB, HEADER, header) {
+                header.type = MALI_JOB_TYPE_FRAGMENT;
+                header.index = 1;
+        }
+
+        pan_section_pack(transfer.cpu, FRAGMENT_JOB, PAYLOAD, payload) {
+                payload.bound_min_x = batch->minx >> MALI_TILE_SHIFT;
+                payload.bound_min_y = batch->miny >> MALI_TILE_SHIFT;
+
+                /* Batch max values are inclusive, we need to subtract 1. */
+                payload.bound_max_x = (batch->maxx - 1) >> MALI_TILE_SHIFT;
+                payload.bound_max_y = (batch->maxy - 1) >> MALI_TILE_SHIFT;
+                payload.framebuffer = framebuffer;
+        }
+
         return transfer.gpu;
 }

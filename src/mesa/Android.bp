@@ -33,7 +33,6 @@ cc_library_static {
 
     srcs: [
         "main/extensions_table.c",
-        "main/imports.c",
         "program/symbol_table.c",
         "program/dummy_errors.c",
     ],

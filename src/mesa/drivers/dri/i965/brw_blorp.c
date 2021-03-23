@@ -53,7 +53,7 @@ brw_blorp_lookup_shader(struct blorp_batch *batch,
 }
 
 static bool
-brw_blorp_upload_shader(struct blorp_batch *batch,
+brw_blorp_upload_shader(struct blorp_batch *batch, uint32_t stage,
                         const void *key, uint32_t key_size,
                         const void *kernel, uint32_t kernel_size,
                         const struct brw_stage_prog_data *prog_data,
@@ -102,9 +102,6 @@ brw_blorp_init(struct brw_context *brw)
       break;
    case 9:
       brw->blorp.exec = gen9_blorp_exec;
-      break;
-   case 10:
-      brw->blorp.exec = gen10_blorp_exec;
       break;
    case 11:
       brw->blorp.exec = gen11_blorp_exec;
@@ -164,8 +161,7 @@ blorp_surf_for_miptree(struct brw_context *brw,
        * surface.  Without one, it does nothing.
        */
       surf->clear_color =
-         intel_miptree_get_clear_color(devinfo, mt, mt->surf.format,
-                                       !is_render_target, (struct brw_bo **)
+         intel_miptree_get_clear_color(mt, (struct brw_bo **)
                                        &surf->clear_color_addr.buffer,
                                        &surf->clear_color_addr.offset);
 
@@ -831,6 +827,8 @@ brw_blorp_framebuffer(struct brw_context *brw,
       }
    }
 
+   /* try_blorp_blit should always be successful for color blits. */
+   assert(!(mask & GL_COLOR_BUFFER_BIT));
    return mask;
 }
 
@@ -851,17 +849,22 @@ blorp_get_client_bo(struct brw_context *brw,
                                                    format, type,
                                                    d - 1, h - 1, w);
    const uint32_t stride = _mesa_image_row_stride(packing, w, format, type);
-   const uint32_t cpp = _mesa_bytes_per_pixel(format, type);
    const uint32_t size = last_pixel - first_pixel;
 
    *row_stride_out = stride;
    *image_stride_out = _mesa_image_image_stride(packing, w, h, format, type);
 
-   if (_mesa_is_bufferobj(packing->BufferObj)) {
+   if (packing->BufferObj) {
       const uint32_t offset = first_pixel + (intptr_t)pixels;
-      if (!read_only && ((offset % cpp) || (stride % cpp))) {
-         perf_debug("Bad PBO alignment; fallback to CPU mapping\n");
-         return NULL;
+
+      if (!read_only) {
+         const int32_t cpp = _mesa_bytes_per_pixel(format, type);
+         assert(cpp > 0);
+
+         if ((offset % cpp) || (stride % cpp)) {
+            perf_debug("Bad PBO alignment; fallback to CPU mapping\n");
+            return NULL;
+         }
       }
 
       /* This is a user-provided PBO. We just need to get the BO out */
@@ -1070,7 +1073,7 @@ brw_blorp_download_miptree(struct brw_context *brw,
    }
 
    /* This pass only works for PBOs */
-   assert(_mesa_is_bufferobj(packing->BufferObj));
+   assert(packing->BufferObj);
 
    uint32_t dst_offset, dst_row_stride, dst_image_stride;
    struct brw_bo *dst_bo =
@@ -1307,6 +1310,7 @@ do_single_blorp_clear(struct brw_context *brw, struct gl_framebuffer *fb,
       struct blorp_batch batch;
       blorp_batch_init(&brw->blorp, &batch, brw, 0);
       blorp_fast_clear(&batch, &surf, isl_format_srgb_to_linear(isl_format),
+                       ISL_SWIZZLE_IDENTITY,
                        level, irb->mt_layer, num_layers, x0, y0, x1, y1);
       blorp_batch_finish(&batch);
 

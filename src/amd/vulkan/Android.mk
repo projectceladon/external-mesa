@@ -53,6 +53,9 @@ endif
 
 include $(CLEAR_VARS)
 LOCAL_MODULE := libmesa_radv_common
+LOCAL_LICENSE_KINDS := SPDX-license-identifier-ISC SPDX-license-identifier-MIT
+LOCAL_LICENSE_CONDITIONS := notice
+LOCAL_NOTICE_FILE := $(LOCAL_PATH)/../../../LICENSE
 LOCAL_MODULE_CLASS := STATIC_LIBRARIES
 
 intermediates := $(call local-generated-sources-dir)
@@ -80,7 +83,6 @@ LOCAL_GENERATED_SOURCES += $(intermediates)/radv_entrypoints.h
 LOCAL_GENERATED_SOURCES += $(intermediates)/radv_extensions.c
 LOCAL_GENERATED_SOURCES += $(intermediates)/radv_extensions.h
 LOCAL_GENERATED_SOURCES += $(intermediates)/vk_format_table.c
-LOCAL_GENERATED_SOURCES += $(intermediates)/gfx10_format_table.h
 
 RADV_ENTRYPOINTS_SCRIPT := $(MESA_TOP)/src/amd/vulkan/radv_entrypoints_gen.py
 RADV_EXTENSIONS_SCRIPT := $(MESA_TOP)/src/amd/vulkan/radv_extensions.py
@@ -115,20 +117,6 @@ $(intermediates)/vk_format_table.c: $(VK_FORMAT_TABLE_SCRIPT) \
 	@mkdir -p $(dir $@)
 	$(MESA_PYTHON2) $(VK_FORMAT_TABLE_SCRIPT) $(vk_format_layout_csv) > $@
 
-RADV_GEN10_FORMAT_TABLE_INPUTS := \
-	$(MESA_TOP)/src/amd/vulkan/vk_format_layout.csv \
-	$(MESA_TOP)/src/amd/registers/gfx10-rsrc.json
-
-RADV_GEN10_FORMAT_TABLE_DEP := \
-	$(MESA_TOP)/src/amd/registers/regdb.py
-
-RADV_GEN10_FORMAT_TABLE := $(LOCAL_PATH)/gfx10_format_table.py
-
-$(intermediates)/gfx10_format_table.h: $(RADV_GEN10_FORMAT_TABLE) $(RADV_GEN10_FORMAT_TABLE_INPUTS) $(RADV_GEN10_FORMAT_TABLE_DEP)
-	@mkdir -p $(dir $@)
-	@echo "Gen Header: $(PRIVATE_MODULE) <= $(notdir $(@))"
-	$(hide) $(MESA_PYTHON2) $(RADV_GEN10_FORMAT_TABLE) $(RADV_GEN10_FORMAT_TABLE_INPUTS) > $@ || ($(RM) $@; false)
-
 LOCAL_SHARED_LIBRARIES += $(RADV_SHARED_LIBRARIES)
 
 LOCAL_EXPORT_C_INCLUDE_DIRS := \
@@ -145,6 +133,9 @@ include $(BUILD_STATIC_LIBRARY)
 include $(CLEAR_VARS)
 
 LOCAL_MODULE := vulkan.radv
+LOCAL_LICENSE_KINDS := SPDX-license-identifier-ISC SPDX-license-identifier-MIT
+LOCAL_LICENSE_CONDITIONS := notice
+LOCAL_NOTICE_FILE := $(LOCAL_PATH)/../../../LICENSE
 LOCAL_MODULE_CLASS := SHARED_LIBRARIES
 LOCAL_PROPRIETARY_MODULE := true
 LOCAL_MODULE_RELATIVE_PATH := hw

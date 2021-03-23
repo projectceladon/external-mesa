@@ -35,6 +35,9 @@ LOCAL_C_INCLUDES := \
 	$(MESA_TOP)/src/panfrost/
 
 LOCAL_MODULE := libmesa_pipe_panfrost
+LOCAL_LICENSE_KINDS := SPDX-license-identifier-MIT
+LOCAL_LICENSE_CONDITIONS := notice
+LOCAL_NOTICE_FILE := $(LOCAL_PATH)/../../../../LICENSE
 
 LOCAL_SHARED_LIBRARIES := libdrm
 
@@ -42,10 +45,10 @@ LOCAL_STATIC_LIBRARIES := \
 	libmesa_nir \
 	libmesa_winsys_panfrost \
 	libpanfrost_bifrost \
-	libpanfrost_decode \
-	libpanfrost_encoder \
+	libpanfrost_lib \
 	libpanfrost_midgard \
-	libpanfrost_shared
+	libpanfrost_shared \
+	libpanfrost_util \
 
 LOCAL_MODULE_CLASS := STATIC_LIBRARIES
 

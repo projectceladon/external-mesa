@@ -32,6 +32,7 @@
 
 #include "draw/draw_context.h"
 #include "draw/draw_gs.h"
+#include "draw/draw_tess.h"
 #include "draw/draw_private.h"
 #include "draw/draw_pt.h"
 #include "draw/draw_vbuf.h"
@@ -66,16 +67,24 @@ draw_pt_arrays(struct draw_context *draw,
     */
    {
       unsigned first, incr;
-      draw_pt_split_prim(prim, &first, &incr);
+
+      if (prim == PIPE_PRIM_PATCHES) {
+         first = draw->pt.vertices_per_patch;
+         incr = draw->pt.vertices_per_patch;
+      } else
+         draw_pt_split_prim(prim, &first, &incr);
       count = draw_pt_trim_count(count, first, incr);
       if (count < first)
          return TRUE;
    }
 
    if (!draw->force_passthrough) {
-      unsigned gs_out_prim = (draw->gs.geometry_shader ? 
-                              draw->gs.geometry_shader->output_primitive :
-                              prim);
+      unsigned out_prim = prim;
+
+      if (draw->gs.geometry_shader)
+         out_prim = draw->gs.geometry_shader->output_primitive;
+      else if (draw->tes.tess_eval_shader)
+         out_prim = get_tes_output_prim(draw->tes.tess_eval_shader);
 
       if (!draw->render) {
          opt |= PT_PIPELINE;
@@ -83,7 +92,7 @@ draw_pt_arrays(struct draw_context *draw,
 
       if (draw_need_pipeline(draw,
                              draw->rasterizer,
-                             gs_out_prim)) {
+                             out_prim)) {
          opt |= PT_PIPELINE;
       }
 
@@ -416,7 +425,7 @@ draw_pt_arrays_restart(struct draw_context *draw,
    }
    else {
       /* Non-indexed prims (draw_arrays).
-       * Primitive restart should have been handled in the state tracker.
+       * Primitive restart should have been handled in gallium frontends.
        */
       draw_pt_arrays(draw, prim, start, count);
    }
@@ -487,6 +496,8 @@ draw_vbo(struct draw_context *draw,
    draw->pt.user.eltSize = info->index_size ? draw->pt.user.eltSizeIB : 0;
    draw->pt.user.drawid = info->drawid;
 
+   draw->pt.vertices_per_patch = info->vertices_per_patch;
+
    if (0)
       debug_printf("draw_vbo(mode=%u start=%u count=%u):\n",
                    info->mode, info->start, count);
@@ -545,7 +556,7 @@ draw_vbo(struct draw_context *draw,
 
    /*
     * TODO: We could use draw->pt.max_index to further narrow
-    * the min_index/max_index hints given by the state tracker.
+    * the min_index/max_index hints given by gallium frontends.
     */
 
    for (instance = 0; instance < info->instance_count; instance++) {

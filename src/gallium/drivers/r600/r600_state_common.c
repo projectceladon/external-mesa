@@ -37,6 +37,10 @@
 #include "tgsi/tgsi_scan.h"
 #include "tgsi/tgsi_ureg.h"
 
+#include "nir.h"
+#include "nir/nir_to_tgsi_info.h"
+#include "tgsi/tgsi_from_mesa.h"
+
 void r600_init_command_buffer(struct r600_command_buffer *cb, unsigned num_dw)
 {
 	assert(!cb->buf);
@@ -815,9 +819,12 @@ static inline void r600_shader_selector_key(const struct pipe_context *ctx,
 				      rctx->rasterizer && rctx->rasterizer->multisample_enable &&
 				      !rctx->framebuffer.cb0_is_integer;
 		key->ps.nr_cbufs = rctx->framebuffer.state.nr_cbufs;
+                key->ps.apply_sample_id_mask = (rctx->ps_iter_samples > 1) || !rctx->rasterizer->multisample_enable;
 		/* Dual-source blending only makes sense with nr_cbufs == 1. */
-		if (key->ps.nr_cbufs == 1 && rctx->dual_src_blend)
+		if (key->ps.nr_cbufs == 1 && rctx->dual_src_blend) {
 			key->ps.nr_cbufs = 2;
+			key->ps.dual_source_blend = 1;
+		}
 		break;
 	}
 	case PIPE_SHADER_TESS_EVAL:
@@ -906,14 +913,19 @@ int r600_shader_select(struct pipe_context *ctx,
 }
 
 struct r600_pipe_shader_selector *r600_create_shader_state_tokens(struct pipe_context *ctx,
-								  const struct tgsi_token *tokens,
+								  const void *prog, enum pipe_shader_ir ir,
 								  unsigned pipe_shader_type)
 {
 	struct r600_pipe_shader_selector *sel = CALLOC_STRUCT(r600_pipe_shader_selector);
 
 	sel->type = pipe_shader_type;
-	sel->tokens = tgsi_dup_tokens(tokens);
-	tgsi_scan_shader(tokens, &sel->info);
+	if (ir == PIPE_SHADER_IR_TGSI) {
+		sel->tokens = tgsi_dup_tokens((const struct tgsi_token *)prog);
+		tgsi_scan_shader(sel->tokens, &sel->info);
+	} else if (ir == PIPE_SHADER_IR_NIR){
+		sel->nir = nir_shader_clone(NULL, (const nir_shader *)prog);
+		nir_tgsi_scan_shader(sel->nir, &sel->info, true);
+	}
 	return sel;
 }
 
@@ -922,8 +934,16 @@ static void *r600_create_shader_state(struct pipe_context *ctx,
 			       unsigned pipe_shader_type)
 {
 	int i;
-	struct r600_pipe_shader_selector *sel = r600_create_shader_state_tokens(ctx, state->tokens, pipe_shader_type);
-
+	struct r600_pipe_shader_selector *sel;
+	
+	if (state->type == PIPE_SHADER_IR_TGSI)
+		sel = r600_create_shader_state_tokens(ctx, state->tokens, state->type, pipe_shader_type);
+	else if (state->type == PIPE_SHADER_IR_NIR) {
+		sel = r600_create_shader_state_tokens(ctx, state->ir.nir, state->type, pipe_shader_type);
+	} else
+		assert(0 && "Unknown shader type\n");
+	
+	sel->ir_type = state->type;
 	sel->so = state->stream_output;
 
 	switch (pipe_shader_type) {
@@ -1082,7 +1102,14 @@ void r600_delete_shader_selector(struct pipe_context *ctx,
 		p = c;
 	}
 
-	free(sel->tokens);
+	if (sel->ir_type == PIPE_SHADER_IR_TGSI) {
+		free(sel->tokens);
+		/* We might have converted the TGSI shader to a NIR shader */
+		if (sel->nir)
+			ralloc_free(sel->nir);
+	}
+	else if (sel->ir_type == PIPE_SHADER_IR_NIR)
+		ralloc_free(sel->nir);
 	free(sel);
 }
 
@@ -1166,7 +1193,7 @@ static void r600_set_constant_buffer(struct pipe_context *ctx,
 	struct pipe_constant_buffer *cb;
 	const uint8_t *ptr;
 
-	/* Note that the state tracker can unbind constant buffers by
+	/* Note that the gallium frontend can unbind constant buffers by
 	 * passing NULL here.
 	 */
 	if (unlikely(!input || (!input->buffer && !input->user_buffer))) {
@@ -1846,7 +1873,7 @@ static bool r600_update_derived_state(struct r600_context *rctx)
 	 * to LS slots and won't reflect what is dirty as VS stage even if the
 	 * TES didn't overwrite it. The story for re-enabled TES is similar.
 	 * In any case, we're not allowed to submit any TES state when
-	 * TES is disabled (the state tracker may not do this but this looks
+	 * TES is disabled (the gallium frontend may not do this but this looks
 	 * like an optimization to me, not something which can be relied on).
 	 */
 
@@ -2037,7 +2064,7 @@ static void r600_draw_vbo(struct pipe_context *ctx, const struct pipe_draw_info 
 	unsigned index_size = info->index_size;
 	int index_bias;
 	struct r600_shader_atomic combined_atomics[8];
-	uint8_t atomic_used_mask;
+	uint8_t atomic_used_mask = 0;
 
 	if (!info->indirect && !info->count && (index_size || !info->count_from_stream_output)) {
 		return;
@@ -2118,7 +2145,7 @@ static void r600_draw_vbo(struct pipe_context *ctx, const struct pipe_draw_info 
 				/* Have to get start/count from indirect buffer, slow path ahead... */
 				struct r600_resource *indirect_resource = (struct r600_resource *)info->indirect->buffer;
 				unsigned *data = r600_buffer_map_sync_with_rings(&rctx->b, indirect_resource,
-					PIPE_TRANSFER_READ);
+					PIPE_MAP_READ);
 				if (data) {
 					data += info->indirect->offset / sizeof(unsigned);
 					start = data[2] * index_size;
@@ -2757,6 +2784,7 @@ uint32_t r600_translate_texformat(struct pipe_screen *screen,
 		case PIPE_FORMAT_RGTC1_SNORM:
 		case PIPE_FORMAT_LATC1_SNORM:
 			word4 |= sign_bit[0];
+			/* fallthrough */
 		case PIPE_FORMAT_RGTC1_UNORM:
 		case PIPE_FORMAT_LATC1_UNORM:
 			result = FMT_BC4;
@@ -2764,6 +2792,7 @@ uint32_t r600_translate_texformat(struct pipe_screen *screen,
 		case PIPE_FORMAT_RGTC2_SNORM:
 		case PIPE_FORMAT_LATC2_SNORM:
 			word4 |= sign_bit[0] | sign_bit[1];
+			/* fallthrough */
 		case PIPE_FORMAT_RGTC2_UNORM:
 		case PIPE_FORMAT_LATC2_UNORM:
 			result = FMT_BC5;
