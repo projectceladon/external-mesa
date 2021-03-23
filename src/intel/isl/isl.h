@@ -44,6 +44,7 @@
 
 #include "c99_compat.h"
 #include "util/macros.h"
+#include "util/format/u_format.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -297,6 +298,7 @@ enum isl_format {
    ISL_FORMAT_BC7_UNORM_SRGB =                                 419,
    ISL_FORMAT_BC6H_UF16 =                                      420,
    ISL_FORMAT_PLANAR_420_8 =                                   421,
+   ISL_FORMAT_PLANAR_420_16 =                                  422,
    ISL_FORMAT_R8G8B8_UNORM_SRGB =                              424,
    ISL_FORMAT_ETC1_RGB8 =                                      425,
    ISL_FORMAT_ETC2_RGB8 =                                      426,
@@ -373,6 +375,10 @@ enum isl_format {
     * explicit number.  We'll just let the C compiler assign it for us.  Any
     * actual hardware formats *must* come before these in the list.
     */
+
+   /* Formats for the aux-map */
+   ISL_FORMAT_PLANAR_420_10,
+   ISL_FORMAT_PLANAR_420_12,
 
    /* Formats for auxiliary surfaces */
    ISL_FORMAT_HIZ,
@@ -610,20 +616,60 @@ enum isl_aux_usage {
     */
    ISL_AUX_USAGE_CCS_E,
 
+   /** The auxiliary surface provides full lossless color compression on
+    *  Gen12.
+    *
+    * @invariant isl_surf::samples == 1
+    */
+   ISL_AUX_USAGE_GEN12_CCS_E,
+
    /** The auxiliary surface provides full lossless media color compression
     *
     * @invariant isl_surf::samples == 1
     */
    ISL_AUX_USAGE_MC,
 
-   /** The auxiliary surface is a HiZ surface and CCS is also enabled */
+   /** The auxiliary surface is a HiZ surface operating in write-through mode
+    *  and CCS is also enabled
+    *
+    * In this mode, the HiZ and CCS surfaces act as a single fused compression
+    * surface where resolves and ambiguates operate on both surfaces at the
+    * same time.  In this mode, the HiZ surface operates in write-through
+    * mode where it is only used for accelerating depth testing and not for
+    * actual compression.  The CCS-compressed surface contains valid data at
+    * all times.
+    *
+    * @invariant isl_surf::samples == 1
+    */
+   ISL_AUX_USAGE_HIZ_CCS_WT,
+
+   /** The auxiliary surface is a HiZ surface with and CCS is also enabled
+    *
+    * In this mode, the HiZ and CCS surfaces act as a single fused compression
+    * surface where resolves and ambiguates operate on both surfaces at the
+    * same time.  In this mode, full HiZ compression is enabled and the
+    * CCS-compressed main surface may not contain valid data.  The only way to
+    * read the surface outside of the depth hardware is to do a full resolve
+    * which resolves both HiZ and CCS so the surface is in the pass-through
+    * state.
+    */
    ISL_AUX_USAGE_HIZ_CCS,
 
    /** The auxiliary surface is an MCS and CCS is also enabled
     *
+    * In this mode, we have fused MCS+CCS compression where the MCS is used
+    * for fast-clears and "identical samples" compression just like on Gen7-11
+    * but each plane is then CCS compressed.
+    *
     * @invariant isl_surf::samples > 1
     */
    ISL_AUX_USAGE_MCS_CCS,
+
+   /** CCS auxiliary data is used to compress a stencil buffer
+    *
+    * @invariant isl_surf::samples == 1
+    */
+   ISL_AUX_USAGE_STC_CCS,
 };
 
 /**
@@ -781,7 +827,10 @@ enum isl_aux_usage {
  *          the CCS and filling it with zeros.
  */
 enum isl_aux_state {
-   ISL_AUX_STATE_CLEAR = 0,
+#ifdef IN_UNIT_TEST
+   ISL_AUX_STATE_ASSERT,
+#endif
+   ISL_AUX_STATE_CLEAR,
    ISL_AUX_STATE_PARTIAL_CLEAR,
    ISL_AUX_STATE_COMPRESSED_CLEAR,
    ISL_AUX_STATE_COMPRESSED_NO_CLEAR,
@@ -794,6 +843,10 @@ enum isl_aux_state {
  * Enum which describes explicit aux transition operations.
  */
 enum isl_aux_op {
+#ifdef IN_UNIT_TEST
+   ISL_AUX_OP_ASSERT,
+#endif
+
    ISL_AUX_OP_NONE,
 
    /** Fast Clear
@@ -864,6 +917,10 @@ typedef uint64_t isl_surf_usage_flags_t;
 #define ISL_SURF_USAGE_HIZ_BIT                 (1u << 13)
 #define ISL_SURF_USAGE_MCS_BIT                 (1u << 14)
 #define ISL_SURF_USAGE_CCS_BIT                 (1u << 15)
+#define ISL_SURF_USAGE_VERTEX_BUFFER_BIT       (1u << 16)
+#define ISL_SURF_USAGE_INDEX_BUFFER_BIT        (1u << 17)
+#define ISL_SURF_USAGE_CONSTANT_BUFFER_BIT     (1u << 18)
+#define ISL_SURF_USAGE_STAGING_BIT             (1u << 19)
 /** @} */
 
 /**
@@ -1019,6 +1076,7 @@ struct isl_device {
    struct {
       uint32_t internal;
       uint32_t external;
+      uint32_t l1_hdc_l3_llc;
    } mocs;
 };
 
@@ -1483,6 +1541,8 @@ isl_format_get_name(enum isl_format fmt)
    return isl_format_get_layout(fmt)->name;
 }
 
+enum isl_format isl_format_for_pipe_format(enum pipe_format pf);
+
 bool isl_format_supports_rendering(const struct gen_device_info *devinfo,
                                    enum isl_format format);
 bool isl_format_supports_alpha_blending(const struct gen_device_info *devinfo,
@@ -1507,6 +1567,7 @@ bool isl_format_supports_multisampling(const struct gen_device_info *devinfo,
 bool isl_formats_are_ccs_e_compatible(const struct gen_device_info *devinfo,
                                       enum isl_format format1,
                                       enum isl_format format2);
+uint8_t isl_format_get_aux_map_encoding(enum isl_format format);
 
 bool isl_format_has_unorm_channel(enum isl_format fmt) ATTRIBUTE_CONST;
 bool isl_format_has_snorm_channel(enum isl_format fmt) ATTRIBUTE_CONST;
@@ -1580,6 +1641,15 @@ isl_format_has_bc_compression(enum isl_format fmt)
 }
 
 static inline bool
+isl_format_is_planar(enum isl_format fmt)
+{
+   return fmt == ISL_FORMAT_PLANAR_420_8 ||
+          fmt == ISL_FORMAT_PLANAR_420_10 ||
+          fmt == ISL_FORMAT_PLANAR_420_12 ||
+          fmt == ISL_FORMAT_PLANAR_420_16;
+}
+
+static inline bool
 isl_format_is_yuv(enum isl_format fmt)
 {
    const struct isl_format_layout *fmtl = isl_format_get_layout(fmt);
@@ -1633,6 +1703,10 @@ enum isl_format isl_format_rgb_to_rgba(enum isl_format rgb) ATTRIBUTE_CONST;
 enum isl_format isl_format_rgb_to_rgbx(enum isl_format rgb) ATTRIBUTE_CONST;
 enum isl_format isl_format_rgbx_to_rgba(enum isl_format rgb) ATTRIBUTE_CONST;
 
+union isl_color_value
+isl_color_value_swizzle_inv(union isl_color_value src,
+                            struct isl_swizzle swizzle);
+
 void isl_color_value_pack(const union isl_color_value *value,
                           enum isl_format format,
                           uint32_t *data_out);
@@ -1678,10 +1752,62 @@ isl_tiling_to_i915_tiling(enum isl_tiling tiling);
 enum isl_tiling 
 isl_tiling_from_i915_tiling(uint32_t tiling);
 
+/**
+ * Return an isl_aux_op needed to enable an access to occur in an
+ * isl_aux_state suitable for the isl_aux_usage.
+ *
+ * NOTE: If the access will invalidate the main surface, this function should
+ *       not be called and the isl_aux_op of NONE should be used instead.
+ *       Otherwise, an extra (but still lossless) ambiguate may occur.
+ *
+ * @invariant initial_state is possible with an isl_aux_usage compatible with
+ *            the given usage. Two usages are compatible if it's possible to
+ *            switch between them (e.g. CCS_E <-> CCS_D).
+ * @invariant fast_clear is false if the aux doesn't support fast clears.
+ */
+enum isl_aux_op
+isl_aux_prepare_access(enum isl_aux_state initial_state,
+                       enum isl_aux_usage usage,
+                       bool fast_clear_supported);
+
+/**
+ * Return the isl_aux_state entered after performing an isl_aux_op.
+ *
+ * @invariant initial_state is possible with the given usage.
+ * @invariant op is possible with the given usage.
+ * @invariant op must not cause HW to read from an invalid aux.
+ */
+enum isl_aux_state
+isl_aux_state_transition_aux_op(enum isl_aux_state initial_state,
+                                enum isl_aux_usage usage,
+                                enum isl_aux_op op);
+
+/**
+ * Return the isl_aux_state entered after performing a write.
+ *
+ * NOTE: full_surface should be true if the write covers the entire
+ *       slice. Setting it to false in this case will still result in a
+ *       correct (but imprecise) aux state.
+ *
+ * @invariant if usage is not ISL_AUX_USAGE_NONE, then initial_state is
+ *            possible with the given usage.
+ * @invariant usage can be ISL_AUX_USAGE_NONE iff:
+ *            * the main surface is valid, or
+ *            * the main surface is being invalidated/replaced.
+ */
+enum isl_aux_state
+isl_aux_state_transition_write(enum isl_aux_state initial_state,
+                               enum isl_aux_usage usage,
+                               bool full_surface);
+
+bool
+isl_aux_usage_has_fast_clears(enum isl_aux_usage usage);
+
 static inline bool
 isl_aux_usage_has_hiz(enum isl_aux_usage usage)
 {
    return usage == ISL_AUX_USAGE_HIZ ||
+          usage == ISL_AUX_USAGE_HIZ_CCS_WT ||
           usage == ISL_AUX_USAGE_HIZ_CCS;
 }
 
@@ -1697,9 +1823,12 @@ isl_aux_usage_has_ccs(enum isl_aux_usage usage)
 {
    return usage == ISL_AUX_USAGE_CCS_D ||
           usage == ISL_AUX_USAGE_CCS_E ||
+          usage == ISL_AUX_USAGE_GEN12_CCS_E ||
           usage == ISL_AUX_USAGE_MC ||
+          usage == ISL_AUX_USAGE_HIZ_CCS_WT ||
           usage == ISL_AUX_USAGE_HIZ_CCS ||
-          usage == ISL_AUX_USAGE_MCS_CCS;
+          usage == ISL_AUX_USAGE_MCS_CCS ||
+          usage == ISL_AUX_USAGE_STC_CCS;
 }
 
 static inline bool
@@ -1756,7 +1885,9 @@ isl_drm_modifier_get_default_aux_state(uint64_t modifier)
    if (!mod_info || mod_info->aux_usage == ISL_AUX_USAGE_NONE)
       return ISL_AUX_STATE_AUX_INVALID;
 
-   assert(mod_info->aux_usage == ISL_AUX_USAGE_CCS_E);
+   assert(mod_info->aux_usage == ISL_AUX_USAGE_CCS_E ||
+          mod_info->aux_usage == ISL_AUX_USAGE_GEN12_CCS_E ||
+          mod_info->aux_usage == ISL_AUX_USAGE_MC);
    return mod_info->supports_clear_color ? ISL_AUX_STATE_COMPRESSED_CLEAR :
                                            ISL_AUX_STATE_COMPRESSED_NO_CLEAR;
 }
@@ -1870,6 +2001,8 @@ isl_swizzle_compose(struct isl_swizzle first, struct isl_swizzle second);
 struct isl_swizzle
 isl_swizzle_invert(struct isl_swizzle swizzle);
 
+uint32_t isl_mocs(const struct isl_device *dev, isl_surf_usage_flags_t usage);
+
 #define isl_surf_init(dev, surf, ...) \
    isl_surf_init_s((dev), (surf), \
                    &(struct isl_surf_init_info) {  __VA_ARGS__ });
@@ -1882,6 +2015,10 @@ isl_surf_init_s(const struct isl_device *dev,
 void
 isl_surf_get_tile_info(const struct isl_surf *surf,
                        struct isl_tile_info *tile_info);
+
+bool
+isl_surf_supports_ccs(const struct isl_device *dev,
+                      const struct isl_surf *surf);
 
 bool
 isl_surf_get_hiz_surf(const struct isl_device *dev,
@@ -2206,14 +2343,6 @@ isl_tiling_get_intratile_offset_sa(enum isl_tiling tiling,
 uint32_t
 isl_surf_get_depth_format(const struct isl_device *dev,
                           const struct isl_surf *surf);
-
-/**
- * @brief determines if a surface supports writing through HIZ to the CCS.
- */
-bool
-isl_surf_supports_hiz_ccs_wt(const struct gen_device_info *dev,
-                             const struct isl_surf *surf,
-                             enum isl_aux_usage aux_usage);
 
 /**
  * @brief performs a copy from linear to tiled surface

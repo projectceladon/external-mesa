@@ -37,7 +37,8 @@ LOCAL_SRC_FILES := \
 	$(LIBEGL_C_FILES) \
 	$(dri2_backend_core_FILES) \
 	drivers/dri2/platform_device.c \
-	drivers/dri2/platform_android.c
+	drivers/dri2/platform_android.c \
+	drivers/dri2/platform_surfaceless.c \
 
 LOCAL_CFLAGS := \
 	-D_EGL_NATIVE_PLATFORM=_EGL_PLATFORM_ANDROID \
@@ -88,6 +89,9 @@ LOCAL_REQUIRED_MODULES += gallium_dri
 endif
 
 LOCAL_MODULE := libGLES_mesa
+LOCAL_LICENSE_KINDS := SPDX-license-identifier-ISC SPDX-license-identifier-MIT
+LOCAL_LICENSE_CONDITIONS := notice
+LOCAL_NOTICE_FILE := $(LOCAL_PATH)/../../LICENSE
 LOCAL_MODULE_RELATIVE_PATH := egl
 
 include $(MESA_COMMON_MK)

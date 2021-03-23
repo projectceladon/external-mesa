@@ -21,9 +21,9 @@
 # DEF parser in certain versions of MinGW is busted, as does not behave as
 # MSVC. mingw-w64 works fine.
 if cc.get_id() == 'gcc' and host_machine.cpu_family() != 'x86_64'
-  ogldef = files('../../state_trackers/wgl/opengl32.mingw.def')[0]
+  ogldef = files('../../frontends/wgl/opengl32.mingw.def')[0]
 else
-  ogldef = files('../../state_trackers/wgl/opengl32.def')[0]
+  ogldef = files('../../frontends/wgl/opengl32.def')[0]
 endif
 
 libopengl32 = shared_library(
@@ -31,7 +31,7 @@ libopengl32 = shared_library(
   ['libgl_gdi.c'],
   vs_module_defs : ogldef,
   include_directories : [
-    inc_common, inc_wgl, inc_gallium_winsys_sw, inc_gallium_drivers,
+    inc_include, inc_src, inc_mapi, inc_mesa, inc_gallium, inc_gallium_aux, inc_wgl, inc_gallium_winsys_sw, inc_gallium_drivers,
   ],
   link_whole : [libwgl],
   link_with : [

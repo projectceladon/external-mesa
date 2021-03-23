@@ -29,6 +29,22 @@
 #include "compiler/brw_compiler.h"
 #include "compiler/brw_nir.h"
 
+const char *
+blorp_shader_type_to_name(enum blorp_shader_type type)
+{
+   static const char *shader_name[] = {
+      [BLORP_SHADER_TYPE_COPY]                = "BLORP-copy",
+      [BLORP_SHADER_TYPE_BLIT]                = "BLORP-blit",
+      [BLORP_SHADER_TYPE_CLEAR]               = "BLORP-clear",
+      [BLORP_SHADER_TYPE_MCS_PARTIAL_RESOLVE] = "BLORP-mcs-partial-resolve",
+      [BLORP_SHADER_TYPE_LAYER_OFFSET_VS]     = "BLORP-layer-offset-vs",
+      [BLORP_SHADER_TYPE_GEN4_SF]             = "BLORP-gen4-sf",
+   };
+   assert(type < ARRAY_SIZE(shader_name));
+
+   return shader_name[type];
+}
+
 void
 blorp_init(struct blorp_context *blorp, void *driver_ctx,
            struct isl_device *isl_dev)
@@ -63,7 +79,7 @@ void
 brw_blorp_surface_info_init(struct blorp_context *blorp,
                             struct brw_blorp_surface_info *info,
                             const struct blorp_surf *surf,
-                            unsigned int level, unsigned int layer,
+                            unsigned int level, float layer,
                             enum isl_format format, bool is_render_target)
 {
    memset(info, 0, sizeof(*info));
@@ -180,7 +196,6 @@ blorp_compile_fs(struct blorp_context *blorp, void *mem_ctx,
 
    memset(wm_prog_data, 0, sizeof(*wm_prog_data));
 
-   assert(exec_list_is_empty(&nir->uniforms));
    wm_prog_data->base.nr_params = 0;
    wm_prog_data->base.param = NULL;
 
@@ -191,7 +206,7 @@ blorp_compile_fs(struct blorp_context *blorp, void *mem_ctx,
    wm_prog_data->base.binding_table.texture_start = BLORP_TEXTURE_BT_INDEX;
 
    brw_preprocess_nir(compiler, nir, NULL);
-   nir_remove_dead_variables(nir, nir_var_shader_in);
+   nir_remove_dead_variables(nir, nir_var_shader_in, NULL);
    nir_shader_gather_info(nir, nir_shader_get_entrypoint(nir));
 
    if (blorp->compiler->devinfo->gen < 6) {
@@ -227,7 +242,8 @@ blorp_compile_vs(struct blorp_context *blorp, void *mem_ctx,
    brw_compute_vue_map(compiler->devinfo,
                        &vs_prog_data->base.vue_map,
                        nir->info.outputs_written,
-                       nir->info.separate_shader);
+                       nir->info.separate_shader,
+                       1);
 
    struct brw_vs_prog_key vs_key = { 0, };
 
@@ -285,14 +301,15 @@ blorp_ensure_sf_program(struct blorp_batch *batch,
    unsigned program_size;
 
    struct brw_vue_map vue_map;
-   brw_compute_vue_map(blorp->compiler->devinfo, &vue_map, slots_valid, false);
+   brw_compute_vue_map(blorp->compiler->devinfo, &vue_map, slots_valid, false, 1);
 
    struct brw_sf_prog_data prog_data_tmp;
    program = brw_compile_sf(blorp->compiler, mem_ctx, &key.key,
                             &prog_data_tmp, &vue_map, &program_size);
 
    bool result =
-      blorp->upload_shader(batch, &key, sizeof(key), program, program_size,
+      blorp->upload_shader(batch, MESA_SHADER_NONE,
+                           &key, sizeof(key), program, program_size,
                            (void *)&prog_data_tmp, sizeof(prog_data_tmp),
                            &params->sf_prog_kernel, &params->sf_prog_data);
 

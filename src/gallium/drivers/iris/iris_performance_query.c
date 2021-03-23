@@ -25,9 +25,6 @@
 #include "iris_context.h"
 #include "iris_perf.h"
 
-#include "perf/gen_perf.h"
-#include "perf/gen_perf_regs.h"
-
 struct iris_perf_query {
    struct gl_perf_query_object base;
    struct gen_perf_query_object *query;
@@ -76,7 +73,7 @@ iris_init_perf_query_info(struct pipe_context *pipe)
                          ice->batches[IRIS_BATCH_RENDER].hw_ctx_id,
                          screen->fd);
 
-   gen_perf_init_metrics(perf_cfg, &screen->devinfo, screen->fd);
+   gen_perf_init_metrics(perf_cfg, &screen->devinfo, screen->fd, true /* pipeline_statistics */);
 
    return perf_cfg->n_queries;
 }
@@ -100,7 +97,7 @@ iris_new_perf_query_obj(struct pipe_context *pipe, unsigned query_index)
    return (struct pipe_query *)&q->base;
 }
 
-static void
+static bool
 iris_begin_perf_query(struct pipe_context *pipe, struct pipe_query *q)
 {
    struct iris_context *ice = (void *) pipe;
@@ -108,7 +105,7 @@ iris_begin_perf_query(struct pipe_context *pipe, struct pipe_query *q)
    struct gen_perf_query_object *obj = perf_query->query;
    struct gen_perf_context *perf_ctx = ice->perf_ctx;
 
-   gen_perf_begin_query(perf_ctx, obj);
+   return gen_perf_begin_query(perf_ctx, obj);
 }
 
 static void
@@ -217,7 +214,8 @@ iris_get_perf_query_data(struct pipe_context *pipe,
    struct gen_perf_query_object *obj = perf_query->query;
    struct gen_perf_context *perf_ctx = ice->perf_ctx;
 
-   gen_perf_get_query_data(perf_ctx, obj, data_size, data, bytes_written);
+   gen_perf_get_query_data(perf_ctx, obj, &ice->batches[IRIS_BATCH_RENDER],
+         data_size, data, bytes_written);
 }
 
 void

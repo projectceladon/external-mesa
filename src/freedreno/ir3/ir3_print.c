@@ -72,8 +72,11 @@ static void print_instr_name(struct ir3_instruction *instr, bool flags)
 #endif
 	printf("%04u:", instr->name);
 	printf("%04u:", instr->ip);
-	printf("%03d:", instr->depth);
-	printf("%03u: ", instr->use_count);
+	if (instr->flags & IR3_INSTR_UNUSED) {
+		printf("XXX: ");
+	} else {
+		printf("%03u: ", instr->use_count);
+	}
 
 	if (flags) {
 		printf("\t");
@@ -111,7 +114,7 @@ static void print_instr_name(struct ir3_instruction *instr, bool flags)
 		printf(".%s%s", type_name(instr->cat1.src_type),
 				type_name(instr->cat1.dst_type));
 	} else {
-		printf("%s", ir3_instr_name(instr));
+		printf("%s", disasm_a3xx_instr_name(instr->opc));
 		if (instr->flags & IR3_INSTR_3D)
 			printf(".3d");
 		if (instr->flags & IR3_INSTR_A)
@@ -122,8 +125,38 @@ static void print_instr_name(struct ir3_instruction *instr, bool flags)
 			printf(".p");
 		if (instr->flags & IR3_INSTR_S)
 			printf(".s");
+		if (instr->flags & IR3_INSTR_A1EN)
+			printf(".a1en");
+		if (instr->opc == OPC_LDC)
+			printf(".offset%d", instr->cat6.d);
+		if (instr->flags & IR3_INSTR_B) {
+			printf(".base%d",
+				   is_tex(instr) ? instr->cat5.tex_base : instr->cat6.base);
+		}
 		if (instr->flags & IR3_INSTR_S2EN)
 			printf(".s2en");
+
+		static const char *cond[0x7] = {
+				"lt",
+				"le",
+				"gt",
+				"ge",
+				"eq",
+				"ne",
+		};
+
+		switch (instr->opc) {
+		case OPC_CMPS_F:
+		case OPC_CMPS_U:
+		case OPC_CMPS_S:
+		case OPC_CMPV_F:
+		case OPC_CMPV_U:
+		case OPC_CMPV_S:
+			printf(".%s", cond[instr->cat2.condition & 0x7]);
+			break;
+		default:
+			break;
+		}
 	}
 }
 
@@ -136,6 +169,9 @@ static void print_reg_name(struct ir3_register *reg)
 		printf("(neg)");
 	else if (reg->flags & (IR3_REG_FABS | IR3_REG_SABS))
 		printf("(abs)");
+
+	if (reg->flags & IR3_REG_R)
+		printf("(r)");
 
 	if (reg->flags & IR3_REG_HIGH)
 		printf("H");
@@ -206,16 +242,22 @@ print_instr(struct ir3_instruction *instr, int lvl)
 	for (i = 0; i < instr->regs_count; i++) {
 		struct ir3_register *reg = instr->regs[i];
 
-		/* skip the samp/tex src if it has been lowered to immed: */
-		if ((i == 1) && is_tex(instr) && !(instr->flags & IR3_INSTR_S2EN))
-			continue;
-
 		printf(i ? ", " : "");
 		print_reg_name(reg);
 	}
 
-	if (is_tex(instr) && !(instr->flags & IR3_INSTR_S2EN))
-		printf(", s#%d, t#%d", instr->cat5.samp, instr->cat5.tex);
+	if (is_tex(instr) && !(instr->flags & IR3_INSTR_S2EN)) {
+		if (!!(instr->flags & IR3_INSTR_B)) {
+			if (!!(instr->flags & IR3_INSTR_A1EN)) {
+				printf(", s#%d", instr->cat5.samp);
+			} else {
+				printf(", s#%d, t#%d", instr->cat5.samp & 0xf,
+					   instr->cat5.samp >> 4);
+			}
+		} else {
+			printf(", s#%d, t#%d", instr->cat5.samp, instr->cat5.tex);
+		}
+	}
 
 	if (instr->address) {
 		printf(", address=_");
@@ -247,8 +289,8 @@ print_instr(struct ir3_instruction *instr, int lvl)
 
 	if (is_flow(instr) && instr->cat0.target) {
 		/* the predicate register src is implied: */
-		if (instr->opc == OPC_BR) {
-			printf(" %sp0.x", instr->cat0.inv ? "!" : "");
+		if (instr->opc == OPC_B) {
+			printf("r %sp0.x", instr->cat0.inv ? "!" : "");
 		}
 		printf(", target=block%u", block_id(instr->cat0.target));
 	}
@@ -277,11 +319,14 @@ print_block(struct ir3_block *block, int lvl)
 {
 	tab(lvl); printf("block%u {\n", block_id(block));
 
-	if (block->predecessors->entries > 0) {
+	/* computerator (ir3 assembler) doesn't really use blocks for flow
+	 * control, so block->predecessors will be null.
+	 */
+	if (block->predecessors && block->predecessors->entries > 0) {
 		unsigned i = 0;
 		tab(lvl+1);
 		printf("pred: ");
-		set_foreach(block->predecessors, entry) {
+		set_foreach (block->predecessors, entry) {
 			struct ir3_block *pred = (struct ir3_block *)entry->key;
 			if (i++)
 				printf(", ");
@@ -322,8 +367,7 @@ ir3_print(struct ir3 *ir)
 	foreach_block (block, &ir->block_list)
 		print_block(block, 0);
 
-	struct ir3_instruction *out;
-	foreach_output_n(out, i, ir) {
+	foreach_output_n (out, i, ir) {
 		printf("out%d: ", i);
 		print_instr(out, 0);
 	}

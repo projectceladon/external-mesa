@@ -115,14 +115,14 @@ translate_indices(struct svga_hwtnl *hwtnl,
       if (!dst)
          goto fail;
 
-      dst_map = pipe_buffer_map(pipe, dst, PIPE_TRANSFER_WRITE, &dst_transfer);
+      dst_map = pipe_buffer_map(pipe, dst, PIPE_MAP_WRITE, &dst_transfer);
       if (!dst_map)
          goto fail;
 
       *out_offset = 0;
       src_map = pipe_buffer_map(pipe, info->index.resource,
-                                PIPE_TRANSFER_READ |
-                                PIPE_TRANSFER_UNSYNCHRONIZED,
+                                PIPE_MAP_READ |
+                                PIPE_MAP_UNSYNCHRONIZED,
                                 &src_transfer);
       if (!src_map)
          goto fail;
@@ -186,14 +186,15 @@ svga_hwtnl_simple_draw_range_elements(struct svga_hwtnl *hwtnl,
                                       enum pipe_prim_type prim, unsigned start,
                                       unsigned count,
                                       unsigned start_instance,
-                                      unsigned instance_count)
+                                      unsigned instance_count,
+                                      ubyte vertices_per_patch)
 {
    SVGA3dPrimitiveRange range;
    unsigned hw_prim;
    unsigned hw_count;
    unsigned index_offset = start * index_size;
 
-   hw_prim = svga_translate_prim(prim, count, &hw_count);
+   hw_prim = svga_translate_prim(prim, count, &hw_count, vertices_per_patch);
    if (hw_count == 0)
       return PIPE_OK; /* nothing to draw */
 
@@ -206,7 +207,8 @@ svga_hwtnl_simple_draw_range_elements(struct svga_hwtnl *hwtnl,
 
    return svga_hwtnl_prim(hwtnl, &range, count,
                           min_index, max_index, index_buffer,
-                          start_instance, instance_count);
+                          start_instance, instance_count,
+                          NULL, NULL);
 }
 
 
@@ -234,17 +236,25 @@ svga_hwtnl_draw_range_elements(struct svga_hwtnl *hwtnl,
                                        &gen_size, &gen_nr, &gen_func);
    }
    else {
+      unsigned hw_pv;
+
+      /* There is no geometry ordering with PATCH, so no need to
+       * consider provoking vertex mode for the translation.
+       * So use the same api_pv as the hw_pv.
+       */
+      hw_pv = info->mode == PIPE_PRIM_PATCHES ? hwtnl->api_pv :
+                                                hwtnl->hw_pv;
       gen_type = u_index_translator(svga_hw_prims,
                                     info->mode,
                                     info->index_size,
                                     count,
                                     hwtnl->api_pv,
-                                    hwtnl->hw_pv,
+                                    hw_pv,
                                     PR_DISABLE,
                                     &gen_prim, &gen_size, &gen_nr, &gen_func);
    }
 
-   if (gen_type == U_TRANSLATE_MEMCPY) {
+   if ((gen_type == U_TRANSLATE_MEMCPY) && (info->index_size == gen_size)) {
       /* No need for translation, just pass through to hardware:
        */
       unsigned start_offset = info->start * info->index_size;
@@ -271,7 +281,8 @@ svga_hwtnl_draw_range_elements(struct svga_hwtnl *hwtnl,
                                                   info->max_index,
                                                   gen_prim, index_offset, count,
                                                   info->start_instance,
-                                                  info->instance_count);
+                                                  info->instance_count,
+                                                  info->vertices_per_patch);
       pipe_resource_reference(&index_buffer, NULL);
    }
    else {
@@ -299,7 +310,8 @@ svga_hwtnl_draw_range_elements(struct svga_hwtnl *hwtnl,
                                                      gen_prim, gen_offset,
                                                      gen_nr,
                                                      info->start_instance,
-                                                     info->instance_count);
+                                                     info->instance_count,
+                                                     info->vertices_per_patch);
       }
 
       if (gen_buf) {

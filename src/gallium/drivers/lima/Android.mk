@@ -31,10 +31,13 @@ LOCAL_SRC_FILES := \
 	ir/gp/lower.c \
 	ir/gp/nir.c \
 	ir/gp/node.c \
+	ir/gp/optimize.c \
 	ir/gp/regalloc.c \
 	ir/gp/reduce_scheduler.c \
 	ir/gp/scheduler.c \
 	ir/lima_ir.h \
+	ir/lima_nir_duplicate_consts.c \
+	ir/lima_nir_duplicate_intrinsic.c \
 	ir/lima_nir_lower_uniform_to_scalar.c \
 	ir/lima_nir_split_load_input.c \
 	ir/pp/codegen.c \
@@ -66,16 +69,20 @@ LOCAL_SRC_FILES := \
 	lima_screen.c \
 	lima_screen.h \
 	lima_state.c \
-	lima_submit.c \
-	lima_submit.h \
+	lima_job.c \
+	lima_job.h \
 	lima_texture.c \
 	lima_texture.h \
 	lima_util.c \
 	lima_util.h \
 	lima_format.c \
-	lima_format.h
+	lima_format.h \
+	lima_gpu.h
 
 LOCAL_MODULE := libmesa_pipe_lima
+LOCAL_LICENSE_KINDS := SPDX-license-identifier-MIT
+LOCAL_LICENSE_CONDITIONS := notice
+LOCAL_NOTICE_FILE := $(LOCAL_PATH)/../../../../LICENSE
 
 LOCAL_SHARED_LIBRARIES := libdrm
 

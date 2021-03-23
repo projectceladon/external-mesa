@@ -37,6 +37,7 @@
 #include "genX_boilerplate.h"
 
 #include "brw_context.h"
+#include "brw_cs.h"
 #include "brw_draw.h"
 #include "brw_multisample_state.h"
 #include "brw_state.h"
@@ -401,7 +402,7 @@ pinned_bo_high_bits(struct brw_bo *bo)
  * This HW issue is gone on Gen11+.
  */
 static void
-vf_invalidate_for_vb_48bit_transitions(struct brw_context *brw)
+vf_invalidate_for_vb_48bit_transitions(UNUSED struct brw_context *brw)
 {
 #if GEN_GEN >= 8 && GEN_GEN < 11
    bool need_invalidate = false;
@@ -440,7 +441,7 @@ vf_invalidate_for_vb_48bit_transitions(struct brw_context *brw)
 }
 
 static void
-vf_invalidate_for_ib_48bit_transition(struct brw_context *brw)
+vf_invalidate_for_ib_48bit_transition(UNUSED struct brw_context *brw)
 {
 #if GEN_GEN >= 8
    uint16_t high_bits = pinned_bo_high_bits(brw->ib.bo);
@@ -532,8 +533,7 @@ genX(emit_vertices)(struct brw_context *brw)
     */
    for (unsigned i = 0; i < brw->vb.nr_enabled; i++) {
       struct brw_vertex_element *input = brw->vb.enabled[i];
-      const struct gl_array_attributes *glattrib = input->glattrib;
-      uint32_t format = brw_get_vertex_surface_type(brw, &glattrib->Format);
+      uint32_t format = brw_get_vertex_surface_type(brw, input->glformat);
 
       if (uploads_needed(format, input->is_dual_slot) > 1)
          nr_elements++;
@@ -625,8 +625,8 @@ genX(emit_vertices)(struct brw_context *brw)
    unsigned i;
    for (i = 0; i < brw->vb.nr_enabled; i++) {
       const struct brw_vertex_element *input = brw->vb.enabled[i];
-      const struct gl_array_attributes *glattrib = input->glattrib;
-      uint32_t format = brw_get_vertex_surface_type(brw, &glattrib->Format);
+      const struct gl_vertex_format *glformat = input->glformat;
+      uint32_t format = brw_get_vertex_surface_type(brw, glformat);
       uint32_t comp0 = VFCOMP_STORE_SRC;
       uint32_t comp1 = VFCOMP_STORE_SRC;
       uint32_t comp2 = VFCOMP_STORE_SRC;
@@ -667,18 +667,17 @@ genX(emit_vertices)(struct brw_context *brw)
           * entry. */
          const unsigned offset = input->offset + c * 16;
 
-         const struct gl_array_attributes *glattrib = input->glattrib;
          const int size = (GEN_GEN < 8 && is_passthru_format(format)) ?
-            upload_format_size(upload_format) : glattrib->Format.Size;
+            upload_format_size(upload_format) : glformat->Size;
 
          switch (size) {
-            case 0: comp0 = VFCOMP_STORE_0;
-            case 1: comp1 = VFCOMP_STORE_0;
-            case 2: comp2 = VFCOMP_STORE_0;
+            case 0: comp0 = VFCOMP_STORE_0; /* fallthrough */
+            case 1: comp1 = VFCOMP_STORE_0; /* fallthrough */
+            case 2: comp2 = VFCOMP_STORE_0; /* fallthrough */
             case 3:
-               if (GEN_GEN >= 8 && glattrib->Format.Doubles) {
+               if (GEN_GEN >= 8 && glformat->Doubles) {
                   comp3 = VFCOMP_STORE_0;
-               } else if (glattrib->Format.Integer) {
+               } else if (glformat->Integer) {
                   comp3 = VFCOMP_STORE_1_INT;
                } else {
                   comp3 = VFCOMP_STORE_1_FP;
@@ -703,7 +702,7 @@ genX(emit_vertices)(struct brw_context *brw)
           *     to be specified as VFCOMP_STORE_0 in order to output a 256-bit
           *     vertex element."
           */
-         if (glattrib->Format.Doubles && !input->is_dual_slot) {
+         if (glformat->Doubles && !input->is_dual_slot) {
             /* Store vertex elements which correspond to double and dvec2 vertex
              * shader inputs as 128-bit vertex elements, instead of 256-bits.
              */
@@ -789,8 +788,8 @@ genX(emit_vertices)(struct brw_context *brw)
 
 #if GEN_GEN >= 6
    if (gen6_edgeflag_input) {
-      const struct gl_array_attributes *glattrib = gen6_edgeflag_input->glattrib;
-      const uint32_t format = brw_get_vertex_surface_type(brw, &glattrib->Format);
+      const struct gl_vertex_format *glformat = gen6_edgeflag_input->glformat;
+      const uint32_t format = brw_get_vertex_surface_type(brw, glformat);
 
       struct GENX(VERTEX_ELEMENT_STATE) elem_state = {
          .Valid = true,
@@ -868,7 +867,7 @@ genX(emit_index_buffer)(struct brw_context *brw)
       assert(brw->ib.enable_cut_index == brw->prim_restart.enable_cut_index);
       ib.CutIndexEnable = brw->ib.enable_cut_index;
 #endif
-      ib.IndexFormat = brw_get_index_type(index_buffer->index_size);
+      ib.IndexFormat = brw_get_index_type(1 << index_buffer->index_size_shift);
 
       /* The VF cache designers apparently cut corners, and made the cache
        * only consider the bottom 32 bits of memory addresses.  If you happen
@@ -906,7 +905,7 @@ genX(upload_cut_index)(struct brw_context *brw)
    brw_batch_emit(brw, GENX(3DSTATE_VF), vf) {
       if (ctx->Array._PrimitiveRestart && brw->ib.ib) {
          vf.IndexedDrawCutIndexEnable = true;
-         vf.CutIndex = _mesa_primitive_restart_index(ctx, brw->ib.index_size);
+         vf.CutIndex = ctx->Array._RestartIndex[brw->ib.index_size - 1];
       }
    }
 }
@@ -1099,11 +1098,11 @@ genX(calculate_attr_overrides)(const struct brw_context *brw,
     */
    bool drawing_points = brw_is_drawing_points(brw);
 
-   for (int attr = 0; attr < VARYING_SLOT_MAX; attr++) {
+   for (uint8_t idx = 0; idx < wm_prog_data->urb_setup_attribs_count; idx++) {
+      uint8_t attr = wm_prog_data->urb_setup_attribs[idx];
       int input_index = wm_prog_data->urb_setup[attr];
 
-      if (input_index < 0)
-         continue;
+      assert(0 <= input_index);
 
       /* _NEW_POINT */
       bool point_sprite = false;
@@ -2366,10 +2365,16 @@ genX(upload_scissor_state)(struct brw_context *brw)
 
    /* BRW_NEW_VIEWPORT_COUNT */
    const unsigned viewport_count = brw->clip.viewport_count;
-
+   /* GEN:BUG:1409725701:
+    *    "The viewport-specific state used by the SF unit (SCISSOR_RECT) is
+    *    stored as an array of up to 16 elements. The location of first
+    *    element of the array, as specified by Pointer to SCISSOR_RECT, should
+    *    be aligned to a 64-byte boundary.
+    */
+   const unsigned alignment = 64;
    scissor_map = brw_state_batch(
       brw, GENX(SCISSOR_RECT_length) * sizeof(uint32_t) * viewport_count,
-      32, &scissor_state_offset);
+      alignment, &scissor_state_offset);
 
    /* _NEW_SCISSOR | _NEW_BUFFERS | _NEW_VIEWPORT */
 
@@ -2844,7 +2849,8 @@ set_blend_entry_bits(struct brw_context *brw, BLEND_ENTRY_GENXML *entry, int i,
          entry->LogicOpEnable = true;
          entry->LogicOpFunction = ctx->Color._LogicOp;
       }
-   } else if (blend_enabled && !ctx->Color._AdvancedBlendMode
+   } else if (blend_enabled &&
+              ctx->Color._AdvancedBlendMode == BLEND_NONE
               && (GEN_GEN <= 5 || !integer)) {
       GLenum eqRGB = ctx->Color.Blend[i].EquationRGB;
       GLenum eqA = ctx->Color.Blend[i].EquationA;
@@ -3127,7 +3133,7 @@ genX(upload_push_constant_packets)(struct brw_context *brw)
                const struct gl_buffer_binding *binding =
                   &ctx->UniformBufferBindings[block->Binding];
 
-               if (binding->BufferObject == ctx->Shared->NullBufferObj) {
+               if (!binding->BufferObject) {
                   static unsigned msg_id = 0;
                   _mesa_gl_debugf(ctx, &msg_id, MESA_DEBUG_SOURCE_API,
                                   MESA_DEBUG_TYPE_UNDEFINED,
@@ -4265,6 +4271,8 @@ genX(upload_cs_state)(struct brw_context *brw)
    struct brw_cs_prog_data *cs_prog_data = brw_cs_prog_data(prog_data);
    const struct gen_device_info *devinfo = &brw->screen->devinfo;
 
+   const struct brw_cs_parameters cs_params = brw_cs_get_parameters(brw);
+
    if (INTEL_DEBUG & DEBUG_SHADER_TIME) {
       brw_emit_buffer_surface_state(
          brw, &stage_state->surf_offset[
@@ -4355,15 +4363,16 @@ genX(upload_cs_state)(struct brw_context *brw)
       vfe.URBEntryAllocationSize = GEN_GEN >= 8 ? 2 : 0;
 
       const uint32_t vfe_curbe_allocation =
-         ALIGN(cs_prog_data->push.per_thread.regs * cs_prog_data->threads +
+         ALIGN(cs_prog_data->push.per_thread.regs * cs_params.threads +
                cs_prog_data->push.cross_thread.regs, 2);
       vfe.CURBEAllocationSize = vfe_curbe_allocation;
    }
 
-   if (cs_prog_data->push.total.size > 0) {
+   const unsigned push_const_size =
+      brw_cs_push_const_total_size(cs_prog_data, cs_params.threads);
+   if (push_const_size > 0) {
       brw_batch_emit(brw, GENX(MEDIA_CURBE_LOAD), curbe) {
-         curbe.CURBETotalDataLength =
-            ALIGN(cs_prog_data->push.total.size, 64);
+         curbe.CURBETotalDataLength = ALIGN(push_const_size, 64);
          curbe.CURBEDataStartAddress = stage_state->push_const_offset;
       }
    }
@@ -4371,15 +4380,18 @@ genX(upload_cs_state)(struct brw_context *brw)
    /* BRW_NEW_SURFACES and BRW_NEW_*_CONSTBUF */
    memcpy(bind, stage_state->surf_offset,
           prog_data->binding_table.size_bytes);
+   const uint64_t ksp = brw->cs.base.prog_offset +
+                        brw_cs_prog_data_prog_offset(cs_prog_data,
+                                                     cs_params.simd_size);
    const struct GENX(INTERFACE_DESCRIPTOR_DATA) idd = {
-      .KernelStartPointer = brw->cs.base.prog_offset,
+      .KernelStartPointer = ksp,
       .SamplerStatePointer = stage_state->sampler_offset,
       /* WA_1606682166 */
       .SamplerCount = GEN_GEN == 11 ? 0 :
                       DIV_ROUND_UP(CLAMP(stage_state->sampler_count, 0, 16), 4),
       .BindingTablePointer = stage_state->bind_bo_offset,
       .ConstantURBEntryReadLength = cs_prog_data->push.per_thread.regs,
-      .NumberofThreadsinGPGPUThreadGroup = cs_prog_data->threads,
+      .NumberofThreadsinGPGPUThreadGroup = cs_params.threads,
       .SharedLocalMemorySize = encode_slm_size(GEN_GEN,
                                                prog_data->total_shared),
       .BarrierEnable = cs_prog_data->uses_barrier,
@@ -4476,31 +4488,24 @@ prepare_indirect_gpgpu_walker(struct brw_context *brw)
 static void
 genX(emit_gpgpu_walker)(struct brw_context *brw)
 {
-   const struct brw_cs_prog_data *prog_data =
-      brw_cs_prog_data(brw->cs.base.prog_data);
-
    const GLuint *num_groups = brw->compute.num_work_groups;
 
    bool indirect = brw->compute.num_work_groups_bo != NULL;
    if (indirect)
       prepare_indirect_gpgpu_walker(brw);
 
-   const unsigned simd_size = prog_data->simd_size;
-   unsigned group_size = prog_data->local_size[0] *
-      prog_data->local_size[1] * prog_data->local_size[2];
+   const struct brw_cs_parameters cs_params = brw_cs_get_parameters(brw);
 
-   uint32_t right_mask = 0xffffffffu >> (32 - simd_size);
-   const unsigned right_non_aligned = group_size & (simd_size - 1);
-   if (right_non_aligned != 0)
-      right_mask >>= (simd_size - right_non_aligned);
+   const uint32_t right_mask =
+      brw_cs_right_mask(cs_params.group_size, cs_params.simd_size);
 
    brw_batch_emit(brw, GENX(GPGPU_WALKER), ggw) {
       ggw.IndirectParameterEnable      = indirect;
       ggw.PredicateEnable              = GEN_GEN <= 7 && indirect;
-      ggw.SIMDSize                     = prog_data->simd_size / 16;
+      ggw.SIMDSize                     = cs_params.simd_size / 16;
       ggw.ThreadDepthCounterMaximum    = 0;
       ggw.ThreadHeightCounterMaximum   = 0;
-      ggw.ThreadWidthCounterMaximum    = prog_data->threads - 1;
+      ggw.ThreadWidthCounterMaximum    = cs_params.threads - 1;
       ggw.ThreadGroupIDXDimension      = num_groups[0];
       ggw.ThreadGroupIDYDimension      = num_groups[1];
       ggw.ThreadGroupIDZDimension      = num_groups[2];
@@ -4949,7 +4954,8 @@ has_component(mesa_format format, int i)
 static void
 genX(upload_default_color)(struct brw_context *brw,
                            const struct gl_sampler_object *sampler,
-                           mesa_format format, GLenum base_format,
+                           UNUSED mesa_format format,
+                           GLenum base_format,
                            bool is_integer_format, bool is_stencil_sampling,
                            uint32_t *sdc_offset)
 {
