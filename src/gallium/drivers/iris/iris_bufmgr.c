@@ -1634,8 +1634,13 @@ iris_bo_gem_mmap_offset(struct util_debug_callback *dbg, struct iris_bo *bo)
    }
 
    /* And map it */
+#ifdef __x86_64__
    void *map = mmap(0, bo->size, PROT_READ | PROT_WRITE, MAP_SHARED,
                     bufmgr->fd, mmap_arg.offset);
+#else
+   void *map = mmap64(0, bo->size, PROT_READ | PROT_WRITE, MAP_SHARED,
+				 bufmgr->fd, mmap_arg.offset);
+#endif
    if (map == MAP_FAILED) {
       DBG("%s:%d: Error mapping buffer %d (%s): %s .\n",
           __FILE__, __LINE__, bo->gem_handle, bo->name, strerror(errno));
