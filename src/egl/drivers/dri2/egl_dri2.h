@@ -71,6 +71,7 @@ struct zwp_linux_dmabuf_v1;
 
 #ifdef HAVE_GRALLOC1
 #include <hardware/gralloc1.h>
+#include <i915_private_android_types.h>
 #endif
 
 #include "eglconfig.h"
@@ -269,7 +270,7 @@ struct dri2_egl_display
    GRALLOC1_PFN_GET_FORMAT pfn_getFormat;
    GRALLOC1_PFN_UNLOCK pfn_unlock;
    GRALLOC1_PFN_IMPORT_BUFFER pfn_importBuffer;
-   GRALLOC1_PFN_RELEASE pfn_release;
+   GRALLOC1_PFN_FREE_BUFFER pfn_freeBuffer;
 #endif
 #endif
 
