@@ -1176,11 +1176,14 @@ iris_resource_create_for_image(struct pipe_screen *pscreen,
 {
    struct iris_screen *screen = (struct iris_screen *)pscreen;
    const struct intel_device_info *devinfo = screen->devinfo;
+   struct pipe_resource *pres;
 
    if (screen->ro &&
        (templ->bind & (PIPE_BIND_DISPLAY_TARGET |
                        PIPE_BIND_SCANOUT | PIPE_BIND_SHARED))) {
-      return iris_resource_create_renderonly(pscreen, templ);
+      pres = iris_resource_create_renderonly(pscreen, templ);
+      if (pres)
+        return pres;
    }
 
    struct iris_resource *res = iris_alloc_resource(pscreen, templ);
@@ -1954,8 +1957,7 @@ iris_resource_get_handle(struct pipe_screen *pscreen,
    case WINSYS_HANDLE_TYPE_KMS: {
       iris_gem_set_tiling(bo, &res->surf);
 
-      if (screen->ro) {
-         assert(res->scanout);
+      if (screen->ro && res->scanout) {
          return renderonly_get_handle(res->scanout, whandle);
       }
       /* Because we share the same drm file across multiple iris_screen, when
