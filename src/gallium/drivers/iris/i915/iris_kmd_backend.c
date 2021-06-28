@@ -157,9 +157,29 @@ i915_gem_create(struct iris_bufmgr *bufmgr,
                              &set_pat_param.base);
    }
 
-   if (intel_ioctl(iris_bufmgr_get_fd(bufmgr), DRM_IOCTL_I915_GEM_CREATE_EXT,
-                   &create))
-      return 0;
+   if (!bufmgr->prelim_drm) {
+      if (intel_ioctl(iris_bufmgr_get_fd(bufmgr), DRM_IOCTL_I915_GEM_CREATE_EXT,
+                    &create))
+       return 0;
+   } else {
+      struct prelim_drm_i915_gem_object_param region_param = {
+         .size = ext_regions.num_regions,
+         .data = (uintptr_t)i915_regions,
+         .param = PRELIM_I915_OBJECT_PARAM | PRELIM_I915_PARAM_MEMORY_REGIONS,
+      };
+      struct prelim_drm_i915_gem_create_ext_setparam setparam_region = {
+         .base = { .name = PRELIM_I915_GEM_CREATE_EXT_SETPARAM },
+         .param = region_param,
+      };
+      struct prelim_drm_i915_gem_create_ext create = {
+         .size = size,
+         .extensions = (uintptr_t)&setparam_region,
+      };
+
+      if (intel_ioctl(iris_bufmgr_get_fd(bufmgr), PRELIM_DRM_IOCTL_I915_GEM_CREATE_EXT,
+                    &create))
+       return 0;
+   }
 
    if (iris_bufmgr_vram_size(bufmgr) == 0)
       /* Calling set_domain() will allocate pages for the BO outside of the
@@ -237,9 +257,16 @@ i915_gem_mmap_offset(struct iris_bufmgr *bufmgr, struct iris_bo *bo)
    /* Get the fake offset back */
    if (intel_ioctl(iris_bufmgr_get_fd(bufmgr), DRM_IOCTL_I915_GEM_MMAP_OFFSET,
                    &mmap_arg)) {
-      DBG("%s:%d: Error preparing buffer %d (%s): %s .\n",
-          __FILE__, __LINE__, bo->gem_handle, bo->name, strerror(errno));
-      return NULL;
+      if (mmap_arg.flags == I915_MMAP_OFFSET_FIXED) {
+         mmap_arg.flags =
+            bo->real.heap != IRIS_HEAP_SYSTEM_MEMORY ?
+            I915_MMAP_OFFSET_WC : I915_MMAP_OFFSET_WB;
+         if (intel_ioctl(iris_bufmgr_get_fd(bufmgr), DRM_IOCTL_I915_GEM_MMAP_OFFSET, &mmap_arg)) {
+            DBG("%s:%d: Error preparing buffer %d (%s): %s .\n",
+               __FILE__, __LINE__, bo->gem_handle, bo->name, strerror(errno));
+            return NULL;
+         }
+      }
    }
 
    /* And map it */

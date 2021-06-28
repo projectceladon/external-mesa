@@ -34,6 +34,7 @@
 #include "util/u_dynarray.h"
 #include "util/list.h"
 #include "util/simple_mtx.h"
+#include "util/vma.h"
 #include "pipe/p_defines.h"
 #include "pipebuffer/pb_slab.h"
 #include "intel/dev/intel_device_info.h"
@@ -169,6 +170,120 @@ extern const char *iris_heap_to_string[];
 struct iris_bo_screen_deps {
    struct iris_syncobj *write_syncobjs[IRIS_BATCH_COUNT];
    struct iris_syncobj *read_syncobjs[IRIS_BATCH_COUNT];
+};
+
+struct bo_cache_bucket {
+   /** List of cached BOs. */
+   struct list_head head;
+
+   /** Size of this bucket, in bytes. */
+   uint64_t size;
+};
+
+struct bo_export {
+   /** File descriptor associated with a handle export. */
+   int drm_fd;
+
+   /** GEM handle in drm_fd */
+   uint32_t gem_handle;
+
+   struct list_head link;
+};
+
+struct iris_memregion {
+   struct intel_memory_class_instance *region;
+   uint64_t size;
+};
+
+#define NUM_SLAB_ALLOCATORS 3
+
+struct iris_slab {
+   struct pb_slab base;
+
+   unsigned entry_size;
+
+   /** The BO representing the entire slab */
+   struct iris_bo *bo;
+
+   /** Array of iris_bo structs representing BOs allocated out of this slab */
+   struct iris_bo *entries;
+};
+
+#define BUCKET_ARRAY_SIZE (14 * 4)
+
+/**
+ * A pool containing SAMPLER_BORDER_COLOR_STATE entries.
+ *
+ * See iris_border_color.c for more information.
+ */
+struct iris_border_color_pool {
+   struct iris_bo *bo;
+   void *map;
+   unsigned insert_point;
+
+   /** Map from border colors to offsets in the buffer. */
+   struct hash_table *ht;
+
+   /** Protects insert_point and the hash table. */
+   simple_mtx_t lock;
+};
+
+struct iris_bufmgr {
+   /**
+    * List into the list of bufmgr.
+    */
+   struct list_head link;
+
+   uint32_t refcount;
+
+   int fd;
+
+   simple_mtx_t lock;
+   simple_mtx_t bo_deps_lock;
+
+   /** Array of lists of cached gem objects of power-of-two sizes */
+   struct bo_cache_bucket cache_bucket[BUCKET_ARRAY_SIZE];
+   int num_buckets;
+
+   /** Same as cache_bucket, but for local memory gem objects */
+   struct bo_cache_bucket local_cache_bucket[BUCKET_ARRAY_SIZE];
+   int num_local_buckets;
+
+   /** Same as cache_bucket, but for local-preferred memory gem objects */
+   struct bo_cache_bucket local_preferred_cache_bucket[BUCKET_ARRAY_SIZE];
+   int num_local_preferred_buckets;
+
+   time_t time;
+
+   struct hash_table *name_table;
+   struct hash_table *handle_table;
+
+   /**
+    * List of BOs which we've effectively freed, but are hanging on to
+    * until they're idle before closing and returning the VMA.
+    */
+   struct list_head zombie_list;
+
+   struct util_vma_heap vma_allocator[IRIS_MEMZONE_COUNT];
+
+   struct iris_memregion vram, sys;
+
+   /* Used only when use_global_vm is true. */
+   uint32_t global_vm_id;
+
+   int next_screen_id;
+
+   struct intel_device_info devinfo;
+   const struct iris_kmd_backend *kmd_backend;
+   bool bo_reuse:1;
+   bool use_global_vm:1;
+   bool prelim_drm:1;
+
+   struct intel_aux_map_context *aux_map_ctx;
+
+   struct pb_slabs bo_slabs[NUM_SLAB_ALLOCATORS];
+
+   struct iris_border_color_pool border_color_pool;
 };
 
 struct iris_bo {
@@ -560,23 +675,6 @@ enum iris_memory_zone iris_memzone_for_address(uint64_t address);
 int iris_bufmgr_create_screen_id(struct iris_bufmgr *bufmgr);
 
 simple_mtx_t *iris_bufmgr_get_bo_deps_lock(struct iris_bufmgr *bufmgr);
-
-/**
- * A pool containing SAMPLER_BORDER_COLOR_STATE entries.
- *
- * See iris_border_color.c for more information.
- */
-struct iris_border_color_pool {
-   struct iris_bo *bo;
-   void *map;
-   unsigned insert_point;
-
-   /** Map from border colors to offsets in the buffer. */
-   struct hash_table *ht;
-
-   /** Protects insert_point and the hash table. */
-   simple_mtx_t lock;
-};
 
 struct iris_border_color_pool *iris_bufmgr_get_border_color_pool(
       struct iris_bufmgr *bufmgr);
