@@ -29,6 +29,7 @@
 #include "common/intel_gem.h"
 
 #include "drm-uapi/i915_drm.h"
+#include "drm-uapi/i915_drm_prelim.h"
 
 bool i915_gem_create_context(int fd, uint32_t *context_id);
 bool i915_gem_destroy_context(int fd, uint32_t context_id);

@@ -71,6 +71,30 @@ i915_gem_create(struct anv_device *device,
       i915_regions[i].memory_instance = regions[i]->instance;
    }
 
+   if (device->info->prelim_drm) {
+      /* Check for invalid flags */
+      assert(alloc_flags == 0);
+
+      struct prelim_drm_i915_gem_object_param obj_param = {
+         .param = PRELIM_I915_PARAM_MEMORY_REGIONS | PRELIM_I915_OBJECT_PARAM,
+         .size = num_regions,
+         .data = (uintptr_t)i915_regions,
+      };
+      struct prelim_drm_i915_gem_create_ext_setparam setparam_ext = {
+         .base = { .name = PRELIM_I915_GEM_CREATE_EXT_SETPARAM },
+         .param = obj_param,
+      };
+      struct prelim_drm_i915_gem_create_ext gem_create = {
+         .size = size,
+         .extensions = (uintptr_t) &setparam_ext,
+      };
+
+      int ret = intel_ioctl(device->fd, PRELIM_DRM_IOCTL_I915_GEM_CREATE_EXT,
+                        &gem_create);
+      assert(ret == 0 && gem_create.handle);
+      return gem_create.handle;
+   }
+
    uint32_t flags = 0;
    if (alloc_flags & (ANV_BO_ALLOC_MAPPED | ANV_BO_ALLOC_LOCAL_MEM_CPU_VISIBLE) &&
        !(alloc_flags & ANV_BO_ALLOC_NO_LOCAL_MEM))
@@ -146,7 +170,13 @@ i915_gem_mmap_offset(struct anv_device *device, struct anv_bo *bo,
       .handle = bo->gem_handle,
       .flags = flags,
    };
-   if (intel_ioctl(device->fd, DRM_IOCTL_I915_GEM_MMAP_OFFSET, &gem_mmap))
+   int ret = intel_ioctl(device->fd, DRM_IOCTL_I915_GEM_MMAP_OFFSET, &gem_mmap);
+   if (ret != 0 && gem_mmap.flags == I915_MMAP_OFFSET_FIXED) {
+      gem_mmap.flags =
+         (flags & I915_MMAP_WC) ? I915_MMAP_OFFSET_WC : I915_MMAP_OFFSET_WB,
+      ret = intel_ioctl(device->fd, DRM_IOCTL_I915_GEM_MMAP_OFFSET, &gem_mmap);
+   }
+   if (ret != 0)
       return MAP_FAILED;
 
 #ifdef __x86_64__
