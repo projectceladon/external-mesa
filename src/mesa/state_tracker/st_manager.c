@@ -1086,9 +1086,11 @@ st_api_make_current(struct st_api *stapi, struct st_context_iface *stctxi,
       }
 
       if (stdraw && stread) {
-         st_framebuffer_validate(stdraw, st);
-         if (stread != stdraw)
-            st_framebuffer_validate(stread, st);
+          if (st->ctx->FirstTimeCurrent) {
+             st_framebuffer_validate(stdraw, st);
+             if (stread != stdraw)
+                st_framebuffer_validate(stread, st);
+         }
 
          ret = _mesa_make_current(st->ctx, &stdraw->Base, &stread->Base);
 
