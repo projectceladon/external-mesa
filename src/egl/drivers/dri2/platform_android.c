@@ -880,11 +880,13 @@ droid_create_image_from_prime_fds_yuv(_EGLDisplay *disp, _EGLContext *ctx,
 
    buffer_handle_t bufferHandle;
 
+   _eglLog(_EGL_WARNING, "mesa - droid_create_image_from_prime_fds_yuv");
    if (dri2_dpy->gralloc_version == HARDWARE_MODULE_API_VERSION(1, 0)) {
      if (!dri2_dpy->pfn_importBuffer) {
         _eglLog(_EGL_WARNING, "Gralloc does not support importBuffer");
         return NULL;
      }
+     _eglLog(_EGL_WARNING, "mesa - droid_create_image_from_prime_fds_yuv - handle:%p - fd:%d - version:%d - numInts:%d", buf->handle, buf->handle->numFds, buf->handle->version, buf->handle->numInts);
      ret = dri2_dpy->pfn_importBuffer(dri2_dpy->gralloc1_dvc, buf->handle, &bufferHandle);
      if (ret) {
         _eglLog(_EGL_WARNING, "Gralloc importBuffer failed");
@@ -901,6 +903,7 @@ droid_create_image_from_prime_fds_yuv(_EGLDisplay *disp, _EGLContext *ctx,
         return NULL;
      }
      ret = get_ycbcr_from_flexlayout(&outFlexLayout, &ycbcr);
+     _eglLog(_EGL_WARNING, "mesa - droid_create_image_from_prime_fds_yuv - y:%p - cb:%p - cr:%p - ystride:%d - cstride:%d - chroma_step:%d", ycbcr.y, ycbcr.cb, ycbcr.cr, ycbcr.ystride, ycbcr.cstride, ycbcr.chroma_step);
      if (ret) {
         _eglLog(_EGL_WARNING, "gralloc->lockflex failed: %d", ret);
         return NULL;
