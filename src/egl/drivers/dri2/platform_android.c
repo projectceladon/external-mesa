@@ -69,11 +69,13 @@ struct droid_yuv_format {
 /* This enumeration can be deleted if Android defined it in
  * system/core/include/system/graphics.h
  */
+#ifndef HAVE_GRALLOC1
 enum {
    HAL_PIXEL_FORMAT_NV12_Y_TILED_INTEL = 0x100,
    HAL_PIXEL_FORMAT_NV12 = 0x10F,
    HAL_PIXEL_FORMAT_P010_INTEL = 0x110
 };
+#endif
 /* The following table is used to look up a DRI image FourCC based
  * on native format and information contained in android_ycbcr struct. */
 static const struct droid_yuv_format droid_yuv_formats[] = {
@@ -907,13 +909,13 @@ droid_create_image_from_prime_fds_yuv(_EGLDisplay *disp, _EGLContext *ctx,
      }
      int outReleaseFence = 0;
      dri2_dpy->pfn_unlock(dri2_dpy->gralloc1_dvc, bufferHandle, &outReleaseFence);
-     if (!dri2_dpy->pfn_release) {
-        _eglLog(_EGL_WARNING, "Gralloc does not support release");
+     if (!dri2_dpy->pfn_freeBuffer) {
+        _eglLog(_EGL_WARNING, "Gralloc does not support freeBuffer");
         return NULL;
      }
-     ret = dri2_dpy->pfn_release(dri2_dpy->gralloc1_dvc, bufferHandle);
+     ret = dri2_dpy->pfn_freeBuffer(dri2_dpy->gralloc1_dvc, (void*)bufferHandle);
      if (ret) {
-        _eglLog(_EGL_WARNING, "Gralloc release failed");
+        _eglLog(_EGL_WARNING, "Gralloc freeBuffer failed");
         return NULL;
      }
    } else {
@@ -1759,7 +1761,7 @@ dri2_initialize_android(const _EGLDriver *drv, _EGLDisplay *disp)
         dri2_dpy->gralloc1_dvc = (gralloc1_device_t *)device;
         dri2_dpy->pfn_lockflex = (GRALLOC1_PFN_LOCK_FLEX)dri2_dpy->gralloc1_dvc->getFunction(dri2_dpy->gralloc1_dvc, GRALLOC1_FUNCTION_LOCK_FLEX);
         dri2_dpy->pfn_importBuffer = (GRALLOC1_PFN_IMPORT_BUFFER)dri2_dpy->gralloc1_dvc->getFunction(dri2_dpy->gralloc1_dvc,GRALLOC1_FUNCTION_IMPORT_BUFFER);
-        dri2_dpy->pfn_release = (GRALLOC1_PFN_RELEASE)dri2_dpy->gralloc1_dvc->getFunction(dri2_dpy->gralloc1_dvc, GRALLOC1_FUNCTION_RELEASE);
+        dri2_dpy->pfn_freeBuffer = (GRALLOC1_PFN_FREE_BUFFER)dri2_dpy->gralloc1_dvc->getFunction(dri2_dpy->gralloc1_dvc, GRALLOC1_FUNCTION_FREE_BUFFER);
         dri2_dpy->pfn_getFormat = (GRALLOC1_PFN_GET_FORMAT)dri2_dpy->gralloc1_dvc->getFunction(dri2_dpy->gralloc1_dvc, GRALLOC1_FUNCTION_GET_FORMAT);
         dri2_dpy->pfn_unlock = (GRALLOC1_PFN_UNLOCK)dri2_dpy->gralloc1_dvc->getFunction(dri2_dpy->gralloc1_dvc, GRALLOC1_FUNCTION_UNLOCK);
       }
