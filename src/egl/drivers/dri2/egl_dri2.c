@@ -747,7 +747,9 @@ static const struct dri2_extension_match optional_driver_extensions[] = {
 };
 
 static const struct dri2_extension_match optional_core_extensions[] = {
+#if !defined(ANDROID)
    { __DRI2_ROBUSTNESS, 1, offsetof(struct dri2_egl_display, robustness) },
+#endif
    { __DRI2_NO_ERROR, 1, offsetof(struct dri2_egl_display, no_error) },
    { __DRI2_CONFIG_QUERY, 1, offsetof(struct dri2_egl_display, config) },
    { __DRI2_FENCE, 1, offsetof(struct dri2_egl_display, fence) },
