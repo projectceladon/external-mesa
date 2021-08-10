@@ -297,6 +297,11 @@ virgl_drm_winsys_resource_create(struct virgl_winsys *qws,
    createcmd.stride = stride;
    createcmd.size = size;
 
+   if ((createcmd.height == 0) || (createcmd.width == 0)) {
+      FREE(res);
+      return NULL;
+   }
+
    ret = drmIoctl(qdws->fd, DRM_IOCTL_VIRTGPU_RESOURCE_CREATE, &createcmd);
    if (ret != 0) {
       FREE(res);
