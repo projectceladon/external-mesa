@@ -1094,7 +1094,7 @@ st_api_make_current(struct st_api *stapi, struct st_context_iface *stctxi,
          return false;
 
       if (stdraw && stread) {
-         if (st->ctx->FirstTimeCurrent) {
+         if (st->ctx->FirstTimeCurrent || !stread->Base._ColorReadBuffer || !stdraw->Base._ColorReadBuffer) {
             st_framebuffer_validate(stdraw, st);
             if (stread != stdraw)
                st_framebuffer_validate(stread, st);
