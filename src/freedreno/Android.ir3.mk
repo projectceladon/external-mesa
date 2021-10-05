@@ -91,12 +91,12 @@ $(intermediates)/ir3/ir3_nir_trig.c: $(ir3_nir_trig_deps)
 $(intermediates)/ir3/ir3_parser.c: $(ir3_parser_deps)
 	@mkdir -p $(dir $@)
 	@echo "Gen Header: $(PRIVATE_MODULE) <= $(notdir $(@))"
-	$(hide) $(BISON) $< --name-prefix=ir3_yy --output=$@
+	$(hide) $(MESA_BISON) $< --name-prefix=ir3_yy --output=$@
 
 $(intermediates)/ir3/ir3_parser.h: $(ir3_parser_deps)
 	@mkdir -p $(dir $@)
 	@echo "Gen Header: $(PRIVATE_MODULE) <= $(notdir $(@))"
-	$(hide) $(BISON) $< --name-prefix=ir3_yy --defines=$@
+	$(hide) $(MESA_BISON) $< --name-prefix=ir3_yy --defines=$@
 
 include $(MESA_COMMON_MK)
 include $(BUILD_STATIC_LIBRARY)
