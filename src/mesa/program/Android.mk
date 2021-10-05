@@ -29,7 +29,7 @@ endef
 define mesa_local-y-to-c-and-h
 	@mkdir -p $(dir $@)
 	@echo "Mesa Yacc: $(PRIVATE_MODULE) <= $<"
-	$(hide) $(YACC) -o $@ -p "_mesa_program_" $<
+	$(hide) $(MESA_BISON) -d -o $@ -p "_mesa_program_" $<
 endef
 
 # ----------------------------------------------------------------------

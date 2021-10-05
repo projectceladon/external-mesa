@@ -59,7 +59,7 @@ endef
 define glsl_local-y-to-c-and-h
 	@mkdir -p $(dir $@)
 	@echo "Mesa Yacc: $(PRIVATE_MODULE) <= $<"
-	$(hide) $(YACC) -o $@ -p "glcpp_parser_" $<
+	$(hide) $(MESA_BISON) -d -o $@ -p "glcpp_parser_" $<
 endef
 
 YACC_HEADER_SUFFIX := .hpp
@@ -67,7 +67,7 @@ YACC_HEADER_SUFFIX := .hpp
 define local-yy-to-cpp-and-h
 	@mkdir -p $(dir $@)
 	@echo "Mesa Yacc: $(PRIVATE_MODULE) <= $<"
-	$(hide) $(YACC) -p "_mesa_glsl_" -o $@ $<
+	$(hide) $(MESA_BISON) -d -p "_mesa_glsl_" -o $@ $<
 	touch $(@:$1=$(YACC_HEADER_SUFFIX))
 	echo '#ifndef '$(@F:$1=_h) > $(@:$1=.h)
 	echo '#define '$(@F:$1=_h) >> $(@:$1=.h)
