@@ -26,11 +26,35 @@
 
 #include <stdint.h>
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 struct gen_device_info;
 
 struct gen_perf_config;
 struct gen_perf_context;
 struct gen_perf_query_object;
+
+bool
+gen_perf_open(struct gen_perf_context *perf_ctx,
+                int metrics_set_id,
+                int report_format,
+                int period_exponent,
+                int drm_fd,
+                uint32_t ctx_id,
+                bool enable);
+
+void
+gen_perf_close(struct gen_perf_context *perfquery,
+                 const struct gen_perf_query_info *query);
+
+bool gen_perf_oa_stream_ready(struct gen_perf_context *perf_ctx);
+
+ssize_t
+gen_perf_read_oa_stream(struct gen_perf_context *perf_ctx,
+                          void* buf,
+                          size_t nbytes);
 
 struct gen_perf_context *gen_perf_new_context(void *parent);
 
@@ -77,5 +101,9 @@ void gen_perf_dump_query_count(struct gen_perf_context *perf_ctx);
 void gen_perf_dump_query(struct gen_perf_context *perf_ctx,
                          struct gen_perf_query_object *obj,
                          void *current_batch);
+
+#ifdef __cplusplus
+} // extern "C"
+#endif
 
 #endif /* GEN_PERF_QUERY_H */

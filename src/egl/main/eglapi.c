@@ -111,6 +111,10 @@
 #include "eglimage.h"
 #include "eglsync.h"
 #include "egllog.h"
+#include "profiler.h"
+
+#include <cutils/log.h>
+#include <pthread.h>
 
 #include "GL/mesa_glinterop.h"
 
@@ -614,6 +618,7 @@ _eglComputeVersion(_EGLDisplay *disp)
 EGLBoolean EGLAPIENTRY
 eglInitialize(EGLDisplay dpy, EGLint *major, EGLint *minor)
 {
+   ALOGE("--yue-- eglInitialize\n");
    _EGLDisplay *disp = _eglLockDisplay(dpy);
 
    _EGL_FUNC_START(disp, EGL_OBJECT_DISPLAY_KHR, NULL, EGL_FALSE);
@@ -682,6 +687,17 @@ eglInitialize(EGLDisplay dpy, EGLint *major, EGLint *minor)
       *major = disp->Version / 10;
       *minor = disp->Version % 10;
    }
+   ALOGE("--yue-- before try_register_perfetto\n");
+   try_register_perfetto();
+   ALOGE("--yue-- after try_register_perfetto\n");
+
+   pthread_t trace_pid;
+   int err = pthread_create(&(trace_pid), NULL, trace_gpu_counters, NULL);
+   if(err != 0)
+       ALOGI("--yue-- can't create thread");
+   else
+       ALOGI("--yue Thread created successfully\n");
+
 
    RETURN_EGL_SUCCESS(disp, EGL_TRUE);
 }

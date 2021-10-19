@@ -509,8 +509,8 @@ brw_init_perf_query_info(struct gl_context *ctx)
    gen_perf_init_context(perf_ctx, perf_cfg, brw->mem_ctx, brw, brw->bufmgr,
                          devinfo, brw->hw_ctx, brw->screen->fd);
    gen_perf_init_metrics(perf_cfg, devinfo, brw->screen->fd,
-                         true /* pipeline stats */);
-
+                           true /* pipeline stats */,
+                           true /* register snapshots */);
    return perf_cfg->n_queries;
 }
 

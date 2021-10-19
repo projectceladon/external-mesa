@@ -41,10 +41,16 @@
 
 #include "drm-uapi/i915_drm.h"
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 struct gen_device_info;
 
 struct gen_perf_config;
 struct gen_perf_query_info;
+
+#define INTEL_PERF_INVALID_CTX_ID (0xffffffff)
 
 enum gen_perf_counter_type {
    GEN_PERF_COUNTER_TYPE_EVENT,
@@ -382,10 +388,20 @@ struct gen_perf_counter_pass {
    uint32_t pass;
 };
 
+/** Initialize the gen_perf_config object for a given device.
+ *
+ *    include_pipeline_statistics : Whether to add a pipeline statistic query
+ *                                  gen_perf_query_info object
+ *
+ *    use_register_snapshots : Whether the queries should include counters
+ *                             that rely on register snapshots using command
+ *                             streamer instructions (not possible when using
+ *                             only the OA buffer data).
+ */
 void gen_perf_init_metrics(struct gen_perf_config *perf_cfg,
                            const struct gen_device_info *devinfo,
                            int drm_fd,
-                           bool include_pipeline_statistics);
+                           bool include_pipeline_statistics, bool use_register_snapshots);
 
 /** Query i915 for a metric id using guid.
  */
@@ -509,5 +525,8 @@ void gen_perf_get_counters_passes(struct gen_perf_config *perf,
                                   const uint32_t *counter_indices,
                                   uint32_t counter_indices_count,
                                   struct gen_perf_counter_pass *counter_pass);
+#ifdef __cplusplus
+} // extern "C"
+#endif
 
 #endif /* GEN_PERF_H */

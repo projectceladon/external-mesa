@@ -381,3 +381,24 @@ GEN_PERF_FILES = \
 GEN_PERF_GENERATED_FILES = \
 	perf/gen_perf_metrics.c \
 	perf/gen_perf_metrics.h
+
+PROFILER_FILES = \
+	profiler/profiler.cc \
+	profiler/profiler.h \
+	profiler/perfetto.cc \
+	profiler/perfetto.h \
+	profiler/pps.cc \
+	profiler/pps.h \
+	profiler/pps_counter.cc \
+	profiler/pps_counter.h \
+	profiler/pps_datasource.cc \
+	profiler/pps_datasource.h \
+	profiler/pps_device.cc \
+	profiler/pps_device.h \
+	profiler/pps_driver.cc \
+	profiler/pps_driver.h
+DS_FILES = \
+        ds/intel_pps_driver.cc \
+        ds/intel_pps_driver.h \
+        ds/intel_pps_perf.cc \
+        ds/intel_pps_perf.h

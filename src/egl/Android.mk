@@ -47,11 +47,19 @@ LOCAL_CFLAGS := \
 LOCAL_C_INCLUDES := \
 	$(MESA_TOP)/include \
 	$(MESA_TOP)/src/egl/main \
-	$(MESA_TOP)/src/egl/drivers/dri2
+	$(MESA_TOP)/src/egl/drivers/dri2 \
+	$(MESA_TOP)/src/intel/profiler \
+	$(MESA_TOP)/src/intel/perf \
+	$(MESA_TOP)/src/intel/dev \
+	$(MESA_TOP)/src/intel/ds
 
 LOCAL_STATIC_LIBRARIES := \
 	libmesa_util \
-	libmesa_loader
+	libmesa_loader \
+	libmesa_intel_ds \
+	libmesa_intel_dev \
+	libmesa_intel_perf \
+	libmesa_intel_profiler
 
 LOCAL_SHARED_LIBRARIES := \
 	libdl \
@@ -59,7 +67,8 @@ LOCAL_SHARED_LIBRARIES := \
 	libhardware \
 	liblog \
 	libcutils \
-	libsync
+	libsync \
+	libbase
 
 ifeq ($(shell test $(PLATFORM_SDK_VERSION) -ge 27; echo $$?), 0)
 LOCAL_C_INCLUDES += \
