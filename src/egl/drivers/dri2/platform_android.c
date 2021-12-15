@@ -387,7 +387,7 @@ droid_create_image_from_prime_fds_yuv(_EGLDisplay *disp,
     * the single-fd case cannot happen.  So handle eithe single
     * fd or fd-per-plane case:
     */
-   int num_planes = (ycbcr.chroma_step == 2) ? 2 : 3;
+   int num_planes = (ycbcr.chroma_step == 2 || ycbcr.chroma_step == 4) ? 2 : 3;
    if (num_fds == 1) {
       fds[2] = fds[1] = fds[0];
    } else {
