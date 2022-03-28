@@ -174,7 +174,11 @@ get_native_buffer_fds(struct ANativeWindowBuffer *buf, int fds[3])
    for (int i = 0; i < handle->numFds; i++)
       fds[i] = handle->data[i];
 
+#ifdef NUM_FDS_HACK
+   return 1;
+#else
    return handle->numFds;
+#endif
 }
 
 #ifdef HAVE_DRM_GRALLOC
