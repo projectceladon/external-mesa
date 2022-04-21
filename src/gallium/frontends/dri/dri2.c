@@ -943,14 +943,9 @@ dri2_create_image_from_fd(__DRIscreen *_screen,
       goto exit;
    }
 
-   if (num_fds != expected_num_fds) {
-      err = __DRI_IMAGE_ERROR_BAD_MATCH;
-      goto exit;
-   }
-
    memset(whandles, 0, sizeof(whandles));
 
-   for (i = 0; i < num_fds; i++) {
+   for (i = 0; i < expected_num_fds; i++) {
       if (fds[i] < 0) {
          err = __DRI_IMAGE_ERROR_BAD_ALLOC;
          goto exit;
@@ -966,7 +961,7 @@ dri2_create_image_from_fd(__DRIscreen *_screen,
    }
 
    img = dri2_create_image_from_winsys(_screen, width, height, map,
-                                       num_fds, whandles, protected_content,
+                                       expected_num_fds, whandles, protected_content,
                                        loaderPrivate);
    if(img == NULL) {
       err = __DRI_IMAGE_ERROR_BAD_ALLOC;
