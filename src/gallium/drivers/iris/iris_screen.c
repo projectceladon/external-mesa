@@ -625,7 +625,8 @@ iris_screen_destroy(struct iris_screen *screen)
    u_transfer_helper_destroy(screen->base.transfer_helper);
    iris_bufmgr_unref(screen->bufmgr);
    disk_cache_destroy(screen->disk_cache);
-   close(screen->winsys_fd);
+   // fd close is handled by owner module
+   //close(screen->winsys_fd);
    ralloc_free(screen);
 }
 
