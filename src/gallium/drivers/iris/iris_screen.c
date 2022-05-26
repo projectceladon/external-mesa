@@ -37,6 +37,7 @@
 #include "pipe/p_state.h"
 #include "pipe/p_context.h"
 #include "pipe/p_screen.h"
+#include "util/os_file.h"
 #include "util/debug.h"
 #include "util/u_inlines.h"
 #include "util/format/u_format.h"
@@ -625,8 +626,7 @@ iris_screen_destroy(struct iris_screen *screen)
    u_transfer_helper_destroy(screen->base.transfer_helper);
    iris_bufmgr_unref(screen->bufmgr);
    disk_cache_destroy(screen->disk_cache);
-   // fd close is handled by owner module
-   //close(screen->winsys_fd);
+   close(screen->winsys_fd);
    ralloc_free(screen);
 }
 
@@ -806,7 +806,7 @@ iris_screen_create(int fd, const struct pipe_screen_config *config)
       return NULL;
 
    screen->fd = iris_bufmgr_get_fd(screen->bufmgr);
-   screen->winsys_fd = fd;
+   screen->winsys_fd = os_dupfd_cloexec(fd);
 
    if (getenv("INTEL_NO_HW") != NULL)
       screen->no_hw = true;
