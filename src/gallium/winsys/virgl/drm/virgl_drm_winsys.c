@@ -66,10 +66,14 @@ static inline bool can_cache_resource(uint32_t bind)
           bind == VIRGL_BIND_INDEX_BUFFER ||
           bind == VIRGL_BIND_VERTEX_BUFFER ||
           bind == VIRGL_BIND_CUSTOM ||
+#if defined(ANDROID)
+          bind == VIRGL_BIND_STAGING;
+#else
           bind == VIRGL_BIND_STAGING ||
           bind == VIRGL_BIND_DEPTH_STENCIL ||
           bind == VIRGL_BIND_RENDER_TARGET ||
           bind == 0;
+#endif
 }
 
 static void virgl_hw_res_destroy(struct virgl_drm_winsys *qdws,
