@@ -1147,9 +1147,11 @@ st_api_make_current(struct st_context *st,
          return false;
 
       if (stdraw && stread) {
-         st_framebuffer_validate(stdraw, st);
-         if (stread != stdraw)
-            st_framebuffer_validate(stread, st);
+         if (st->ctx->FirstTimeCurrent || !stread->_ColorReadBuffer || !stdraw->_ColorReadBuffer) {
+            st_framebuffer_validate(stdraw, st);
+            if (stread != stdraw)
+               st_framebuffer_validate(stread, st);
+         }
 
          ret = _mesa_make_current(st->ctx, stdraw, stread);
 
