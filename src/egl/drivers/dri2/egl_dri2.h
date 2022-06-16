@@ -76,6 +76,10 @@ struct zwp_linux_dmabuf_feedback_v1;
 
 #endif /* HAVE_ANDROID_PLATFORM */
 
+#ifdef HAVE_GRALLOC1
+#include <hardware/gralloc1.h>
+#endif
+
 #include "eglconfig.h"
 #include "eglcontext.h"
 #include "egldevice.h"
@@ -290,6 +294,15 @@ struct dri2_egl_display
    const gralloc_module_t *gralloc;
    /* gralloc vendor usage bit for front rendering */
    uint32_t front_rendering_usage;
+#ifdef HAVE_GRALLOC1
+   uint16_t gralloc_version;
+   gralloc1_device_t *gralloc1_dvc;
+   GRALLOC1_PFN_LOCK_FLEX pfn_lockflex;
+   GRALLOC1_PFN_GET_FORMAT pfn_getFormat;
+   GRALLOC1_PFN_UNLOCK pfn_unlock;
+   GRALLOC1_PFN_IMPORT_BUFFER pfn_importBuffer;
+   GRALLOC1_PFN_RELEASE pfn_release;
+#endif
 #endif
 
    bool is_render_node;

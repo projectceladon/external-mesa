@@ -128,6 +128,7 @@ if with_dri2
   if with_platform_android
     deps_for_egl += dep_android
     files_egl += files('drivers/dri2/platform_android.c')
+    c_args_for_egl += '-DHAVE_GRALLOC1'
     if dep_android_mapper4.found()
       files_egl += files('drivers/dri2/platform_android_mapper.cpp')
       c_args_for_egl += '-DUSE_IMAPPER4_METADATA_API'
