@@ -37,6 +37,7 @@
 #include "pipe/p_state.h"
 #include "pipe/p_context.h"
 #include "pipe/p_screen.h"
+#include "util/os_file.h"
 #include "util/debug.h"
 #include "util/u_cpu_detect.h"
 #include "util/u_inlines.h"
@@ -809,7 +810,7 @@ iris_screen_create(int fd, const struct pipe_screen_config *config)
       return NULL;
 
    screen->fd = iris_bufmgr_get_fd(screen->bufmgr);
-   screen->winsys_fd = fd;
+   screen->winsys_fd = os_dupfd_cloexec(fd);
 
    screen->id = iris_bufmgr_create_screen_id(screen->bufmgr);
 
