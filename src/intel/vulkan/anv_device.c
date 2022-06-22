@@ -557,11 +557,13 @@ anv_physical_device_init_uuids(struct anv_physical_device *device)
 
    unsigned build_id_len = build_id_length(note);
    if (build_id_len < 20) {
-      return vk_errorf(device, VK_ERROR_INITIALIZATION_FAILED,
-                       "build-id too short.  It needs to be a SHA");
+   /* fix me: Android clang add ANDROID note section, which does not satisfy 20 size*/
+   // return vk_errorf(device, VK_ERROR_INITIALIZATION_FAILED,
+   //                  "build-id too short.  It needs to be a SHA");
+      memcpy(device->driver_build_sha1, build_id_data(note), build_id_len);
+   } else {
+      memcpy(device->driver_build_sha1, build_id_data(note), 20);
    }
-
-   memcpy(device->driver_build_sha1, build_id_data(note), 20);
 
    struct mesa_sha1 sha1_ctx;
    uint8_t sha1[20];
