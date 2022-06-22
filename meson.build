@@ -490,8 +490,12 @@ foreach platform : _platforms
   pre_args += '-DHAVE_@0@_PLATFORM'.format(platform.to_upper())
 endforeach
 
-use_elf_tls = true
-pre_args += '-DUSE_ELF_TLS'
+#Fix TLS symbol link issue for Android, as have checked that the binary
+#compiled by Android.mk does not have TLS symbol, so remove it for Android.
+if not with_platform_android
+  use_elf_tls = true
+  pre_args += '-DUSE_ELF_TLS'
+endif
 
 if with_platform_android and get_option('platform-sdk-version') >= 29
   # By default the NDK compiler, at least, emits emutls references instead of
@@ -1359,9 +1363,9 @@ elif host_machine.cpu_family() == 'mips64' and host_machine.endian() == 'little'
 endif
 
 # Check for standard headers and functions
-if (cc.has_header_symbol('sys/sysmacros.h', 'major') and
+if ((cc.has_header_symbol('sys/sysmacros.h', 'major') and
   cc.has_header_symbol('sys/sysmacros.h', 'minor') and
-  cc.has_header_symbol('sys/sysmacros.h', 'makedev'))
+  cc.has_header_symbol('sys/sysmacros.h', 'makedev'))) or with_platform_android
   pre_args += '-DMAJOR_IN_SYSMACROS'
 endif
 if (cc.has_header_symbol('sys/mkdev.h', 'major') and
@@ -1470,22 +1474,33 @@ ld_args_build_id = cc.get_supported_link_arguments('-Wl,--build-id=sha1')
 
 # check for dl support
 dep_dl = null_dep
-if not cc.has_function('dlopen')
+# Checked that the NDK has dlopen function, cc_has_function can not detect it successfully
+if not (cc.has_function('dlopen') or with_platform_android)
   dep_dl = cc.find_library('dl', required : host_machine.system() != 'windows')
 endif
 if cc.has_function('dladdr', dependencies : dep_dl)
   # This is really only required for megadrivers
   pre_args += '-DHAVE_DLADDR'
+  pre_args += '-DHAVE_DLFCN_H'
 endif
 
-if cc.has_function('dl_iterate_phdr')
+# Checked that the NDK has dl_iterate_phdr function, cc_has_function can not detect it successfully
+if cc.has_function('dl_iterate_phdr') or with_platform_android
   pre_args += '-DHAVE_DL_ITERATE_PHDR'
 elif with_intel_vk
   error('Intel "Anvil" Vulkan driver requires the dl_iterate_phdr function')
 endif
 
+# Add HAVE_TIMESPEC_GET and HAVE_LINUX_FUTEX_H for Android because the NDK has
+# timespec_get function and support linux futex.
+if with_platform_android
+  pre_args += '-DHAVE_TIMESPEC_GET'
+  pre_args += '-DHAVE_LINUX_FUTEX_H'
+endif
+
 # Determine whether or not the rt library is needed for time functions
-if host_machine.system() == 'windows' or cc.has_function('clock_gettime')
+# Checked that the NDK has clock_gettime function, cc_has_function can not detect it successfully
+if host_machine.system() == 'windows' or cc.has_function('clock_gettime') or with_platform_android
   dep_clock = null_dep
 else
   dep_clock = cc.find_library('rt')
