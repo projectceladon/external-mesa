@@ -113,8 +113,12 @@ anv_gem_mmap_offset(struct anv_device *device, uint32_t gem_handle,
       return MAP_FAILED;
 
    /* And map it */
-   void *map = mmap(NULL, size, PROT_READ | PROT_WRITE, MAP_SHARED,
-                    device->fd, gem_mmap.offset);
+   #ifdef __x86_64__
+   void *map = mmap(NULL, size, PROT_READ | PROT_WRITE, MAP_SHARED, device->fd, gem_mmap.offset);
+   #else
+   void *map = mmap64(NULL, size, PROT_READ | PROT_WRITE, MAP_SHARED, device->fd, gem_mmap.offset);
+   #endif
+
    return map;
 }
 
@@ -232,7 +236,7 @@ int
 anv_gem_get_tiling(struct anv_device *device, uint32_t gem_handle)
 {
    if (!device->info->has_tiling_uapi)
-      return -1;
+      return I915_TILING_NONE;
 
    struct drm_i915_gem_get_tiling get_tiling = {
       .handle = gem_handle,
