@@ -170,9 +170,15 @@ i915_gem_mmap_offset(struct anv_device *device, struct anv_bo *bo,
    if (intel_ioctl(device->fd, DRM_IOCTL_I915_GEM_MMAP_OFFSET, &gem_mmap))
       return MAP_FAILED;
 
+#ifdef __x86_64__
    return mmap(placed_addr, size, PROT_READ | PROT_WRITE,
                (placed_addr != NULL ? MAP_FIXED : 0) | MAP_SHARED,
                device->fd, gem_mmap.offset);
+#else
+   return mmap64(placed_addr, size, PROT_READ | PROT_WRITE,
+               (placed_addr != NULL ? MAP_FIXED : 0) | MAP_SHARED,
+               device->fd, gem_mmap.offset);
+#endif
 }
 
 static void *
