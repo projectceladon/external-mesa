@@ -1394,6 +1394,8 @@ bo_free(struct iris_bo *bo)
    if (!bo->real.userptr && bo->real.map)
       bo_unmap(bo);
 
+   iris_bo_busy(bo);
+
    if (bo->idle) {
       bo_close(bo);
    } else {
