@@ -40,6 +40,7 @@ using aidl::android::hardware::graphics::common::PlaneLayout;
 using aidl::android::hardware::graphics::common::PlaneLayoutComponent;
 using aidl::android::hardware::graphics::common::PlaneLayoutComponentType;
 using android::hardware::graphics::common::V1_2::BufferUsage;
+using android::hardware::graphics::common::V1_2::PixelFormat;
 using android::hardware::graphics::mapper::V4_0::Error;
 using android::hardware::graphics::mapper::V4_0::IMapper;
 using android::hardware::hidl_handle;
@@ -93,11 +94,38 @@ extern "C"
 {
 
 int
+mapper_resolve_format(struct ANativeWindowBuffer *buf, int32_t *format)
+{
+   static android::sp<IMapper> mapper = IMapper::getService();
+   hidl_vec<uint8_t> encoded_data;
+   PixelFormat pix_format;
+
+   Error error = GetMetadata(mapper, buf->handle,
+                            android::gralloc4::MetadataType_PixelFormatRequested,
+                            &encoded_data);
+
+   if (error != Error::NONE)
+      return -EINVAL;
+
+   auto status = android::gralloc4::decodePixelFormatRequested(encoded_data, &pix_format);
+   if (status != android::OK)
+      return -EINVAL;
+
+   *format = static_cast<std::underlying_type_t<PixelFormat>>(pix_format);
+   return 0;
+}
+
+int
 mapper_metadata_get_buffer_info(struct ANativeWindowBuffer *buf,
                                 struct buffer_info *out_buf_info)
 {
    static android::sp<IMapper> mapper = IMapper::getService();
    struct buffer_info buf_info = *out_buf_info;
+
+   int droid_format, resolve_format;
+   enum chroma_order chroma_order;
+   int chroma_step;
+
    if (mapper == nullptr)
       return -EINVAL;
 
@@ -140,6 +168,32 @@ mapper_metadata_get_buffer_info(struct ANativeWindowBuffer *buf,
       buf_info.fds[i] = per_plane_unique_fd ? buf->handle->data[i] : buf->handle->data[0];
       buf_info.pitches[i] = layouts[i].strideInBytes;
       buf_info.offsets[i] = layouts[i].offsetInBytes;
+   }
+
+   if (mapper_resolve_format(buf, &droid_format))
+      return -EINVAL;
+
+   if (is_yuv(droid_format)) {
+      if (layouts[1].components[0].type == android::gralloc4::PlaneLayoutComponentType_CB)
+         chroma_order = YCbCr;
+      else
+         chroma_order = YCrCb;
+      chroma_step = layouts[1].sampleIncrementInBits / 8;
+      resolve_format = get_fourcc_yuv(droid_format, chroma_order, chroma_step);
+
+      buf_info.drm_fourcc = resolve_format;
+      if (layouts.size() == 2) {
+         buf_info.pitches[2] = buf_info.pitches[1];
+         buf_info.offsets[2] = buf_info.offsets[1] + (chroma_step/2);
+      }
+
+      buf_info.yuv_color_space = static_cast<enum __DRIYUVColorSpace>(EGL_ITU_REC601_EXT);
+      buf_info.sample_range = static_cast<enum __DRISampleRange>(EGL_YUV_NARROW_RANGE_EXT);
+      buf_info.horizontal_siting = static_cast<enum __DRIChromaSiting>(EGL_YUV_CHROMA_SITING_0_EXT);
+      buf_info.vertical_siting = static_cast<enum __DRIChromaSiting>(EGL_YUV_CHROMA_SITING_0_EXT);
+
+      *out_buf_info = buf_info;
+      return 0;
    }
 
    /* optional attributes */
