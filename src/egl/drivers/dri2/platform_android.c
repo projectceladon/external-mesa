@@ -54,11 +54,6 @@
 
 #define ALIGN(val, align)	(((val) + (align) - 1) & ~((align) - 1))
 
-enum chroma_order {
-   YCbCr,
-   YCrCb,
-};
-
 struct droid_yuv_format {
    /* Lookup keys */
    int native; /* HAL_PIXEL_FORMAT_ */
@@ -98,7 +93,7 @@ static const struct droid_yuv_format droid_yuv_formats[] = {
    { HAL_PIXEL_FORMAT_IMPLEMENTATION_DEFINED, YCrCb, 1, DRM_FORMAT_XYUV8888 },
 };
 
-static int
+int
 get_fourcc_yuv(int native, enum chroma_order chroma_order, int chroma_step)
 {
    for (int i = 0; i < ARRAY_SIZE(droid_yuv_formats); ++i)
@@ -110,7 +105,7 @@ get_fourcc_yuv(int native, enum chroma_order chroma_order, int chroma_step)
    return -1;
 }
 
-static bool
+bool
 is_yuv(int native)
 {
    for (int i = 0; i < ARRAY_SIZE(droid_yuv_formats); ++i)

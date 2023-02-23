@@ -136,10 +136,20 @@ struct buffer_info {
    enum __DRIChromaSiting vertical_siting;
 };
 
+enum chroma_order {
+   YCbCr,
+   YCrCb,
+};
+
+
 #ifdef USE_IMAPPER4_METADATA_API
 #ifdef __cplusplus
 extern "C" {
 #endif
+extern bool
+is_yuv(int native);
+extern int
+get_fourcc_yuv(int native, enum chroma_order chroma_order, int chroma_step);
 extern int
 mapper_metadata_get_buffer_info(struct ANativeWindowBuffer *buf,
                                 struct buffer_info *out_buf_info);
