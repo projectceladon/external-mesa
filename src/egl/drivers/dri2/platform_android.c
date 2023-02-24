@@ -53,6 +53,67 @@
 
 #define ALIGN(val, align)	(((val) + (align) - 1) & ~((align) - 1))
 
+/* More recent CrOS gralloc has a perform op that fills out the struct below
+ * with canonical information about the buffer and its modifier, planes,
+ * offsets and strides.  If we have this, we can skip straight to
+ * createImageFromDmaBufs2() and avoid all the guessing and recalculations.
+ * This also gives us the modifier and plane offsets/strides for multiplanar
+ * compressed buffers (eg Intel CCS buffers) in order to make that work in Android.
+ */
+
+static const char cros_gralloc_module_name[] = "CrOS Gralloc";
+
+#define CROS_GRALLOC_DRM_GET_FORMAT 1
+#define CROS_GRALLOC_DRM_GET_BUFFER_INFO 4
+#define CROS_GRALLOC_DRM_GET_USAGE 5
+#define CROS_GRALLOC_DRM_GET_USAGE_FRONT_RENDERING_BIT 0x1
+
+struct cros_gralloc0_buffer_info {
+   uint32_t drm_fourcc;
+   int num_fds;
+   int fds[4];
+   uint64_t modifier;
+   int offset[4];
+   int stride[4];
+};
+
+static int
+cros_get_buffer_info(struct dri2_egl_display *dri2_dpy,
+                     struct ANativeWindowBuffer *buf,
+                     struct buffer_info *out_buf_info)
+{
+   struct cros_gralloc0_buffer_info info;
+
+   if (dri2_dpy->gralloc &&
+       strcmp(dri2_dpy->gralloc->common.name, cros_gralloc_module_name) == 0 &&
+       dri2_dpy->gralloc->perform &&
+       dri2_dpy->gralloc->perform(dri2_dpy->gralloc,
+                                  CROS_GRALLOC_DRM_GET_BUFFER_INFO,
+                                  buf->handle, &info) == 0) {
+      *out_buf_info = (struct buffer_info){
+         .width = buf->width,
+         .height = buf->height,
+         .drm_fourcc = info.drm_fourcc,
+         .num_planes = info.num_fds,
+         .fds = { -1, -1, -1, -1 },
+         .modifier = info.modifier,
+         .yuv_color_space = EGL_ITU_REC601_EXT,
+         .sample_range = EGL_YUV_NARROW_RANGE_EXT,
+         .horizontal_siting = EGL_YUV_CHROMA_SITING_0_EXT,
+         .vertical_siting = EGL_YUV_CHROMA_SITING_0_EXT,
+      };
+      for (int i = 0; i < out_buf_info->num_planes; i++) {
+         out_buf_info->fds[i] = info.fds[i];
+         out_buf_info->offsets[i] = info.offset[i];
+         out_buf_info->pitches[i] = info.stride[i];
+      }
+
+      return 0;
+   }
+
+   return -EINVAL;
+}
+
 struct droid_yuv_format {
    /* Lookup keys */
    int native; /* HAL_PIXEL_FORMAT_ */
@@ -203,61 +264,20 @@ droid_resolve_format(struct dri2_egl_display *dri2_dpy,
 
    if (buf->format != HAL_PIXEL_FORMAT_IMPLEMENTATION_DEFINED)
       return buf->format;
-#ifdef HAVE_GRALLOC1
-   if(dri2_dpy->gralloc_version == HARDWARE_MODULE_API_VERSION(1, 0)) {
-      if (!dri2_dpy->pfn_getFormat) {
-         _eglLog(_EGL_WARNING, "Gralloc does not support getFormat");
-         return -1;
-      }
-      ret = dri2_dpy->pfn_getFormat(dri2_dpy->gralloc1_dvc, buf->handle,
-                                    &format);
-      if (ret) {
-         _eglLog(_EGL_WARNING, "gralloc->getFormat failed: %d", ret);
-         return -1;
-      }
-   } else {
-#else
-   if (!dri2_dpy->gralloc->perform) {
+
+   if (!dri2_dpy->gralloc || !dri2_dpy->gralloc->perform) {
       _eglLog(_EGL_WARNING, "gralloc->perform not supported");
       return -1;
    }
    ret = dri2_dpy->gralloc->perform(dri2_dpy->gralloc,
-                                    GRALLOC_DRM_GET_FORMAT,
+                                    CROS_GRALLOC_DRM_GET_FORMAT,
                                     buf->handle, &format);
    if (ret){
       _eglLog(_EGL_WARNING, "gralloc->perform failed with error: %d", ret);
       return -1;
    }
-#endif
-#ifdef HAVE_GRALLOC1
-   }
-#endif
+
    return format;
-}
-
-static int get_ycbcr_from_flexlayout(struct android_flex_layout *outFlexLayout, struct android_ycbcr *ycbcr)
-{
-
-    for( int i = 0; i < outFlexLayout->num_planes; i++) {
-       switch(outFlexLayout->planes[i].component){
-         case FLEX_COMPONENT_Y:
-             ycbcr->y = outFlexLayout->planes[i].top_left;
-             ycbcr->ystride = outFlexLayout->planes[i].v_increment;
-         break;
-         case FLEX_COMPONENT_Cb:
-             ycbcr->cb = outFlexLayout->planes[i].top_left;
-             ycbcr->cstride = outFlexLayout->planes[i].v_increment;
-         break;
-         case FLEX_COMPONENT_Cr:
-             ycbcr->cr = outFlexLayout->planes[i].top_left;
-             ycbcr->chroma_step = outFlexLayout->planes[i].h_increment;
-         break;
-         default:
-             _eglLog(_EGL_WARNING,"unknown component 0x%x", __func__, outFlexLayout->planes[i].component);
-         break;
-       }
-  }
-  return 0;
 }
 
 static int
@@ -282,52 +302,7 @@ get_yuv_buffer_info(struct dri2_egl_display *dri2_dpy,
       return -EINVAL;
    }
 
-#ifdef HAVE_GRALLOC1
-   struct android_flex_layout outFlexLayout;
-   gralloc1_rect_t accessRegion;
-
-   memset(&ycbcr, 0, sizeof(ycbcr));
-   buffer_handle_t bufferHandle;
-
-   if (dri2_dpy->gralloc_version == HARDWARE_MODULE_API_VERSION(1, 0)) {
-     if (!dri2_dpy->pfn_importBuffer) {
-        _eglLog(_EGL_WARNING, "Gralloc does not support importBuffer");
-        return -EINVAL;
-     }
-     ret = dri2_dpy->pfn_importBuffer(dri2_dpy->gralloc1_dvc, buf->handle, &bufferHandle);
-     if (ret) {
-        _eglLog(_EGL_WARNING, "Gralloc importBuffer failed");
-        return -EINVAL;
-     }
-     if (!dri2_dpy->pfn_lockflex) {
-        _eglLog(_EGL_WARNING, "Gralloc does not support lockflex");
-        return -EINVAL;
-     }
-     ret = dri2_dpy->pfn_lockflex(dri2_dpy->gralloc1_dvc, bufferHandle,
-                                       0, 0, &accessRegion, &outFlexLayout, -1);
-     if (ret) {
-        _eglLog(_EGL_WARNING, "gralloc->lockflex failed: %d", ret);
-        return -EINVAL;
-     }
-     ret = get_ycbcr_from_flexlayout(&outFlexLayout, &ycbcr);
-     if (ret) {
-        _eglLog(_EGL_WARNING, "gralloc->lockflex failed: %d", ret);
-        return -EINVAL;
-     }
-     int outReleaseFence = 0;
-     dri2_dpy->pfn_unlock(dri2_dpy->gralloc1_dvc, bufferHandle, &outReleaseFence);
-     if (!dri2_dpy->pfn_release) {
-        _eglLog(_EGL_WARNING, "Gralloc does not support release");
-        return -EINVAL;
-     }
-     ret = dri2_dpy->pfn_release(dri2_dpy->gralloc1_dvc, bufferHandle);
-     if (ret) {
-        _eglLog(_EGL_WARNING, "Gralloc release failed");
-        return -EINVAL;
-     }
-   } else {
-#endif
-   if (!dri2_dpy->gralloc->lock_ycbcr) {
+   if (!dri2_dpy->gralloc || !dri2_dpy->gralloc->lock_ycbcr) {
      _eglLog(_EGL_WARNING, "Gralloc does not support lock_ycbcr");
      return -EINVAL;
    }
@@ -345,9 +320,6 @@ get_yuv_buffer_info(struct dri2_egl_display *dri2_dpy,
       return -EINVAL;
    }
    dri2_dpy->gralloc->unlock(dri2_dpy->gralloc, buf->handle);
-#ifdef HAVE_GRALLOC1
-  }
-#endif
 
    chroma_order = ((size_t)ycbcr.cr < (size_t)ycbcr.cb) ? YCrCb : YCbCr;
 
@@ -482,65 +454,6 @@ native_window_buffer_get_buffer_info(struct dri2_egl_display *dri2_dpy,
    return 0;
 }
 
-/* More recent CrOS gralloc has a perform op that fills out the struct below
- * with canonical information about the buffer and its modifier, planes,
- * offsets and strides.  If we have this, we can skip straight to
- * createImageFromDmaBufs2() and avoid all the guessing and recalculations.
- * This also gives us the modifier and plane offsets/strides for multiplanar
- * compressed buffers (eg Intel CCS buffers) in order to make that work in Android.
- */
-
-static const char cros_gralloc_module_name[] = "CrOS Gralloc";
-
-#define CROS_GRALLOC_DRM_GET_BUFFER_INFO 4
-#define CROS_GRALLOC_DRM_GET_USAGE 5
-#define CROS_GRALLOC_DRM_GET_USAGE_FRONT_RENDERING_BIT 0x1
-
-struct cros_gralloc0_buffer_info {
-   uint32_t drm_fourcc;
-   int num_fds;
-   int fds[4];
-   uint64_t modifier;
-   int offset[4];
-   int stride[4];
-};
-
-static int
-cros_get_buffer_info(struct dri2_egl_display *dri2_dpy,
-                     struct ANativeWindowBuffer *buf,
-                     struct buffer_info *out_buf_info)
-{
-   struct cros_gralloc0_buffer_info info;
-
-   if (strcmp(dri2_dpy->gralloc->common.name, cros_gralloc_module_name) == 0 &&
-       dri2_dpy->gralloc->perform &&
-       dri2_dpy->gralloc->perform(dri2_dpy->gralloc,
-                                  CROS_GRALLOC_DRM_GET_BUFFER_INFO,
-                                  buf->handle, &info) == 0) {
-      *out_buf_info = (struct buffer_info){
-         .width = buf->width,
-         .height = buf->height,
-         .drm_fourcc = info.drm_fourcc,
-         .num_planes = info.num_fds,
-         .fds = { -1, -1, -1, -1 },
-         .modifier = info.modifier,
-         .yuv_color_space = EGL_ITU_REC601_EXT,
-         .sample_range = EGL_YUV_NARROW_RANGE_EXT,
-         .horizontal_siting = EGL_YUV_CHROMA_SITING_0_EXT,
-         .vertical_siting = EGL_YUV_CHROMA_SITING_0_EXT,
-      };
-      for (int i = 0; i < out_buf_info->num_planes; i++) {
-         out_buf_info->fds[i] = info.fds[i];
-         out_buf_info->offsets[i] = info.offset[i];
-         out_buf_info->pitches[i] = info.stride[i];
-      }
-
-      return 0;
-   }
-
-   return -EINVAL;
-}
-
 static __DRIimage *
 droid_create_image_from_buffer_info(struct dri2_egl_display *dri2_dpy,
                                     struct buffer_info *buf_info,
@@ -582,12 +495,15 @@ droid_create_image_from_native_buffer(_EGLDisplay *disp,
     * is preserved down to native_window_buffer_get_buffer_info() so that the
     * buffer can be imported without modifier info as a last resort.
     */
+   /* For gralloc4, use 'get' api to get info. */
    if (!img && !mapper_metadata_get_buffer_info(buf, &buf_info))
       img = droid_create_image_from_buffer_info(dri2_dpy, &buf_info, priv);
 
+   /* For gralloc0, use 'perform' api to get info. */
    if (!img && !cros_get_buffer_info(dri2_dpy, buf, &buf_info))
       img = droid_create_image_from_buffer_info(dri2_dpy, &buf_info, priv);
 
+   /* For gralloc0, use 'lockXXX' api to get info. */
    if (!img && !native_window_buffer_get_buffer_info(dri2_dpy, buf, &buf_info))
       img = droid_create_image_from_buffer_info(dri2_dpy, &buf_info, priv);
 
@@ -1699,7 +1615,7 @@ droid_open_device(_EGLDisplay *disp, bool swrast)
    if (swrast)
       return EGL_FALSE;
 
-   if (dri2_dpy->gralloc->perform)
+   if (dri2_dpy->gralloc && dri2_dpy->gralloc->perform)
       err = dri2_dpy->gralloc->perform(dri2_dpy->gralloc,
                                        GRALLOC_MODULE_PERFORM_GET_DRM_FD,
                                        &fd);
@@ -1810,30 +1726,12 @@ dri2_initialize_android(_EGLDisplay *disp)
       return _eglError(EGL_BAD_ALLOC, "eglInitialize");
 
    dri2_dpy->fd = -1;
+
    ret = hw_get_module(GRALLOC_HARDWARE_MODULE_ID,
                        (const hw_module_t **)&dri2_dpy->gralloc);
    if (ret) {
-      err = "DRI2: failed to get gralloc module";
-      goto cleanup;
+      _eglLog(_EGL_WARNING, "DRI2: failed to get gralloc module");
    }
-#ifdef HAVE_GRALLOC1
-   hw_device_t *device;
-   dri2_dpy->gralloc_version = dri2_dpy->gralloc->common.module_api_version;
-   if (dri2_dpy->gralloc_version == HARDWARE_MODULE_API_VERSION(1, 0)) {
-      ret = dri2_dpy->gralloc->common.methods->open(&dri2_dpy->gralloc->common, GRALLOC_HARDWARE_MODULE_ID, &device);
-      if (ret) {
-        err = "Failed to open hw_device device";
-        goto cleanup;
-      } else {
-        dri2_dpy->gralloc1_dvc = (gralloc1_device_t *)device;
-        dri2_dpy->pfn_lockflex = (GRALLOC1_PFN_LOCK_FLEX)dri2_dpy->gralloc1_dvc->getFunction(dri2_dpy->gralloc1_dvc, GRALLOC1_FUNCTION_LOCK_FLEX);
-        dri2_dpy->pfn_importBuffer = (GRALLOC1_PFN_IMPORT_BUFFER)dri2_dpy->gralloc1_dvc->getFunction(dri2_dpy->gralloc1_dvc,GRALLOC1_FUNCTION_IMPORT_BUFFER);
-        dri2_dpy->pfn_release = (GRALLOC1_PFN_RELEASE)dri2_dpy->gralloc1_dvc->getFunction(dri2_dpy->gralloc1_dvc, GRALLOC1_FUNCTION_RELEASE);
-        dri2_dpy->pfn_getFormat = (GRALLOC1_PFN_GET_FORMAT)dri2_dpy->gralloc1_dvc->getFunction(dri2_dpy->gralloc1_dvc, GRALLOC1_FUNCTION_GET_FORMAT);
-        dri2_dpy->pfn_unlock = (GRALLOC1_PFN_UNLOCK)dri2_dpy->gralloc1_dvc->getFunction(dri2_dpy->gralloc1_dvc, GRALLOC1_FUNCTION_UNLOCK);
-      }
-   }
-#endif
 
    disp->DriverData = (void *) dri2_dpy;
    device_opened = droid_open_device(disp, disp->Options.ForceSoftware);
@@ -1914,7 +1812,7 @@ dri2_initialize_android(_EGLDisplay *disp)
        * So at least we can force BO_USE_LINEAR as the fallback.
        */
       uint32_t front_rendering_usage = 0;
-      if (!strcmp(dri2_dpy->gralloc->common.name, cros_gralloc_module_name) &&
+      if (dri2_dpy->gralloc && !strcmp(dri2_dpy->gralloc->common.name, cros_gralloc_module_name) &&
           dri2_dpy->gralloc->perform &&
           dri2_dpy->gralloc->perform(
                 dri2_dpy->gralloc, CROS_GRALLOC_DRM_GET_USAGE,
