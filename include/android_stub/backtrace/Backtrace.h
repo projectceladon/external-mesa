@@ -23,8 +23,8 @@
 #include <string>
 #include <vector>
 
-#include <backtrace/backtrace_constants.h>
-#include <backtrace/BacktraceMap.h>
+#include <android_stub/backtrace/backtrace_constants.h>
+#include <android_stub/backtrace/BacktraceMap.h>
 
 #if defined(__LP64__)
 #define PRIPTR "016" PRIx64

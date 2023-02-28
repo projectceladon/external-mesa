@@ -28,11 +28,13 @@ extern "C" {
  * So detecting `HAVE_STRUCT_TIMESPEC` in meson script dynamically.
  */
 #ifndef HAVE_STRUCT_TIMESPEC
+#ifndef _STRUCT_TIMESPEC
 struct timespec
 {
     time_t tv_sec;  // Seconds - >= 0
     long   tv_nsec; // Nanoseconds - [0, 999999999]
 };
+#endif
 #endif
 
 /*-------------------------- functions --------------------------*/

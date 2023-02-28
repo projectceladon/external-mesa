@@ -25,7 +25,7 @@
 
 #if WITH_LIBBACKTRACE
 
-#include <backtrace/Backtrace.h>
+#include <android_stub/backtrace/Backtrace.h>
 
 #include "util/simple_mtx.h"
 #include "util/u_debug.h"

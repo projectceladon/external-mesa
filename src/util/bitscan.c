@@ -29,7 +29,7 @@
 #include "bitscan.h"
 
 #ifdef HAVE___BUILTIN_FFS
-#elif defined(_MSC_VER) && (_M_IX86 || _M_ARM || _M_AMD64 || _M_IA64)
+#elif (defined(_MSC_VER) && (_M_IX86 || _M_ARM || _M_AMD64 || _M_IA64)) || defined(__ANDROID__)
 #else
 int
 ffs(int i)
@@ -60,7 +60,7 @@ ffs(int i)
 #endif
 
 #ifdef HAVE___BUILTIN_FFSLL
-#elif defined(_MSC_VER) && (_M_AMD64 || _M_ARM64 || _M_IA64)
+#elif (defined(_MSC_VER) && (_M_AMD64 || _M_ARM64 || _M_IA64)) || defined(__ANDROID__)
 #else
 int
 ffsll(long long int val)
