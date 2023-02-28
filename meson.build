@@ -1331,9 +1331,9 @@ elif host_machine.cpu_family() == 'loongarch64'
 endif
 
 # Check for standard headers and functions
-if (cc.has_header_symbol('sys/sysmacros.h', 'major') and
+if ((cc.has_header_symbol('sys/sysmacros.h', 'major') and
   cc.has_header_symbol('sys/sysmacros.h', 'minor') and
-  cc.has_header_symbol('sys/sysmacros.h', 'makedev'))
+  cc.has_header_symbol('sys/sysmacros.h', 'makedev'))) or with_platform_android
   pre_args += '-DMAJOR_IN_SYSMACROS'
 endif
 if (cc.has_header_symbol('sys/mkdev.h', 'major') and
@@ -1500,19 +1500,30 @@ ld_args_build_id = cc.get_supported_link_arguments('-Wl,--build-id=sha1')
 # check for dl support
 dep_dl = null_dep
 if host_machine.system() != 'windows'
-  if not cc.has_function('dlopen')
+# Checked that the NDK has dlopen function, cc_has_function can not detect it successfully
+  if not (cc.has_function('dlopen') or with_platform_android)
     dep_dl = cc.find_library('dl', required : true)
   endif
   if cc.has_function('dladdr', dependencies : dep_dl)
     # This is really only required for util/disk_cache.h
-    pre_args += '-DHAVE_DLADDR'
+    pre_args += '-DHAVE_DLFCN_H'
   endif
 endif
 
-if cc.has_function('dl_iterate_phdr')
+# Checked that the NDK has dl_iterate_phdr function, cc_has_function can not detect it successfully
+if cc.has_function('dl_iterate_phdr') or with_platform_android
   pre_args += '-DHAVE_DL_ITERATE_PHDR'
 elif with_intel_vk or with_intel_hasvk
   error('Intel "Anvil" Vulkan driver requires the dl_iterate_phdr function')
+endif
+
+# Add HAVE_TIMESPEC_GET and HAVE_LINUX_FUTEX_H for Android because the NDK has
+# timespec_get function and support linux futex.
+if with_platform_android
+  pre_args += '-DHAVE_TIMESPEC_GET'
+  pre_args += '-DHAVE_LINUX_FUTEX_H'
+  pre_args += '-DHAVE_STRUCT_TIMESPEC'
+  pre_args += '-DHAVE_FUNC_ATTRIBUTE_PACKED'
 endif
 
 if with_any_intel and ['x86', 'x86_64'].contains(host_machine.cpu_family())
@@ -1524,7 +1535,8 @@ if with_gallium_i915 and host_machine.cpu_family().startswith('x86') == false
 endif
 
 # Determine whether or not the rt library is needed for time functions
-if host_machine.system() == 'windows' or cc.has_function('clock_gettime')
+# Checked that the NDK has clock_gettime function, cc_has_function can not detect it successfully
+if host_machine.system() == 'windows' or cc.has_function('clock_gettime') or with_platform_android
   dep_clock = null_dep
 else
   dep_clock = cc.find_library('rt')
