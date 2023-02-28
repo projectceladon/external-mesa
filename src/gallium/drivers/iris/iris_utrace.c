@@ -198,14 +198,14 @@ void iris_utrace_init(struct iris_context *ice)
    struct iris_screen *screen = (struct iris_screen *)ice->ctx.screen;
 
    struct stat st;
-   uint32_t minor;
+   uint32_t minor_num;
 
    if (fstat(screen->fd, &st) == 0)
-      minor = minor(st.st_rdev);
+      minor_num = minor(st.st_rdev);
    else
-      minor = 0;
+      minor_num = 0;
 
-   intel_ds_device_init(&ice->ds, screen->devinfo, screen->fd, minor,
+   intel_ds_device_init(&ice->ds, screen->devinfo, screen->fd, minor_num,
                         INTEL_DS_API_OPENGL);
 
    u_trace_context_init(&ice->ds.trace_context, &ice->ctx,
