@@ -40,7 +40,7 @@ if T.TYPE_CHECKING:
         stage: str
 
 
-def get_args() -> 'Arguments':
+def get_args():
     parser = argparse.ArgumentParser()
     parser.add_argument('input', help="Name of input file.")
     parser.add_argument('output', help="Name of output file.")
@@ -76,7 +76,7 @@ def get_args() -> 'Arguments':
     return args
 
 
-def create_include_guard(lines: T.List[str], filename: str) -> T.List[str]:
+def create_include_guard(lines, filename):
     filename = filename.replace('.', '_')
     upper_name = filename.upper()
 
@@ -93,7 +93,7 @@ def create_include_guard(lines: T.List[str], filename: str) -> T.List[str]:
     return guard_head + lines + guard_tail
 
 
-def convert_to_static_variable(lines: T.List[str], varname: str) -> T.List[str]:
+def convert_to_static_variable(lines, varname):
     for idx, l in enumerate(lines):
         if varname in l:
             lines[idx] = f"static {l}"
@@ -101,7 +101,7 @@ def convert_to_static_variable(lines: T.List[str], varname: str) -> T.List[str]:
     raise RuntimeError(f'Did not find {varname}, this is unexpected')
 
 
-def override_version(lines: T.List[str], glsl_version: str) -> T.List[str]:
+def override_version(lines, glsl_version):
     for idx, l in enumerate(lines):
         if '#version ' in l:
             lines[idx] = f"#version {glsl_version}\n"
@@ -109,7 +109,7 @@ def override_version(lines: T.List[str], glsl_version: str) -> T.List[str]:
     raise RuntimeError('Did not find #version directive, this is unexpected')
 
 
-def postprocess_file(args: 'Arguments') -> None:
+def postprocess_file(args):
     with open(args.output, "r") as r:
         lines = r.readlines()
 
@@ -123,7 +123,7 @@ def postprocess_file(args: 'Arguments') -> None:
         w.writelines(lines)
 
 
-def preprocess_file(args: 'Arguments', origin_file: T.TextIO, directory: os.PathLike) -> str:
+def preprocess_file(args, origin_file, directory):
     with open(os.path.join(directory, os.path.basename(origin_file.name)), "w") as copy_file:
         lines = origin_file.readlines()
 
@@ -138,7 +138,7 @@ def preprocess_file(args: 'Arguments', origin_file: T.TextIO, directory: os.Path
     return copy_file.name
 
 
-def process_file(args: 'Arguments') -> None:
+def process_file(args):
     with open(args.input, "r") as infile:
         copy_file = preprocess_file(args, infile,
                                     os.path.dirname(args.output))
@@ -177,7 +177,7 @@ def process_file(args: 'Arguments') -> None:
         os.remove(copy_file)
 
 
-def main() -> None:
+def main():
     args = get_args()
     process_file(args)
 
