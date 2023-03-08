@@ -1605,6 +1605,8 @@ endif
 if with_platform_android
   pre_args += '-DHAVE_TIMESPEC_GET'
   pre_args += '-DHAVE_LINUX_FUTEX_H'
+  pre_args += '-DHAVE_STRUCT_TIMESPEC'
+  pre_args += '-DHAVE_FUNC_ATTRIBUTE_PACKED'
 endif
 
 # only used in Iris and ANV
