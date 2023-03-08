@@ -1481,6 +1481,8 @@ endif
 if with_platform_android
   pre_args += '-DHAVE_TIMESPEC_GET'
   pre_args += '-DHAVE_LINUX_FUTEX_H'
+  pre_args += '-DHAVE_STRUCT_TIMESPEC'
+  pre_args += '-DHAVE_FUNC_ATTRIBUTE_PACKED'
 endif
 
 if with_any_intel and ['x86', 'x86_64'].contains(host_machine.cpu_family())
