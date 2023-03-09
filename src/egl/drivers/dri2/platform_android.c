@@ -254,7 +254,7 @@ static int get_ycbcr_from_flexlayout(struct android_flex_layout *outFlexLayout, 
              ycbcr->chroma_step = outFlexLayout->planes[i].h_increment;
          break;
          default:
-             _eglLog(_EGL_WARNING,"unknown component 0x%x", __func__, outFlexLayout->planes[i].component);
+             _eglLog(_EGL_WARNING,"%s: unknown component 0x%x", __func__, outFlexLayout->planes[i].component);
          break;
        }
   }
