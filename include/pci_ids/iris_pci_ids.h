@@ -156,6 +156,7 @@ CHIPSET(0x4c8c, rkl_gt05, "RKL GT0.5", "Intel(R) Graphics")
 CHIPSET(0x4c90, rkl_gt1, "RKL GT1", "Intel(R) Graphics")
 CHIPSET(0x4c9a, rkl_gt1, "RKL GT1", "Intel(R) Graphics")
 
+CHIPSET(0x4600, adl_gt1, "ADL-S GT1", "Intel(R) Graphics")
 CHIPSET(0x4680, adl_gt1, "ADL-S GT1", "Intel(R) UHD Graphics 770")
 CHIPSET(0x4682, adl_gt1, "ADL-S GT1", "Intel(R) UHD Graphics 730")
 CHIPSET(0x4688, adl_gt1, "ADL-S GT1", "Intel(R) UHD Graphics")
