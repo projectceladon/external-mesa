@@ -2131,6 +2131,11 @@ anv_physical_device_try_create(struct vk_instance *vk_instance,
 
    const char *primary_path = drm_device->nodes[DRM_NODE_PRIMARY];
    const char *path = drm_device->nodes[DRM_NODE_RENDER];
+
+   if (path != NULL && strstr(path, "renderD129") != NULL) {
+      return VK_ERROR_INCOMPATIBLE_DRIVER;
+   }
+
    VkResult result;
    int fd;
    int master_fd = -1;
