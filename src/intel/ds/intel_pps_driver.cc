@@ -75,7 +75,13 @@ bool IntelDriver::init_perfcnt()
     */
    this->clock_id = intel_pps_clock_id(drm_device.gpu_num);
 
-   assert(!perf && "Intel perf should not be initialized at this point");
+   // If perf exists, just release previous value.
+   // It happens that two i915 devices exist. There's only one IntelDriver for all i915 devices.
+   // In this situation, when call init_perfcnt() for each i915 device,
+   // the perf is also shared, only drm_device is changed.
+   if (perf) {
+      perf = nullptr;
+   }
 
    perf = std::make_unique<IntelPerf>(drm_device.fd);
 
@@ -83,14 +89,19 @@ bool IntelDriver::init_perfcnt()
 
    struct intel_perf_query_info *default_query = nullptr;
    selected_query = nullptr;
+   int cnt = 0;
    for (auto &query : perf->get_queries()) {
       if (!strcmp(query->symbol_name, "RenderBasic"))
          default_query = query;
       if (metric_set_name && !strcmp(query->symbol_name, metric_set_name))
          selected_query = query;
+      cnt ++;
    }
 
-   assert(default_query);
+   if (!default_query) {
+      PPS_LOG_ERROR("No default query found! total_cnt=%d", cnt);
+      return false;
+   }
 
    if (!selected_query) {
       if (metric_set_name) {

@@ -315,6 +315,7 @@ end_event(struct intel_ds_queue *queue, uint64_t ts_ns,
       event->set_event_id(evt_id);
       event->set_duration(ts_ns - start_ns);
       event->set_submission_id(submission_id);
+      event->set_command_buffer_handle((uint64_t)&submission_id);
 
       if (payload && payload_as_extra) {
          payload_as_extra(event, payload);
@@ -510,12 +511,18 @@ intel_ds_end_stall(struct intel_ds_device *device,
 uint64_t
 intel_ds_begin_submit(struct intel_ds_queue *queue)
 {
+   /*
+    * To make AGI validation passthrough, submission_id can't be 0.
+    * Since initial value of submission_id in queue struct is 0,
+    * make it start from 1 instead of 0.
+    */
+   if (queue->submission_id == 0) queue->submission_id = 1;
    return perfetto::base::GetBootTimeNs().count();
 }
 
 void
 intel_ds_end_submit(struct intel_ds_queue *queue,
-                    uint64_t start_ts)
+                    uint64_t start_ts, uint64_t cmd_buf)
 {
    if (!u_trace_should_process(&queue->device->trace_context)) {
       queue->device->sync_gpu_ts = 0;
@@ -546,6 +553,8 @@ intel_ds_end_submit(struct intel_ds_queue *queue,
       submit->set_duration_ns(end_ts - start_ts);
       submit->set_vk_queue((uintptr_t) queue);
       submit->set_submission_id(submission_id);
+      // To make AGI validation passthrough, CommandBuffers can't be null.
+      submit->add_vk_command_buffers(cmd_buf);
    });
 }
 
