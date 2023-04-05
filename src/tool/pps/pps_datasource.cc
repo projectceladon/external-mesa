@@ -143,14 +143,6 @@ void GpuDataSource::wait_started()
    }
 }
 
-void GpuDataSource::register_data_source(const std::string &_driver_name)
-{
-   driver_name = _driver_name;
-   static perfetto::DataSourceDescriptor dsd;
-   dsd.set_name("gpu.counters." + driver_name);
-   Register(dsd);
-}
-
 void add_group(perfetto::protos::pbzero::GpuCounterDescriptor *desc,
    const CounterGroup &group,
    const std::string &prefix,
@@ -175,14 +167,11 @@ void add_group(perfetto::protos::pbzero::GpuCounterDescriptor *desc,
    }
 }
 
-void add_descriptors(perfetto::protos::pbzero::GpuCounterEvent *event,
+void add_descriptors(perfetto::protos::pbzero::GpuCounterDescriptor *desc,
    std::vector<CounterGroup> const &groups,
    std::vector<Counter> const &counters,
    Driver &driver)
 {
-   // Start a counter descriptor
-   auto desc = event->set_counter_descriptor();
-
    // Add the groups
    for (auto const &group : groups) {
       add_group(desc, group, driver.drm_device.name, driver.drm_device.gpu_num);
@@ -207,6 +196,68 @@ void add_descriptors(perfetto::protos::pbzero::GpuCounterEvent *event,
          break;
       case Counter::Units::None:
          units = perfetto::protos::pbzero::GpuCounterDescriptor::NONE;
+         break;
+      default:
+         assert(false && "Missing counter units type!");
+         break;
+      }
+      spec->add_numerator_units(units);
+   }
+}
+
+void add_group(perfetto::protos::gen::GpuCounterDescriptor *desc,
+   const CounterGroup &group,
+   const std::string &prefix,
+   int32_t gpu_num)
+{
+   if (!group.counters.empty()) {
+      // Define a block for each group containing counters
+      auto block_desc = desc->add_blocks();
+      block_desc->set_name(prefix + "." + group.name);
+      block_desc->set_block_id(group.id);
+
+      // Associate counters to blocks
+      for (auto id : group.counters) {
+         block_desc->add_counter_ids(id);
+      }
+   }
+
+   for (auto const &sub : group.subgroups) {
+      // Perfetto doesnt currently support nested groups.
+      // Flatten group hierarchy, using dot separator
+      add_group(desc, sub, prefix + "." + group.name, gpu_num);
+   }
+}
+
+void add_descriptors(perfetto::protos::gen::GpuCounterDescriptor *desc,
+   std::vector<CounterGroup> const &groups,
+   std::vector<Counter> const &counters,
+   Driver &driver)
+{
+   // Add the groups
+   for (auto const &group : groups) {
+      add_group(desc, group, driver.drm_device.name, driver.drm_device.gpu_num);
+   }
+
+   // Add the counters
+   for (auto const &counter : counters) {
+      auto spec = desc->add_specs();
+      spec->set_counter_id(counter.id);
+      spec->set_name(counter.name);
+
+      auto units = perfetto::protos::gen::GpuCounterDescriptor::NONE;
+      switch (counter.units) {
+      case Counter::Units::Percent:
+         units = perfetto::protos::gen::GpuCounterDescriptor::PERCENT;
+         break;
+      case Counter::Units::Byte:
+         units = perfetto::protos::gen::GpuCounterDescriptor::BYTE;
+         break;
+      case Counter::Units::Hertz:
+         units = perfetto::protos::gen::GpuCounterDescriptor::HERTZ;
+         break;
+      case Counter::Units::None:
+         units = perfetto::protos::gen::GpuCounterDescriptor::NONE;
          break;
       default:
          assert(false && "Missing counter units type!");
@@ -269,6 +320,38 @@ void add_timestamp(perfetto::protos::pbzero::ClockSnapshot *event, const Driver 
    }
 }
 
+void GpuDataSource::register_data_source(const std::string &_driver_name)
+{
+   driver_name = _driver_name;
+   static perfetto::DataSourceDescriptor dsd;
+   dsd.set_name("gpu.counters." + driver_name);
+
+   Driver * driver = nullptr;
+   auto drm_devices = DrmDevice::create_all();
+   for (auto &drm_device : drm_devices) {
+      if (drm_device.name != driver_name)
+         continue;
+
+      driver = Driver::get_driver(std::move(drm_device));
+      if ((driver != nullptr) && !driver->init_perfcnt()) {
+         driver = nullptr;
+      }
+   }
+
+   if (driver != nullptr) {
+      auto &groups = driver->groups;
+      auto &counters = driver->counters;
+
+      perfetto::protos::gen::GpuCounterDescriptor desc;
+      add_descriptors(&desc, groups, counters, *driver);
+      dsd.set_gpu_counter_descriptor_raw(desc.SerializeAsString());
+
+      driver->disable_perfcnt();
+   }
+
+   Register(dsd);
+}
+
 void GpuDataSource::trace(TraceContext &ctx)
 {
    using namespace perfetto::protos::pbzero;
@@ -295,7 +378,10 @@ void GpuDataSource::trace(TraceContext &ctx)
 
          auto &groups = driver->groups;
          auto &counters = driver->enabled_counters;
-         add_descriptors(event, groups, counters, *driver);
+
+         // Start a counter descriptor
+         auto desc = event->set_counter_descriptor();
+         add_descriptors(desc, groups, counters, *driver);
       }
 
       {
