@@ -2047,7 +2047,13 @@ anv_queue_submit(struct vk_queue *vk_queue,
    /* Take submission ID under lock */
    pthread_mutex_unlock(&device->mutex);
 
-   intel_ds_end_submit(&queue->ds, start_ts);
+   /*
+    * To make AGI validation passthrough, CommandBuffers can't be null.
+    * Just use command_buffers.
+    * TODO: check if need change other more meaningful var.
+    */
+   intel_ds_end_submit(&queue->ds, start_ts, (uint64_t)(&submit->command_buffers));
+
 
    return result;
 }
