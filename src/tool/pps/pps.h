@@ -7,6 +7,7 @@
 
 #pragma once
 
+#undef minor
 #include <perfetto.h>
 
 #define PPS_LOG PERFETTO_LOG

@@ -105,7 +105,6 @@ _mesa_trace_scope_end(UNUSED int *scope)
 static inline void
 util_cpu_trace_init()
 {
-   util_perfetto_init();
    util_gpuvis_init();
 }
 
