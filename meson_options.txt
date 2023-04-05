@@ -602,7 +602,7 @@ option(
 option(
   'perfetto',
   type : 'boolean',
-  value : false,
+  value : true,
   description : 'Enable performance analysis with Perfetto. Default: false'
 )
 

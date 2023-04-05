@@ -38,6 +38,7 @@ PERFETTO_DEFINE_CATEGORIES(
 PERFETTO_TRACK_EVENT_STATIC_STORAGE();
 
 int util_perfetto_tracing_state;
+static int inited = false;
 
 static uint64_t util_perfetto_unique_id = 1;
 
@@ -69,6 +70,9 @@ util_perfetto_update_tracing_state(void)
 void
 util_perfetto_trace_begin(const char *name)
 {
+   if (!inited)
+      util_perfetto_init();
+
    TRACE_EVENT_BEGIN(
       UTIL_PERFETTO_CATEGORY_DEFAULT_STR, nullptr,
       [&](perfetto::EventContext ctx) { ctx.event()->set_name(name); });
@@ -175,4 +179,5 @@ void
 util_perfetto_init(void)
 {
    call_once(&perfetto_once_flag, util_perfetto_init_once);
+   inited = true;
 }

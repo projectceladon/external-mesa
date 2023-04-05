@@ -24,6 +24,28 @@
 ifneq ($(filter true, $(BOARD_MESA3D_USES_MESON_BUILD)),)
 
 LOCAL_PATH := $(call my-dir)
+
+include $(CLEAR_VARS)
+LOCAL_MODULE := perfetto_sdk
+LOCAL_SRC_FILES := perfetto/sdk-v47.0/perfetto.cc
+LOCAL_VENDOR_MODULE := true
+LOCAL_SHARED_LIBRARIES := liblog
+LOCAL_CPP_EXTENSION := .cc
+LOCAL_MODULE_TAGS := optional
+LOCAL_INCLUDE_DIRS := perfetto/sdk-v47.0
+LOCAL_EXPORT_C_INCLUDE_DIRS := $(LOCAL_PATH)/perfetto/sdk-v47.0
+LOCAL_CFLAGS += -D__ANDROID__
+include $(BUILD_STATIC_LIBRARY)
+
+include $(CLEAR_VARS)
+LOCAL_SHARED_LIBRARIES := libpps-producer
+LOCAL_SRC_FILES := perfetto/pps-producer.cc
+LOCAL_VENDOR_MODULE := true
+LOCAL_MODULE := pps-producer
+LOCAL_CPP_EXTENSION := .cc
+LOCAL_MODULE_TAGS := optional
+include $(BUILD_EXECUTABLE)
+
 MESA3D_TOP := $(dir $(LOCAL_PATH))
 
 LIBDRM_VERSION = $(shell cat hardware/intel/external/drm-intel/meson.build | grep -o "\<version\>\s*:\s*'\w*\.\w*\.\w*'" | grep -o "\w*\.\w*\.\w*" | head -1)
@@ -46,9 +68,9 @@ MESA_VK_LIB_SUFFIX_swrast := lvp
 include $(CLEAR_VARS)
 
 LOCAL_SHARED_LIBRARIES := libc libdl libdrm libm liblog libcutils libz libc++ libnativewindow libsync libhardware
-LOCAL_STATIC_LIBRARIES := libexpat libarect libelf
+LOCAL_STATIC_LIBRARIES := libexpat libarect libelf perfetto_sdk
 LOCAL_HEADER_LIBRARIES := libnativebase_headers hwvulkan_headers
-MESON_GEN_PKGCONFIGS := log cutils expat hardware libdrm:$(LIBDRM_VERSION) nativewindow sync zlib:1.2.11 libelf
+MESON_GEN_PKGCONFIGS := log cutils expat hardware libdrm:$(LIBDRM_VERSION) nativewindow sync zlib:1.2.11 libelf perfetto
 LOCAL_CFLAGS += $(BOARD_MESA3D_CFLAGS)
 
 ifneq ($(filter swrast,$(BOARD_MESA3D_GALLIUM_DRIVERS) $(BOARD_MESA3D_VULKAN_DRIVERS)),)
@@ -181,6 +203,9 @@ ifneq ($(strip $(BOARD_MESA3D_GALLIUM_DRIVERS)),)
 # This module also trigger DRI symlinks creation process
 $(eval $(call mesa3d-lib,libgallium_dri,,MESA3D_GALLIUM_BIN))
 
+# Module 'libpps-producer', produces '/vendor/lib{64}/libpps-producer.so'
+$(eval $(call mesa3d-lib,libpps-producer,,MESA3D_LIBPPS_PRODUCER))
+
 # Module 'libEGL_mesa', produces '/vendor/lib{64}/egl/libEGL_mesa.so'
 $(eval $(call mesa3d-lib,libEGL_mesa,egl,MESA3D_LIBEGL_BIN))
 # Module 'libGLESv1_CM_mesa', produces '/vendor/lib{64}/egl/libGLESv1_CM_mesa.so'
@@ -200,5 +225,6 @@ $(eval $(call mesa3d-lib,dri_gbm,,MESA3D_DRI_GBM_BIN))
 endif
 
 #-------------------------------------------------------------------------------
+
 
 endif

@@ -70,7 +70,9 @@ $(M_TARGET_PREFIX)MESA3D_LIBGLESV1_BIN   := $(MESON_OUT_DIR)/install/usr/local/l
 $(M_TARGET_PREFIX)MESA3D_LIBGLESV2_BIN   := $(MESON_OUT_DIR)/install/usr/local/lib/libGLESv2.so
 $(M_TARGET_PREFIX)MESA3D_LIBGBM_BIN      := $(MESON_OUT_DIR)/install/usr/local/lib/$(MESA_LIBGBM_NAME).so
 $(M_TARGET_PREFIX)MESA3D_DRI_GBM_BIN     := $(MESON_OUT_DIR)/install/usr/local/lib/gbm/dri_gbm.so
+$(M_TARGET_PREFIX)MESA3D_LIBPPS_PRODUCER := $(MESON_OUT_DIR)/install/usr/local/lib/libpps-producer.so
 
+MESA3D_PPS_PRODUCER_BIN := $($(M_TARGET_PREFIX)MESA3D_LIBPPS_PRODUCER)
 
 MESA3D_GBM_BINS := \
     $($(M_TARGET_PREFIX)MESA3D_LIBGBM_BIN) \
@@ -295,7 +297,7 @@ $(MESON_OUT_DIR)/install/.install.timestamp: $(MESON_OUT_DIR)/.build.timestamp
 	DESTDIR=$(call relative-to-absolute,$(dir $@)) $(MESON_BUILD) install
 	touch $@
 
-$(MESA3D_GBM_BINS) $(MESA3D_GLES_BINS): $(MESON_OUT_DIR)/install/.install.timestamp
+$(MESA3D_PPS_PRODUCER_BIN) $(MESA3D_GBM_BINS) $(MESA3D_GLES_BINS): $(MESON_OUT_DIR)/install/.install.timestamp
 	echo "Build $@"
 	touch $@
 
