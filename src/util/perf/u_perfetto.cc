@@ -42,6 +42,7 @@ PERFETTO_DEFINE_CATEGORIES(
 PERFETTO_TRACK_EVENT_STATIC_STORAGE();
 
 int util_perfetto_category_states[UTIL_PERFETTO_CATEGORY_COUNT];
+static int inited = false;
 
 static void
 util_perfetto_update_category_states(void)
@@ -59,6 +60,9 @@ void
 util_perfetto_trace_begin(enum util_perfetto_category category,
                           const char *name)
 {
+   if (!inited)
+      util_perfetto_init();
+
 #define TRACE_BEGIN(cat, name)                                               \
    TRACE_EVENT_BEGIN(                                                        \
       UTIL_PERFETTO_CATEGORY_##cat##_STR, nullptr,                           \
@@ -135,4 +139,5 @@ void
 util_perfetto_init(void)
 {
    call_once(&perfetto_once_flag, util_perfetto_init_once);
+   inited = true;
 }
