@@ -562,6 +562,7 @@ perfetto_utils_hdr_template = """\
 #ifndef ${guard_name}
 #define ${guard_name}
 
+#undef minor
 #include <perfetto.h>
 
 % for header in HEADERS:

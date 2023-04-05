@@ -925,7 +925,11 @@ _iris_batch_flush(struct iris_batch *batch, const char *file, int line)
    uint64_t start_ts = intel_ds_begin_submit(&batch->ds);
    uint64_t submission_id = batch->ds.submission_id;
    int ret = iris_bufmgr_get_kernel_driver_backend(bufmgr)->batch_submit(batch);
-   intel_ds_end_submit(&batch->ds, start_ts);
+   /*
+   * To make AGI validation passthrough, CommandBuffers can't be null.
+   * Just use bo. TODO: check if need to change to other more meaningful var.
+   */
+   intel_ds_end_submit(&batch->ds, start_ts, (uint64_t)(&batch->bo));
 
    /* When batch submission fails, our end-of-batch syncobj remains
     * unsignalled, and in fact is not even considered submitted.
