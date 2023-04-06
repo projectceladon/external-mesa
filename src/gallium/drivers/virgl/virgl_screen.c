@@ -983,7 +983,9 @@ virgl_destroy_screen(struct pipe_screen *screen)
    if (vws)
       vws->destroy(vws);
 
+#if !defined(__ANDROID__)
    disk_cache_destroy(vscreen->disk_cache);
+#endif
 
    FREE(vscreen);
 }
@@ -1198,7 +1200,9 @@ virgl_create_screen(struct virgl_winsys *vws, const struct pipe_screen_config *c
    screen->base.fence_finish = virgl_fence_finish;
    screen->base.fence_get_fd = virgl_fence_get_fd;
    screen->base.query_memory_info = virgl_query_memory_info;
+#if !defined(__ANDROID__)
    screen->base.get_disk_shader_cache = virgl_get_disk_shader_cache;
+#endif
    screen->base.is_dmabuf_modifier_supported = virgl_is_dmabuf_modifier_supported;
    screen->base.get_dmabuf_modifier_planes = virgl_get_dmabuf_modifier_planes;
 
@@ -1233,6 +1237,8 @@ virgl_create_screen(struct virgl_winsys *vws, const struct pipe_screen_config *c
 
    slab_create_parent(&screen->transfer_pool, sizeof(struct virgl_transfer), 16);
 
+#if !defined(__ANDROID__)
    virgl_disk_cache_create(screen);
+#endif
    return &screen->base;
 }
