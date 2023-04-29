@@ -54,8 +54,10 @@ MESA_COMMON_MK := $(MESA_TOP)/Android.common.mk
 MESA_PYTHON3 := python3
 ifeq ($(filter 5 6 7 8 9 10, $(MESA_ANDROID_MAJOR_VERSION)),)
 MESA_LEX     := M4=$(M4) $(LEX)
+MESA_BISON   := M4=$(M4) $(BISON)
 else
 MESA_LEX     := $(LEX)
+MESA_BISON   := $(BISON)
 endif
 
 # Lists to convert driver names to boolean variables
