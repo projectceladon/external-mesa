@@ -35,6 +35,7 @@ ifneq ($(BOARD_USE_CUSTOMIZED_MESA), true)
 ifneq ($(BOARD_GPU_DRIVERS),)
 
 MESA_TOP := $(LOCAL_PATH)
+MESA_VERSION := $(shell cat $(MESA_TOP)/VERSION)
 
 ifeq ($(filter $(MESA_TOP),$(PRODUCT_SOONG_NAMESPACES)),)
   $(error $(MESA_TOP) must be in PRODUCT_SOONG_NAMESPACES)
