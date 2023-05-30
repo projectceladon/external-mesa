@@ -55,6 +55,11 @@
 
 #include <errno.h>
 #include <xf86drm.h>
+#include <errno.h>
+#include <string.h>
+#include <sys/stat.h>
+#include <sys/types.h>
+#include <unistd.h>
 
 #ifdef HAVE_VALGRIND
 #include <valgrind.h>
@@ -65,6 +70,10 @@
 #endif
 
 #define FILE_DEBUG_FLAG DEBUG_BUFMGR
+
+FILE *g_log_file = NULL;
+FILE *create_log_file();
+void close_log_file(FILE**);
 
 static void
 iris_batch_reset(struct iris_batch *batch);
@@ -235,7 +244,7 @@ iris_init_batch(struct iris_context *ice,
 
       intel_batch_decode_ctx_init(&batch->decoder, &screen->compiler->isa,
                                   screen->devinfo,
-                                  stderr, decode_flags, NULL,
+                                  g_log_file, decode_flags, NULL,
                                   decode_get_bo, decode_get_state_size, batch);
       batch->decoder.dynamic_base = IRIS_MEMZONE_DYNAMIC_START;
       batch->decoder.instruction_base = IRIS_MEMZONE_SHADER_START;
@@ -338,6 +347,12 @@ iris_init_batches(struct iris_context *ice, int priority)
    for (int i = 0; i < IRIS_BATCH_COUNT; i++)
       ice->batches[i].screen = (void *) ice->ctx.screen;
 
+   if (INTEL_DEBUG(DEBUG_BATCH)) {
+      g_log_file = create_log_file();
+      if (!g_log_file) {
+         g_log_file = stderr;
+      }
+   }
    if (!iris_init_engines_context(ice, priority))
       iris_init_non_engine_contexts(ice, priority);
    iris_foreach_batch(ice, batch)
@@ -607,6 +622,8 @@ iris_destroy_batches(struct iris_context *ice)
 {
    iris_foreach_batch(ice, batch)
       iris_batch_free(ice, batch);
+   if (INTEL_DEBUG(DEBUG_BATCH))
+      close_log_file(&g_log_file);
 }
 
 /**
@@ -1078,7 +1095,7 @@ _iris_batch_flush(struct iris_batch *batch, const char *file, int line)
    util_dynarray_clear(&batch->exec_fences);
 
    if (INTEL_DEBUG(DEBUG_SYNC)) {
-      dbg_printf("waiting for idle\n");
+      mesa_logw("waiting for idle\n");
       iris_bo_wait_rendering(batch->bo); /* if execbuf failed; this is a nop */
    }
 
@@ -1146,4 +1163,42 @@ iris_batch_prepare_noop(struct iris_batch *batch, bool noop_enable)
     * not-noop.
     */
    return !batch->noop_enabled;
+}
+
+FILE *create_log_file()
+{
+   char file_name[128]= {0};
+#ifdef HAVE_ANDROID_PLATFORM
+   char dir_name[32] = "/data/local/tmp/mesa3d_intel";
+#else
+   char dir_name[32] = "/tmp/mesa3d_intel";
+#endif
+   time_t timep;
+   struct tm *p;
+   int tid, pid;
+   time(&timep);
+   p = gmtime(&timep);
+   FILE *f = NULL;
+
+   tid = gettid();
+   pid = getpid();
+
+   snprintf(file_name, 127, "%s/%04d%02d%02d%02d%02d%02d_%u_%u_mesa_batch.log", dir_name,
+          1900+p->tm_year, p->tm_mon, p->tm_mday, p->tm_hour, p->tm_min, p->tm_sec, pid, tid);
+   f = fopen(file_name, "a+");
+
+   mesa_logw("create log file %p %s, %p", p, file_name, f);
+   if (!f) {
+      mesa_logw("create file fail errno = %d reason = %s \n", errno, strerror(errno));
+   }
+   return f;
+}
+
+void close_log_file(FILE **file)
+{
+   if (*file != NULL && *file != stderr) {
+      mesa_logw("close log file");
+      fclose(*file);
+      *file = stderr;
+   }
 }

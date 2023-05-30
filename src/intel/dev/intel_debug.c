@@ -29,6 +29,7 @@
  * miscellaneous debugging code.
  */
 
+#include <cutils/properties.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -126,6 +127,15 @@ static void
 brw_process_intel_debug_variable_once(void)
 {
    intel_debug = parse_debug_string(getenv("INTEL_DEBUG"), debug_control);
+
+#ifdef HAVE_ANDROID_PLATFORM
+   char value[PROP_VALUE_MAX]= {0};
+   if (__system_property_get("debug.dump.cmd_buffer", value)
+         && !strncmp(value, "enable", PROP_VALUE_MAX-1)) {
+      intel_debug |= DEBUG_BATCH;
+      dbg_printf("enable DEBUG_BATCH - %s", value);
+  }
+#endif /* HAVE_ANDROID_PLATFORM */
 }
 
 void
