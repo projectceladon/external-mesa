@@ -155,6 +155,7 @@ cc_defaults {
         "-Wno-typedef-redefinition",
         "-Wno-uninitialized",
         "-Wno-implicit-const-int-float-conversion",
+        "-Wno-sync-alignment",
         "-DHAVE_TIMESPEC_GET",
     ],
 
