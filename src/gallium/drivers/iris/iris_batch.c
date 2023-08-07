@@ -57,6 +57,11 @@
 
 #include <errno.h>
 #include <xf86drm.h>
+#include <errno.h>
+#include <string.h>
+#include <sys/stat.h>
+#include <sys/types.h>
+#include <unistd.h>
 
 #ifdef HAVE_VALGRIND
 #include <valgrind.h>
@@ -904,14 +909,17 @@ _iris_batch_flush(struct iris_batch *batch, const char *file, int line)
       enum intel_kmd_type kmd_type = iris_bufmgr_get_device_info(bufmgr)->kmd_type;
       uint32_t batch_ctx_id = kmd_type == INTEL_KMD_TYPE_I915 ?
                               batch->i915.ctx_id : batch->xe.exec_queue_id;
-      fprintf(stderr, "%19s:%-3d: %s batch [%u] flush with %5db (%0.1f%%) "
-              "(cmds), %4d BOs (%0.1fMb aperture)\n",
-              file, line, iris_batch_name_to_string(batch->name),
-              batch_ctx_id, batch->total_chained_batch_size,
-              100.0f * batch->total_chained_batch_size / BATCH_SZ,
-              batch->exec_count,
-              (float) batch->aperture_space / (1024 * 1024));
-
+      if (getenv("CAPTURE_FRAME_NO") == NULL ||
+         (getenv("CAPTURE_FRAME_NO") != NULL && getenv("FRAME_NO") != NULL &&
+          atoi(getenv("FRAME_NO")) == atoi(getenv("CAPTURE_FRAME_NO")))) {
+         fprintf(stderr, "%19s:%-3d: %s batch [%u] flush with %5db (%0.1f%%) "
+               "(cmds), %4d BOs (%0.1fMb aperture)\n",
+               file, line, iris_batch_name_to_string(batch->name),
+               batch_ctx_id, batch->total_chained_batch_size,
+               100.0f * batch->total_chained_batch_size / BATCH_SZ,
+               batch->exec_count,
+               (float) batch->aperture_space / (1024 * 1024));
+      }
    }
 
    uint64_t start_ts = intel_ds_begin_submit(&batch->ds);
@@ -945,7 +953,7 @@ _iris_batch_flush(struct iris_batch *batch, const char *file, int line)
    util_dynarray_clear(&batch->exec_fences);
 
    if (INTEL_DEBUG(DEBUG_SYNC)) {
-      dbg_printf("waiting for idle\n");
+      mesa_logw("waiting for idle\n");
       iris_bo_wait_rendering(batch->bo); /* if execbuf failed; this is a nop */
    }
 
