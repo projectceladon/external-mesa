@@ -36,6 +36,46 @@
 
 #define FILE_DEBUG_FLAG DEBUG_BUFMGR
 
+static FILE *
+create_log_file()
+{
+   char file_name[128]= {0};
+#ifdef HAVE_ANDROID_PLATFORM
+   char dir_name[32] = "/data/local/tmp/mesa3d_intel";
+#else
+   char dir_name[32] = "/tmp/mesa3d_intel";
+#endif
+   time_t timep;
+   struct tm *p;
+   int tid, pid;
+   time(&timep);
+   p = gmtime(&timep);
+   FILE *f = NULL;
+
+   tid = gettid();
+   pid = getpid();
+
+   snprintf(file_name, sizeof(file_name) - 1, "%s/%04d%02d%02d_%u_%u_mesa_batch.log", dir_name,
+          1900+p->tm_year, p->tm_mon + 1, p->tm_mday, pid, tid);
+   f = fopen(file_name, "a+");
+
+   mesa_logw("create log file %p %s, %p", p, file_name, f);
+   if (!f) {
+      mesa_logw("create file fail errno = %d reason = %s \n", errno, strerror(errno));
+   }
+   return f;
+}
+
+static void
+close_log_file(FILE **file)
+{
+   if (*file != NULL && *file != stderr) {
+      mesa_logw("close log file");
+      fclose(*file);
+      *file = stderr;
+   }
+}
+
 static int
 i915_gem_set_domain(struct iris_bufmgr *bufmgr, uint32_t handle,
                     uint32_t read_domains, uint32_t write_domains)
@@ -329,6 +369,20 @@ i915_batch_submit(struct iris_batch *batch)
        intel_debug_batch_in_range(batch->ice->frame))
       iris_batch_decode_batch(batch);
 
+   /* For android apitrace */
+   if (INTEL_DEBUG(DEBUG_BATCH)) {
+      if (getenv("CAPTURE_FRAME_NO") != NULL) {
+         if (getenv("FRAME_NO") != NULL && atoi(getenv("FRAME_NO")) == atoi(getenv("CAPTURE_FRAME_NO"))) {
+            FILE* logfile = create_log_file();
+            if (logfile) {
+               batch->decoder.fp = logfile;
+               iris_batch_decode_batch(batch);
+               close_log_file(&batch->decoder.fp);
+            }
+         }
+      }
+   }
+
    simple_mtx_lock(bo_deps_lock);
 
    iris_batch_update_syncobjs(batch);
@@ -338,6 +392,16 @@ i915_batch_submit(struct iris_batch *batch)
        INTEL_DEBUG(DEBUG_SUBMIT)) {
       iris_dump_fence_list(batch);
       iris_dump_bo_list(batch);
+   }
+
+   /* For android apitrace */
+   if (INTEL_DEBUG(DEBUG_BATCH | DEBUG_SUBMIT)) {
+      if (getenv("CAPTURE_FRAME_NO") == NULL ||
+         (getenv("CAPTURE_FRAME_NO") != NULL && getenv("FRAME_NO") != NULL &&
+         atoi(getenv("FRAME_NO")) == atoi(getenv("CAPTURE_FRAME_NO")))) {
+         iris_dump_fence_list(batch);
+         iris_dump_bo_list(batch);
+      }
    }
 
    /* The requirement for using I915_EXEC_NO_RELOC are:

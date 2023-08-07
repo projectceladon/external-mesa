@@ -77,12 +77,12 @@ if with_clflushopt
 endif
 
 batch_decoder_dependencies = []
-if not dep_expat.found()
-  files_libintel_common += 'intel_batch_decoder_stub.c'
-else
+#if not dep_expat.found()
+#  files_libintel_common += 'intel_batch_decoder_stub.c'
+#else
   batch_decoder_dependencies += dep_expat
   files_libintel_common += files_batch_decoder
-endif
+#endif
 
 libintel_common = static_library(
   'intel_common',
