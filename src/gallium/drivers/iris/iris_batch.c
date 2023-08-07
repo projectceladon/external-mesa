@@ -55,6 +55,11 @@
 
 #include <errno.h>
 #include <xf86drm.h>
+#include <errno.h>
+#include <string.h>
+#include <sys/stat.h>
+#include <sys/types.h>
+#include <unistd.h>
 
 #ifdef HAVE_VALGRIND
 #include <valgrind.h>
@@ -65,6 +70,51 @@
 #endif
 
 #define FILE_DEBUG_FLAG DEBUG_BUFMGR
+
+static FILE *
+create_log_file();
+static void
+close_log_file(FILE**);
+
+static FILE *
+create_log_file()
+{
+   char file_name[128]= {0};
+#ifdef HAVE_ANDROID_PLATFORM
+   char dir_name[32] = "/data/local/tmp/mesa3d_intel";
+#else
+   char dir_name[32] = "/tmp/mesa3d_intel";
+#endif
+   time_t timep;
+   struct tm *p;
+   int tid, pid;
+   time(&timep);
+   p = gmtime(&timep);
+   FILE *f = NULL;
+
+   tid = gettid();
+   pid = getpid();
+
+   snprintf(file_name, sizeof(file_name) - 1, "%s/%04d%02d%02d_%u_%u_mesa_batch.log", dir_name,
+          1900+p->tm_year, p->tm_mon + 1, p->tm_mday, pid, tid);
+   f = fopen(file_name, "a+");
+
+   mesa_logw("create log file %p %s, %p", p, file_name, f);
+   if (!f) {
+      mesa_logw("create file fail errno = %d reason = %s \n", errno, strerror(errno));
+   }
+   return f;
+}
+
+static void
+close_log_file(FILE **file)
+{
+   if (*file != NULL && *file != stderr) {
+      mesa_logw("close log file");
+      fclose(*file);
+      *file = stderr;
+   }
+}
 
 static void
 iris_batch_reset(struct iris_batch *batch);
@@ -936,16 +986,32 @@ submit_batch(struct iris_batch *batch)
     * in theory try to grab bo_deps_lock. Let's keep it safe and decode
     * outside the lock.
     */
-   if (INTEL_DEBUG(DEBUG_BATCH))
-      decode_batch(batch);
+   if (INTEL_DEBUG(DEBUG_BATCH)) {
+      if (getenv("CAPTURE_FRAME_NO") != NULL) {
+         if (getenv("FRAME_NO") != NULL && atoi(getenv("FRAME_NO")) == atoi(getenv("CAPTURE_FRAME_NO"))) {
+            FILE* logfile = create_log_file();
+            if (logfile) {
+               batch->decoder.fp = logfile;
+               decode_batch(batch);
+               close_log_file(&batch->decoder.fp);
+            }
+         }
+      } else {
+         decode_batch(batch);
+      }
+   }
 
    simple_mtx_lock(bo_deps_lock);
 
    update_batch_syncobjs(batch);
 
    if (INTEL_DEBUG(DEBUG_BATCH | DEBUG_SUBMIT)) {
-      dump_fence_list(batch);
-      dump_bo_list(batch);
+      if (getenv("CAPTURE_FRAME_NO") == NULL ||
+         (getenv("CAPTURE_FRAME_NO") != NULL && getenv("FRAME_NO") != NULL &&
+          atoi(getenv("FRAME_NO")) == atoi(getenv("CAPTURE_FRAME_NO")))) {
+         dump_fence_list(batch);
+         dump_bo_list(batch);
+      }
    }
 
    /* The requirement for using I915_EXEC_NO_RELOC are:
@@ -1037,13 +1103,17 @@ _iris_batch_flush(struct iris_batch *batch, const char *file, int line)
       if (basefile)
          file = basefile + 5;
 
-      fprintf(stderr, "%19s:%-3d: %s batch [%u] flush with %5db (%0.1f%%) "
-              "(cmds), %4d BOs (%0.1fMb aperture)\n",
-              file, line, iris_batch_name_to_string(batch->name), batch->ctx_id,
-              batch->total_chained_batch_size,
-              100.0f * batch->total_chained_batch_size / BATCH_SZ,
-              batch->exec_count,
-              (float) batch->aperture_space / (1024 * 1024));
+      if (getenv("CAPTURE_FRAME_NO") == NULL ||
+         (getenv("CAPTURE_FRAME_NO") != NULL && getenv("FRAME_NO") != NULL &&
+          atoi(getenv("FRAME_NO")) == atoi(getenv("CAPTURE_FRAME_NO")))) {
+         fprintf(stderr, "%19s:%-3d: %s batch [%u] flush with %5db (%0.1f%%) "
+               "(cmds), %4d BOs (%0.1fMb aperture)\n",
+               file, line, iris_batch_name_to_string(batch->name), batch->ctx_id,
+               batch->total_chained_batch_size,
+               100.0f * batch->total_chained_batch_size / BATCH_SZ,
+               batch->exec_count,
+               (float) batch->aperture_space / (1024 * 1024));
+      }
 
    }
 
@@ -1078,7 +1148,7 @@ _iris_batch_flush(struct iris_batch *batch, const char *file, int line)
    util_dynarray_clear(&batch->exec_fences);
 
    if (INTEL_DEBUG(DEBUG_SYNC)) {
-      dbg_printf("waiting for idle\n");
+      mesa_logw("waiting for idle\n");
       iris_bo_wait_rendering(batch->bo); /* if execbuf failed; this is a nop */
    }
 

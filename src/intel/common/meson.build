@@ -54,12 +54,12 @@ files_batch_decoder = files(
 )
 
 batch_decoder_dependencies = []
-if with_platform_android
-  files_libintel_common += 'intel_batch_decoder_stub.c'
-else
+# if with_platform_android
+#   files_libintel_common += 'intel_batch_decoder_stub.c'
+# else
   batch_decoder_dependencies += dep_expat
   files_libintel_common += files_batch_decoder
-endif
+# endif
 
 libintel_common = static_library(
   'intel_common',
