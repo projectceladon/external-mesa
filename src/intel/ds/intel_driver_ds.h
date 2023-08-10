@@ -178,7 +178,7 @@ void intel_ds_flush_data_fini(struct intel_ds_flush_data *data);
 
 uint64_t intel_ds_begin_submit(struct intel_ds_queue *queue);
 void intel_ds_end_submit(struct intel_ds_queue *queue,
-                         uint64_t start_ts);
+                         uint64_t start_ts, uint64_t cmd_bufs);
 
 #else
 
@@ -188,7 +188,7 @@ static inline uint64_t intel_ds_begin_submit(struct intel_ds_queue *queue)
 }
 
 static inline void intel_ds_end_submit(struct intel_ds_queue *queue,
-                                       uint64_t start_ts)
+                                       uint64_t start_ts, uint64_t cmd_bufs)
 {
 }
 
