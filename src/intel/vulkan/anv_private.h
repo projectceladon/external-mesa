@@ -3931,6 +3931,8 @@ struct anv_image_create_info {
 
    /** These flags will be added to any derived from VkImageCreateInfo. */
    isl_surf_usage_flags_t isl_extra_usage_flags;
+
+   uint32_t stride;
 };
 
 VkResult anv_image_init(struct anv_device *device, struct anv_image *image,
