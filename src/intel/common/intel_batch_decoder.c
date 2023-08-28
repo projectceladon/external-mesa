@@ -1416,6 +1416,15 @@ intel_print_batch(struct intel_batch_decode_ctx *ctx,
    struct intel_group *inst;
    const char *reset_color = ctx->flags & INTEL_BATCH_DECODE_IN_COLOR ? NORMAL : "";
 
+   if (getenv("CAPTURE_AUB") != NULL)
+   {
+      for (int i = 0; i < batch_size / sizeof(uint32_t); i++)
+      {
+         fprintf(ctx->fp, "%08x ", batch[i]);
+      }
+      return;
+   }
+
    if (ctx->n_batch_buffer_start >= 100) {
       fprintf(ctx->fp, "%s0x%08"PRIx64": Max batch buffer jumps exceeded%s\n",
               (ctx->flags & INTEL_BATCH_DECODE_IN_COLOR) ? RED_COLOR : "",
