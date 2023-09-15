@@ -5,6 +5,7 @@
 extern "C" {
 #endif
 bool intel_is_dgpu_render();
+bool intel_lower_ctx_priority();
 #ifdef __cplusplus
 }
 #endif

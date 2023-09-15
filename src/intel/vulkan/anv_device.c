@@ -3245,6 +3245,15 @@ anv_device_setup_context(struct anv_device *device,
       }
    }
 
+   if (intel_lower_ctx_priority()) {
+      int ret = anv_gem_set_context_param(device->fd, device->context_id,
+                                          I915_CONTEXT_PARAM_PRIORITY,
+                                          VK_QUEUE_GLOBAL_PRIORITY_LOW_KHR);
+      if (ret != 0) {
+         goto fail_context;
+      }
+   }
+
    return result;
 
 fail_context:
