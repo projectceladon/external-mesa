@@ -74,6 +74,7 @@
 #include "util/u_vector.h"
 #include "egl_dri2.h"
 #include "egldefines.h"
+#include "common/intel_check.h"
 
 #define NUM_ATTRIBS 16
 
@@ -1272,6 +1273,12 @@ dri2_create_context(_EGLDisplay *disp, _EGLConfig *conf,
          dri_config = dri2_config->dri_config[0][0];
    } else
       dri_config = NULL;
+
+#ifdef ANDROID
+   if (intel_lower_ctx_priority()) {
+      dri2_ctx->base.ContextPriority = EGL_CONTEXT_PRIORITY_LOW_IMG;
+   }
+#endif
 
    if (!dri2_fill_context_attribs(dri2_ctx, dri2_dpy, ctx_attribs,
                                   &num_attribs))
