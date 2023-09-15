@@ -73,6 +73,7 @@
 #include "util/driconf.h"
 #include "util/u_math.h"
 #include "pipe/p_screen.h"
+#include "common/intel_check.h"
 
 #define NUM_ATTRIBS 12
 
@@ -1429,6 +1430,10 @@ dri2_create_context(_EGLDisplay *disp, _EGLConfig *conf,
    }
    else
       dri_config = NULL;
+
+   if (intel_lower_ctx_priority()) {
+      dri2_ctx->base.ContextPriority = EGL_CONTEXT_PRIORITY_LOW_IMG;
+   }
 
    if (!dri2_fill_context_attribs(dri2_ctx, dri2_dpy, ctx_attribs,
                                   &num_attribs))
