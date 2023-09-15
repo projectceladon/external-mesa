@@ -46,6 +46,7 @@
 #include "loader.h"
 #include "egl_dri2.h"
 #include "platform_android.h"
+#include "common/intel_check.h"
 
 #ifdef HAVE_DRM_GRALLOC
 #include <gralloc_drm_handle.h>
@@ -1748,6 +1749,12 @@ droid_open_device(_EGLDisplay *disp, bool swrast)
          continue;
 
       dri2_dpy->fd = loader_open_device(device->nodes[node_type]);
+
+      if (i == 0 && (num_devices > 1) && intel_is_dgpu_render()) {
+         close(dri2_dpy->fd);
+         continue;
+      }
+
       if (dri2_dpy->fd < 0) {
          _eglLog(_EGL_WARNING, "%s() Failed to open DRM device %s",
                  __func__, device->nodes[node_type]);

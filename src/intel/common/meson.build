@@ -45,7 +45,9 @@ files_libintel_common = files(
   'intel_uuid.h',
   'intel_measure.c',
   'intel_measure.h',
-  'intel_pixel_hash.h'
+  'intel_pixel_hash.h',
+  'intel_check.c',
+  'intel_check.h'
 )
 
 files_batch_decoder = files(
