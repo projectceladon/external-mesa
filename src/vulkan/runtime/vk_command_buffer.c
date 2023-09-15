@@ -40,7 +40,9 @@ vk_command_buffer_init(struct vk_command_pool *pool,
    command_buffer->pool = pool;
    command_buffer->level = level;
    command_buffer->ops = ops;
+#if USE_VK_COMPILER
    vk_dynamic_graphics_state_init(&command_buffer->dynamic_graphics_state);
+#endif
    command_buffer->state = MESA_VK_COMMAND_BUFFER_STATE_INITIAL;
    command_buffer->record_result = VK_SUCCESS;
    vk_cmd_queue_init(&command_buffer->cmd_queue, &pool->alloc);
@@ -56,7 +58,9 @@ vk_command_buffer_init(struct vk_command_pool *pool,
 void
 vk_command_buffer_reset(struct vk_command_buffer *command_buffer)
 {
+#if USE_VK_COMPILER
    vk_dynamic_graphics_state_clear(&command_buffer->dynamic_graphics_state);
+#endif
    command_buffer->state = MESA_VK_COMMAND_BUFFER_STATE_INITIAL;
    command_buffer->record_result = VK_SUCCESS;
    vk_command_buffer_reset_render_pass(command_buffer);
