@@ -9,6 +9,7 @@
 #include "i915/anv_device.h"
 #include "xe/anv_device.h"
 
+#include "common/intel_check.h"
 #include "common/intel_common.h"
 #include "common/intel_uuid.h"
 
@@ -2427,6 +2428,19 @@ anv_physical_device_try_create(struct vk_instance *vk_instance,
       result = VK_ERROR_INCOMPATIBLE_DRIVER;
       goto fail_fd;
    }
+
+#ifdef ANDROID
+   if (get_intel_node_num() > 1) {
+      if (!is_dgpu(fd) && intel_is_dgpu_render()) {
+         result = VK_ERROR_INCOMPATIBLE_DRIVER;
+         goto fail_fd;
+      }
+      if (is_dgpu(fd) && !intel_is_dgpu_render()) {
+         result = VK_ERROR_INCOMPATIBLE_DRIVER;
+         goto fail_fd;
+      }
+   }
+#endif
 
    if (devinfo.ver < 9) {
       /* Silently fail here, hasvk should pick up this device. */
