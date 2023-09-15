@@ -201,3 +201,23 @@ int get_intel_node_num(void)
    }
    return intel_node_num;
 }
+
+bool intel_lower_ctx_priority(void)
+{
+   pid_t process_id = getpid();
+   char process_name[BUF_SIZE];
+   get_pid_name(process_id, process_name);
+   char *app_name = strrchr(process_name, '.');
+   if (app_name == NULL)
+      app_name = process_name;
+
+   char lower_pri[BUF_SIZE];
+   char vendor_buf[PROPERTY_VALUE_MAX];
+   sprintf(lower_pri, "persist.vendor.intel.lowPir%s", app_name);
+   if (property_get(lower_pri, vendor_buf, NULL) > 0) {
+      if (vendor_buf[0] == '1') {
+         return true;
+      }
+   }
+   return false;
+}
