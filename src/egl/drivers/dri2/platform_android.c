@@ -50,6 +50,7 @@
 #include "loader_dri_helper.h"
 #include "platform_android.h"
 #include "dri_util.h"
+#include "common/intel_check.h"
 
 static struct dri_image *
 droid_create_image_from_buffer_info(
@@ -1133,10 +1134,16 @@ droid_open_device(_EGLDisplay *disp, bool swrast)
          goto next;
 
       dri2_dpy->fd_render_gpu = loader_open_device(device->nodes[node_type]);
+
       if (dri2_dpy->fd_render_gpu < 0) {
          _eglLog(_EGL_WARNING, "%s() Failed to open DRM device %s", __func__,
                  device->nodes[node_type]);
          goto next;
+      }
+
+      if ((get_intel_node_num() > 1) && intel_is_dgpu_render() && !is_dgpu(dri2_dpy->fd_render_gpu)) {
+          close(dri2_dpy->fd_render_gpu);
+          goto next;
       }
 
       /* If a vendor is explicitly provided, we use only that.

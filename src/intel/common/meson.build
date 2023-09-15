@@ -44,8 +44,15 @@ files_libintel_common = files(
   'intel_measure.h',
   'intel_mem.c',
   'intel_mem.h',
-  'intel_pixel_hash.h'
+  'intel_pixel_hash.h',
 )
+
+if with_platform_android
+  files_libintel_common += files(
+    'intel_check.c',
+    'intel_check.h',
+  )
+endif
 
 libintel_common_links = [libisl]
 
