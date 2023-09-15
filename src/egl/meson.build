@@ -25,7 +25,7 @@ c_args_for_egl = [asan_c_args]
 cpp_args_for_egl = []
 link_for_egl = []
 deps_for_egl = []
-incs_for_egl = [inc_include, inc_src, inc_egl]
+incs_for_egl = [inc_include, inc_src, inc_egl, inc_intel]
 
 if with_gallium_softpipe
   c_args_for_egl += '-DGALLIUM_SOFTPIPE'
@@ -98,6 +98,7 @@ if with_dri2
   )
   files_egl += sha1_h
   deps_for_egl += idep_xmlconfig
+  deps_for_egl += idep_libintel_common
   link_for_egl += libloader
   incs_for_egl += inc_loader
   incs_for_egl += inc_gallium
