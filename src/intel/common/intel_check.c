@@ -76,3 +76,20 @@ bool intel_is_dgpu_render() {
    get_pid_name(process_id, process_name);
    return (use_dgpu_render(process_name) || is_target_process(process_name));
 }
+
+bool intel_lower_ctx_priority()
+{
+   pid_t process_id = getpid();
+   char process_name[BUF_SIZE];
+   get_pid_name(process_id, process_name);
+
+   char lower_pri[BUF_SIZE];
+   char vendor_buf[PROPERTY_VALUE_MAX];
+   sprintf(lower_pri, "persist.vendor.intel.lowPir.%s",process_name);
+   if (property_get(lower_pri, vendor_buf, NULL) > 0) {
+      if (vendor_buf[0] == '1') {
+         return true;
+      }
+   }
+   return false;
+}
