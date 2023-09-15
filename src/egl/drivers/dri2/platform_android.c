@@ -116,6 +116,16 @@ is_yuv(int native)
    return false;
 }
 
+static int compare_devices(const void *a, const void *b) {
+   const drmDevicePtr device_a = *(const drmDevicePtr *)a;
+   const drmDevicePtr device_b = *(const drmDevicePtr *)b;
+   char *name_a = device_a->nodes[DRM_NODE_RENDER];
+   char *name_b = device_b->nodes[DRM_NODE_RENDER];
+   int num_a = atoi(name_a + 16); // skip "/dev/dri/renderD" prefix
+   int num_b = atoi(name_b + 16);
+   return num_a - num_b;
+}
+
 static int
 get_format_bpp(int native)
 {
@@ -1741,6 +1751,8 @@ droid_open_device(_EGLDisplay *disp, bool swrast)
    num_devices = drmGetDevices2(0, devices, ARRAY_SIZE(devices));
    if (num_devices < 0)
       return EGL_FALSE;
+
+   qsort(devices, num_devices, sizeof(drmDevicePtr), compare_devices);
 
    for (int i = 0; i < num_devices; i++) {
       device = devices[i];
