@@ -1560,7 +1560,7 @@ bo_free(struct iris_bo *bo)
    if (!bo->real.userptr && bo->real.map)
       bo_unmap(bo);
 
-   if (bo->idle || !iris_bo_busy(bo)) {
+   if (bo->idle) {
       bo_close(bo);
    } else {
       /* Defer closing the GEM BO and returning the VMA for reuse until the
