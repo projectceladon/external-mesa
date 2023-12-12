@@ -2,7 +2,6 @@
 # Copyright © 2019, 2022 Intel Corporation
 # SPDX-License-Identifier: MIT
 
-from __future__ import annotations
 import argparse
 import copy
 import intel_genxml

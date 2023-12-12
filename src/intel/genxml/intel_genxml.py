@@ -2,7 +2,6 @@
 # Copyright © 2019, 2022 Intel Corporation
 # SPDX-License-Identifier: MIT
 
-from __future__ import annotations
 from collections import OrderedDict
 import copy
 import io
@@ -49,7 +48,7 @@ FIXED_PATTERN = re.compile(r"(s|u)(\d+)\.(\d+)")
 def is_base_type(name: str) -> bool:
     return name in BASE_TYPES or FIXED_PATTERN.match(name) is not None
 
-def add_struct_refs(items: typing.OrderedDict[str, bool], node: et.Element) -> None:
+def add_struct_refs(items, node: et.Element) -> None:
     if node.tag == 'field':
         if 'type' in node.attrib and not is_base_type(node.attrib['type']):
             t = node.attrib['type']
@@ -65,16 +64,16 @@ class Struct(object):
     def __init__(self, xml: et.Element):
         self.xml = xml
         self.name = xml.attrib['name']
-        self.deps: typing.OrderedDict[str, Struct] = OrderedDict()
+        self.deps = OrderedDict()
 
     def find_deps(self, struct_dict, enum_dict) -> None:
-        deps: typing.OrderedDict[str, bool] = OrderedDict()
+        deps = OrderedDict()
         add_struct_refs(deps, self.xml)
         for d in deps.keys():
             if d in struct_dict:
                 self.deps[d] = struct_dict[d]
 
-    def add_xml(self, items: typing.OrderedDict[str, et.Element]) -> None:
+    def add_xml(self, items) -> None:
         for d in self.deps.values():
             d.add_xml(items)
         items[self.name] = self.xml
@@ -152,7 +151,7 @@ def sort_xml(xml: et.ElementTree) -> None:
     for ws in wrapped_struct_dict.values():
         ws.find_deps(wrapped_struct_dict, enum_dict)
 
-    sorted_structs: typing.OrderedDict[str, et.Element] = OrderedDict()
+    sorted_structs = OrderedDict()
     for s in structs:
         _s = wrapped_struct_dict[s.attrib['name']]
         _s.add_xml(sorted_structs)
