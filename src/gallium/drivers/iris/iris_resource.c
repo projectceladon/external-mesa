@@ -2711,6 +2711,19 @@ iris_texture_subdata(struct pipe_context *ctx,
        isl_aux_usage_has_compression(res->aux.usage) ||
        resource_is_busy(ice, res) ||
        iris_bo_mmap_mode(res->bo) == IRIS_MMAP_NONE) {
+       /* This is a workaround solution to fix rendering corruption
+        * when copying the compressed data.
+        * This bug may be caused by a HW bug (or feature, depending on who you ask)
+        * which can cause blocks to enter the fast-clear state as a side-effect of a regular draw call.
+        * This means that a draw in the resolved or compressed without clear states takes you to
+        * the compressed with clear state, not the compressed without clear state.
+        *
+        * TODO: Improve this solution when identifying the true root cause of this issue.
+        */
+       iris_foreach_batch(ice, batch) {
+       if (iris_batch_references(batch, res->bo))
+          iris_batch_flush(batch);
+      }
       return u_default_texture_subdata(ctx, resource, level, usage, box,
                                        data, stride, layer_stride);
    }
