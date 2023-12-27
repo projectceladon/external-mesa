@@ -1,4 +1,4 @@
-aiohttp==3.8.5
+aiohttp==3.9.0
 colorama==0.4.5
 filecache==0.81
 gql==3.4.0
