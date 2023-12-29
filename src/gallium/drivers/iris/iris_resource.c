@@ -2609,6 +2609,15 @@ iris_texture_subdata(struct pipe_context *ctx,
        isl_aux_usage_has_compression(res->aux.usage) ||
        resource_is_busy(ice, res) ||
        iris_bo_mmap_mode(res->bo) == IRIS_MMAP_NONE) {
+       /* This is a workaround solution to fix rendering corruption
+        * for CCS format texture when copying the compressed data.
+        *
+        * TODO: Improve this solution when identifying the true root cause of this issue.
+        */
+       iris_foreach_batch(ice, batch) {
+          if (iris_batch_references(batch, res->bo))
+             iris_batch_flush(batch);
+       }
       return u_default_texture_subdata(ctx, resource, level, usage, box,
                                        data, stride, layer_stride);
    }
