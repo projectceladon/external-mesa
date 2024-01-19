@@ -56,6 +56,9 @@ endif
 if with_gallium_asahi
   renderonly_drivers_c_args += '-DGALLIUM_ASAHI'
 endif
+if with_gallium_iris
+  renderonly_drivers_c_args += '-DGALLIUM_IRIS'
+endif
 
 libpipe_loader_static = static_library(
   'pipe_loader_static',
