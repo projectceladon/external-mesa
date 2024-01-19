@@ -40,12 +40,12 @@ iris_drm_screen_create(int fd, const struct pipe_screen_config *config)
 }
 
 struct pipe_screen *
-iris_screen_create_renderonly(struct renderonly *ro,
+iris_screen_create_renderonly(int fd, struct renderonly *ro,
                               const struct pipe_screen_config *config)
 {
    struct iris_screen *pscreen;
 
-   pscreen = (struct iris_screen *)iris_screen_create(os_dupfd_cloexec(ro->gpu_fd), config);
+   pscreen = (struct iris_screen *)iris_screen_create(os_dupfd_cloexec(fd), config);
    if (!pscreen)
       return NULL;
 
