@@ -69,6 +69,7 @@ const struct drm_driver_descriptor descriptor_name = {         \
 #undef GALLIUM_PANFROST
 #undef GALLIUM_LIMA
 #undef GALLIUM_ASAHI
+#undef GALLIUM_IRIS
 #endif
 
 #ifdef GALLIUM_I915
@@ -443,6 +444,9 @@ const driOptionDescription kmsro_driconf[] = {
 #endif
 #ifdef GALLIUM_FREEDRENO
       #include "freedreno/driinfo_freedreno.h"
+#endif
+#ifdef GALLIUM_IRIS
+      #include "iris/driinfo_iris.h"
 #endif
 #ifdef GALLIUM_PANFROST
       #include "panfrost/driinfo_panfrost.h"
