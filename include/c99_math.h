@@ -116,14 +116,6 @@ exp2(double d)
 #endif /* C99 */
 
 
-/*
- * signbit() is a macro on Linux.  Not available on Windows.
- */
-#ifndef signbit
-#define signbit(x) ((x) < 0.0f)
-#endif
-
-
 #ifndef M_PI
 #define M_PI (3.14159265358979323846)
 #endif
