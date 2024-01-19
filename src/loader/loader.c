@@ -154,8 +154,8 @@ loader_open_render_node_platform_device(const char * const drivers[],
    for (i = 0; i < num_devices; i++) {
       device = devices[i];
 
-      if ((device->available_nodes & (1 << DRM_NODE_RENDER)) &&
-          (device->bustype == DRM_BUS_PLATFORM)) {
+      if ((device->available_nodes & (1 << DRM_NODE_RENDER)) /* &&
+          (device->bustype == DRM_BUS_PLATFORM) */) {
          drmVersionPtr version;
 
          fd = loader_open_device(device->nodes[DRM_NODE_RENDER]);

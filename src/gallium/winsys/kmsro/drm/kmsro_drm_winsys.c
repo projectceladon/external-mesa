@@ -33,6 +33,7 @@
 #include "panfrost/drm/panfrost_drm_public.h"
 #include "lima/drm/lima_drm_public.h"
 #include "asahi/drm/asahi_drm_public.h"
+#include "iris/drm/iris_drm_public.h"
 #include "xf86drm.h"
 
 #include "pipe/p_screen.h"
@@ -119,6 +120,11 @@ struct pipe_screen *kmsro_drm_screen_create(int kms_fd,
        */
       ro->create_for_resource = renderonly_create_gpu_import_for_resource;
       screen = vc4_drm_screen_create_renderonly(ro->gpu_fd, ro, config);
+#endif
+   } else if (strcmp(render_dev_name, "i915") == 0) {
+#if defined(GALLIUM_IRIS)
+      ro->create_for_resource = renderonly_create_kms_dumb_buffer_for_resource,
+      screen = iris_screen_create_renderonly(ro->gpu_fd, ro, config);
 #endif
    }
 
