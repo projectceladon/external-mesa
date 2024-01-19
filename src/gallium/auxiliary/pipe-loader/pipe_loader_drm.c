@@ -296,6 +296,9 @@ pipe_loader_get_compatible_render_capable_device_fd(int kms_only_fd)
 #if defined GALLIUM_VC4
       "vc4",
 #endif
+#if defined GALLIUM_IRIS
+      "i915",
+#endif
    };
 
    if (!pipe_loader_drm_probe_fd(&dev, kms_only_fd, false))
@@ -303,10 +306,12 @@ pipe_loader_get_compatible_render_capable_device_fd(int kms_only_fd)
    is_platform_device = (dev->type == PIPE_LOADER_DEVICE_PLATFORM);
    pipe_loader_release(&dev, 1);
 
+#ifndef GALLIUM_IRIS
    /* For display-only devices that are not on the platform bus, we can't assume
     * that any of the rendering devices are compatible. */
    if (!is_platform_device)
       return -1;
+#endif
 
    /* For platform display-only devices, we try to find a render-capable device
     * on the platform bus and that should be compatible with the display-only
