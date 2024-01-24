@@ -221,7 +221,8 @@ option(
   value : ['auto'],
   choices : ['auto', 'amd', 'broadcom', 'freedreno', 'intel', 'intel_hasvk',
              'panfrost', 'swrast', 'virtio', 'imagination-experimental',
-             'microsoft-experimental', 'nouveau-experimental', 'all'],
+             'microsoft-experimental', 'nouveau-experimental',
+             'gfxstream-experimental', 'all'],
   description : 'List of vulkan drivers to build. If this is set to auto ' +
                 'all drivers applicable to the target OS/architecture ' +
                 'will be built'
@@ -710,4 +711,10 @@ option (
   type : 'feature',
   value : 'disabled',
   description: 'Enable Intel Xe KMD support.'
+)
+option(
+  'gfxstream-backend',
+  type : 'boolean',
+  value : 'false',
+  description : 'Build gfxstream backend'
 )

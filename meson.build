@@ -254,6 +254,7 @@ with_imagination_vk = _vulkan_drivers.contains('imagination-experimental')
 with_imagination_srv = get_option('imagination-srv')
 with_microsoft_vk = _vulkan_drivers.contains('microsoft-experimental')
 with_nouveau_vk = _vulkan_drivers.contains('nouveau-experimental')
+with_gfxstream_vk = _vulkan_drivers.contains('gfxstream-experimental')
 with_any_vk = _vulkan_drivers.length() != 0
 
 with_vk_compiler = [
@@ -448,6 +449,8 @@ if not (with_dri or with_gallium or with_glx != 'disabled')
   with_any_opengl = false
   with_shared_glapi = false
 endif
+
+with_gfxstream_backend = get_option('gfxstream-backend')
 
 with_gbm = get_option('gbm') \
   .require(system_has_kms_drm, error_message : 'GBM only supports DRM/KMS platforms') \
