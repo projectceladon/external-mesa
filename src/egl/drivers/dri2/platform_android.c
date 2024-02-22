@@ -1153,7 +1153,7 @@ dri2_initialize_android(_EGLDisplay *disp)
    dri2_dpy->fd_render_gpu = -1;
    dri2_dpy->fd_display_gpu = -1;
 
-   dri2_dpy->gralloc = u_gralloc_create(U_GRALLOC_TYPE_AUTO);
+   dri2_dpy->gralloc = u_gralloc_create(U_GRALLOC_TYPE_GRALLOC4);
    if (dri2_dpy->gralloc == NULL) {
       err = "DRI2: failed to get gralloc";
       goto cleanup;
