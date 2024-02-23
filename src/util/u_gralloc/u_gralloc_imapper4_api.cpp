@@ -19,6 +19,7 @@
 #include "u_gralloc_internal.h"
 
 using aidl::android::hardware::graphics::common::BufferUsage;
+using android::hardware::graphics::common::V1_2::PixelFormat;
 using aidl::android::hardware::graphics::common::ChromaSiting;
 using aidl::android::hardware::graphics::common::Dataspace;
 using aidl::android::hardware::graphics::common::ExtendableType;
@@ -83,6 +84,35 @@ struct gralloc4 {
 };
 
 extern "C" {
+
+static int
+mapper_resolve_format(struct u_gralloc *gralloc, struct u_gralloc_buffer_handle *hnd, int32_t *format)
+{
+   gralloc4 *gr4 = (gralloc4 *)gralloc;
+
+   if (gr4->mapper == nullptr)
+      return -EINVAL;
+
+   if (!hnd->handle)
+      return -EINVAL;
+
+   hidl_vec<uint8_t> encoded_data;
+   PixelFormat pix_format;
+
+   Error error = GetMetadata(gr4->mapper, hnd->handle,
+                            android::gralloc4::MetadataType_PixelFormatRequested,
+                            &encoded_data);
+
+   if (error != Error::NONE)
+      return -EINVAL;
+
+   auto status = android::gralloc4::decodePixelFormatRequested(encoded_data, &pix_format);
+   if (status != android::OK)
+      return -EINVAL;
+
+   *format = static_cast<std::underlying_type_t<PixelFormat>>(pix_format);
+   return 0;
+}
 
 static int
 mapper4_get_buffer_basic_info(struct u_gralloc *gralloc,
@@ -153,6 +183,29 @@ mapper4_get_buffer_basic_info(struct u_gralloc *gralloc,
       out->fds[i] = hnd->handle->data[fd_index];
    }
 
+   int droid_format = 0, resolve_format = 0;
+   enum chroma_order chroma_order = chroma_order::YCbCr;
+   int chroma_step = 0;
+
+   if (mapper_resolve_format(gralloc, hnd, &droid_format))
+      return -EINVAL;
+
+   if (is_hal_format_yuv(droid_format)) {
+      if (layouts[1].components[0].type == android::gralloc4::PlaneLayoutComponentType_CB)
+         chroma_order = chroma_order::YCbCr;
+      else
+         chroma_order = chroma_order::YCrCb;
+
+      chroma_step = layouts[1].sampleIncrementInBits / 8;
+      resolve_format = get_fourcc_yuv(droid_format, chroma_order, chroma_step);
+      out->drm_fourcc = resolve_format;
+
+      if (layouts.size() == 2) {
+         out->strides[2] = out->strides[1];
+         out->offsets[2] = out->offsets[1] + (chroma_step/2);
+      }
+   }
+
    return 0;
 }
 
@@ -168,6 +221,20 @@ mapper4_get_buffer_color_info(struct u_gralloc *gralloc,
 
    if (!hnd->handle)
       return -EINVAL;
+
+   int droid_format = 0;
+
+   if (mapper_resolve_format(gralloc, hnd, &droid_format))
+      return -EINVAL;
+
+   if (is_hal_format_yuv(droid_format)) {
+      out->yuv_color_space = __DRI_YUV_COLOR_SPACE_ITU_REC601;
+      out->sample_range = __DRI_YUV_NARROW_RANGE;
+      out->horizontal_siting = __DRI_YUV_CHROMA_SITING_0;
+      out->vertical_siting = __DRI_YUV_CHROMA_SITING_0;
+
+      return 0;
+   }
 
    /* optional attributes */
    hidl_vec<uint8_t> encoded_chroma_siting;

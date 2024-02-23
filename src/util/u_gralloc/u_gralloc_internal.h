@@ -14,6 +14,11 @@ extern "C" {
 
 #include "u_gralloc.h"
 
+enum chroma_order {
+   YCbCr,
+   YCrCb,
+};
+
 struct u_gralloc_ops {
    int (*get_buffer_basic_info)(struct u_gralloc *gralloc,
                                 struct u_gralloc_buffer_handle *hnd,
@@ -42,6 +47,7 @@ extern struct u_gralloc *u_gralloc_fallback_create(void);
 /* Helpers for legacy grallocs */
 struct android_ycbcr;
 
+int get_fourcc_yuv(int native, enum chroma_order chroma_order, int chroma_step);
 bool is_hal_format_yuv(int native);
 int get_hal_format_bpp(int native);
 int get_fourcc_from_hal_format(int native);
