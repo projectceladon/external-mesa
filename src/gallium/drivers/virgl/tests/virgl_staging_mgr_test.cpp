@@ -43,6 +43,7 @@ struct virgl_hw_res {
 static struct virgl_hw_res *
 fake_resource_create(struct virgl_winsys *vws,
                      enum pipe_texture_target target,
+                     const void *map_front_private,
                      uint32_t format, uint32_t bind,
                      uint32_t width, uint32_t height,
                      uint32_t depth, uint32_t array_size,
@@ -160,7 +161,7 @@ TEST_P(VirglStagingMgrWithAlignment,
    struct virgl_hw_res *out_resource[num_resources] = {0};
    unsigned expected_offset = 0;
    unsigned out_offset;
-   void *map_ptr;
+   uint8_t *map_ptr;
    bool alloc_succeeded;
 
    for (unsigned i = 0; i < num_resources; ++i) {
@@ -184,17 +185,19 @@ TEST_P(VirglStagingMgrWithAlignment,
    release_resources(out_resource, num_resources);
 }
 
-INSTANTIATE_TEST_CASE_P(WithAlignment,
-                        VirglStagingMgrWithAlignment,
-                        ::testing::Values(1, 16),
-                        testing::PrintToStringParamName());
+INSTANTIATE_TEST_SUITE_P(
+   WithAlignment,
+   VirglStagingMgrWithAlignment,
+   ::testing::Values(1, 16),
+   testing::PrintToStringParamName()
+);
 
 TEST_F(VirglStagingMgr,
        non_fitting_allocation_reallocates_resource)
 {
    struct virgl_hw_res *out_resource[2] = {0};
    unsigned out_offset;
-   void *map_ptr;
+   uint8_t *map_ptr;
    bool alloc_succeeded;
 
    alloc_succeeded =
@@ -226,7 +229,7 @@ TEST_F(VirglStagingMgr,
 {
    struct virgl_hw_res *out_resource[2] = {0};
    unsigned out_offset;
-   void *map_ptr;
+   uint8_t *map_ptr;
    bool alloc_succeeded;
 
    alloc_succeeded =
@@ -258,7 +261,7 @@ TEST_F(VirglStagingMgr,
 {
    struct virgl_hw_res *out_resource[2] = {0};
    unsigned out_offset;
-   void *map_ptr;
+   uint8_t *map_ptr;
    bool alloc_succeeded;
 
    ASSERT_LT(staging_size, 5123);
@@ -292,7 +295,7 @@ TEST_F(VirglStagingMgr, releases_resource_on_destruction)
 {
    struct virgl_hw_res *out_resource = NULL;
    unsigned out_offset;
-   void *map_ptr;
+   uint8_t *map_ptr;
    bool alloc_succeeded;
 
    alloc_succeeded =
@@ -316,6 +319,7 @@ TEST_F(VirglStagingMgr, releases_resource_on_destruction)
 static struct virgl_hw_res *
 failing_resource_create(struct virgl_winsys *vws,
                         enum pipe_texture_target target,
+                        const void *map_front_private,
                         uint32_t format, uint32_t bind,
                         uint32_t width, uint32_t height,
                         uint32_t depth, uint32_t array_size,
@@ -330,7 +334,7 @@ TEST_F(VirglStagingMgr, fails_gracefully_if_resource_create_fails)
    struct virgl_screen *vs = virgl_screen(ctx->screen);
    struct virgl_hw_res *out_resource = NULL;
    unsigned out_offset;
-   void *map_ptr;
+   uint8_t *map_ptr;
    bool alloc_succeeded;
 
    vs->vws->resource_create = failing_resource_create;
@@ -355,7 +359,7 @@ TEST_F(VirglStagingMgr, fails_gracefully_if_map_fails)
    struct virgl_screen *vs = virgl_screen(ctx->screen);
    struct virgl_hw_res *out_resource = NULL;
    unsigned out_offset;
-   void *map_ptr;
+   uint8_t *map_ptr;
    bool alloc_succeeded;
 
    vs->vws->resource_map = failing_resource_map;
@@ -373,7 +377,7 @@ TEST_F(VirglStagingMgr, uses_staging_buffer_resource)
 {
    struct virgl_hw_res *out_resource = NULL;
    unsigned out_offset;
-   void *map_ptr;
+   uint8_t *map_ptr;
    bool alloc_succeeded;
 
    alloc_succeeded =

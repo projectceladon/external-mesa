@@ -5,8 +5,8 @@
 #include "device9.h"
 #include "vertexdeclaration9.h"
 
-boolean nine_ff_init(struct NineDevice9 *);
-void    nine_ff_fini(struct NineDevice9 *);
+bool nine_ff_init(struct NineDevice9 *);
+void nine_ff_fini(struct NineDevice9 *);
 
 void nine_ff_update(struct NineDevice9 *);
 
@@ -66,7 +66,7 @@ nine_ff_get_projected_key(struct nine_context *context, unsigned num_stages)
 {
     unsigned s, i;
     uint16_t projected = 0;
-    char input_texture_coord[num_stages];
+    int8_t input_texture_coord[num_stages];
     memset(&input_texture_coord, 0, sizeof(input_texture_coord));
 
     if (context->vdecl) {

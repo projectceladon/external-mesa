@@ -19,6 +19,16 @@
 # SOFTWARE.
 
 files_libiris = files(
+  'i915/iris_batch.c',
+  'i915/iris_batch.h',
+  'i915/iris_bufmgr.c',
+  'i915/iris_bufmgr.h',
+  'i915/iris_kmd_backend.c',
+  'xe/iris_batch.c',
+  'xe/iris_batch.h',
+  'xe/iris_bufmgr.c',
+  'xe/iris_bufmgr.h',
+  'xe/iris_kmd_backend.c',
   'driinfo_iris.h',
   'iris_batch.c',
   'iris_batch.h',
@@ -39,6 +49,10 @@ files_libiris = files(
   'iris_formats.c',
   'iris_genx_macros.h',
   'iris_genx_protos.h',
+  'iris_kmd_backend.c',
+  'iris_kmd_backend.h',
+  'iris_measure.c',
+  'iris_measure.h',
   'iris_monitor.c',
   'iris_perf.h',
   'iris_perf.c',
@@ -53,20 +67,23 @@ files_libiris = files(
   'iris_screen.c',
   'iris_screen.h',
   'iris_disk_cache.c',
+  'iris_utrace.c',
 )
 
-iris_gen_libs = []
-foreach v : ['80', '90', '110', '120']
-  iris_gen_libs += static_library(
-    'iris_gen@0@'.format(v),
-    ['iris_blorp.c', 'iris_query.c', 'iris_state.c', gen_xml_pack],
+iris_per_hw_ver_libs = []
+foreach v : ['80', '90', '110', '120', '125', '200']
+  iris_per_hw_ver_libs += static_library(
+    'iris_per_hw_ver@0@'.format(v),
+    ['iris_blorp.c', 'iris_query.c', 'iris_state.c', 'iris_indirect_gen.c', gen_xml_pack],
     include_directories : [inc_include, inc_src, inc_mapi, inc_mesa, inc_gallium, inc_gallium_aux, inc_intel],
     c_args : [
-      no_override_init_args, c_sse2_args,
-      '-DGEN_VERSIONx10=@0@'.format(v),
+      no_override_init_args, sse2_args,
+      '-DGFX_VERx10=@0@'.format(v),
     ],
     gnu_symbol_visibility : 'hidden',
-    dependencies : [dep_libdrm, dep_valgrind, idep_nir_headers],
+    dependencies : [dep_libdrm, dep_valgrind, idep_genxml, idep_nir_headers,
+                    idep_intel_driver_ds_headers, idep_intel_shaders,
+                    idep_intel_blorp],
   )
 endforeach
 
@@ -79,13 +96,16 @@ libiris = static_library(
     # these should not be necessary, but main/macros.h...
     inc_mesa, inc_mapi
   ],
-  c_args : [c_sse2_args],
-  cpp_args : [c_sse2_args],
+  c_args : [sse2_args],
+  cpp_args : [sse2_args],
   gnu_symbol_visibility : 'hidden',
-  dependencies : [dep_libdrm, dep_valgrind, idep_genxml, idep_libintel_common, idep_nir_headers],
+  dependencies : [dep_libdrm, dep_valgrind, idep_genxml, idep_nir_headers,
+                  idep_libintel_common, idep_intel_driver_ds, idep_intel_dev,
+                  idep_intel_blorp_elk, idep_intel_decoder_elk,
+                  idep_intel_blorp, idep_intel_decoder_brw],
   link_with : [
-    iris_gen_libs, libintel_compiler, libintel_dev, libisl,
-    libblorp, libintel_perf
+    iris_per_hw_ver_libs, libintel_compiler_brw, libintel_compiler_elk, libisl,
+    libintel_perf
   ],
 )
 

@@ -37,8 +37,8 @@ public:
 
    fs_reg();
    fs_reg(struct ::brw_reg reg);
-   fs_reg(enum brw_reg_file file, int nr);
-   fs_reg(enum brw_reg_file file, int nr, enum brw_reg_type type);
+   fs_reg(enum brw_reg_file file, unsigned nr);
+   fs_reg(enum brw_reg_file file, unsigned nr, enum brw_reg_type type);
 
    bool equals(const fs_reg &r) const;
    bool negative_equals(const fs_reg &r) const;
@@ -80,12 +80,6 @@ byte_offset(fs_reg reg, unsigned delta)
    case UNIFORM:
       reg.offset += delta;
       break;
-   case MRF: {
-      const unsigned suboffset = reg.offset + delta;
-      reg.nr += suboffset / REG_SIZE;
-      reg.offset = suboffset % REG_SIZE;
-      break;
-   }
    case ARF:
    case FIXED_GRF: {
       const unsigned suboffset = reg.subnr + delta;
@@ -113,7 +107,6 @@ horiz_offset(const fs_reg &reg, unsigned delta)
        */
       return reg;
    case VGRF:
-   case MRF:
    case ATTR:
       return byte_offset(reg, delta * reg.stride * type_sz(reg.type));
    case ARF:
@@ -121,8 +114,16 @@ horiz_offset(const fs_reg &reg, unsigned delta)
       if (reg.is_null()) {
          return reg;
       } else {
-         const unsigned stride = reg.hstride ? 1 << (reg.hstride - 1) : 0;
-         return byte_offset(reg, delta * stride * type_sz(reg.type));
+         const unsigned hstride = reg.hstride ? 1 << (reg.hstride - 1) : 0;
+         const unsigned vstride = reg.vstride ? 1 << (reg.vstride - 1) : 0;
+         const unsigned width = 1 << reg.width;
+
+         if (delta % width == 0) {
+            return byte_offset(reg, delta / width * vstride * type_sz(reg.type));
+         } else {
+            assert(vstride == hstride * width);
+            return byte_offset(reg, delta * hstride * type_sz(reg.type));
+         }
       }
    }
    unreachable("Invalid register file");
@@ -136,7 +137,6 @@ offset(fs_reg reg, unsigned width, unsigned delta)
       break;
    case ARF:
    case FIXED_GRF:
-   case MRF:
    case VGRF:
    case ATTR:
    case UNIFORM:
@@ -156,6 +156,11 @@ component(fs_reg reg, unsigned idx)
 {
    reg = horiz_offset(reg, idx);
    reg.stride = 0;
+   if (reg.file == ARF || reg.file == FIXED_GRF) {
+      reg.vstride = BRW_VERTICAL_STRIDE_0;
+      reg.width = BRW_WIDTH_1;
+      reg.hstride = BRW_HORIZONTAL_STRIDE_0;
+   }
    return reg;
 }
 
@@ -164,13 +169,13 @@ component(fs_reg reg, unsigned idx)
  * contained in.  A register is by definition fully contained in the single
  * reg_space it belongs to, so two registers with different reg_space ids are
  * guaranteed not to overlap.  Most register files are a single reg_space of
- * its own, only the VGRF file is composed of multiple discrete address
- * spaces, one for each VGRF allocation.
+ * its own, only the VGRF and ATTR files are composed of multiple discrete
+ * address spaces, one for each allocation and input attribute respectively.
  */
 static inline uint32_t
 reg_space(const fs_reg &r)
 {
-   return r.file << 16 | (r.file == VGRF ? r.nr : 0);
+   return r.file << 16 | (r.file == VGRF || r.file == ATTR ? r.nr : 0);
 }
 
 /**
@@ -180,7 +185,7 @@ reg_space(const fs_reg &r)
 static inline unsigned
 reg_offset(const fs_reg &r)
 {
-   return (r.file == VGRF || r.file == IMM ? 0 : r.nr) *
+   return (r.file == VGRF || r.file == IMM || r.file == ATTR ? 0 : r.nr) *
           (r.file == UNIFORM ? 4 : REG_SIZE) + r.offset +
           (r.file == ARF || r.file == FIXED_GRF ? r.subnr : 0);
 }
@@ -207,21 +212,14 @@ reg_padding(const fs_reg &r)
 static inline bool
 regions_overlap(const fs_reg &r, unsigned dr, const fs_reg &s, unsigned ds)
 {
-   if (r.file == MRF && (r.nr & BRW_MRF_COMPR4)) {
-      fs_reg t = r;
-      t.nr &= ~BRW_MRF_COMPR4;
-      /* COMPR4 regions are translated by the hardware during decompression
-       * into two separate half-regions 4 MRFs apart from each other.
-       */
-      return regions_overlap(t, dr / 2, s, ds) ||
-             regions_overlap(byte_offset(t, 4 * REG_SIZE), dr / 2, s, ds);
+   if (r.file != s.file)
+      return false;
 
-   } else if (s.file == MRF && (s.nr & BRW_MRF_COMPR4)) {
-      return regions_overlap(s, ds, r, dr);
-
+   if (r.file == VGRF) {
+      return r.nr == s.nr &&
+             !(r.offset + dr <= s.offset || s.offset + ds <= r.offset);
    } else {
-      return reg_space(r) == reg_space(s) &&
-             !(reg_offset(r) + dr <= reg_offset(s) ||
+      return !(reg_offset(r) + dr <= reg_offset(s) ||
                reg_offset(s) + ds <= reg_offset(r));
    }
 }
@@ -303,8 +301,12 @@ subscript(fs_reg reg, brw_reg_type type, unsigned i)
       reg.vstride += (reg.vstride ? delta : 0);
 
    } else if (reg.file == IMM) {
-      assert(reg.type == type);
-
+      unsigned bit_size = type_sz(type) * 8;
+      reg.u64 >>= i * bit_size;
+      reg.u64 &= BITFIELD64_MASK(bit_size);
+      if (bit_size <= 16)
+         reg.u64 |= reg.u64 << 16;
+      return retype(reg, type);
    } else {
       reg.stride *= type_sz(reg.type) / type_sz(type);
    }
@@ -351,11 +353,10 @@ public:
    bool is_partial_write() const;
    unsigned components_read(unsigned i) const;
    unsigned size_read(int arg) const;
-   bool can_do_source_mods(const struct gen_device_info *devinfo) const;
+   bool can_do_source_mods(const struct intel_device_info *devinfo) const;
    bool can_do_cmod();
    bool can_change_types() const;
    bool has_source_and_destination_hazard() const;
-   unsigned implied_mrf_writes() const;
 
    /**
     * Return whether \p arg is a control source of a virtual instruction which
@@ -368,13 +369,19 @@ public:
     * Return the subset of flag registers read by the instruction as a bitset
     * with byte granularity.
     */
-   unsigned flags_read(const gen_device_info *devinfo) const;
+   unsigned flags_read(const intel_device_info *devinfo) const;
 
    /**
     * Return the subset of flag registers updated by the instruction (either
     * partially or fully) as a bitset with byte granularity.
     */
-   unsigned flags_written() const;
+   unsigned flags_written(const intel_device_info *devinfo) const;
+
+   /**
+    * Return true if this instruction is a sampler message gathering residency
+    * data.
+    */
+   bool has_sampler_residency() const;
 
    fs_reg dst;
    fs_reg *src;
@@ -383,8 +390,12 @@ public:
 
    bool last_rt:1;
    bool pi_noperspective:1;   /**< Pixel interpolator noperspective flag */
+   bool keep_payload_trailing_zeros;
 
    tgl_swsb sched; /**< Scheduling info. */
+
+   /* Hint that this instruction has combined LOD/LOD bias with array index */
+   bool has_packed_lod_ai_src;
 };
 
 /**
@@ -529,9 +540,13 @@ is_send(const fs_inst *inst)
  * assumed to complete in-order.
  */
 static inline bool
-is_unordered(const fs_inst *inst)
+is_unordered(const intel_device_info *devinfo, const fs_inst *inst)
 {
-   return is_send(inst) || inst->is_math();
+   return is_send(inst) || (devinfo->ver < 20 && inst->is_math()) ||
+          inst->opcode == BRW_OPCODE_DPAS ||
+          (devinfo->has_64bit_float_via_math_pipe &&
+           (get_exec_type(inst) == BRW_REGISTER_TYPE_DF ||
+            inst->dst.type == BRW_REGISTER_TYPE_DF));
 }
 
 /**
@@ -548,8 +563,9 @@ is_unordered(const fs_inst *inst)
  *     scalar source."
  */
 static inline bool
-has_dst_aligned_region_restriction(const gen_device_info *devinfo,
-                                   const fs_inst *inst)
+has_dst_aligned_region_restriction(const intel_device_info *devinfo,
+                                   const fs_inst *inst,
+                                   brw_reg_type dst_type)
 {
    const brw_reg_type exec_type = get_exec_type(inst);
    /* Even though the hardware spec claims that "integer DWord multiply"
@@ -563,11 +579,24 @@ has_dst_aligned_region_restriction(const gen_device_info *devinfo,
        (inst->opcode == BRW_OPCODE_MAD &&
         MIN2(type_sz(inst->src[1].type), type_sz(inst->src[2].type)) >= 4));
 
-   if (type_sz(inst->dst.type) > 4 || type_sz(exec_type) > 4 ||
+   if (type_sz(dst_type) > 4 || type_sz(exec_type) > 4 ||
        (type_sz(exec_type) == 4 && is_dword_multiply))
-      return devinfo->is_cherryview || gen_device_info_is_9lp(devinfo);
+      return devinfo->platform == INTEL_PLATFORM_CHV ||
+             intel_device_info_is_9lp(devinfo) ||
+             devinfo->verx10 >= 125;
+
+   else if (brw_reg_type_is_floating_point(dst_type))
+      return devinfo->verx10 >= 125;
+
    else
       return false;
+}
+
+static inline bool
+has_dst_aligned_region_restriction(const intel_device_info *devinfo,
+                                   const fs_inst *inst)
+{
+   return has_dst_aligned_region_restriction(devinfo, inst, inst->dst.type);
 }
 
 /**
@@ -670,6 +699,38 @@ is_coalescing_payload(const brw::simple_allocator &alloc, const fs_inst *inst)
 }
 
 bool
-has_bank_conflict(const gen_device_info *devinfo, const fs_inst *inst);
+has_bank_conflict(const struct brw_isa_info *isa, const fs_inst *inst);
+
+/* Return the subset of flag registers that an instruction could
+ * potentially read or write based on the execution controls and flag
+ * subregister number of the instruction.
+ */
+static inline unsigned
+brw_fs_flag_mask(const fs_inst *inst, unsigned width)
+{
+   assert(util_is_power_of_two_nonzero(width));
+   const unsigned start = (inst->flag_subreg * 16 + inst->group) &
+                          ~(width - 1);
+  const unsigned end = start + ALIGN(inst->exec_size, width);
+   return ((1 << DIV_ROUND_UP(end, 8)) - 1) & ~((1 << (start / 8)) - 1);
+}
+
+static inline unsigned
+brw_fs_bit_mask(unsigned n)
+{
+   return (n >= CHAR_BIT * sizeof(brw_fs_bit_mask(n)) ? ~0u : (1u << n) - 1);
+}
+
+static inline unsigned
+brw_fs_flag_mask(const fs_reg &r, unsigned sz)
+{
+   if (r.file == ARF) {
+      const unsigned start = (r.nr - BRW_ARF_FLAG) * 4 + r.subnr;
+      const unsigned end = start + sz;
+      return brw_fs_bit_mask(end) & ~brw_fs_bit_mask(start);
+   } else {
+      return 0;
+   }
+}
 
 #endif

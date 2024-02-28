@@ -97,9 +97,9 @@ static void printdef (char *name, char *suf, int type, uint64_t val, char *file)
 	FILE *dst = findfout(file);
 	int len;
 	if (suf)
-		fprintf (dst, "#define %s__%s%n", name, suf, &len);
+		len = fprintf (dst, "#define %s__%s", name, suf);
 	else
-		fprintf (dst, "#define %s%n", name, &len);
+		len = fprintf (dst, "#define %s", name);
 	if (type == 0 && val > 0xffffffffull)
 		seekcol (dst, len, startcol-8);
 	else
@@ -231,7 +231,7 @@ static void printbitfield (struct rnnbitfield *bf, int shift) {
 	printtypeinfo (&bf->typeinfo, bf, bf->fullname, bf->file);
 }
 
-static void printdelem (struct rnndelem *elem, uint64_t offset) {
+static void printdelem (struct rnndelem *elem, uint64_t offset, const char *str) {
 	int use_offset_fxn;
 	char *offsetfn = NULL;
 
@@ -251,9 +251,12 @@ static void printdelem (struct rnndelem *elem, uint64_t offset) {
 
 	if (elem->name) {
 		char *regname;
-		asprintf(&regname, "REG_%s", elem->fullname);
+		if (str) {
+			asprintf(&regname, "REG_%s_%s", elem->fullname, str);
+		} else {
+			asprintf(&regname, "REG_%s", elem->fullname);
+		}
 		if (elemsnum) {
-			int len;
 			FILE *dst = findfout(elem->file);
 			int i;
 
@@ -307,7 +310,7 @@ static void printdelem (struct rnndelem *elem, uint64_t offset) {
 					fprintf(dst, "enum %s ", elems[i]->index->name);
 				else
 					fprintf(dst, "uint32_t ");
-				fprintf (dst, "i%d%n", i, &len);
+				fprintf (dst, "i%d", i);
 			}
 			fprintf (dst, ") { return ");
 			fprintf (dst, "0x%08"PRIx64"", offset + elem->offset);
@@ -333,7 +336,7 @@ static void printdelem (struct rnndelem *elem, uint64_t offset) {
 	fprintf (findfout(elem->file), "\n");
 	int j;
 	for (j = 0; j < elem->subelemsnum; j++) {
-		printdelem(elem->subelems[j], offset + elem->offset);
+		printdelem(elem->subelems[j], offset + elem->offset, elem->varinfo.prefixstr);
 	}
 	if (elem->length != 1) {
 		elemsnum--;
@@ -492,7 +495,7 @@ int main(int argc, char **argv) {
 			printdef (db->domains[i]->fullname, "SIZE", 0, db->domains[i]->size, db->domains[i]->file);
 		int j;
 		for (j = 0; j < db->domains[i]->subelemsnum; j++) {
-			printdelem(db->domains[i]->subelems[j], 0);
+			printdelem(db->domains[i]->subelems[j], 0, NULL);
 		}
 	}
 	for(i = 0; i < foutsnum; ++i) {

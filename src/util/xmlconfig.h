@@ -15,11 +15,11 @@
  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
  * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
  * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL
- * FELIX KUEHLING, OR ANY OTHER CONTRIBUTORS BE LIABLE FOR ANY CLAIM, 
- * DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR 
- * OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE 
+ * FELIX KUEHLING, OR ANY OTHER CONTRIBUTORS BE LIABLE FOR ANY CLAIM,
+ * DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR
+ * OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE
  * OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
- * 
+ *
  */
 /**
  * \file xmlconfig.h
@@ -105,7 +105,7 @@ typedef struct driOptionDescription {
 
    driOptionInfo info;
    driOptionValue value;
-   driEnumDescription enums[4];
+   driEnumDescription enums[5];
 } driOptionDescription;
 
 /** Returns an XML string describing the options for the driver. */
@@ -133,6 +133,7 @@ void driParseOptionInfo(driOptionCache *info,
 void driParseConfigFiles(driOptionCache *cache, const driOptionCache *info,
                          int screenNum, const char *driverName,
                          const char *kernelDriverName,
+                         const char *deviceName,
                          const char *applicationName, uint32_t applicationVersion,
                          const char *engineName, uint32_t engineVersion);
 /** \brief Destroy option info
@@ -156,6 +157,9 @@ int driQueryOptioni(const driOptionCache *cache, const char *name);
 float driQueryOptionf(const driOptionCache *cache, const char *name);
 /** \brief Query a string option value */
 char *driQueryOptionstr(const driOptionCache *cache, const char *name);
+
+/* Overrides for the unit tests to control drirc parsing. */
+void driInjectExecName(const char *exec);
 
 /**
  * Returns a hash of the options for this application.

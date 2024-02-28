@@ -39,7 +39,7 @@
  */
 
 #define CS_LOCALS(context) \
-    struct radeon_cmdbuf *cs_copy = (context)->cs; \
+    struct radeon_cmdbuf *cs_copy = &(context)->cs; \
     struct radeon_winsys *cs_winsys = (context)->rws; \
     int cs_count = 0; (void) cs_count; (void) cs_winsys;
 
@@ -53,7 +53,7 @@
 #define END_CS do { \
     if (cs_count != 0) \
         debug_printf("r300: Warning: cs_count off by %d at (%s, %s:%i)\n", \
-                     cs_count, __FUNCTION__, __FILE__, __LINE__); \
+                     cs_count, __func__, __FILE__, __LINE__); \
     cs_count = 0; \
 } while (0)
 

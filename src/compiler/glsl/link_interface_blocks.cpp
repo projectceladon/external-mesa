@@ -30,7 +30,7 @@
 #include "glsl_symbol_table.h"
 #include "linker.h"
 #include "main/macros.h"
-#include "main/mtypes.h"
+#include "main/shader_types.h"
 #include "util/hash_table.h"
 #include "util/u_string.h"
 
@@ -56,6 +56,9 @@ interstage_member_mismatch(struct gl_shader_program *prog,
       if (c->fields.structure[i].location !=
           p->fields.structure[i].location)
          return true;
+      if (c->fields.structure[i].component !=
+          p->fields.structure[i].component)
+         return true;
       if (c->fields.structure[i].patch !=
           p->fields.structure[i].patch)
          return true;
@@ -66,7 +69,7 @@ interstage_member_mismatch(struct gl_shader_program *prog,
        *    interpolation qualifiers of variables of the same name do not
        *    match."
        */
-      if (prog->IsES || prog->data->Version < 440)
+      if (prog->IsES || prog->GLSL_Version < 440)
          if (c->fields.structure[i].interpolation !=
              p->fields.structure[i].interpolation)
             return true;
@@ -85,7 +88,7 @@ interstage_member_mismatch(struct gl_shader_program *prog,
        * The table in Section 9.2.1 Linked Shaders of the GLSL ES 3.2 spec
        * says that sample need not match for varyings.
        */
-      if (!prog->IsES || prog->data->Version < 310)
+      if (!prog->IsES || prog->GLSL_Version < 310)
          if (c->fields.structure[i].centroid !=
              p->fields.structure[i].centroid)
             return true;
@@ -109,8 +112,19 @@ intrastage_match(ir_variable *a,
                  struct gl_shader_program *prog,
                  bool match_precision)
 {
+   /* From section 4.7 "Precision and Precision Qualifiers" in GLSL 4.50:
+    *
+    *    "For the purposes of determining if an output from one shader
+    *    stage matches an input of the next stage, the precision qualifier
+    *    need not match."
+    */
+   bool interface_type_match =
+      (prog->IsES ?
+       a->get_interface_type() == b->get_interface_type() :
+       glsl_type_compare_no_precision(a->get_interface_type(), b->get_interface_type()));
+
    /* Types must match. */
-   if (a->get_interface_type() != b->get_interface_type()) {
+   if (!interface_type_match) {
       /* Exception: if both the interface blocks are implicitly declared,
        * don't force their types to match.  They might mismatch due to the two
        * shaders using different GLSL versions, and that's ok.
@@ -139,12 +153,12 @@ intrastage_match(ir_variable *a,
 
    bool type_match = (match_precision ?
                       a->type == b->type :
-                      a->type->compare_no_precision(b->type));
+                      glsl_type_compare_no_precision(a->type, b->type));
 
    /* If a block is an array then it must match across the shader.
     * Unsized arrays are also processed and matched agaist sized arrays.
     */
-   if (!type_match && (b->type->is_array() || a->type->is_array()) &&
+   if (!type_match && (glsl_type_is_array(b->type) || glsl_type_is_array(a->type)) &&
        (b->is_interface_instance() || a->is_interface_instance()) &&
        !validate_intrastage_arrays(prog, b, a, match_precision))
       return false;
@@ -195,9 +209,9 @@ interstage_match(struct gl_shader_program *prog, ir_variable *producer,
     * making sure the types are equal.
     */
    if ((consumer->is_interface_instance() &&
-        consumer_instance_type->is_array()) ||
+        glsl_type_is_array(consumer_instance_type)) ||
        (producer->is_interface_instance() &&
-        producer->type->is_array())) {
+        glsl_type_is_array(producer->type))) {
       if (consumer_instance_type != producer->type)
          return false;
    }
@@ -247,7 +261,7 @@ public:
       } else {
          const struct hash_entry *entry =
             _mesa_hash_table_search(ht,
-               var->get_interface_type()->without_array()->name);
+               glsl_get_type_name(glsl_without_array(var->get_interface_type())));
          return entry ? (ir_variable *) entry->data : NULL;
       }
    }
@@ -269,7 +283,7 @@ public:
          _mesa_hash_table_insert(ht, ralloc_strdup(mem_ctx, location_str), var);
       } else {
          _mesa_hash_table_insert(ht,
-            var->get_interface_type()->without_array()->name, var);
+            glsl_get_type_name(glsl_without_array(var->get_interface_type())), var);
       }
    }
 
@@ -345,7 +359,7 @@ validate_intrastage_interface_blocks(struct gl_shader_program *prog,
          } else if (!intrastage_match(prev_def, var, prog,
                                       true /* match_precision */)) {
             linker_error(prog, "definitions of interface block `%s' do not"
-                         " match\n", iface_type->name);
+                         " match\n", glsl_get_type_name(iface_type));
             return;
          }
       }
@@ -442,12 +456,12 @@ validate_interstage_inout_blocks(struct gl_shader_program *prog,
          continue;
 
       /* Built-in interface redeclaration check. */
-      if (prog->SeparateShader && !prog->IsES && prog->data->Version >= 150 &&
+      if (prog->SeparateShader && !prog->IsES && prog->GLSL_Version >= 150 &&
           var->data.how_declared == ir_var_declared_implicitly &&
           var->data.used && !producer_iface) {
          linker_error(prog, "missing output builtin block %s redeclaration "
                       "in separable shader program",
-                      var->get_interface_type()->name);
+                      glsl_get_type_name(var->get_interface_type()));
          return;
       }
 
@@ -463,12 +477,12 @@ validate_interstage_inout_blocks(struct gl_shader_program *prog,
       ir_variable *producer_def = definitions.lookup(var);
 
       /* Built-in interface redeclaration check. */
-      if (prog->SeparateShader && !prog->IsES && prog->data->Version >= 150 &&
+      if (prog->SeparateShader && !prog->IsES && prog->GLSL_Version >= 150 &&
           var->data.how_declared == ir_var_declared_implicitly &&
           var->data.used && !producer_iface) {
          linker_error(prog, "missing input builtin block %s redeclaration "
                       "in separable shader program",
-                      var->get_interface_type()->name);
+                      glsl_get_type_name(var->get_interface_type()));
          return;
       }
 
@@ -487,14 +501,14 @@ validate_interstage_inout_blocks(struct gl_shader_program *prog,
       if (producer_def == NULL &&
           !is_builtin_gl_in_block(var, consumer->Stage) && var->data.used) {
          linker_error(prog, "Input block `%s' is not an output of "
-                      "the previous stage\n", var->get_interface_type()->name);
+                      "the previous stage\n", glsl_get_type_name(var->get_interface_type()));
          return;
       }
 
       if (producer_def &&
           !interstage_match(prog, producer_def, var, extra_array_level)) {
          linker_error(prog, "definitions of interface block `%s' do not "
-                      "match\n", var->get_interface_type()->name);
+                      "match\n", glsl_get_type_name(var->get_interface_type()));
          return;
       }
    }
@@ -529,7 +543,7 @@ validate_interstage_uniform_blocks(struct gl_shader_program *prog,
              */
             if (!intrastage_match(old_def, var, prog, false /* precision */)) {
                linker_error(prog, "definitions of uniform block `%s' do not "
-                            "match\n", var->get_interface_type()->name);
+                            "match\n", glsl_get_type_name(var->get_interface_type()));
                return;
             }
          }

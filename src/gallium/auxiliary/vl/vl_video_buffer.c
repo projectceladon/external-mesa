@@ -73,11 +73,16 @@ vl_video_buffer_plane_order(enum pipe_format format)
 {
    switch(format) {
    case PIPE_FORMAT_YV12:
+   case PIPE_FORMAT_IYUV:
       return const_resource_plane_order_YVU;
 
    case PIPE_FORMAT_NV12:
+   case PIPE_FORMAT_NV21:
+   case PIPE_FORMAT_Y8_U8_V8_444_UNORM:
    case PIPE_FORMAT_R8G8B8A8_UNORM:
+   case PIPE_FORMAT_R8G8B8X8_UNORM:
    case PIPE_FORMAT_B8G8R8A8_UNORM:
+   case PIPE_FORMAT_B8G8R8X8_UNORM:
    case PIPE_FORMAT_YUYV:
    case PIPE_FORMAT_UYVY:
    case PIPE_FORMAT_P010:
@@ -113,21 +118,21 @@ vl_video_buffer_is_format_supported(struct pipe_screen *screen,
    vl_get_video_buffer_formats(screen, format, resource_formats);
 
    for (i = 0; i < VL_NUM_COMPONENTS; ++i) {
-      enum pipe_format format = resource_formats[i];
+      enum pipe_format fmt = resource_formats[i];
 
-      if (format == PIPE_FORMAT_NONE)
+      if (fmt == PIPE_FORMAT_NONE)
          continue;
 
       /* we at least need to sample from it */
-      if (!screen->is_format_supported(screen, format, PIPE_TEXTURE_2D, 0, 0, PIPE_BIND_SAMPLER_VIEW))
-         return false;
+      if (!screen->is_format_supported(screen, fmt, PIPE_TEXTURE_2D, 0, 0, PIPE_BIND_SAMPLER_VIEW))
+         continue;
 
-      format = vl_video_buffer_surface_format(format);
-      if (!screen->is_format_supported(screen, format, PIPE_TEXTURE_2D, 0, 0, PIPE_BIND_RENDER_TARGET))
-         return false;
+      fmt = vl_video_buffer_surface_format(fmt);
+      if (screen->is_format_supported(screen, fmt, PIPE_TEXTURE_2D, 0, 0, PIPE_BIND_RENDER_TARGET))
+         return true;
    }
 
-   return true;
+   return false;
 }
 
 unsigned
@@ -193,7 +198,7 @@ vl_video_buffer_template(struct pipe_resource *templ,
    templ->height0 = height;
 }
 
-static void
+void
 vl_video_buffer_destroy(struct pipe_video_buffer *buffer)
 {
    struct vl_video_buffer *buf = (struct vl_video_buffer *)buffer;
@@ -215,10 +220,26 @@ vl_video_buffer_destroy(struct pipe_video_buffer *buffer)
    FREE(buffer);
 }
 
+static void
+vl_video_buffer_resources(struct pipe_video_buffer *buffer,
+                          struct pipe_resource **resources)
+{
+   struct vl_video_buffer *buf = (struct vl_video_buffer *)buffer;
+   unsigned num_planes = util_format_get_num_planes(buffer->buffer_format);
+   unsigned i;
+
+   assert(buf);
+
+   for (i = 0; i < num_planes; ++i) {
+      resources[i] = buf->resources[i];
+   }
+}
+
 static struct pipe_sampler_view **
 vl_video_buffer_sampler_view_planes(struct pipe_video_buffer *buffer)
 {
    struct vl_video_buffer *buf = (struct vl_video_buffer *)buffer;
+   unsigned num_planes = util_format_get_num_planes(buffer->buffer_format);
    struct pipe_sampler_view sv_templ;
    struct pipe_context *pipe;
    unsigned i;
@@ -227,7 +248,7 @@ vl_video_buffer_sampler_view_planes(struct pipe_video_buffer *buffer)
 
    pipe = buf->base.context;
 
-   for (i = 0; i < buf->num_planes; ++i ) {
+   for (i = 0; i < num_planes; ++i ) {
       if (!buf->sampler_view_planes[i]) {
          memset(&sv_templ, 0, sizeof(sv_templ));
          u_sampler_view_default_template(&sv_templ, buf->resources[i], buf->resources[i]->format);
@@ -244,7 +265,7 @@ vl_video_buffer_sampler_view_planes(struct pipe_video_buffer *buffer)
    return buf->sampler_view_planes;
 
 error:
-   for (i = 0; i < buf->num_planes; ++i )
+   for (i = 0; i < num_planes; ++i )
       pipe_sampler_view_reference(&buf->sampler_view_planes[i], NULL);
 
    return NULL;
@@ -275,13 +296,19 @@ vl_video_buffer_sampler_view_components(struct pipe_video_buffer *buffer)
          nr_components = 3;
 
       for (j = 0; j < nr_components && component < VL_NUM_COMPONENTS; ++j, ++component) {
+         unsigned pipe_swizzle;
+
          if (buf->sampler_view_components[component])
             continue;
 
          memset(&sv_templ, 0, sizeof(sv_templ));
          u_sampler_view_default_template(&sv_templ, res, sampler_format[plane_order[i]]);
-         sv_templ.swizzle_r = sv_templ.swizzle_g = sv_templ.swizzle_b = PIPE_SWIZZLE_X + j;
+         pipe_swizzle = (buf->base.buffer_format == PIPE_FORMAT_YUYV || buf->base.buffer_format == PIPE_FORMAT_UYVY) ?
+                        (PIPE_SWIZZLE_X + j + 1) % 3 :
+                        (PIPE_SWIZZLE_X + j);
+         sv_templ.swizzle_r = sv_templ.swizzle_g = sv_templ.swizzle_b = pipe_swizzle;
          sv_templ.swizzle_a = PIPE_SWIZZLE_1;
+
          buf->sampler_view_components[component] = pipe->create_sampler_view(pipe, res, &sv_templ);
          if (!buf->sampler_view_components[component])
             goto error;
@@ -449,6 +476,7 @@ vl_video_buffer_create_ex2(struct pipe_context *pipe,
    buffer->base = *tmpl;
    buffer->base.context = pipe;
    buffer->base.destroy = vl_video_buffer_destroy;
+   buffer->base.get_resources = vl_video_buffer_resources;
    buffer->base.get_sampler_view_planes = vl_video_buffer_sampler_view_planes;
    buffer->base.get_sampler_view_components = vl_video_buffer_sampler_view_components;
    buffer->base.get_surfaces = vl_video_buffer_surfaces;
@@ -466,7 +494,9 @@ vl_video_buffer_create_ex2(struct pipe_context *pipe,
 /* Create pipe_video_buffer by using resource_create with planar formats. */
 struct pipe_video_buffer *
 vl_video_buffer_create_as_resource(struct pipe_context *pipe,
-                                   const struct pipe_video_buffer *tmpl)
+                                   const struct pipe_video_buffer *tmpl,
+                                   const uint64_t *modifiers,
+                                   int modifiers_count)
 {
    struct pipe_resource templ, *resources[VL_NUM_COMPONENTS] = {0};
    unsigned array_size =  tmpl->interlaced ? 2 : 1;
@@ -487,7 +517,12 @@ vl_video_buffer_create_as_resource(struct pipe_context *pipe,
    else
       templ.format = tmpl->buffer_format;
 
-   resources[0] = pipe->screen->resource_create(pipe->screen, &templ);
+   if (modifiers)
+      resources[0] = pipe->screen->resource_create_with_modifiers(pipe->screen,
+                                                                  &templ, modifiers,
+                                                                  modifiers_count);
+   else
+      resources[0] = pipe->screen->resource_create(pipe->screen, &templ);
    if (!resources[0])
       return NULL;
 

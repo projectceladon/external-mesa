@@ -45,7 +45,7 @@ sp_alloc_tile(struct softpipe_tile_cache *tc);
 /**
  * Return the position in the cache for the tile that contains win pos (x,y).
  * We currently use a direct mapped cache so this is like a hack key.
- * At some point we should investige something more sophisticated, like
+ * At some point we should investigate something more sophisticated, like
  * a LRU replacement policy.
  */
 #define CACHE_POS(x, y, l)                        \
@@ -149,7 +149,7 @@ sp_destroy_tile_cache(struct softpipe_tile_cache *tc)
          int i;
          for (i = 0; i < tc->num_maps; i++)
             if (tc->transfer[i]) {
-               tc->pipe->transfer_unmap(tc->pipe, tc->transfer[i]);
+               tc->pipe->texture_unmap(tc->pipe, tc->transfer[i]);
             }
          FREE(tc->transfer);
          FREE(tc->transfer_map);
@@ -176,7 +176,7 @@ sp_tile_cache_set_surface(struct softpipe_tile_cache *tc,
          return;
 
       for (i = 0; i < tc->num_maps; i++) {
-         pipe->transfer_unmap(pipe, tc->transfer[i]);
+         pipe->texture_unmap(pipe, tc->transfer[i]);
          tc->transfer[i] = NULL;
          tc->transfer_map[i] = NULL;
       }
@@ -200,7 +200,7 @@ sp_tile_cache_set_surface(struct softpipe_tile_cache *tc,
 
       if (ps->texture->target != PIPE_BUFFER) {
          for (i = 0; i < tc->num_maps; i++) {
-            tc->transfer_map[i] = pipe_transfer_map(pipe, ps->texture,
+            tc->transfer_map[i] = pipe_texture_map(pipe, ps->texture,
                                                     ps->u.tex.level, ps->u.tex.first_layer + i,
                                                     PIPE_MAP_READ_WRITE |
                                                     PIPE_MAP_UNSYNCHRONIZED,
@@ -298,7 +298,7 @@ clear_tile(struct softpipe_cached_tile *tile,
       else {
          for (i = 0; i < TILE_SIZE; i++) {
             for (j = 0; j < TILE_SIZE; j++) {
-               tile->data.depth16[i][j] = (ushort) clear_value;
+               tile->data.depth16[i][j] = (uint16_t) clear_value;
             }
          }
       }
@@ -343,7 +343,7 @@ sp_tile_cache_flush_clear(struct softpipe_tile_cache *tc, int layer)
    const uint w = tc->transfer[layer]->box.width;
    const uint h = tc->transfer[layer]->box.height;
    uint x, y;
-   uint numCleared = 0;
+   UNUSED uint numCleared = 0;
 
    assert(pt->resource);
 
@@ -414,11 +414,11 @@ sp_flush_tile(struct softpipe_tile_cache* tc, unsigned pos)
 void
 sp_flush_tile_cache(struct softpipe_tile_cache *tc)
 {
-   int inuse = 0, pos;
+   UNUSED int inuse = 0;
    int i;
    if (tc->num_maps) {
       /* caching a drawing transfer */
-      for (pos = 0; pos < ARRAY_SIZE(tc->entries); pos++) {
+      for (int pos = 0; pos < ARRAY_SIZE(tc->entries); pos++) {
          struct softpipe_cached_tile *tile = tc->entries[pos];
          if (!tile)
          {

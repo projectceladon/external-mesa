@@ -19,6 +19,20 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
+sym_config = configuration_data()
+
+foreach d : [[with_gallium_r300 or with_gallium_radeonsi or with_gallium_r600, 'radeon_drm_winsys_create'],
+             [with_gallium_radeonsi, 'amdgpu_winsys_create'],
+             [with_gallium_nouveau, 'nouveau_drm_screen_create'],
+             [with_gallium_freedreno, 'fd_drm_screen_create_renderonly'],
+             [with_llvm and with_gallium_radeonsi, 'ac_init_shared_llvm_once']]
+  if d[0]
+    sym_config.set(d[1], d[1] + ';')
+  else
+    sym_config.set(d[1], '')
+  endif
+endforeach
+
 inc_gallium_drivers = include_directories('drivers')
 inc_gallium_winsys = include_directories('winsys')
 inc_gallium_winsys_sw = include_directories('winsys/sw')
@@ -45,18 +59,19 @@ subdir('winsys/sw/wrapper')
 if with_platform_haiku
   subdir('winsys/sw/hgl')
 endif
-if with_gallium_swr
-  subdir('drivers/swr')
-else
-  driver_swr = declare_dependency()
-endif
 if with_gallium_softpipe
   subdir('drivers/softpipe')
-  if with_llvm
+  if draw_with_llvm
     subdir('drivers/llvmpipe')
   endif
 else
   driver_swrast = declare_dependency()
+endif
+if with_gallium_asahi
+  subdir('winsys/asahi/drm')
+  subdir('drivers/asahi')
+else
+  driver_asahi = declare_dependency()
 endif
 if with_gallium_r300 or with_gallium_radeonsi or with_gallium_r600
   subdir('winsys/radeon/drm')
@@ -124,6 +139,12 @@ if with_gallium_tegra
 else
   driver_tegra = declare_dependency()
 endif
+if with_gallium_crocus
+  subdir('winsys/crocus/drm')
+  subdir('drivers/crocus')
+else
+  driver_crocus = declare_dependency()
+endif
 if with_gallium_iris
   subdir('winsys/iris/drm')
   subdir('drivers/iris')
@@ -137,15 +158,19 @@ else
   driver_i915 = declare_dependency()
 endif
 if with_gallium_svga
-  subdir('winsys/svga/drm')
+  if not with_platform_windows
+     subdir('winsys/svga/drm')
+  endif
   subdir('drivers/svga')
 else
   driver_svga = declare_dependency()
 endif
 if with_gallium_virgl
   subdir('winsys/virgl/common')
-  subdir('winsys/virgl/drm')
-  subdir('winsys/virgl/vtest')
+  if not with_platform_windows
+    subdir('winsys/virgl/drm')
+    subdir('winsys/virgl/vtest')
+  endif
   subdir('drivers/virgl')
 else
   driver_virgl = declare_dependency()
@@ -156,13 +181,16 @@ if with_gallium_lima
 else
   driver_lima = declare_dependency()
 endif
-
 if with_gallium_zink
   subdir('drivers/zink')
 else
   driver_zink = declare_dependency()
 endif
-
+if with_gallium_d3d12
+  subdir('drivers/d3d12')
+else
+  driver_d3d12 = declare_dependency()
+endif
 if with_gallium_opencl
   # TODO: this isn't really clover specific, but ATM clover is the only
   # consumer
@@ -171,15 +199,19 @@ if with_gallium_opencl
   subdir('frontends/clover')
   subdir('targets/opencl')
 endif
+if with_gallium_rusticl
+  subdir('frontends/rusticl')
+  subdir('targets/rusticl')
+endif
 if with_dri
   subdir('frontends/dri')
   subdir('targets/dri')
 endif
-if with_osmesa == 'gallium'
+if with_osmesa
   subdir('frontends/osmesa')
   subdir('targets/osmesa')
 endif
-if with_glx == 'gallium-xlib'
+if with_glx == 'xlib'
   subdir('winsys/sw/xlib')
   subdir('frontends/glx/xlib')
   subdir('targets/libgl-xlib')
@@ -187,10 +219,6 @@ endif
 if with_gallium_vdpau
   subdir('frontends/vdpau')
   subdir('targets/vdpau')
-endif
-if with_gallium_xvmc
-  subdir('frontends/xvmc')
-  subdir('targets/xvmc')
 endif
 if with_gallium_omx != 'disabled'
   subdir('frontends/omx')
@@ -206,26 +234,36 @@ if with_gallium_xa
 endif
 if with_platform_haiku
   subdir('frontends/hgl')
-  subdir('targets/haiku-softpipe')
 endif
 if with_gallium_st_nine
   subdir('frontends/nine')
   subdir('targets/d3dadapter9')
 endif
+if with_gallium_st_d3d10umd
+  subdir('frontends/d3d10umd')
+  subdir('targets/d3d10umd')
+endif
 if with_platform_windows
-  subdir('frontends/wgl')
-  subdir('targets/libgl-gdi')
+  if with_opengl
+    subdir('frontends/wgl')
+    if with_gallium_d3d12
+      subdir('winsys/d3d12/wgl')
+    else
+      winsys_d3d12_wgl = declare_dependency()
+    endif
+    subdir('targets/wgl')
+    subdir('targets/libgl-gdi')
+  endif
 endif
 if with_tests
-  subdir('targets/graw-null')
-  if with_platform_windows
-    subdir('targets/graw-gdi')
-  elif with_glx == 'gallium-xlib'
-    subdir('targets/graw-xlib')
-  endif
   subdir('tests')
 endif
 if with_swrast_vk
   subdir('frontends/lavapipe')
   subdir('targets/lavapipe')
+endif
+
+if with_teflon
+  subdir('frontends/teflon')
+  subdir('targets/teflon')
 endif

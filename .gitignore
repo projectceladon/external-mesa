@@ -1,4 +1,6 @@
+.vscode*
 *.pyc
 *.pyo
 *.out
-build
+/build
+.venv/

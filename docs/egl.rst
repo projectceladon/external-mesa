@@ -18,13 +18,12 @@ Build EGL
 #. Configure your build with the desired client APIs and enable the
    driver for your hardware. For example:
 
-   .. code-block:: console
+   .. code-block:: sh
 
       $ meson configure \
-              -D egl=true \
-              -D gles1=true \
-              -D gles2=true \
-              -D dri-drivers=... \
+              -D egl=enabled \
+              -D gles1=enabled \
+              -D gles2=enabled \
               -D gallium-drivers=...
 
    The main library and OpenGL is enabled by default. The first two
@@ -43,7 +42,7 @@ Configure Options
 There are several options that control the build of EGL at configuration
 time
 
-``-D egl=true``
+``-D egl=enabled``
    By default, EGL is enabled. When disabled, the main library and the
    drivers will not be built.
 
@@ -60,11 +59,11 @@ time
    Unless for special needs, the build system should select the right
    platforms automatically.
 
-``-D gles1=true`` and ``-D gles2=true``
+``-D gles1=enabled`` and ``-D gles2=enabled``
    These options enable OpenGL ES support in OpenGL. The result is one
    big internal library that supports multiple APIs.
 
-``-D shared-glapi=true``
+``-D shared-glapi=enabled``
    By default, ``libGL`` has its own copy of ``libglapi``. This options
    makes ``libGL`` use the shared ``libglapi``. This is required if
    applications mix OpenGL and OpenGL ES.
@@ -89,12 +88,6 @@ at runtime
    same as those for ``-D platforms=...``. When the variable is not set,
    the main library uses the first platform listed in
    ``-D platforms=...`` as the native platform.
-
-   Extensions like ``EGL_MESA_drm_display`` define new functions to
-   create displays for non-native platforms. These extensions are
-   usually used by applications that support non-native platforms.
-   Setting this variable is probably required only for some of the demos
-   found in mesa/demo repository.
 
 ``EGL_LOG_LEVEL``
    This changes the log level of the main library and the drivers. The
@@ -159,7 +152,7 @@ EGL Drivers
 
 ``egl_dri2``
    This driver supports several platforms: ``android``, ``device``,
-   ``drm, ``surfaceless``, ``wayland`` and ``x11``. It functions as
+   ``drm``, ``surfaceless``, ``wayland`` and ``x11``. It functions as
    a DRI driver loader. For ``x11`` support, it talks to the X server
    directly using (XCB-)DRI3 protocol when available, and falls back to
    DRI2 if necessary (can be forced with ``LIBGL_DRI3_DISABLE``).
@@ -167,7 +160,7 @@ EGL Drivers
    This driver can share DRI drivers with ``libGL``.
 
 ``haiku``
-   This driver supports only the `Haiku <https://haiku-os.org>`__
+   This driver supports only the `Haiku <https://www.haiku-os.org/>`__
    platform. It is also much less feature-complete than ``egl_dri2``,
    supporting only part of EGL 1.4 and none of the extensions beyond it.
 

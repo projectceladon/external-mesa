@@ -75,7 +75,6 @@
 #define R600_MAX_USER_CONST_BUFFERS 15
 #define R600_MAX_DRIVER_CONST_BUFFERS 3
 #define R600_MAX_CONST_BUFFERS (R600_MAX_USER_CONST_BUFFERS + R600_MAX_DRIVER_CONST_BUFFERS)
-#define R600_MAX_HW_CONST_BUFFERS 16
 
 /* start driver buffers after user buffers */
 #define R600_BUFFER_INFO_CONST_BUFFER (R600_MAX_USER_CONST_BUFFERS)
@@ -169,8 +168,8 @@ struct r600_clip_misc_state {
 	unsigned cc_dist_mask;      /* from vertex shader */
 	unsigned clip_dist_write;   /* from vertex shader */
 	unsigned cull_dist_write;   /* from vertex shader */
-	boolean clip_disable;       /* from vertex shader */
-	boolean vs_out_viewport;    /* from vertex shader */
+	bool clip_disable;       /* from vertex shader */
+	bool vs_out_viewport;    /* from vertex shader */
 };
 
 struct r600_alphatest_state {
@@ -233,9 +232,9 @@ struct r600_config_state {
 
 struct r600_stencil_ref
 {
-	ubyte ref_value[2];
-	ubyte valuemask[2];
-	ubyte writemask[2];
+	uint8_t ref_value[2];
+	uint8_t valuemask[2];
+	uint8_t writemask[2];
 };
 
 struct r600_stencil_ref_state {
@@ -259,15 +258,6 @@ struct r600_gs_rings_state {
 /* This must start from 16. */
 /* features */
 #define DBG_NO_CP_DMA		(1 << 30)
-/* shader backend */
-#define DBG_NO_SB		(1 << 21)
-#define DBG_SB_CS		(1 << 22)
-#define DBG_SB_DRY_RUN	(1 << 23)
-#define DBG_SB_STAT		(1 << 24)
-#define DBG_SB_DUMP		(1 << 25)
-#define DBG_SB_NO_FALLBACK	(1 << 26)
-#define DBG_SB_DISASM	(1 << 27)
-#define DBG_SB_SAFEMATH	(1 << 28)
 
 struct r600_screen {
 	struct r600_common_screen	b;
@@ -293,8 +283,8 @@ struct r600_pipe_sampler_view {
 
 struct r600_rasterizer_state {
 	struct r600_command_buffer	buffer;
-	boolean				flatshade;
-	boolean				two_side;
+	bool				flatshade;
+	bool				two_side;
 	unsigned			sprite_coord_enable;
 	unsigned                        clip_plane_enable;
 	unsigned			pa_sc_line_stipple;
@@ -331,8 +321,8 @@ struct r600_blend_state {
 struct r600_dsa_state {
 	struct r600_command_buffer	buffer;
 	unsigned			alpha_ref;
-	ubyte				valuemask[2];
-	ubyte				writemask[2];
+	uint8_t				valuemask[2];
+	uint8_t				writemask[2];
 	unsigned			zwritemask;
 	unsigned			sx_alpha_test_control;
 };
@@ -343,7 +333,11 @@ struct r600_pipe_shader_selector {
 	struct r600_pipe_shader *current;
 
 	struct tgsi_token       *tokens;
-        struct nir_shader       *nir;
+	struct nir_shader       *nir;
+
+	size_t  nir_blob_size;
+	void   *nir_blob;
+
 	struct pipe_stream_output_info  so;
 	struct tgsi_shader_info		info;
 
@@ -353,14 +347,13 @@ struct r600_pipe_shader_selector {
         enum pipe_shader_ir ir_type;
 
 	/* geometry shader properties */
-	enum pipe_prim_type	gs_output_prim;
+	enum mesa_prim	gs_output_prim;
 	unsigned		gs_max_out_vertices;
 	unsigned		gs_num_invocations;
 
 	/* TCS/VS */
 	uint64_t        lds_patch_outputs_written_mask;
 	uint64_t        lds_outputs_written_mask;
-	unsigned	nr_ps_max_color_exports;
 };
 
 struct r600_pipe_sampler_state {
@@ -385,7 +378,7 @@ struct r600_samplerview_state {
 	uint32_t			dirty_mask;
 	uint32_t			compressed_depthtex_mask; /* which textures are depth */
 	uint32_t			compressed_colortex_mask;
-	boolean				dirty_buffer_constants;
+	bool				dirty_buffer_constants;
 };
 
 struct r600_sampler_states {
@@ -440,6 +433,8 @@ struct r600_cso_state
 struct r600_fetch_shader {
 	struct r600_resource		*buffer;
 	unsigned			offset;
+	uint32_t                        buffer_mask;
+	unsigned                        strides[PIPE_MAX_ATTRIBS];
 };
 
 struct r600_shader_state {
@@ -474,14 +469,14 @@ struct r600_image_state {
 	uint32_t                        dirty_mask;
 	uint32_t			compressed_depthtex_mask;
 	uint32_t			compressed_colortex_mask;
-	boolean				dirty_buffer_constants;
+	bool				dirty_buffer_constants;
 	struct r600_image_view views[R600_MAX_IMAGES];
 };
 
 /* Used to spill shader temps */
 struct r600_scratch_buffer {
 	struct r600_resource		*buffer;
-	boolean					dirty;
+	bool					dirty;
 	unsigned				size;
 	unsigned				item_size;
 };
@@ -490,10 +485,10 @@ struct r600_context {
 	struct r600_common_context	b;
 	struct r600_screen		*screen;
 	struct blitter_context		*blitter;
-	struct u_suballocator		*allocator_fetch_shader;
+	struct u_suballocator		allocator_fetch_shader;
 
 	/* Hardware info. */
-	boolean				has_vertex_cache;
+	bool				has_vertex_cache;
 	unsigned			default_gprs[EG_NUM_HW_STAGES];
 	unsigned                        current_gprs[EG_NUM_HW_STAGES];
 	unsigned			r6xx_num_clause_temp_gprs;
@@ -577,7 +572,7 @@ struct r600_context {
 	bool				alpha_to_one;
 	bool				force_blend_disable;
 	bool                            gs_tri_strip_adj_fix;
-	boolean				dual_src_blend;
+	bool				dual_src_blend;
 	unsigned			zwritemask;
 	unsigned			ps_iter_samples;
 
@@ -587,12 +582,11 @@ struct r600_context {
 	struct list_head		texture_buffers;
 
 	/* Last draw state (-1 = unset). */
-	enum pipe_prim_type		last_primitive_type; /* Last primitive type used in draw_vbo. */
-	enum pipe_prim_type		current_rast_prim; /* primitive type after TES, GS */
-	enum pipe_prim_type		last_rast_prim;
+	enum mesa_prim		last_primitive_type; /* Last primitive type used in draw_vbo. */
+	enum mesa_prim		current_rast_prim; /* primitive type after TES, GS */
+	enum mesa_prim		last_rast_prim;
 	unsigned			last_start_instance;
 
-	void				*sb_context;
 	struct r600_isa		*isa;
 	float sample_positions[4 * 16];
 	float tess_state[8];
@@ -611,6 +605,7 @@ struct r600_context {
 	struct r600_resource	*trace_buf;
 	unsigned		trace_id;
 
+	uint8_t patch_vertices;
 	bool cmd_buf_is_compute;
 	struct pipe_resource *append_fence;
 	uint32_t append_fence_id;
@@ -682,11 +677,11 @@ evergreen_create_sampler_view_custom(struct pipe_context *ctx,
 				     unsigned force_level);
 void evergreen_init_common_regs(struct r600_context *ctx,
 				struct r600_command_buffer *cb,
-				enum chip_class ctx_chip_class,
+				enum amd_gfx_level ctx_chip_class,
 				enum radeon_family ctx_family,
 				int ctx_drm_minor);
 void cayman_init_common_regs(struct r600_command_buffer *cb,
-			     enum chip_class ctx_chip_class,
+			     enum amd_gfx_level ctx_chip_class,
 			     enum radeon_family ctx_family,
 			     int ctx_drm_minor);
 
@@ -773,7 +768,7 @@ void r600_context_gfx_flush(void *context, unsigned flags,
 			    struct pipe_fence_handle **fence);
 void r600_begin_new_cs(struct r600_context *ctx);
 void r600_flush_emit(struct r600_context *ctx);
-void r600_need_cs_space(struct r600_context *ctx, unsigned num_dw, boolean count_draw_in, unsigned num_atomics);
+void r600_need_cs_space(struct r600_context *ctx, unsigned num_dw, bool count_draw_in, unsigned num_atomics);
 void r600_emit_pfp_sync_me(struct r600_context *rctx);
 void r600_cp_dma_copy_buffer(struct r600_context *rctx,
 			     struct pipe_resource *dst, uint64_t dst_offset,
@@ -843,12 +838,12 @@ unsigned r600_tex_compare(unsigned compare);
 bool sampler_state_needs_border_color(const struct pipe_sampler_state *state);
 unsigned r600_get_swizzle_combined(const unsigned char *swizzle_format,
 				   const unsigned char *swizzle_view,
-				   boolean vtx);
+				   bool vtx);
 uint32_t r600_translate_texformat(struct pipe_screen *screen, enum pipe_format format,
 				  const unsigned char *swizzle_view,
 				  uint32_t *word4_p, uint32_t *yuv_format_p,
 				  bool do_endian_swap);
-uint32_t r600_translate_colorformat(enum chip_class chip, enum pipe_format format,
+uint32_t r600_translate_colorformat(enum amd_gfx_level chip, enum pipe_format format,
 				  bool do_endian_swap);
 uint32_t r600_colorformat_endian_swap(uint32_t colorformat, bool do_endian_swap);
 
@@ -1062,7 +1057,7 @@ struct r600_pipe_shader_selector *r600_create_shader_state_tokens(struct pipe_co
 								  unsigned pipe_shader_type);
 int r600_shader_select(struct pipe_context *ctx,
 		       struct r600_pipe_shader_selector* sel,
-		       bool *dirty);
+		       bool *dirty, bool precompile);
 
 void r600_delete_shader_selector(struct pipe_context *ctx,
 				 struct r600_pipe_shader_selector *sel);

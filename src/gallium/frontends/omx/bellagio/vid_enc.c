@@ -50,6 +50,8 @@
 #include "pipe/p_video_codec.h"
 #include "util/u_memory.h"
 
+#include "vl/vl_codec.h"
+
 #include "entrypoint.h"
 #include "vid_enc.h"
 #include "vid_omx_common.h"
@@ -153,8 +155,7 @@ static OMX_ERRORTYPE vid_enc_Constructor(OMX_COMPONENTTYPE *comp, OMX_STRING nam
       return OMX_ErrorInsufficientResources;
 
    screen = priv->screen->pscreen;
-   if (!screen->get_video_param(screen, PIPE_VIDEO_PROFILE_MPEG4_AVC_HIGH,
-                                PIPE_VIDEO_ENTRYPOINT_ENCODE, PIPE_VIDEO_CAP_SUPPORTED))
+   if (!vl_codec_supported(screen, PIPE_VIDEO_PROFILE_MPEG4_AVC_HIGH, true))
       return OMX_ErrorBadParameter;
 
    priv->s_pipe = pipe_create_multimedia_context(screen);
@@ -230,7 +231,7 @@ static OMX_ERRORTYPE vid_enc_Constructor(OMX_COMPONENTTYPE *comp, OMX_STRING nam
    priv->force_pic_type.IntraRefreshVOP = OMX_FALSE;
    priv->frame_num = 0;
    priv->pic_order_cnt = 0;
-   priv->restricted_b_frames = debug_get_bool_option("OMX_USE_RESTRICTED_B_FRAMES", FALSE);
+   priv->restricted_b_frames = debug_get_bool_option("OMX_USE_RESTRICTED_B_FRAMES", false);
 
    priv->scale.xWidth = OMX_VID_ENC_SCALING_WIDTH_DEFAULT;
    priv->scale.xHeight = OMX_VID_ENC_SCALING_WIDTH_DEFAULT;
@@ -311,7 +312,7 @@ static OMX_ERRORTYPE enc_AllocateBackTexture(omx_base_PortType *port,
    box.width = (*resource)->width0;
    box.height = (*resource)->height0;
    box.depth = (*resource)->depth0;
-   ptr = priv->s_pipe->transfer_map(priv->s_pipe, *resource, 0, PIPE_MAP_WRITE, &box, transfer);
+   ptr = priv->s_pipe->texture_map(priv->s_pipe, *resource, 0, PIPE_MAP_WRITE, &box, transfer);
    if (map)
       *map = ptr;
 
@@ -345,7 +346,7 @@ static OMX_ERRORTYPE vid_enc_SetParameter(OMX_HANDLETYPE handle, OMX_INDEXTYPE i
          enc_AllocateBackTexture(priv->ports[OMX_BASE_FILTER_INPUTPORT_INDEX],
                                  &resource, &transfer, NULL);
          port->sPortParam.format.video.nStride = transfer->stride;
-         pipe_transfer_unmap(priv->s_pipe, transfer);
+         pipe_texture_unmap(priv->s_pipe, transfer);
          pipe_resource_reference(&resource, NULL);
 
          framesize = port->sPortParam.format.video.nStride *
@@ -700,7 +701,7 @@ static OMX_ERRORTYPE vid_enc_FreeInBuffer(omx_base_PortType *port, OMX_U32 idx, 
    if (inp) {
       enc_ReleaseTasks(&inp->tasks);
       if (inp->transfer)
-         pipe_transfer_unmap(priv->s_pipe, inp->transfer);
+         pipe_texture_unmap(priv->s_pipe, inp->transfer);
       pipe_resource_reference(&inp->resource, NULL);
       FREE(inp);
    }
@@ -737,7 +738,7 @@ static OMX_ERRORTYPE vid_enc_FreeOutBuffer(omx_base_PortType *port, OMX_U32 idx,
    if (buf->pOutputPortPrivate) {
       struct output_buf_private *outp = buf->pOutputPortPrivate;
       if (outp->transfer)
-         pipe_transfer_unmap(priv->t_pipe, outp->transfer);
+         pipe_buffer_unmap(priv->t_pipe, outp->transfer);
       pipe_resource_reference(&outp->bitstream, NULL);
       FREE(outp);
       buf->pOutputPortPrivate = NULL;
@@ -781,7 +782,7 @@ static void enc_ControlPicture(omx_base_PortType *port, struct pipe_h264_enc_pic
 }
 
 static void enc_HandleTask(omx_base_PortType *port, struct encode_task *task,
-                           enum pipe_h264_enc_picture_type picture_type)
+                           enum pipe_h2645_enc_picture_type picture_type)
 {
    OMX_COMPONENTTYPE* comp = port->standCompContainer;
    vid_enc_PrivateType *priv = comp->pComponentPrivate;
@@ -803,7 +804,7 @@ static void enc_HandleTask(omx_base_PortType *port, struct encode_task *task,
    picture.pic_order_cnt = task->pic_order_cnt;
    picture.base.profile = enc_TranslateOMXProfileToPipe(priv->profile_level.eProfile);
    picture.base.entry_point = PIPE_VIDEO_ENTRYPOINT_ENCODE;
-   if (priv->restricted_b_frames && picture_type == PIPE_H264_ENC_PICTURE_TYPE_B)
+   if (priv->restricted_b_frames && picture_type == PIPE_H2645_ENC_PICTURE_TYPE_B)
       picture.not_referenced = true;
    enc_ControlPicture(port, &picture);
 
@@ -822,18 +823,18 @@ static void enc_ClearBframes(omx_base_PortType *port, struct input_buf_private *
    if (list_is_empty(&priv->b_frames))
       return;
 
-   task = LIST_ENTRY(struct encode_task, priv->b_frames.prev, list);
+   task = list_entry(priv->b_frames.prev, struct encode_task, list);
    list_del(&task->list);
 
    /* promote last from to P frame */
    priv->ref_idx_l0 = priv->ref_idx_l1;
-   enc_HandleTask(port, task, PIPE_H264_ENC_PICTURE_TYPE_P);
+   enc_HandleTask(port, task, PIPE_H2645_ENC_PICTURE_TYPE_P);
    list_addtail(&task->list, &inp->tasks);
    priv->ref_idx_l1 = priv->frame_num++;
 
    /* handle B frames */
    LIST_FOR_EACH_ENTRY(task, &priv->b_frames, list) {
-      enc_HandleTask(port, task, PIPE_H264_ENC_PICTURE_TYPE_B);
+      enc_HandleTask(port, task, PIPE_H2645_ENC_PICTURE_TYPE_B);
       if (!priv->restricted_b_frames)
          priv->ref_idx_l0 = priv->frame_num;
       priv->frame_num++;
@@ -847,7 +848,7 @@ static OMX_ERRORTYPE vid_enc_EncodeFrame(omx_base_PortType *port, OMX_BUFFERHEAD
    OMX_COMPONENTTYPE* comp = port->standCompContainer;
    vid_enc_PrivateType *priv = comp->pComponentPrivate;
    struct input_buf_private *inp = buf->pInputPortPrivate;
-   enum pipe_h264_enc_picture_type picture_type;
+   enum pipe_h2645_enc_picture_type picture_type;
    struct encode_task *task;
    unsigned stacked_num = 0;
    OMX_ERRORTYPE err;
@@ -884,21 +885,21 @@ static OMX_ERRORTYPE vid_enc_EncodeFrame(omx_base_PortType *port, OMX_BUFFERHEAD
    if (!(priv->pic_order_cnt % OMX_VID_ENC_IDR_PERIOD_DEFAULT) ||
        priv->force_pic_type.IntraRefreshVOP) {
       enc_ClearBframes(port, inp);
-      picture_type = PIPE_H264_ENC_PICTURE_TYPE_IDR;
+      picture_type = PIPE_H2645_ENC_PICTURE_TYPE_IDR;
       priv->force_pic_type.IntraRefreshVOP = OMX_FALSE;
       priv->frame_num = 0;
       priv->pic_order_cnt = 0;
    } else if (priv->codec->profile == PIPE_VIDEO_PROFILE_MPEG4_AVC_BASELINE ||
               !(priv->pic_order_cnt % OMX_VID_ENC_P_PERIOD_DEFAULT) ||
               (buf->nFlags & OMX_BUFFERFLAG_EOS)) {
-      picture_type = PIPE_H264_ENC_PICTURE_TYPE_P;
+      picture_type = PIPE_H2645_ENC_PICTURE_TYPE_P;
    } else {
-      picture_type = PIPE_H264_ENC_PICTURE_TYPE_B;
+      picture_type = PIPE_H2645_ENC_PICTURE_TYPE_B;
    }
 
    task->pic_order_cnt = priv->pic_order_cnt++;
 
-   if (picture_type == PIPE_H264_ENC_PICTURE_TYPE_B) {
+   if (picture_type == PIPE_H2645_ENC_PICTURE_TYPE_B) {
       /* put frame at the tail of the queue */
       list_addtail(&task->list, &priv->b_frames);
    } else {
@@ -911,7 +912,7 @@ static OMX_ERRORTYPE vid_enc_EncodeFrame(omx_base_PortType *port, OMX_BUFFERHEAD
       }
       if (stacked_num == priv->stacked_frames_num) {
          struct encode_task *t;
-         t = LIST_ENTRY(struct encode_task, priv->stacked_tasks.next, list);
+         t = list_entry(priv->stacked_tasks.next, struct encode_task, list);
          list_del(&t->list);
          list_addtail(&t->list, &inp->tasks);
       }
@@ -919,7 +920,7 @@ static OMX_ERRORTYPE vid_enc_EncodeFrame(omx_base_PortType *port, OMX_BUFFERHEAD
 
       /* handle B frames */
       LIST_FOR_EACH_ENTRY(task, &priv->b_frames, list) {
-         enc_HandleTask(port, task, PIPE_H264_ENC_PICTURE_TYPE_B);
+         enc_HandleTask(port, task, PIPE_H2645_ENC_PICTURE_TYPE_B);
          if (!priv->restricted_b_frames)
             priv->ref_idx_l0 = priv->frame_num;
          priv->frame_num++;

@@ -40,11 +40,12 @@ using namespace brw;
  * Is it safe to eliminate the instruction?
  */
 static bool
-can_eliminate(const fs_inst *inst, BITSET_WORD *flag_live)
+can_eliminate(const intel_device_info *devinfo, const fs_inst *inst,
+              BITSET_WORD *flag_live)
 {
     return !inst->is_control_flow() &&
            !inst->has_side_effects() &&
-           !(flag_live[0] & inst->flags_written()) &&
+           !(flag_live[0] & inst->flags_written(devinfo)) &&
            !inst->writes_accumulator;
 }
 
@@ -55,8 +56,8 @@ static bool
 can_omit_write(const fs_inst *inst)
 {
    switch (inst->opcode) {
+   case SHADER_OPCODE_A64_UNTYPED_ATOMIC_LOGICAL:
    case SHADER_OPCODE_UNTYPED_ATOMIC_LOGICAL:
-   case SHADER_OPCODE_UNTYPED_ATOMIC_FLOAT_LOGICAL:
    case SHADER_OPCODE_TYPED_ATOMIC_LOGICAL:
       return true;
    default:
@@ -72,16 +73,18 @@ can_omit_write(const fs_inst *inst)
 }
 
 bool
-fs_visitor::dead_code_eliminate()
+brw_fs_opt_dead_code_eliminate(fs_visitor &s)
 {
+   const intel_device_info *devinfo = s.devinfo;
+
    bool progress = false;
 
-   const fs_live_variables &live_vars = live_analysis.require();
+   const fs_live_variables &live_vars = s.live_analysis.require();
    int num_vars = live_vars.num_vars;
    BITSET_WORD *live = rzalloc_array(NULL, BITSET_WORD, BITSET_WORDS(num_vars));
    BITSET_WORD *flag_live = rzalloc_array(NULL, BITSET_WORD, 1);
 
-   foreach_block_reverse_safe(block, cfg) {
+   foreach_block_reverse_safe(block, s.cfg) {
       memcpy(live, live_vars.block_data[block->num].liveout,
              sizeof(BITSET_WORD) * BITSET_WORDS(num_vars));
       memcpy(flag_live, live_vars.block_data[block->num].flag_liveout,
@@ -96,14 +99,14 @@ fs_visitor::dead_code_eliminate()
                result_live |= BITSET_TEST(live, var + i);
 
             if (!result_live &&
-                (can_omit_write(inst) || can_eliminate(inst, flag_live))) {
+                (can_omit_write(inst) || can_eliminate(devinfo, inst, flag_live))) {
                inst->dst = fs_reg(spread(retype(brw_null_reg(), inst->dst.type),
                                          inst->dst.stride));
                progress = true;
             }
          }
 
-         if (inst->dst.is_null() && can_eliminate(inst, flag_live)) {
+         if (inst->dst.is_null() && can_eliminate(devinfo, inst, flag_live)) {
             inst->opcode = BRW_OPCODE_NOP;
             progress = true;
          }
@@ -118,10 +121,10 @@ fs_visitor::dead_code_eliminate()
          }
 
          if (!inst->predicate && inst->exec_size >= 8)
-            flag_live[0] &= ~inst->flags_written();
+            flag_live[0] &= ~inst->flags_written(devinfo);
 
          if (inst->opcode == BRW_OPCODE_NOP) {
-            inst->remove(block);
+            inst->remove(block, true);
             continue;
          }
 
@@ -139,11 +142,13 @@ fs_visitor::dead_code_eliminate()
       }
    }
 
+   s.cfg->adjust_block_ips();
+
    ralloc_free(live);
    ralloc_free(flag_live);
 
    if (progress)
-      invalidate_analysis(DEPENDENCY_INSTRUCTIONS);
+      s.invalidate_analysis(DEPENDENCY_INSTRUCTIONS);
 
    return progress;
 }

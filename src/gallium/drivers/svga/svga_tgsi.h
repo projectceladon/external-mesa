@@ -1,5 +1,5 @@
 /**********************************************************
- * Copyright 2008-2009 VMware, Inc.  All rights reserved.
+ * Copyright 2008-2022 VMware, Inc.  All rights reserved.
  *
  * Permission is hereby granted, free of charge, to any person
  * obtaining a copy of this software and associated documentation
@@ -26,7 +26,7 @@
 #ifndef SVGA_TGSI_H
 #define SVGA_TGSI_H
 
-#include "pipe/p_compiler.h"
+#include "util/compiler.h"
 #include "svga3d_reg.h"
 
 
@@ -74,6 +74,13 @@ svga_tgsi_vgpu10_translate(struct svga_context *svga,
                            const struct svga_compile_key *key,
                            enum pipe_shader_type unit);
 
-boolean svga_shader_verify(const uint32_t *tokens, unsigned nr_tokens);
+bool svga_shader_verify(const uint32_t *tokens, unsigned nr_tokens);
 
+void
+svga_tgsi_scan_shader(struct svga_shader *shader);
+
+struct svga_shader_variant *
+svga_tgsi_compile_shader(struct svga_context *svga,
+                         struct svga_shader *shader,
+                         const struct svga_compile_key *key);
 #endif

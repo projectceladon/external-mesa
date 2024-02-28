@@ -50,7 +50,7 @@ static struct pipe_stream_output_target *virgl_create_so_target(
    t->handle = handle;
 
    res->bind_history |= PIPE_BIND_STREAM_OUTPUT;
-   util_range_add(&res->u.b, &res->valid_buffer_range, buffer_offset,
+   util_range_add(&res->b, &res->valid_buffer_range, buffer_offset,
                   buffer_offset + buffer_size);
    virgl_resource_dirty(res, 0);
 
@@ -83,7 +83,7 @@ static void virgl_set_so_targets(struct pipe_context *ctx,
 
          pipe_resource_reference(&vctx->so_targets[i].base.buffer, targets[i]->buffer);
 
-         vws->emit_res(vws, vctx->cbuf, res->hw_res, FALSE);
+         vws->emit_res(vws, vctx->cbuf, res->hw_res, false);
       } else {
          pipe_resource_reference(&vctx->so_targets[i].base.buffer, NULL);
       }

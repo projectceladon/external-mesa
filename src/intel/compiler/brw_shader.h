@@ -38,16 +38,19 @@ enum instruction_scheduler_mode {
    SCHEDULE_PRE_NON_LIFO,
    SCHEDULE_PRE_LIFO,
    SCHEDULE_POST,
+   SCHEDULE_NONE,
 };
+
+#define UBO_START ((1 << 16) - 4)
 
 struct backend_shader {
 protected:
 
    backend_shader(const struct brw_compiler *compiler,
-                  void *log_data,
-                  void *mem_ctx,
+                  const struct brw_compile_params *params,
                   const nir_shader *shader,
-                  struct brw_stage_prog_data *stage_prog_data);
+                  struct brw_stage_prog_data *stage_prog_data,
+                  bool debug_enabled);
 
 public:
    virtual ~backend_shader();
@@ -55,7 +58,7 @@ public:
    const struct brw_compiler *compiler;
    void *log_data; /* Passed to compiler->*_log functions */
 
-   const struct gen_device_info * const devinfo;
+   const struct intel_device_info * const devinfo;
    const nir_shader *nir;
    struct brw_stage_prog_data * const stage_prog_data;
 
@@ -73,35 +76,36 @@ public:
 
    gl_shader_stage stage;
    bool debug_enabled;
-   const char *stage_name;
-   const char *stage_abbrev;
 
    brw::simple_allocator alloc;
 
-   virtual void dump_instruction(const backend_instruction *inst) const = 0;
-   virtual void dump_instruction(const backend_instruction *inst, FILE *file) const = 0;
-   virtual void dump_instructions() const;
-   virtual void dump_instructions(const char *name) const;
+   virtual void dump_instruction_to_file(const backend_instruction *inst, FILE *file) const = 0;
+   virtual void dump_instructions_to_file(FILE *file) const;
+
+   /* Convenience functions based on the above. */
+   void dump_instruction(const backend_instruction *inst, FILE *file = stderr) const {
+      dump_instruction_to_file(inst, file);
+   }
+   void dump_instructions(const char *name = nullptr) const;
 
    void calculate_cfg();
 
    virtual void invalidate_analysis(brw::analysis_dependency_class c);
 };
 
+bool opt_predicated_break(backend_shader &s);
+
 #else
 struct backend_shader;
 #endif /* __cplusplus */
 
 enum brw_reg_type brw_type_for_base_type(const struct glsl_type *type);
-enum brw_conditional_mod brw_conditional_for_comparison(unsigned int op);
 uint32_t brw_math_function(enum opcode op);
-const char *brw_instruction_name(const struct gen_device_info *devinfo,
+const char *brw_instruction_name(const struct brw_isa_info *isa,
                                  enum opcode op);
 bool brw_saturate_immediate(enum brw_reg_type type, struct brw_reg *reg);
 bool brw_negate_immediate(enum brw_reg_type type, struct brw_reg *reg);
 bool brw_abs_immediate(enum brw_reg_type type, struct brw_reg *reg);
-
-bool opt_predicated_break(struct backend_shader *s);
 
 #ifdef __cplusplus
 extern "C" {
@@ -110,18 +114,41 @@ extern "C" {
 /* brw_fs_reg_allocate.cpp */
 void brw_fs_alloc_reg_sets(struct brw_compiler *compiler);
 
-/* brw_vec4_reg_allocate.cpp */
-void brw_vec4_alloc_reg_set(struct brw_compiler *compiler);
-
 /* brw_disasm.c */
 extern const char *const conditional_modifier[16];
 extern const char *const pred_ctrl_align16[16];
 
 /* Per-thread scratch space is a power-of-two multiple of 1KB. */
-static inline int
+static inline unsigned
 brw_get_scratch_size(int size)
 {
    return MAX2(1024, util_next_power_of_two(size));
+}
+
+
+static inline nir_variable_mode
+brw_nir_no_indirect_mask(const struct brw_compiler *compiler,
+                         gl_shader_stage stage)
+{
+   nir_variable_mode indirect_mask = (nir_variable_mode) 0;
+
+   switch (stage) {
+   case MESA_SHADER_VERTEX:
+   case MESA_SHADER_FRAGMENT:
+      indirect_mask |= nir_var_shader_in;
+      break;
+
+   default:
+      /* Everything else can handle indirect inputs */
+      break;
+   }
+
+   if (stage != MESA_SHADER_TESS_CTRL &&
+       stage != MESA_SHADER_TASK &&
+       stage != MESA_SHADER_MESH)
+      indirect_mask |= nir_var_shader_out;
+
+   return indirect_mask;
 }
 
 bool brw_texture_offset(const nir_tex_instr *tex, unsigned src,
@@ -133,7 +160,7 @@ bool brw_texture_offset(const nir_tex_instr *tex, unsigned src,
 struct brw_gs_compile
 {
    struct brw_gs_prog_key key;
-   struct brw_vue_map input_vue_map;
+   struct intel_vue_map input_vue_map;
 
    unsigned control_data_bits_per_vertex;
    unsigned control_data_header_size_bits;

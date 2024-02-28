@@ -100,7 +100,7 @@ NineVolume9_ctor( struct NineVolume9 *This,
                                                     pDesc->Format,
                                                     This->info.target,
                                                     This->info.nr_samples,
-                                                    This->info.bind, FALSE,
+                                                    This->info.bind, false,
                                                     pDesc->Pool == D3DPOOL_SCRATCH);
 
     if (This->info.format == PIPE_FORMAT_NONE)
@@ -116,11 +116,10 @@ NineVolume9_ctor( struct NineVolume9 *This,
                                                          pDesc->Format,
                                                          This->info.target,
                                                          This->info.nr_samples,
-                                                         This->info.bind, FALSE,
-                                                         TRUE);
+                                                         This->info.bind, false,
+                                                         true);
     if (This->info.format != This->format_internal ||
-        /* DYNAMIC Textures requires same stride as ram buffers.
-         * Do not use workaround by default as it eats more virtual space */
+        /* See surface9.c */
         (pParams->device->workarounds.dynamic_texture_workaround &&
          pDesc->Pool == D3DPOOL_DEFAULT && pDesc->Usage & D3DUSAGE_DYNAMIC)) {
         This->stride_internal = nine_format_get_stride(This->format_internal,
@@ -149,7 +148,7 @@ NineVolume9_dtor( struct NineVolume9 *This )
 
     if (This->transfer) {
         struct pipe_context *pipe = nine_context_get_pipe_multithread(This->base.device);
-        pipe->transfer_unmap(pipe, This->transfer);
+        pipe->texture_unmap(pipe, This->transfer);
         This->transfer = NULL;
     }
 
@@ -202,7 +201,7 @@ NineVolume9_MarkContainerDirty( struct NineVolume9 *This )
     tex = NineBaseTexture9(This->base.container);
     assert(tex);
     if (This->desc.Pool == D3DPOOL_MANAGED)
-        tex->managed.dirty = TRUE;
+        tex->managed.dirty = true;
 
     BASETEX_REGISTER_UPDATE(tex);
 }
@@ -344,7 +343,7 @@ NineVolume9_LockBox( struct NineVolume9 *This,
         else
             pipe = NineDevice9_GetPipe(This->base.device);
         pLockedVolume->pBits =
-            pipe->transfer_map(pipe, resource, This->level, usage,
+            pipe->texture_map(pipe, resource, This->level, usage,
                                &box, &This->transfer);
         if (no_refs)
             nine_context_get_pipe_release(This->base.device);
@@ -375,7 +374,7 @@ NineVolume9_UnlockBox( struct NineVolume9 *This )
     user_assert(This->lock_count, D3DERR_INVALIDCALL);
     if (This->transfer) {
         pipe = nine_context_get_pipe_acquire(This->base.device);
-        pipe->transfer_unmap(pipe, This->transfer);
+        pipe->texture_unmap(pipe, This->transfer);
         This->transfer = NULL;
         nine_context_get_pipe_release(This->base.device);
     }

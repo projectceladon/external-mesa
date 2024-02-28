@@ -47,12 +47,16 @@ struct pipe_context;
 #define VL_COMPOSITOR_MIN_DIRTY (0)
 #define VL_COMPOSITOR_MAX_DIRTY (1 << 15)
 
+#define VL_COMPOSITOR_VB_STRIDE (sizeof(struct vertex2f) + sizeof(struct vertex4f) * 2)
+
 /* deinterlace allgorithem */
 enum vl_compositor_deinterlace
 {
+   VL_COMPOSITOR_NONE,
    VL_COMPOSITOR_WEAVE,
    VL_COMPOSITOR_BOB_TOP,
-   VL_COMPOSITOR_BOB_BOTTOM
+   VL_COMPOSITOR_BOB_BOTTOM,
+   VL_COMPOSITOR_MOTION_ADAPTIVE
 };
 
 /* clockwise degree */
@@ -62,6 +66,17 @@ enum vl_compositor_rotation
    VL_COMPOSITOR_ROTATE_90,
    VL_COMPOSITOR_ROTATE_180,
    VL_COMPOSITOR_ROTATE_270
+};
+
+/* chroma sample location */
+enum vl_compositor_chroma_location
+{
+   VL_COMPOSITOR_LOCATION_NONE               = 0,
+   VL_COMPOSITOR_LOCATION_VERTICAL_TOP       = (1 << 0),
+   VL_COMPOSITOR_LOCATION_VERTICAL_CENTER    = (1 << 1),
+   VL_COMPOSITOR_LOCATION_VERTICAL_BOTTOM    = (1 << 2),
+   VL_COMPOSITOR_LOCATION_HORIZONTAL_LEFT    = (1 << 3),
+   VL_COMPOSITOR_LOCATION_HORIZONTAL_CENTER  = (1 << 4)
 };
 
 struct vl_compositor_layer
@@ -98,6 +113,10 @@ struct vl_compositor_state
    unsigned used_layers:VL_COMPOSITOR_MAX_LAYERS;
    struct vl_compositor_layer layers[VL_COMPOSITOR_MAX_LAYERS];
    bool interlaced;
+   unsigned chroma_location;
+
+   vl_csc_matrix csc_matrix;
+   float luma_min, luma_max;
 };
 
 struct vl_compositor
@@ -125,6 +144,8 @@ struct vl_compositor
    bool pipe_cs_composit_supported;
    bool pipe_gfx_supported;
 
+   enum vl_compositor_deinterlace deinterlace;
+
    struct {
       struct {
          void *y;
@@ -144,7 +165,7 @@ struct vl_compositor
       struct {
          void *y;
          void *uv;
-      } bob;
+      } progressive;
    } cs_yuv;
 
    struct {
@@ -156,6 +177,11 @@ struct vl_compositor
       void *y;
       void *uv;
    } fs_rgb_yuv;
+
+   struct {
+      void *y;
+      void *uv;
+   } cs_rgb_yuv;
 };
 
 /**

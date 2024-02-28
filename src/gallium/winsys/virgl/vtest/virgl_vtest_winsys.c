@@ -21,13 +21,14 @@
  * USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 #include <stdio.h>
+#include "util/macros.h"
 #include "util/u_surface.h"
 #include "util/u_memory.h"
 #include "util/format/u_format.h"
 #include "util/u_inlines.h"
 #include "util/os_time.h"
 #include "frontend/sw_winsys.h"
-#include "os/os_mman.h"
+#include "util/os_mman.h"
 
 #include "virgl_vtest_winsys.h"
 #include "virgl_vtest_public.h"
@@ -41,7 +42,7 @@ static void *virgl_vtest_resource_map(struct virgl_winsys *vws,
 static void virgl_vtest_resource_unmap(struct virgl_winsys *vws,
                                        struct virgl_hw_res *res);
 
-static inline boolean can_cache_resource_with_bind(uint32_t bind)
+static inline bool can_cache_resource_with_bind(uint32_t bind)
 {
    return bind == VIRGL_BIND_CONSTANT_BUFFER ||
           bind == VIRGL_BIND_INDEX_BUFFER ||
@@ -187,8 +188,8 @@ static void virgl_hw_res_destroy(struct virgl_vtest_winsys *vtws,
    FREE(res);
 }
 
-static boolean virgl_vtest_resource_is_busy(struct virgl_winsys *vws,
-                                            struct virgl_hw_res *res)
+static bool virgl_vtest_resource_is_busy(struct virgl_winsys *vws,
+                                         struct virgl_hw_res *res)
 {
    struct virgl_vtest_winsys *vtws = virgl_vtest_winsys(vws);
 
@@ -197,9 +198,9 @@ static boolean virgl_vtest_resource_is_busy(struct virgl_winsys *vws,
    ret = virgl_vtest_busy_wait(vtws, res->res_handle, 0);
 
    if (ret < 0)
-      return FALSE;
+      return false;
 
-   return ret == 1 ? TRUE : FALSE;
+   return ret == 1 ? true : false;
 }
 
 static void virgl_vtest_resource_reference(struct virgl_winsys *vws,
@@ -224,6 +225,7 @@ static void virgl_vtest_resource_reference(struct virgl_winsys *vws,
 static struct virgl_hw_res *
 virgl_vtest_winsys_resource_create(struct virgl_winsys *vws,
                                    enum pipe_texture_target target,
+                                   const void *map_front_private,
                                    uint32_t format,
                                    uint32_t bind,
                                    uint32_t width,
@@ -238,6 +240,17 @@ virgl_vtest_winsys_resource_create(struct virgl_winsys *vws,
    struct virgl_hw_res *res;
    static int handle = 1;
    int fd = -1;
+   struct virgl_resource_params params = { .size = size,
+                                           .bind = bind,
+                                           .format = format,
+                                           .flags = 0,
+                                           .nr_samples = nr_samples,
+                                           .width = width,
+                                           .height = height,
+                                           .depth = depth,
+                                           .array_size = array_size,
+                                           .last_level = last_level,
+                                           .target = target };
 
    res = CALLOC_STRUCT(virgl_hw_res);
    if (!res)
@@ -245,7 +258,7 @@ virgl_vtest_winsys_resource_create(struct virgl_winsys *vws,
 
    if (bind & (VIRGL_BIND_DISPLAY_TARGET | VIRGL_BIND_SCANOUT)) {
       res->dt = vtws->sws->displaytarget_create(vtws->sws, bind, format,
-                                                width, height, 64, NULL,
+                                                width, height, 64, map_front_private,
                                                 &res->stride);
 
    } else if (vtws->protocol_version < 2) {
@@ -268,6 +281,7 @@ virgl_vtest_winsys_resource_create(struct virgl_winsys *vws,
    if (vtws->protocol_version >= 2) {
       if (res->size == 0) {
          res->ptr = NULL;
+         res->res_handle = handle;
          goto out;
       }
 
@@ -290,9 +304,21 @@ virgl_vtest_winsys_resource_create(struct virgl_winsys *vws,
       close(fd);
    }
 
+   res->res_handle = handle;
+   if (map_front_private && res->ptr && res->dt) {
+      void *dt_map = vtws->sws->displaytarget_map(vtws->sws, res->dt, PIPE_MAP_READ_WRITE);
+      uint32_t shm_stride = util_format_get_stride(res->format, res->width);
+      util_copy_rect(res->ptr, res->format, shm_stride, 0, 0,
+                     res->width, res->height, dt_map, res->stride, 0, 0);
+
+      struct pipe_box box;
+      u_box_2d(0, 0, res->width, res->height, &box);
+      virgl_vtest_transfer_put(vws, res, &box, res->stride, 0, 0, 0);
+   }
+
 out:
-   virgl_resource_cache_entry_init(&res->cache_entry, size, bind, format, 0);
-   res->res_handle = handle++;
+   virgl_resource_cache_entry_init(&res->cache_entry, params);
+   handle++;
    pipe_reference_init(&res->reference, 1);
    p_atomic_set(&res->num_cs_references, 0);
    return res;
@@ -339,6 +365,7 @@ static void virgl_vtest_resource_wait(struct virgl_winsys *vws,
 static struct virgl_hw_res *
 virgl_vtest_winsys_resource_cache_create(struct virgl_winsys *vws,
                                          enum pipe_texture_target target,
+                                         const void *map_front_private,
                                          uint32_t format,
                                          uint32_t bind,
                                          uint32_t width,
@@ -353,14 +380,24 @@ virgl_vtest_winsys_resource_cache_create(struct virgl_winsys *vws,
    struct virgl_vtest_winsys *vtws = virgl_vtest_winsys(vws);
    struct virgl_hw_res *res;
    struct virgl_resource_cache_entry *entry;
+   struct virgl_resource_params params = { .size = size,
+                                           .bind = bind,
+                                           .format = format,
+                                           .flags = 0,
+                                           .nr_samples = nr_samples,
+                                           .width = width,
+                                           .height = height,
+                                           .depth = depth,
+                                           .array_size = array_size,
+                                           .last_level = last_level,
+                                           .target = target };
 
    if (!can_cache_resource_with_bind(bind))
       goto alloc;
 
    mtx_lock(&vtws->mutex);
 
-   entry = virgl_resource_cache_remove_compatible(&vtws->cache, size,
-                                                  bind, format, 0);
+   entry = virgl_resource_cache_remove_compatible(&vtws->cache, params);
    if (entry) {
       res = cache_entry_container_res(entry);
       mtx_unlock(&vtws->mutex);
@@ -371,14 +408,15 @@ virgl_vtest_winsys_resource_cache_create(struct virgl_winsys *vws,
    mtx_unlock(&vtws->mutex);
 
 alloc:
-   res = virgl_vtest_winsys_resource_create(vws, target, format, bind,
-                                            width, height, depth, array_size,
-                                            last_level, nr_samples, size);
+   res = virgl_vtest_winsys_resource_create(vws, target, map_front_private,
+                                            format, bind, width, height, depth,
+                                            array_size, last_level, nr_samples,
+                                            size);
    return res;
 }
 
-static boolean virgl_vtest_lookup_res(struct virgl_vtest_cmd_buf *cbuf,
-                                      struct virgl_hw_res *res)
+static bool virgl_vtest_lookup_res(struct virgl_vtest_cmd_buf *cbuf,
+                                   struct virgl_hw_res *res)
 {
    unsigned hash = res->res_handle & (sizeof(cbuf->is_handle_added)-1);
    int i;
@@ -432,7 +470,7 @@ static void virgl_vtest_add_res(struct virgl_vtest_winsys *vtws,
 
    cbuf->res_bo[cbuf->cres] = NULL;
    virgl_vtest_resource_reference(&vtws->base, &cbuf->res_bo[cbuf->cres], res);
-   cbuf->is_handle_added[hash] = TRUE;
+   cbuf->is_handle_added[hash] = true;
 
    cbuf->reloc_indices_hashlist[hash] = cbuf->cres;
    p_atomic_inc(&res->num_cs_references);
@@ -487,6 +525,7 @@ virgl_vtest_fence_create(struct virgl_winsys *vws)
     */
    res = virgl_vtest_winsys_resource_create(vws,
                                             PIPE_BUFFER,
+                                            NULL,
                                             PIPE_FORMAT_R8_UNORM,
                                             VIRGL_BIND_CUSTOM,
                                             8, 1, 1, 0, 0, 0, 8);
@@ -517,11 +556,11 @@ static int virgl_vtest_winsys_submit_cmd(struct virgl_winsys *vws,
 
 static void virgl_vtest_emit_res(struct virgl_winsys *vws,
                                  struct virgl_cmd_buf *_cbuf,
-                                 struct virgl_hw_res *res, boolean write_buf)
+                                 struct virgl_hw_res *res, bool write_buf)
 {
    struct virgl_vtest_winsys *vtws = virgl_vtest_winsys(vws);
    struct virgl_vtest_cmd_buf *cbuf = virgl_vtest_cmd_buf(_cbuf);
-   boolean already_in_list = virgl_vtest_lookup_res(cbuf, res);
+   bool already_in_list = virgl_vtest_lookup_res(cbuf, res);
 
    if (write_buf)
       cbuf->base.buf[cbuf->base.cdw++] = res->res_handle;
@@ -529,23 +568,28 @@ static void virgl_vtest_emit_res(struct virgl_winsys *vws,
       virgl_vtest_add_res(vtws, cbuf, res);
 }
 
-static boolean virgl_vtest_res_is_ref(struct virgl_winsys *vws,
-                                      struct virgl_cmd_buf *_cbuf,
-                                      struct virgl_hw_res *res)
+static bool virgl_vtest_res_is_ref(struct virgl_winsys *vws,
+                                   struct virgl_cmd_buf *_cbuf,
+                                   struct virgl_hw_res *res)
 {
    if (!p_atomic_read(&res->num_cs_references))
-      return FALSE;
+      return false;
 
-   return TRUE;
+   return true;
 }
 
 static int virgl_vtest_get_caps(struct virgl_winsys *vws,
                                 struct virgl_drm_caps *caps)
 {
    struct virgl_vtest_winsys *vtws = virgl_vtest_winsys(vws);
+   int ret;
 
    virgl_ws_fill_new_caps_defaults(caps);
-   return virgl_vtest_send_get_caps(vtws, caps);
+   ret = virgl_vtest_send_get_caps(vtws, caps);
+   // vtest doesn't support that
+   if (caps->caps.v2.capability_bits_v2 & VIRGL_CAP_V2_COPY_TRANSFER_BOTH_DIRECTIONS)
+      caps->caps.v2.capability_bits_v2 &= ~VIRGL_CAP_V2_COPY_TRANSFER_BOTH_DIRECTIONS;
+   return ret;
 }
 
 static struct pipe_fence_handle *
@@ -563,18 +607,18 @@ static bool virgl_fence_wait(struct virgl_winsys *vws,
    if (timeout == 0)
       return !virgl_vtest_resource_is_busy(vws, res);
 
-   if (timeout != PIPE_TIMEOUT_INFINITE) {
+   if (timeout != OS_TIMEOUT_INFINITE) {
       int64_t start_time = os_time_get();
       timeout /= 1000;
       while (virgl_vtest_resource_is_busy(vws, res)) {
          if (os_time_get() - start_time >= timeout)
-            return FALSE;
+            return false;
          os_time_sleep(10);
       }
-      return TRUE;
+      return true;
    }
    virgl_vtest_resource_wait(vws, res);
-   return TRUE;
+   return true;
 }
 
 static void virgl_fence_reference(struct virgl_winsys *vws,
@@ -587,6 +631,7 @@ static void virgl_fence_reference(struct virgl_winsys *vws,
 }
 
 static void virgl_vtest_flush_frontbuffer(struct virgl_winsys *vws,
+                                          UNUSED struct virgl_cmd_buf *cmdbuf,
                                           struct virgl_hw_res *res,
                                           unsigned level, unsigned layer,
                                           void *winsys_drawable_handle,
@@ -602,7 +647,8 @@ static void virgl_vtest_flush_frontbuffer(struct virgl_winsys *vws,
 
    if (sub_box) {
       box = *sub_box;
-      offset = box.y / util_format_get_blockheight(res->format) * res->stride +
+      uint32_t shm_stride = util_format_get_stride(res->format, res->width);
+      offset = box.y / util_format_get_blockheight(res->format) * shm_stride +
                box.x / util_format_get_blockwidth(res->format) * util_format_get_blocksize(res->format);
    } else {
       box.z = layer;

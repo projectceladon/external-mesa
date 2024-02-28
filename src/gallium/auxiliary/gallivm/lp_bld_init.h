@@ -30,7 +30,7 @@
 #define LP_BLD_INIT_H
 
 
-#include "pipe/p_compiler.h"
+#include "util/compiler.h"
 #include "util/u_pointer.h" // for func_pointer
 #include "lp_bld.h"
 #include <llvm-c/ExecutionEngine.h>
@@ -46,8 +46,12 @@ struct gallivm_state
    LLVMModuleRef module;
    LLVMExecutionEngineRef engine;
    LLVMTargetDataRef target;
+#if GALLIVM_USE_NEW_PASS == 0
    LLVMPassManagerRef passmgr;
+#if GALLIVM_HAVE_CORO == 1
    LLVMPassManagerRef cgpassmgr;
+#endif
+#endif
    LLVMContextRef context;
    LLVMBuilderRef builder;
    LLVMMCJITMemoryManagerRef memorymgr;
@@ -57,10 +61,20 @@ struct gallivm_state
    LLVMValueRef coro_malloc_hook;
    LLVMValueRef coro_free_hook;
    LLVMValueRef debug_printf_hook;
+
+   LLVMTypeRef coro_malloc_hook_type;
+   LLVMTypeRef coro_free_hook_type;
+
+   LLVMValueRef get_time_hook;
+
+   LLVMValueRef texture_descriptor;
+   LLVMValueRef sampler_descriptor;
 };
 
+unsigned
+lp_build_init_native_width(void);
 
-boolean
+bool
 lp_build_init(void);
 
 
@@ -87,6 +101,7 @@ gallivm_jit_function(struct gallivm_state *gallivm,
 
 unsigned gallivm_get_perf_flags(void);
 
+void lp_init_clock_hook(struct gallivm_state *gallivm);
 #ifdef __cplusplus
 }
 #endif

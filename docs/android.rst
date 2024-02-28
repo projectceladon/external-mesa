@@ -2,28 +2,32 @@ Android
 =======
 
 Mesa hardware drivers can be built for Android one of two ways: built
-into the Android OS using the Android.mk build sytem on older versions
+into the Android OS using the ndk-build build system on older versions
 of Android, or out-of-tree using the Meson build system and the
 Android NDK.
 
-The Android.mk build system has proven to be hard to maintain, as one
+The ndk-build build system has proven to be hard to maintain, as one
 needs a built Android tree to build against, and it has never been
-tested in CI.  The meson build system flow is frequently used by
+tested in CI.  The Meson build system flow is frequently used by
 Chrome OS developers for building and testing Android drivers.
 
 Building using the Android NDK
 ------------------------------
 
 Download and install the NDK using whatever method you normally would.
-Then, create your meson cross file to use it, something like this
-``~/.local/share/meson/cross/android-aarch64`` file::
+Then, create your Meson cross file to use it, something like this
+``~/.local/share/meson/cross/android-aarch64`` file:
+
+.. code-block:: ini
 
     [binaries]
     ar = 'NDKDIR/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android-ar'
-    c = ['ccache', 'NDKDIR/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android29-clang', '-fuse-ld=lld']
-    cpp = ['ccache', 'NDKDIR/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android29-clang++', '-fuse-ld=lld', '-fno-exceptions', '-fno-unwind-tables', '-fno-asynchronous-unwind-tables', '-static-libstdc++']
+    c = ['ccache', 'NDKDIR/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android29-clang']
+    cpp = ['ccache', 'NDKDIR/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android29-clang++', '-fno-exceptions', '-fno-unwind-tables', '-fno-asynchronous-unwind-tables', '-static-libstdc++']
+    c_ld = 'lld'
+    cpp_ld = 'lld'
     strip = 'NDKDIR/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android-strip'
-    # Android doesn't come with a pkg-config, but we need one for meson to be happy not
+    # Android doesn't come with a pkg-config, but we need one for Meson to be happy not
     # finding all the optional deps it looks for.  Use system pkg-config pointing at a
     # directory we get to populate with any .pc files we want to add for Android
     pkgconfig = ['env', 'PKG_CONFIG_LIBDIR=NDKDIR/pkgconfig', '/usr/bin/pkg-config']
@@ -37,17 +41,17 @@ Then, create your meson cross file to use it, something like this
 Now, use that cross file for your Android build directory (as in this
 one cross-compiling the turnip driver for a stock Pixel phone)
 
-.. code-block:: console
+.. code-block:: sh
 
-    meson build-android-aarch64 \
+    meson setup build-android-aarch64 \
         --cross-file android-aarch64 \
 	-Dplatforms=android \
 	-Dplatform-sdk-version=26 \
 	-Dandroid-stub=true \
 	-Dgallium-drivers= \
 	-Dvulkan-drivers=freedreno \
-	-Dfreedreno-kgsl=true
-    ninja -C build-android-aarch64
+	-Dfreedreno-kmds=kgsl
+    meson compile -C build-android-aarch64
 
 Replacing Android drivers on stock Android
 ------------------------------------------
@@ -57,7 +61,7 @@ read-only disk image on ``/vendor``.  To be able to replace them for
 driver development, we need to unlock the device and remount
 ``/vendor`` read/write.
 
-.. code-block:: console
+.. code-block:: sh
 
     adb disable-verity
     adb reboot
@@ -65,7 +69,7 @@ driver development, we need to unlock the device and remount
 
 Now you can replace drivers as in:
 
-.. code-block:: console
+.. code-block:: sh
 
     adb push build-android-aarch64/src/freedreno/vulkan/libvulkan_freedreno.so /vendor/lib64/hw/vulkan.sdm710.so
 
@@ -87,7 +91,7 @@ using scp from outside the container.
 On your device, you'll want to make ``/`` read-write.  ssh in as root
 and run:
 
-.. code-block:: console
+.. code-block:: sh
 
     crossystem dev_boot_signed_only=0
     /usr/share/vboot/bin/make_dev_ssd.sh --remove_rootfs_verification --partitions 4
@@ -96,7 +100,7 @@ and run:
 Then, we'll switch Android from using an image for ``/vendor`` to using a
 bind-mount from a directory we control.
 
-.. code-block:: console
+.. code-block:: sh
 
     cd /opt/google/containers/android/
     mkdir vendor-ro
@@ -119,7 +123,7 @@ change it to::
 
 Now, restart the UI to do a full reload:
 
-.. code-block:: console
+.. code-block:: sh
 
     restart ui
 
@@ -132,7 +136,7 @@ then the ``mount`` command should show::
 Now, replacing your DRI driver with a new one built for Android should
 be a matter of:
 
-.. code-block:: console
+.. code-block:: sh
 
     scp msm_dri.so $HOST:/opt/google/containers/android/vendor-rw/lib64/dri/
 
@@ -142,10 +146,10 @@ ARC++, but it should also be possible to build using the NDK as
 described above.  There are currently rough edges with this, for
 example the build will require that you have your arc-libdrm build
 available to the NDK, assuming you're building anything but the
-freedreno vulkan driver for KGSL.  You can mostly put things in place
+Freedreno Vulkan driver for KGSL.  You can mostly put things in place
 with:
 
-.. code-block:: console
+.. code-block:: sh
 
     scp $HOST:/opt/google/containers/android/vendor-rw/lib64/libdrm.so \
         NDKDIR/sysroot/usr/lib/aarch64-linux-android/lib/
@@ -162,6 +166,6 @@ find you need to reload the whole Android container.  To do so without
 having to log in to Chrome again every time, you can just kill the
 container and let it restart:
 
-.. code-block:: console
+.. code-block:: sh
 
     kill $(cat /run/containers/android-run_oci/container.pid )
