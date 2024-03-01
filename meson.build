@@ -1543,6 +1543,10 @@ if cc.links('int main() { return 0; }',
 endif
 
 ld_args_build_id = cc.get_supported_link_arguments('-Wl,--build-id=sha1')
+if ld_args_build_id == []
+  ld_args_build_id = '-Wl,--build-id=sha1'
+  message('Meson incorrectly check compiler support for --build-id, force using -Wl,--build-id=sha1')
+endif
 
 # check for dl support
 dep_dl = null_dep
