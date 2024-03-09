@@ -22,6 +22,7 @@
  */
 
 #include "brw_fs.h"
+#include "brw_fs_builder.h"
 #include "brw_cfg.h"
 
 /** @file brw_fs_cse.cpp
@@ -76,6 +77,8 @@ is_expression(const fs_visitor *v, const fs_inst *const inst)
    case FS_OPCODE_VARYING_PULL_CONSTANT_LOAD_LOGICAL:
    case FS_OPCODE_LINTERP:
    case SHADER_OPCODE_FIND_LIVE_CHANNEL:
+   case SHADER_OPCODE_FIND_LAST_LIVE_CHANNEL:
+   case SHADER_OPCODE_LOAD_LIVE_CHANNELS:
    case FS_OPCODE_LOAD_LIVE_CHANNELS:
    case SHADER_OPCODE_BROADCAST:
    case SHADER_OPCODE_MOV_INDIRECT:
@@ -91,7 +94,12 @@ is_expression(const fs_visitor *v, const fs_inst *const inst)
    case SHADER_OPCODE_TXF_MCS_LOGICAL:
    case SHADER_OPCODE_LOD_LOGICAL:
    case SHADER_OPCODE_TG4_LOGICAL:
+   case SHADER_OPCODE_TG4_BIAS_LOGICAL:
+   case SHADER_OPCODE_TG4_EXPLICIT_LOD_LOGICAL:
+   case SHADER_OPCODE_TG4_IMPLICIT_LOD_LOGICAL:
    case SHADER_OPCODE_TG4_OFFSET_LOGICAL:
+   case SHADER_OPCODE_TG4_OFFSET_LOD_LOGICAL:
+   case SHADER_OPCODE_TG4_OFFSET_BIAS_LOGICAL:
    case FS_OPCODE_PACK:
       return true;
    case SHADER_OPCODE_RCP:
@@ -188,7 +196,6 @@ instructions_match(fs_inst *a, fs_inst *b, bool *negate)
           a->sfid == b->sfid &&
           a->desc == b->desc &&
           a->size_written == b->size_written &&
-          a->base_mrf == b->base_mrf &&
           a->check_tdr == b->check_tdr &&
           a->send_has_side_effects == b->send_has_side_effects &&
           a->eot == b->eot &&
@@ -242,9 +249,10 @@ create_copy_instr(const fs_builder &bld, fs_inst *inst, fs_reg src, bool negate)
    assert(regs_written(copy) == written);
 }
 
-bool
-fs_visitor::opt_cse_local(const fs_live_variables &live, bblock_t *block, int &ip)
+static bool
+brw_fs_opt_cse_local(fs_visitor &s, const fs_live_variables &live, bblock_t *block, int &ip)
 {
+   const intel_device_info *devinfo = s.devinfo;
    bool progress = false;
    exec_list aeb;
 
@@ -252,7 +260,7 @@ fs_visitor::opt_cse_local(const fs_live_variables &live, bblock_t *block, int &i
 
    foreach_inst_in_block(fs_inst, inst, block) {
       /* Skip some cases. */
-      if (is_expression(this, inst) && !inst->is_partial_write() &&
+      if (is_expression(&s, inst) && !inst->is_partial_write() &&
           ((inst->dst.file != ARF && inst->dst.file != FIXED_GRF) ||
            inst->dst.is_null()))
       {
@@ -286,11 +294,11 @@ fs_visitor::opt_cse_local(const fs_live_variables &live, bblock_t *block, int &i
              */
             bool no_existing_temp = entry->tmp.file == BAD_FILE;
             if (no_existing_temp && !entry->generator->dst.is_null()) {
-               const fs_builder ibld = fs_builder(this, block, entry->generator)
+               const fs_builder ibld = fs_builder(&s, block, entry->generator)
                                        .at(block, entry->generator->next);
                int written = regs_written(entry->generator);
 
-               entry->tmp = fs_reg(VGRF, alloc.allocate(written),
+               entry->tmp = fs_reg(VGRF, s.alloc.allocate(written),
                                    entry->generator->dst.type);
 
                create_copy_instr(ibld, entry->generator, entry->tmp, false);
@@ -302,7 +310,7 @@ fs_visitor::opt_cse_local(const fs_live_variables &live, bblock_t *block, int &i
             if (!inst->dst.is_null()) {
                assert(inst->size_written == entry->generator->size_written);
                assert(inst->dst.type == entry->tmp.type);
-               const fs_builder ibld(this, block, inst);
+               const fs_builder ibld(&s, block, inst);
 
                create_copy_instr(ibld, inst, entry->tmp, negate);
             }
@@ -324,18 +332,18 @@ fs_visitor::opt_cse_local(const fs_live_variables &live, bblock_t *block, int &i
        * with instructions dependent on the current execution mask like
        * SHADER_OPCODE_FIND_LIVE_CHANNEL.
        */
-      if (inst->opcode == FS_OPCODE_DISCARD_JUMP ||
-          inst->opcode == FS_OPCODE_PLACEHOLDER_HALT)
+      if (inst->opcode == BRW_OPCODE_HALT ||
+          inst->opcode == SHADER_OPCODE_HALT_TARGET)
          aeb.make_empty();
 
       foreach_in_list_safe(aeb_entry, entry, &aeb) {
          /* Kill all AEB entries that write a different value to or read from
           * the flag register if we just wrote it.
           */
-         if (inst->flags_written()) {
+         if (inst->flags_written(devinfo)) {
             bool negate; /* dummy */
             if (entry->generator->flags_read(devinfo) ||
-                (entry->generator->flags_written() &&
+                (entry->generator->flags_written(devinfo) &&
                  !instructions_match(inst, entry->generator, &negate))) {
                entry->remove();
                ralloc_free(entry);
@@ -377,18 +385,18 @@ fs_visitor::opt_cse_local(const fs_live_variables &live, bblock_t *block, int &i
 }
 
 bool
-fs_visitor::opt_cse()
+brw_fs_opt_cse(fs_visitor &s)
 {
-   const fs_live_variables &live = live_analysis.require();
+   const fs_live_variables &live = s.live_analysis.require();
    bool progress = false;
    int ip = 0;
 
-   foreach_block (block, cfg) {
-      progress = opt_cse_local(live, block, ip) || progress;
+   foreach_block (block, s.cfg) {
+      progress = brw_fs_opt_cse_local(s, live, block, ip) || progress;
    }
 
    if (progress)
-      invalidate_analysis(DEPENDENCY_INSTRUCTIONS | DEPENDENCY_VARIABLES);
+      s.invalidate_analysis(DEPENDENCY_INSTRUCTIONS | DEPENDENCY_VARIABLES);
 
    return progress;
 }

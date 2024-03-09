@@ -90,7 +90,7 @@ struct bblock_t {
                         enum bblock_link_kind kind) const;
    bool can_combine_with(const bblock_t *that) const;
    void combine_with(bblock_t *that);
-   void dump() const;
+   void dump(FILE *file = stderr) const;
 
    backend_instruction *start();
    const backend_instruction *start() const;
@@ -107,6 +107,23 @@ struct bblock_t {
 
    backend_instruction *first_non_control_flow_inst();
    backend_instruction *last_non_control_flow_inst();
+
+private:
+   /**
+    * \sa unlink_parents, unlink_children
+    */
+   void unlink_list(exec_list *);
+
+public:
+   void unlink_parents()
+   {
+      unlink_list(&parents);
+   }
+
+   void unlink_children()
+   {
+      unlink_list(&children);
+   }
 #endif
 
    struct exec_node link;
@@ -114,6 +131,11 @@ struct bblock_t {
 
    int start_ip;
    int end_ip;
+
+   /**
+    * Change in end_ip since the last time IPs of later blocks were updated.
+    */
+   int end_ip_delta;
 
    struct exec_list instructions;
    struct exec_list parents;
@@ -317,8 +339,20 @@ struct cfg_t {
    void set_next_block(bblock_t **cur, bblock_t *block, int ip);
    void make_block_array();
 
-   void dump();
+   void dump(FILE *file = stderr);
    void dump_cfg();
+
+#ifdef NDEBUG
+   void validate(UNUSED const char *stage_abbrev) { }
+#else
+   void validate(const char *stage_abbrev);
+#endif
+
+   /**
+    * Propagate bblock_t::end_ip_delta data through the CFG.
+    */
+   inline void adjust_block_ips();
+
 #endif
    const struct backend_shader *s;
    void *mem_ctx;
@@ -432,6 +466,21 @@ cfg_t::last_block() const
         __scan_inst = (__type *)__scan_inst->prev)
 
 #ifdef __cplusplus
+inline void
+cfg_t::adjust_block_ips()
+{
+   int delta = 0;
+
+   foreach_block(block, this) {
+      block->start_ip += delta;
+      block->end_ip += delta;
+
+      delta += block->end_ip_delta;
+
+      block->end_ip_delta = 0;
+   }
+}
+
 namespace brw {
    /**
     * Immediate dominator tree analysis of a shader.

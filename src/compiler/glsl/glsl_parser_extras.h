@@ -32,6 +32,8 @@
 
 #include <stdlib.h>
 #include "glsl_symbol_table.h"
+#include "mesa/main/config.h"
+#include "mesa/main/menums.h" /* for gl_api */
 
 /* THIS is a macro defined somewhere deep in the Windows MSVC header files.
  * Undefine it here to avoid collision with the lexer's THIS token.
@@ -75,7 +77,7 @@ typedef struct YYLTYPE {
 # define YYLTYPE_IS_TRIVIAL 1
 
 extern void _mesa_glsl_error(YYLTYPE *locp, _mesa_glsl_parse_state *state,
-                             const char *fmt, ...);
+                             const char *fmt, ...) PRINTFLIKE(3, 4);
 
 
 struct _mesa_glsl_parse_state {
@@ -329,6 +331,11 @@ struct _mesa_glsl_parse_state {
              EXT_shader_framebuffer_fetch_non_coherent_enable;
    }
 
+   bool has_framebuffer_fetch_zs() const
+   {
+      return ARM_shader_framebuffer_fetch_depth_stencil_enable;
+   }
+
    bool has_texture_cube_map_array() const
    {
       return ARB_texture_cube_map_array_enable ||
@@ -368,15 +375,20 @@ struct _mesa_glsl_parse_state {
              is_version(400, 0);
    }
 
+   void set_valid_gl_and_glsl_versions(YYLTYPE *locp);
+
    void process_version_directive(YYLTYPE *locp, int version,
                                   const char *ident);
 
-   struct gl_context *const ctx;
+   struct gl_context *const ctx; /* only to be used for debug callback. */
+   const struct gl_extensions *exts;
+   const struct gl_constants *consts;
+   gl_api api;
    void *scanner;
    exec_list translation_unit;
    glsl_symbol_table *symbols;
 
-   void *linalloc;
+   linear_ctx *linalloc;
 
    unsigned num_supported_versions;
    struct {
@@ -735,6 +747,10 @@ struct _mesa_glsl_parse_state {
    bool ARB_shading_language_include_warn;
    bool ARB_shading_language_packing_enable;
    bool ARB_shading_language_packing_warn;
+   bool ARB_sparse_texture2_enable;
+   bool ARB_sparse_texture2_warn;
+   bool ARB_sparse_texture_clamp_enable;
+   bool ARB_sparse_texture_clamp_warn;
    bool ARB_tessellation_shader_enable;
    bool ARB_tessellation_shader_warn;
    bool ARB_texture_cube_map_array_enable;
@@ -804,6 +820,8 @@ struct _mesa_glsl_parse_state {
     */
    bool AMD_conservative_depth_enable;
    bool AMD_conservative_depth_warn;
+   bool AMD_gpu_shader_half_float_enable;
+   bool AMD_gpu_shader_half_float_warn;
    bool AMD_gpu_shader_int64_enable;
    bool AMD_gpu_shader_int64_warn;
    bool AMD_shader_stencil_export_enable;
@@ -818,6 +836,8 @@ struct _mesa_glsl_parse_state {
    bool AMD_vertex_shader_viewport_index_warn;
    bool ANDROID_extension_pack_es31a_enable;
    bool ANDROID_extension_pack_es31a_warn;
+   bool ARM_shader_framebuffer_fetch_depth_stencil_enable;
+   bool ARM_shader_framebuffer_fetch_depth_stencil_warn;
    bool EXT_blend_func_extended_enable;
    bool EXT_blend_func_extended_warn;
    bool EXT_clip_cull_distance_enable;
@@ -892,6 +912,8 @@ struct _mesa_glsl_parse_state {
    bool NV_shader_atomic_float_warn;
    bool NV_shader_atomic_int64_enable;
    bool NV_shader_atomic_int64_warn;
+   bool NV_shader_noperspective_interpolation_enable;
+   bool NV_shader_noperspective_interpolation_warn;
    bool NV_viewport_array2_enable;
    bool NV_viewport_array2_warn;
    /*@}*/
@@ -941,8 +963,11 @@ struct _mesa_glsl_parse_state {
    bool layer_viewport_relative;
 
    bool allow_extension_directive_midshader;
+   char *alias_shader_extension;
+   bool allow_vertex_texture_bias;
    bool allow_glsl_120_subset_in_110;
    bool allow_builtin_variable_redeclaration;
+   bool ignore_write_to_readonly_var;
 
    /**
     * Known subroutine type declarations.
@@ -979,6 +1004,7 @@ do {                                                            \
       (Current).last_line    = YYRHSLOC(Rhs, N).last_line;      \
       (Current).last_column  = YYRHSLOC(Rhs, N).last_column;    \
       (Current).path         = YYRHSLOC(Rhs, N).path;           \
+      (Current).source       = YYRHSLOC(Rhs, N).source;         \
    }                                                            \
    else                                                         \
    {                                                            \
@@ -986,9 +1012,9 @@ do {                                                            \
          YYRHSLOC(Rhs, 0).last_line;                            \
       (Current).first_column = (Current).last_column =          \
          YYRHSLOC(Rhs, 0).last_column;                          \
-      (Current).path = YYRHSLOC(Rhs, 0).path;                   \
+      (Current).path         = YYRHSLOC(Rhs, 0).path;           \
+      (Current).source       = YYRHSLOC(Rhs, 0).source;         \
    }                                                            \
-   (Current).source = 0;                                        \
 } while (0)
 
 /**
@@ -1022,6 +1048,44 @@ extern bool _mesa_glsl_process_extension(const char *name, YYLTYPE *name_locp,
                                          const char *behavior,
                                          YYLTYPE *behavior_locp,
                                          _mesa_glsl_parse_state *state);
+
+
+/**
+ * \brief Can \c from be implicitly converted to \c desired
+ *
+ * \return True if the types are identical or if \c from type can be converted
+ *         to \c desired according to Section 4.1.10 of the GLSL spec.
+ *
+ * \verbatim
+ * From page 25 (31 of the pdf) of the GLSL 1.50 spec, Section 4.1.10
+ * Implicit Conversions:
+ *
+ *     In some situations, an expression and its type will be implicitly
+ *     converted to a different type. The following table shows all allowed
+ *     implicit conversions:
+ *
+ *     Type of expression | Can be implicitly converted to
+ *     --------------------------------------------------
+ *     int                  float
+ *     uint
+ *
+ *     ivec2                vec2
+ *     uvec2
+ *
+ *     ivec3                vec3
+ *     uvec3
+ *
+ *     ivec4                vec4
+ *     uvec4
+ *
+ *     There are no implicit array or structure conversions. For example,
+ *     an array of int cannot be implicitly converted to an array of float.
+ *     There are no implicit conversions between signed and unsigned
+ *     integers.
+ * \endverbatim
+ */
+extern bool _mesa_glsl_can_implicitly_convert(const glsl_type *from, const glsl_type *desired,
+                                              _mesa_glsl_parse_state *state);
 
 #endif /* __cplusplus */
 

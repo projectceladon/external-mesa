@@ -22,23 +22,15 @@
  */
 
 #include <gtest/gtest.h>
+#include "brw_disasm_info.h"
 #include "brw_eu.h"
 #include "brw_eu_defines.h"
 #include "util/bitset.h"
 #include "util/ralloc.h"
 
-static const struct gen_info {
+static const struct intel_gfx_info {
    const char *name;
-} gens[] = {
-   { "brw", },
-   { "g4x", },
-   { "ilk", },
-   { "snb", },
-   { "ivb", },
-   { "byt", },
-   { "hsw", },
-   { "bdw", },
-   { "chv", },
+} gfx_names[] = {
    { "skl", },
    { "bxt", },
    { "kbl", },
@@ -46,19 +38,30 @@ static const struct gen_info {
    { "glk", },
    { "cfl", },
    { "whl", },
+   { "cml", },
    { "icl", },
+   { "ehl", },
+   { "jsl", },
    { "tgl", },
+   { "rkl", },
+   { "dg1", },
+   { "adl", },
+   { "sg1", },
+   { "rpl", },
+   { "dg2", },
+   { "mtl", },
 };
 
-class validation_test: public ::testing::TestWithParam<struct gen_info> {
+class validation_test: public ::testing::TestWithParam<struct intel_gfx_info> {
    virtual void SetUp();
 
 public:
    validation_test();
    virtual ~validation_test();
 
+   struct brw_isa_info isa;
    struct brw_codegen *p;
-   struct gen_device_info devinfo;
+   struct intel_device_info devinfo;
 };
 
 validation_test::validation_test()
@@ -74,15 +77,17 @@ validation_test::~validation_test()
 
 void validation_test::SetUp()
 {
-   struct gen_info info = GetParam();
-   int devid = gen_device_name_to_pci_device_id(info.name);
+   struct intel_gfx_info info = GetParam();
+   int devid = intel_device_name_to_pci_device_id(info.name);
 
-   gen_get_device_info_from_pci_id(devid, &devinfo);
+   intel_get_device_info_from_pci_id(devid, &devinfo);
 
-   brw_init_codegen(&devinfo, p, p);
+   brw_init_isa_info(&isa, &devinfo);
+
+   brw_init_codegen(&isa, p, p);
 }
 
-struct gen_name {
+struct gfx_name {
    template <class ParamType>
    std::string
    operator()(const ::testing::TestParamInfo<ParamType>& info) const {
@@ -90,22 +95,24 @@ struct gen_name {
    }
 };
 
-INSTANTIATE_TEST_CASE_P(eu_assembly, validation_test,
-                        ::testing::ValuesIn(gens),
-                        gen_name());
+INSTANTIATE_TEST_SUITE_P(
+   eu_assembly, validation_test,
+   ::testing::ValuesIn(gfx_names),
+   gfx_name()
+);
 
 static bool
 validate(struct brw_codegen *p)
 {
    const bool print = getenv("TEST_DEBUG");
-   struct disasm_info *disasm = disasm_initialize(p->devinfo, NULL);
+   struct disasm_info *disasm = disasm_initialize(p->isa, NULL);
 
    if (print) {
       disasm_new_inst_group(disasm, 0);
       disasm_new_inst_group(disasm, p->next_insn_offset);
    }
 
-   bool ret = brw_validate_instructions(p->devinfo, p->store, 0,
+   bool ret = brw_validate_instructions(p->isa, p->store, 0,
                                         p->next_insn_offset, disasm);
 
    if (print) {
@@ -152,25 +159,15 @@ TEST_P(validation_test, src1_null_reg)
 
 TEST_P(validation_test, math_src0_null_reg)
 {
-   if (devinfo.gen >= 6) {
-      gen6_math(p, g0, BRW_MATH_FUNCTION_SIN, null, null);
-   } else {
-      gen4_math(p, g0, BRW_MATH_FUNCTION_SIN, 0, null, BRW_MATH_PRECISION_FULL);
-   }
+   gfx6_math(p, g0, BRW_MATH_FUNCTION_SIN, null, null);
 
    EXPECT_FALSE(validate(p));
 }
 
 TEST_P(validation_test, math_src1_null_reg)
 {
-   if (devinfo.gen >= 6) {
-      gen6_math(p, g0, BRW_MATH_FUNCTION_POW, g0, null);
-      EXPECT_FALSE(validate(p));
-   } else {
-      /* Math instructions on Gen4/5 are actually SEND messages with payloads.
-       * src1 is an immediate message descriptor set by gen4_math.
-       */
-   }
+   gfx6_math(p, g0, BRW_MATH_FUNCTION_POW, g0, null);
+   EXPECT_FALSE(validate(p));
 }
 
 TEST_P(validation_test, opcode46)
@@ -178,15 +175,11 @@ TEST_P(validation_test, opcode46)
    /* opcode 46 is "push" on Gen 4 and 5
     *              "fork" on Gen 6
     *              reserved on Gen 7
-    *              "goto" on Gen8+
+    *              "goto" on Gfx8+
     */
-   brw_next_insn(p, brw_opcode_decode(&devinfo, 46));
+   brw_next_insn(p, brw_opcode_decode(&isa, 46));
 
-   if (devinfo.gen == 7) {
-      EXPECT_FALSE(validate(p));
-   } else {
-      EXPECT_TRUE(validate(p));
-   }
+   EXPECT_TRUE(validate(p));
 }
 
 TEST_P(validation_test, invalid_exec_size_encoding)
@@ -229,37 +222,6 @@ TEST_P(validation_test, invalid_exec_size_encoding)
    }
 }
 
-TEST_P(validation_test, invalid_file_encoding)
-{
-   /* Register file on Gen12 is only one bit */
-   if (devinfo.gen >= 12)
-      return;
-
-   brw_MOV(p, g0, g0);
-   brw_inst_set_dst_file_type(&devinfo, last_inst, BRW_MESSAGE_REGISTER_FILE, BRW_REGISTER_TYPE_F);
-
-   if (devinfo.gen > 6) {
-      EXPECT_FALSE(validate(p));
-   } else {
-      EXPECT_TRUE(validate(p));
-   }
-
-   clear_instructions(p);
-
-   if (devinfo.gen < 6) {
-      gen4_math(p, g0, BRW_MATH_FUNCTION_SIN, 0, g0, BRW_MATH_PRECISION_FULL);
-   } else {
-      gen6_math(p, g0, BRW_MATH_FUNCTION_SIN, g0, null);
-   }
-   brw_inst_set_src0_file_type(&devinfo, last_inst, BRW_MESSAGE_REGISTER_FILE, BRW_REGISTER_TYPE_F);
-
-   if (devinfo.gen > 6) {
-      EXPECT_FALSE(validate(p));
-   } else {
-      EXPECT_TRUE(validate(p));
-   }
-}
-
 TEST_P(validation_test, invalid_type_encoding)
 {
    enum brw_reg_file files[2] = {
@@ -269,7 +231,7 @@ TEST_P(validation_test, invalid_type_encoding)
 
    for (unsigned i = 0; i < ARRAY_SIZE(files); i++) {
       const enum brw_reg_file file = files[i];
-      const int num_bits = devinfo.gen >= 8 ? 4 : 3;
+      const int num_bits = 4;
       const int num_encodings = 1 << num_bits;
 
       /* The data types are encoded into <num_bits> bits to be used in hardware
@@ -282,10 +244,10 @@ TEST_P(validation_test, invalid_type_encoding)
          enum brw_reg_type type;
          bool expected_result;
       } test_case[] = {
-         { BRW_REGISTER_TYPE_NF, devinfo.gen == 11 && file != IMM },
-         { BRW_REGISTER_TYPE_DF, devinfo.has_64bit_float && (devinfo.gen >= 8 || file != IMM) },
+         { BRW_REGISTER_TYPE_NF, devinfo.ver == 11 && file != IMM },
+         { BRW_REGISTER_TYPE_DF, devinfo.has_64bit_float },
          { BRW_REGISTER_TYPE_F,  true },
-         { BRW_REGISTER_TYPE_HF, devinfo.gen >= 8 },
+         { BRW_REGISTER_TYPE_HF, true },
          { BRW_REGISTER_TYPE_VF, file == IMM },
          { BRW_REGISTER_TYPE_Q,  devinfo.has_64bit_int },
          { BRW_REGISTER_TYPE_UQ, devinfo.has_64bit_int },
@@ -296,7 +258,7 @@ TEST_P(validation_test, invalid_type_encoding)
          { BRW_REGISTER_TYPE_B,  file == FIXED_GRF },
          { BRW_REGISTER_TYPE_UB, file == FIXED_GRF },
          { BRW_REGISTER_TYPE_V,  file == IMM },
-         { BRW_REGISTER_TYPE_UV, devinfo.gen >= 6 && file == IMM },
+         { BRW_REGISTER_TYPE_UV, file == IMM },
       };
 
       /* Initially assume all hardware encodings are invalid */
@@ -373,11 +335,11 @@ TEST_P(validation_test, invalid_type_encoding)
 
 TEST_P(validation_test, invalid_type_encoding_3src_a16)
 {
-   /* 3-src instructions in align16 mode only supported on Gen6-10 */
-   if (devinfo.gen < 6 || devinfo.gen > 10)
+   /* 3-src instructions in align16 mode only supported on Gfx6-10 */
+   if (devinfo.ver < 6 || devinfo.ver > 10)
       return;
 
-   const int num_bits = devinfo.gen >= 8 ? 3 : 2;
+   const int num_bits = devinfo.ver >= 8 ? 3 : 2;
    const int num_encodings = 1 << num_bits;
 
    /* The data types are encoded into <num_bits> bits to be used in hardware
@@ -390,11 +352,11 @@ TEST_P(validation_test, invalid_type_encoding_3src_a16)
       enum brw_reg_type type;
       bool expected_result;
    } test_case[] = {
-      { BRW_REGISTER_TYPE_DF, devinfo.gen >= 7  },
+      { BRW_REGISTER_TYPE_DF, devinfo.ver >= 7  },
       { BRW_REGISTER_TYPE_F,  true },
-      { BRW_REGISTER_TYPE_HF, devinfo.gen >= 8  },
-      { BRW_REGISTER_TYPE_D,  devinfo.gen >= 7  },
-      { BRW_REGISTER_TYPE_UD, devinfo.gen >= 7  },
+      { BRW_REGISTER_TYPE_HF, devinfo.ver >= 8  },
+      { BRW_REGISTER_TYPE_D,  devinfo.ver >= 7  },
+      { BRW_REGISTER_TYPE_UD, devinfo.ver >= 7  },
    };
 
    /* Initially assume all hardware encodings are invalid */
@@ -445,7 +407,7 @@ TEST_P(validation_test, invalid_type_encoding_3src_a16)
 
          clear_instructions(p);
 
-         if (devinfo.gen == 6)
+         if (devinfo.ver == 6)
             break;
       }
    }
@@ -453,8 +415,8 @@ TEST_P(validation_test, invalid_type_encoding_3src_a16)
 
 TEST_P(validation_test, invalid_type_encoding_3src_a1)
 {
-   /* 3-src instructions in align1 mode only supported on Gen10+ */
-   if (devinfo.gen < 10)
+   /* 3-src instructions in align1 mode only supported on Gfx10+ */
+   if (devinfo.ver < 10)
       return;
 
    const int num_bits = 3 + 1 /* for exec_type */;
@@ -472,7 +434,7 @@ TEST_P(validation_test, invalid_type_encoding_3src_a1)
       bool expected_result;
    } test_case[] = {
 #define E(x) ((unsigned)BRW_ALIGN1_3SRC_EXEC_TYPE_##x)
-      { BRW_REGISTER_TYPE_NF, E(FLOAT), devinfo.gen == 11 },
+      { BRW_REGISTER_TYPE_NF, E(FLOAT), devinfo.ver == 11 },
       { BRW_REGISTER_TYPE_DF, E(FLOAT), devinfo.has_64bit_float },
       { BRW_REGISTER_TYPE_F,  E(FLOAT), true  },
       { BRW_REGISTER_TYPE_HF, E(FLOAT), true  },
@@ -482,7 +444,7 @@ TEST_P(validation_test, invalid_type_encoding_3src_a1)
       { BRW_REGISTER_TYPE_UW, E(INT),   true  },
 
       /* There are no ternary instructions that can operate on B-type sources
-       * on Gen11-12. Src1/Src2 cannot be B-typed either.
+       * on Gfx11-12. Src1/Src2 cannot be B-typed either.
        */
       { BRW_REGISTER_TYPE_B,  E(INT),   false },
       { BRW_REGISTER_TYPE_UB, E(INT),   false },
@@ -551,24 +513,24 @@ TEST_P(validation_test, invalid_type_encoding_3src_a1)
 
 TEST_P(validation_test, 3src_inst_access_mode)
 {
-   /* 3-src instructions only supported on Gen6+ */
-   if (devinfo.gen < 6)
+   /* 3-src instructions only supported on Gfx6+ */
+   if (devinfo.ver < 6)
       return;
 
-   /* No access mode bit on Gen12+ */
-   if (devinfo.gen >= 12)
+   /* No access mode bit on Gfx12+ */
+   if (devinfo.ver >= 12)
       return;
 
    const struct {
       unsigned mode;
       bool expected_result;
    } test_case[] = {
-      { BRW_ALIGN_1,  devinfo.gen >= 10 },
-      { BRW_ALIGN_16, devinfo.gen <= 10 },
+      { BRW_ALIGN_1,  devinfo.ver >= 10 },
+      { BRW_ALIGN_16, devinfo.ver <= 10 },
    };
 
    for (unsigned i = 0; i < ARRAY_SIZE(test_case); i++) {
-      if (devinfo.gen < 10)
+      if (devinfo.ver < 10)
          brw_set_default_access_mode(p, BRW_ALIGN_16);
 
       brw_MAD(p, g0, g0, g0, g0);
@@ -750,8 +712,8 @@ TEST_P(validation_test, dst_horizontal_stride_0)
 
    clear_instructions(p);
 
-   /* Align16 does not exist on Gen11+ */
-   if (devinfo.gen >= 11)
+   /* Align16 does not exist on Gfx11+ */
+   if (devinfo.ver >= 11)
       return;
 
    brw_set_default_access_mode(p, BRW_ALIGN_16);
@@ -801,8 +763,8 @@ TEST_P(validation_test, must_not_cross_grf_boundary_in_a_width)
 /* Destination Horizontal must be 1 in Align16 */
 TEST_P(validation_test, dst_hstride_on_align16_must_be_1)
 {
-   /* Align16 does not exist on Gen11+ */
-   if (devinfo.gen >= 11)
+   /* Align16 does not exist on Gfx11+ */
+   if (devinfo.ver >= 11)
       return;
 
    brw_set_default_access_mode(p, BRW_ALIGN_16);
@@ -823,8 +785,8 @@ TEST_P(validation_test, dst_hstride_on_align16_must_be_1)
 /* VertStride must be 0 or 4 in Align16 */
 TEST_P(validation_test, vstride_on_align16_must_be_0_or_4)
 {
-   /* Align16 does not exist on Gen11+ */
-   if (devinfo.gen >= 11)
+   /* Align16 does not exist on Gfx11+ */
+   if (devinfo.ver >= 11)
       return;
 
    const struct {
@@ -833,7 +795,7 @@ TEST_P(validation_test, vstride_on_align16_must_be_0_or_4)
    } vstride[] = {
       { BRW_VERTICAL_STRIDE_0, true },
       { BRW_VERTICAL_STRIDE_1, false },
-      { BRW_VERTICAL_STRIDE_2, devinfo.is_haswell || devinfo.gen >= 8 },
+      { BRW_VERTICAL_STRIDE_2, devinfo.verx10 >= 75 },
       { BRW_VERTICAL_STRIDE_4, true },
       { BRW_VERTICAL_STRIDE_8, false },
       { BRW_VERTICAL_STRIDE_16, false },
@@ -988,7 +950,7 @@ TEST_P(validation_test, src_region_spans_two_regs_dst_region_spans_one)
    brw_inst_set_src1_width(&devinfo, last_inst, BRW_WIDTH_2);
    brw_inst_set_src1_hstride(&devinfo, last_inst, BRW_HORIZONTAL_STRIDE_1);
 
-   if (devinfo.gen >= 9) {
+   if (devinfo.ver >= 9) {
       EXPECT_TRUE(validate(p));
    } else {
       EXPECT_FALSE(validate(p));
@@ -1000,7 +962,7 @@ TEST_P(validation_test, dst_elements_must_be_evenly_split_between_registers)
    brw_ADD(p, g0, g0, g0);
    brw_inst_set_dst_da1_subreg_nr(&devinfo, last_inst, 4);
 
-   if (devinfo.gen >= 9) {
+   if (devinfo.ver >= 9 && devinfo.verx10 < 125) {
       EXPECT_TRUE(validate(p));
    } else {
       EXPECT_FALSE(validate(p));
@@ -1015,14 +977,14 @@ TEST_P(validation_test, dst_elements_must_be_evenly_split_between_registers)
 
    clear_instructions(p);
 
-   if (devinfo.gen >= 6) {
-      gen6_math(p, g0, BRW_MATH_FUNCTION_SIN, g0, null);
+   if (devinfo.ver >= 6) {
+      gfx6_math(p, g0, BRW_MATH_FUNCTION_SIN, g0, null);
 
       EXPECT_TRUE(validate(p));
 
       clear_instructions(p);
 
-      gen6_math(p, g0, BRW_MATH_FUNCTION_SIN, g0, null);
+      gfx6_math(p, g0, BRW_MATH_FUNCTION_SIN, g0, null);
       brw_inst_set_dst_da1_subreg_nr(&devinfo, last_inst, 4);
 
       EXPECT_FALSE(validate(p));
@@ -1042,7 +1004,7 @@ TEST_P(validation_test, two_src_two_dst_source_offsets_must_be_same)
    brw_inst_set_src1_width(&devinfo, last_inst, BRW_WIDTH_4);
    brw_inst_set_src1_hstride(&devinfo, last_inst, BRW_HORIZONTAL_STRIDE_1);
 
-   if (devinfo.gen <= 7) {
+  if (devinfo.ver <= 7 || devinfo.verx10 >= 125) {
       EXPECT_FALSE(validate(p));
    } else {
       EXPECT_TRUE(validate(p));
@@ -1060,7 +1022,10 @@ TEST_P(validation_test, two_src_two_dst_source_offsets_must_be_same)
    brw_inst_set_src1_width(&devinfo, last_inst, BRW_WIDTH_2);
    brw_inst_set_src1_hstride(&devinfo, last_inst, BRW_HORIZONTAL_STRIDE_1);
 
-   EXPECT_TRUE(validate(p));
+   if (devinfo.verx10 >= 125)
+      EXPECT_FALSE(validate(p));
+   else
+      EXPECT_TRUE(validate(p));
 }
 
 TEST_P(validation_test, two_src_two_dst_each_dst_must_be_derived_from_one_src)
@@ -1075,7 +1040,7 @@ TEST_P(validation_test, two_src_two_dst_each_dst_must_be_derived_from_one_src)
    brw_inst_set_src0_width(&devinfo, last_inst, BRW_WIDTH_4);
    brw_inst_set_src0_hstride(&devinfo, last_inst, BRW_HORIZONTAL_STRIDE_1);
 
-   if (devinfo.gen <= 7) {
+   if (devinfo.ver <= 7) {
       EXPECT_FALSE(validate(p));
    } else {
       EXPECT_TRUE(validate(p));
@@ -1090,7 +1055,7 @@ TEST_P(validation_test, two_src_two_dst_each_dst_must_be_derived_from_one_src)
    brw_inst_set_src0_width(&devinfo, last_inst, BRW_WIDTH_2);
    brw_inst_set_src0_hstride(&devinfo, last_inst, BRW_HORIZONTAL_STRIDE_1);
 
-   if (devinfo.gen <= 7) {
+   if (devinfo.ver <= 7 || devinfo.verx10 >= 125) {
       EXPECT_FALSE(validate(p));
    } else {
       EXPECT_TRUE(validate(p));
@@ -1112,9 +1077,37 @@ TEST_P(validation_test, one_src_two_dst)
    brw_inst_set_exec_size(&devinfo, last_inst, BRW_EXECUTE_16);
    brw_inst_set_dst_file_type(&devinfo, last_inst, BRW_GENERAL_REGISTER_FILE, BRW_REGISTER_TYPE_D);
    brw_inst_set_src0_file_type(&devinfo, last_inst, BRW_GENERAL_REGISTER_FILE, BRW_REGISTER_TYPE_W);
-   brw_inst_set_src1_file_type(&devinfo, last_inst, BRW_GENERAL_REGISTER_FILE, BRW_REGISTER_TYPE_W);
+   brw_inst_set_src1_file_type(&devinfo, last_inst, BRW_GENERAL_REGISTER_FILE, BRW_REGISTER_TYPE_D);
 
    EXPECT_TRUE(validate(p));
+
+   clear_instructions(p);
+
+   brw_ADD(p, g0, g0, g0);
+   brw_inst_set_exec_size(&devinfo, last_inst, BRW_EXECUTE_16);
+   brw_inst_set_dst_file_type(&devinfo, last_inst, BRW_GENERAL_REGISTER_FILE, BRW_REGISTER_TYPE_D);
+   brw_inst_set_src0_file_type(&devinfo, last_inst, BRW_GENERAL_REGISTER_FILE, BRW_REGISTER_TYPE_D);
+   brw_inst_set_src1_file_type(&devinfo, last_inst, BRW_GENERAL_REGISTER_FILE, BRW_REGISTER_TYPE_W);
+
+   if (devinfo.ver >= 8) {
+      EXPECT_TRUE(validate(p));
+   } else {
+      EXPECT_FALSE(validate(p));
+   }
+
+   clear_instructions(p);
+
+   brw_ADD(p, g0, g0, g0);
+   brw_inst_set_exec_size(&devinfo, last_inst, BRW_EXECUTE_16);
+   brw_inst_set_dst_file_type(&devinfo, last_inst, BRW_GENERAL_REGISTER_FILE, BRW_REGISTER_TYPE_D);
+   brw_inst_set_src0_file_type(&devinfo, last_inst, BRW_GENERAL_REGISTER_FILE, BRW_REGISTER_TYPE_W);
+   brw_inst_set_src1_file_type(&devinfo, last_inst, BRW_GENERAL_REGISTER_FILE, BRW_REGISTER_TYPE_W);
+
+   if (devinfo.ver >= 8) {
+      EXPECT_TRUE(validate(p));
+   } else {
+      EXPECT_FALSE(validate(p));
+   }
 
    clear_instructions(p);
 
@@ -1128,7 +1121,7 @@ TEST_P(validation_test, one_src_two_dst)
    brw_inst_set_src1_width(&devinfo, last_inst, BRW_WIDTH_1);
    brw_inst_set_src1_hstride(&devinfo, last_inst, BRW_HORIZONTAL_STRIDE_0);
 
-   if (devinfo.gen >= 8) {
+   if (devinfo.ver >= 8) {
       EXPECT_TRUE(validate(p));
    } else {
       EXPECT_FALSE(validate(p));
@@ -1146,7 +1139,7 @@ TEST_P(validation_test, one_src_two_dst)
    brw_inst_set_src0_hstride(&devinfo, last_inst, BRW_HORIZONTAL_STRIDE_0);
    brw_inst_set_src1_file_type(&devinfo, last_inst, BRW_GENERAL_REGISTER_FILE, BRW_REGISTER_TYPE_W);
 
-   if (devinfo.gen >= 8) {
+   if (devinfo.ver >= 8) {
       EXPECT_TRUE(validate(p));
    } else {
       EXPECT_FALSE(validate(p));
@@ -1234,11 +1227,7 @@ TEST_P(validation_test, byte_destination_relaxed_alignment)
    brw_inst_set_dst_hstride(&devinfo, last_inst, BRW_HORIZONTAL_STRIDE_2);
    brw_inst_set_dst_da1_subreg_nr(&devinfo, last_inst, 1);
 
-   if (devinfo.gen > 4 || devinfo.is_g4x) {
-      EXPECT_TRUE(validate(p));
-   } else {
-      EXPECT_FALSE(validate(p));
-   }
+   EXPECT_TRUE(validate(p));
 }
 
 TEST_P(validation_test, byte_64bit_conversion)
@@ -1281,7 +1270,7 @@ TEST_P(validation_test, byte_64bit_conversion)
 #undef INST
    };
 
-   if (devinfo.gen < 8)
+   if (devinfo.ver < 8)
       return;
 
    for (unsigned i = 0; i < ARRAY_SIZE(inst); i++) {
@@ -1309,82 +1298,70 @@ TEST_P(validation_test, half_float_conversion)
       enum brw_reg_type src_type;
       unsigned dst_stride;
       unsigned dst_subnr;
-      bool expected_result_bdw;
-      bool expected_result_chv_gen9;
+      bool expected_result_gfx9;
+      bool expected_result_gfx125;
    } inst[] = {
-#define INST_C(dst_type, src_type, dst_stride, dst_subnr, expected_result)  \
+#define INST(dst_type, src_type, dst_stride, dst_subnr,                     \
+             expected_result_gfx9,                                          \
+             expected_result_gfx125)                                        \
       {                                                                     \
          BRW_REGISTER_TYPE_##dst_type,                                      \
          BRW_REGISTER_TYPE_##src_type,                                      \
          BRW_HORIZONTAL_STRIDE_##dst_stride,                                \
          dst_subnr,                                                         \
-         expected_result,                                                   \
-         expected_result,                                                   \
-      }
-#define INST_S(dst_type, src_type, dst_stride, dst_subnr,                   \
-               expected_result_bdw, expected_result_chv_gen9)               \
-      {                                                                     \
-         BRW_REGISTER_TYPE_##dst_type,                                      \
-         BRW_REGISTER_TYPE_##src_type,                                      \
-         BRW_HORIZONTAL_STRIDE_##dst_stride,                                \
-         dst_subnr,                                                         \
-         expected_result_bdw,                                               \
-         expected_result_chv_gen9,                                          \
+         expected_result_gfx9,                                              \
+         expected_result_gfx125,                                            \
       }
 
       /* MOV to half-float destination */
-      INST_C(HF,  B, 1, 0, false),
-      INST_C(HF,  W, 1, 0, false),
-      INST_C(HF, HF, 1, 0, true),
-      INST_C(HF, HF, 1, 2, true),
-      INST_C(HF,  D, 1, 0, false),
-      INST_S(HF,  F, 1, 0, false, true),
-      INST_C(HF,  Q, 1, 0, false),
-      INST_C(HF,  B, 2, 0, true),
-      INST_C(HF,  B, 2, 2, false),
-      INST_C(HF,  W, 2, 0, true),
-      INST_C(HF,  W, 2, 2, false),
-      INST_C(HF, HF, 2, 0, true),
-      INST_C(HF, HF, 2, 2, true),
-      INST_C(HF,  D, 2, 0, true),
-      INST_C(HF,  D, 2, 2, false),
-      INST_C(HF,  F, 2, 0, true),
-      INST_S(HF,  F, 2, 2, false, true),
-      INST_C(HF,  Q, 2, 0, false),
-      INST_C(HF, DF, 2, 0, false),
-      INST_C(HF,  B, 4, 0, false),
-      INST_C(HF,  W, 4, 0, false),
-      INST_C(HF, HF, 4, 0, true),
-      INST_C(HF, HF, 4, 2, true),
-      INST_C(HF,  D, 4, 0, false),
-      INST_C(HF,  F, 4, 0, false),
-      INST_C(HF,  Q, 4, 0, false),
-      INST_C(HF, DF, 4, 0, false),
+      INST(HF,  B, 1, 0, false, false), /* 0 */
+      INST(HF,  W, 1, 0, false, false),
+      INST(HF, HF, 1, 0, true,  true),
+      INST(HF, HF, 1, 2, true,  false),
+      INST(HF,  D, 1, 0, false, false),
+      INST(HF,  F, 1, 0, true,  false),
+      INST(HF,  Q, 1, 0, false, false),
+      INST(HF,  B, 2, 0, true,  false),
+      INST(HF,  B, 2, 2, false, false),
+      INST(HF,  W, 2, 0, true,  false),
+      INST(HF,  W, 2, 2, false, false), /* 10 */
+      INST(HF, HF, 2, 0, true,  false),
+      INST(HF, HF, 2, 2, true,  false),
+      INST(HF,  D, 2, 0, true,  true),
+      INST(HF,  D, 2, 2, false, false),
+      INST(HF,  F, 2, 0, true,  true),
+      INST(HF,  F, 2, 2, true,  false),
+      INST(HF,  Q, 2, 0, false, false),
+      INST(HF, DF, 2, 0, false, false),
+      INST(HF,  B, 4, 0, false, false),
+      INST(HF,  W, 4, 0, false, false), /* 20 */
+      INST(HF, HF, 4, 0, true,  false),
+      INST(HF, HF, 4, 2, true,  false),
+      INST(HF,  D, 4, 0, false, false),
+      INST(HF,  F, 4, 0, false, false),
+      INST(HF,  Q, 4, 0, false, false),
+      INST(HF, DF, 4, 0, false, false),
 
       /* MOV from half-float source */
-      INST_C( B, HF, 1, 0, false),
-      INST_C( W, HF, 1, 0, false),
-      INST_C( D, HF, 1, 0, true),
-      INST_C( D, HF, 1, 4, true),
-      INST_C( F, HF, 1, 0, true),
-      INST_C( F, HF, 1, 4, true),
-      INST_C( Q, HF, 1, 0, false),
-      INST_C(DF, HF, 1, 0, false),
-      INST_C( B, HF, 2, 0, false),
-      INST_C( W, HF, 2, 0, true),
-      INST_C( W, HF, 2, 2, false),
-      INST_C( D, HF, 2, 0, false),
-      INST_C( F, HF, 2, 0, true),
-      INST_C( B, HF, 4, 0, true),
-      INST_C( B, HF, 4, 1, false),
-      INST_C( W, HF, 4, 0, false),
+      INST( B, HF, 1, 0, false, false),
+      INST( W, HF, 1, 0, false, false),
+      INST( D, HF, 1, 0, true,  true),
+      INST( D, HF, 1, 4, true,  true),  /* 30 */
+      INST( F, HF, 1, 0, true,  false),
+      INST( F, HF, 1, 4, true,  false),
+      INST( Q, HF, 1, 0, false, false),
+      INST(DF, HF, 1, 0, false, false),
+      INST( B, HF, 2, 0, false, false),
+      INST( W, HF, 2, 0, true,  true),
+      INST( W, HF, 2, 2, false, false),
+      INST( D, HF, 2, 0, false, false),
+      INST( F, HF, 2, 0, true,  false),
+      INST( B, HF, 4, 0, true,  true),  /* 40 */
+      INST( B, HF, 4, 1, false, false),
+      INST( W, HF, 4, 0, false, false),
 
-#undef INST_C
-#undef INST_S
+#undef INST
    };
-
-   if (devinfo.gen < 8)
-      return;
 
    for (unsigned i = 0; i < ARRAY_SIZE(inst); i++) {
       if (!devinfo.has_64bit_float &&
@@ -1416,10 +1393,13 @@ TEST_P(validation_test, half_float_conversion)
          brw_inst_set_src0_hstride(&devinfo, last_inst, BRW_HORIZONTAL_STRIDE_1);
       }
 
-      if (devinfo.is_cherryview || devinfo.gen >= 9)
-         EXPECT_EQ(inst[i].expected_result_chv_gen9, validate(p));
-      else
-         EXPECT_EQ(inst[i].expected_result_bdw, validate(p));
+      if (devinfo.verx10 >= 125) {
+         EXPECT_EQ(inst[i].expected_result_gfx125, validate(p)) <<
+            "Failing test is: " << i;
+      } else {
+         EXPECT_EQ(inst[i].expected_result_gfx9, validate(p)) <<
+            "Failing test is: " << i;
+      }
 
       clear_instructions(p);
    }
@@ -1435,9 +1415,11 @@ TEST_P(validation_test, mixed_float_source_indirect_addressing)
       bool dst_indirect;
       bool src0_indirect;
       bool expected_result;
+      bool gfx125_expected_result;
    } inst[] = {
 #define INST(dst_type, src0_type, src1_type,                              \
-             dst_stride, dst_indirect, src0_indirect, expected_result)    \
+             dst_stride, dst_indirect, src0_indirect, expected_result,    \
+             gfx125_expected_result)                                      \
       {                                                                   \
          BRW_REGISTER_TYPE_##dst_type,                                    \
          BRW_REGISTER_TYPE_##src0_type,                                   \
@@ -1446,31 +1428,32 @@ TEST_P(validation_test, mixed_float_source_indirect_addressing)
          dst_indirect,                                                    \
          src0_indirect,                                                   \
          expected_result,                                                 \
+         gfx125_expected_result,                                          \
       }
 
       /* Source and dest are mixed float: indirect src addressing not allowed */
-      INST(HF,  F,  F, 2, false, false, true),
-      INST(HF,  F,  F, 2, true,  false, true),
-      INST(HF,  F,  F, 2, false, true,  false),
-      INST(HF,  F,  F, 2, true,  true,  false),
-      INST( F, HF,  F, 1, false, false, true),
-      INST( F, HF,  F, 1, true,  false, true),
-      INST( F, HF,  F, 1, false, true,  false),
-      INST( F, HF,  F, 1, true,  true,  false),
+      INST(HF,  F,  F, 2, false, false, true,  true),
+      INST(HF,  F,  F, 2, true,  false, true,  true),
+      INST(HF,  F,  F, 2, false, true,  false, false),
+      INST(HF,  F,  F, 2, true,  true,  false, false),
+      INST( F, HF,  F, 1, false, false, true,  false),
+      INST( F, HF,  F, 1, true,  false, true,  false),
+      INST( F, HF,  F, 1, false, true,  false, false),
+      INST( F, HF,  F, 1, true,  true,  false, false),
 
-      INST(HF, HF,  F, 2, false, false, true),
-      INST(HF, HF,  F, 2, true,  false, true),
-      INST(HF, HF,  F, 2, false, true,  false),
-      INST(HF, HF,  F, 2, true,  true,  false),
-      INST( F,  F, HF, 1, false, false, true),
-      INST( F,  F, HF, 1, true,  false, true),
-      INST( F,  F, HF, 1, false, true,  false),
-      INST( F,  F, HF, 1, true,  true,  false),
+      INST(HF, HF,  F, 2, false, false, true,  false),
+      INST(HF, HF,  F, 2, true,  false, true,  false),
+      INST(HF, HF,  F, 2, false, true,  false, false),
+      INST(HF, HF,  F, 2, true,  true,  false, false),
+      INST( F,  F, HF, 1, false, false, true,  false),
+      INST( F,  F, HF, 1, true,  false, true,  false),
+      INST( F,  F, HF, 1, false, true,  false, false),
+      INST( F,  F, HF, 1, true,  true,  false, false),
 
 #undef INST
    };
 
-   if (devinfo.gen < 8)
+   if (devinfo.ver < 8)
       return;
 
    for (unsigned i = 0; i < ARRAY_SIZE(inst); i++) {
@@ -1482,7 +1465,11 @@ TEST_P(validation_test, mixed_float_source_indirect_addressing)
       brw_inst_set_dst_hstride(&devinfo, last_inst, inst[i].dst_stride);
       brw_inst_set_src0_address_mode(&devinfo, last_inst, inst[i].src0_indirect);
 
-      EXPECT_EQ(inst[i].expected_result, validate(p));
+      if (devinfo.verx10 >= 125) {
+         EXPECT_EQ(inst[i].gfx125_expected_result, validate(p));
+      } else {
+         EXPECT_EQ(inst[i].expected_result, validate(p));
+      }
 
       clear_instructions(p);
    }
@@ -1497,9 +1484,10 @@ TEST_P(validation_test, mixed_float_align1_simd16)
       enum brw_reg_type src1_type;
       unsigned dst_stride;
       bool expected_result;
+      bool gfx125_expected_result;
    } inst[] = {
 #define INST(exec_size, dst_type, src0_type, src1_type,                   \
-             dst_stride, expected_result)                                 \
+             dst_stride, expected_result, gfx125_expected_result)         \
       {                                                                   \
          BRW_EXECUTE_##exec_size,                                         \
          BRW_REGISTER_TYPE_##dst_type,                                    \
@@ -1507,24 +1495,25 @@ TEST_P(validation_test, mixed_float_align1_simd16)
          BRW_REGISTER_TYPE_##src1_type,                                   \
          BRW_HORIZONTAL_STRIDE_##dst_stride,                              \
          expected_result,                                                 \
+         gfx125_expected_result,                                          \
       }
 
       /* No SIMD16 in mixed mode when destination is packed f16 */
-      INST( 8, HF,  F, HF, 2, true),
-      INST(16, HF, HF,  F, 2, true),
-      INST(16, HF, HF,  F, 1, false),
-      INST(16, HF,  F, HF, 1, false),
+      INST( 8, HF,  F, HF, 2, true,  false),
+      INST(16, HF, HF,  F, 2, true,  false),
+      INST(16, HF, HF,  F, 1, false, false),
+      INST(16, HF,  F, HF, 1, false, false),
 
       /* No SIMD16 in mixed mode when destination is f32 */
-      INST( 8,  F, HF,  F, 1, true),
-      INST( 8,  F,  F, HF, 1, true),
-      INST(16,  F, HF,  F, 1, false),
-      INST(16,  F,  F, HF, 1, false),
+      INST( 8,  F, HF,  F, 1, true,  false),
+      INST( 8,  F,  F, HF, 1, true,  false),
+      INST(16,  F, HF,  F, 1, false, false),
+      INST(16,  F,  F, HF, 1, false, false),
 
 #undef INST
    };
 
-   if (devinfo.gen < 8)
+   if (devinfo.ver < 8)
       return;
 
    for (unsigned i = 0; i < ARRAY_SIZE(inst); i++) {
@@ -1536,7 +1525,11 @@ TEST_P(validation_test, mixed_float_align1_simd16)
 
       brw_inst_set_dst_hstride(&devinfo, last_inst, inst[i].dst_stride);
 
-      EXPECT_EQ(inst[i].expected_result, validate(p));
+      if (devinfo.verx10 >= 125) {
+         EXPECT_EQ(inst[i].gfx125_expected_result, validate(p));
+      } else {
+         EXPECT_EQ(inst[i].expected_result, validate(p));
+      }
 
       clear_instructions(p);
    }
@@ -1553,9 +1546,11 @@ TEST_P(validation_test, mixed_float_align1_packed_fp16_dst_acc_read_offset_0)
       unsigned subnr;
       bool expected_result_bdw;
       bool expected_result_chv_skl;
+      bool expected_result_gfx125;
    } inst[] = {
 #define INST(dst_type, src0_type, src1_type, dst_stride, read_acc, subnr,   \
-             expected_result_bdw, expected_result_chv_skl)                  \
+             expected_result_bdw, expected_result_chv_skl,                  \
+             expected_result_gfx125)                                        \
       {                                                                     \
          BRW_REGISTER_TYPE_##dst_type,                                      \
          BRW_REGISTER_TYPE_##src0_type,                                     \
@@ -1565,33 +1560,34 @@ TEST_P(validation_test, mixed_float_align1_packed_fp16_dst_acc_read_offset_0)
          subnr,                                                             \
          expected_result_bdw,                                               \
          expected_result_chv_skl,                                           \
+         expected_result_gfx125,                                            \
       }
 
       /* Destination is not packed */
-      INST(HF, HF,  F, 2, true,  0, true, true),
-      INST(HF, HF,  F, 2, true,  2, true, true),
-      INST(HF, HF,  F, 2, true,  4, true, true),
-      INST(HF, HF,  F, 2, true,  8, true, true),
-      INST(HF, HF,  F, 2, true, 16, true, true),
+      INST(HF, HF,  F, 2, true,  0, true, true, false),
+      INST(HF, HF,  F, 2, true,  2, true, true, false),
+      INST(HF, HF,  F, 2, true,  4, true, true, false),
+      INST(HF, HF,  F, 2, true,  8, true, true, false),
+      INST(HF, HF,  F, 2, true, 16, true, true, false),
 
       /* Destination is packed, we don't read acc */
-      INST(HF, HF,  F, 1, false,  0, false, true),
-      INST(HF, HF,  F, 1, false,  2, false, true),
-      INST(HF, HF,  F, 1, false,  4, false, true),
-      INST(HF, HF,  F, 1, false,  8, false, true),
-      INST(HF, HF,  F, 1, false, 16, false, true),
+      INST(HF, HF,  F, 1, false,  0, false, true, false),
+      INST(HF, HF,  F, 1, false,  2, false, true, false),
+      INST(HF, HF,  F, 1, false,  4, false, true, false),
+      INST(HF, HF,  F, 1, false,  8, false, true, false),
+      INST(HF, HF,  F, 1, false, 16, false, true, false),
 
       /* Destination is packed, we read acc */
-      INST(HF, HF,  F, 1, true,  0, false, false),
-      INST(HF, HF,  F, 1, true,  2, false, false),
-      INST(HF, HF,  F, 1, true,  4, false, false),
-      INST(HF, HF,  F, 1, true,  8, false, false),
-      INST(HF, HF,  F, 1, true, 16, false, false),
+      INST(HF, HF,  F, 1, true,  0, false, false, false),
+      INST(HF, HF,  F, 1, true,  2, false, false, false),
+      INST(HF, HF,  F, 1, true,  4, false, false, false),
+      INST(HF, HF,  F, 1, true,  8, false, false, false),
+      INST(HF, HF,  F, 1, true, 16, false, false, false),
 
 #undef INST
    };
 
-   if (devinfo.gen < 8)
+   if (devinfo.ver < 8)
       return;
 
    for (unsigned i = 0; i < ARRAY_SIZE(inst); i++) {
@@ -1603,7 +1599,9 @@ TEST_P(validation_test, mixed_float_align1_packed_fp16_dst_acc_read_offset_0)
 
       brw_inst_set_src0_da1_subreg_nr(&devinfo, last_inst, inst[i].subnr);
 
-      if (devinfo.is_cherryview || devinfo.gen >= 9)
+      if (devinfo.verx10 >= 125)
+         EXPECT_EQ(inst[i].expected_result_gfx125, validate(p));
+      else if (devinfo.platform == INTEL_PLATFORM_CHV || devinfo.ver >= 9)
          EXPECT_EQ(inst[i].expected_result_chv_skl, validate(p));
       else
          EXPECT_EQ(inst[i].expected_result_bdw, validate(p));
@@ -1624,10 +1622,11 @@ TEST_P(validation_test, mixed_float_fp16_dest_with_acc)
       bool read_acc;
       bool expected_result_bdw;
       bool expected_result_chv_skl;
+      bool expected_result_gfx125;
    } inst[] = {
 #define INST(exec_size, opcode, dst_type, src0_type, src1_type,           \
              dst_stride, read_acc,expected_result_bdw,                    \
-             expected_result_chv_skl)                                     \
+             expected_result_chv_skl, expected_result_gfx125)             \
       {                                                                   \
          BRW_EXECUTE_##exec_size,                                         \
          BRW_OPCODE_##opcode,                                             \
@@ -1638,36 +1637,37 @@ TEST_P(validation_test, mixed_float_fp16_dest_with_acc)
          read_acc,                                                        \
          expected_result_bdw,                                             \
          expected_result_chv_skl,                                         \
+         expected_result_gfx125,                                          \
       }
 
       /* Packed fp16 dest with implicit acc needs hstride=2 */
-      INST(8, MAC, HF, HF,  F, 1, false, false, false),
-      INST(8, MAC, HF, HF,  F, 2, false, true,  true),
-      INST(8, MAC, HF,  F, HF, 1, false, false, false),
-      INST(8, MAC, HF,  F, HF, 2, false, true,  true),
+      INST(8, MAC, HF, HF,  F, 1, false, false, false, false),
+      INST(8, MAC, HF, HF,  F, 2, false, true,  true,  false),
+      INST(8, MAC, HF,  F, HF, 1, false, false, false, false),
+      INST(8, MAC, HF,  F, HF, 2, false, true,  true,  false),
 
       /* Packed fp16 dest with explicit acc needs hstride=2 */
-      INST(8, ADD, HF, HF,  F, 1, true,  false, false),
-      INST(8, ADD, HF, HF,  F, 2, true,  true,  true),
-      INST(8, ADD, HF,  F, HF, 1, true,  false, false),
-      INST(8, ADD, HF,  F, HF, 2, true,  true,  true),
+      INST(8, ADD, HF, HF,  F, 1, true,  false, false, false),
+      INST(8, ADD, HF, HF,  F, 2, true,  true,  true,  false),
+      INST(8, ADD, HF,  F, HF, 1, true,  false, false, false),
+      INST(8, ADD, HF,  F, HF, 2, true,  true,  true,  false),
 
       /* If destination is not fp16, restriction doesn't apply */
-      INST(8, MAC,  F, HF,  F, 1, false, true, true),
-      INST(8, MAC,  F, HF,  F, 2, false, true, true),
+      INST(8, MAC,  F, HF,  F, 1, false, true, true, false),
+      INST(8, MAC,  F, HF,  F, 2, false, true, true, false),
 
       /* If there is no implicit/explicit acc, restriction doesn't apply */
-      INST(8, ADD, HF, HF,  F, 1, false, false, true),
-      INST(8, ADD, HF, HF,  F, 2, false, true,  true),
-      INST(8, ADD, HF,  F, HF, 1, false, false, true),
-      INST(8, ADD, HF,  F, HF, 2, false, true,  true),
-      INST(8, ADD,  F, HF,  F, 1, false, true,  true),
-      INST(8, ADD,  F, HF,  F, 2, false, true,  true),
+      INST(8, ADD, HF, HF,  F, 1, false, false, true, false),
+      INST(8, ADD, HF, HF,  F, 2, false, true,  true, false),
+      INST(8, ADD, HF,  F, HF, 1, false, false, true, false),
+      INST(8, ADD, HF,  F, HF, 2, false, true,  true, false),
+      INST(8, ADD,  F, HF,  F, 1, false, true,  true, false),
+      INST(8, ADD,  F, HF,  F, 2, false, true,  true, false),
 
 #undef INST
    };
 
-   if (devinfo.gen < 8)
+   if (devinfo.ver < 8)
       return;
 
    for (unsigned i = 0; i < ARRAY_SIZE(inst); i++) {
@@ -1686,7 +1686,9 @@ TEST_P(validation_test, mixed_float_fp16_dest_with_acc)
 
       brw_inst_set_dst_hstride(&devinfo, last_inst, inst[i].dst_stride);
 
-      if (devinfo.is_cherryview || devinfo.gen >= 9)
+      if (devinfo.verx10 >= 125)
+         EXPECT_EQ(inst[i].expected_result_gfx125, validate(p));
+      else if (devinfo.platform == INTEL_PLATFORM_CHV || devinfo.ver >= 9)
          EXPECT_EQ(inst[i].expected_result_chv_skl, validate(p));
       else
          EXPECT_EQ(inst[i].expected_result_bdw, validate(p));
@@ -1705,9 +1707,11 @@ TEST_P(validation_test, mixed_float_align1_math_strided_fp16_inputs)
       unsigned src0_stride;
       unsigned src1_stride;
       bool expected_result;
+      bool expected_result_gfx125;
    } inst[] = {
 #define INST(dst_type, src0_type, src1_type,                              \
-             dst_stride, src0_stride, src1_stride, expected_result)       \
+             dst_stride, src0_stride, src1_stride, expected_result,       \
+             expected_result_125)                                         \
       {                                                                   \
          BRW_REGISTER_TYPE_##dst_type,                                    \
          BRW_REGISTER_TYPE_##src0_type,                                   \
@@ -1716,29 +1720,30 @@ TEST_P(validation_test, mixed_float_align1_math_strided_fp16_inputs)
          BRW_HORIZONTAL_STRIDE_##src0_stride,                             \
          BRW_HORIZONTAL_STRIDE_##src1_stride,                             \
          expected_result,                                                 \
+         expected_result_125,                                             \
       }
 
-      INST(HF, HF,  F, 2, 2, 1, true),
-      INST(HF,  F, HF, 2, 1, 2, true),
-      INST(HF,  F, HF, 1, 1, 2, true),
-      INST(HF,  F, HF, 2, 1, 1, false),
-      INST(HF, HF,  F, 2, 1, 1, false),
-      INST(HF, HF,  F, 1, 1, 1, false),
-      INST(HF, HF,  F, 2, 1, 1, false),
-      INST( F, HF,  F, 1, 1, 1, false),
-      INST( F,  F, HF, 1, 1, 2, true),
-      INST( F, HF, HF, 1, 2, 1, false),
-      INST( F, HF, HF, 1, 2, 2, true),
+      INST(HF, HF,  F, 2, 2, 1, true,  false),
+      INST(HF,  F, HF, 2, 1, 2, true,  false),
+      INST(HF,  F, HF, 1, 1, 2, true,  false),
+      INST(HF,  F, HF, 2, 1, 1, false, false),
+      INST(HF, HF,  F, 2, 1, 1, false, false),
+      INST(HF, HF,  F, 1, 1, 1, false, false),
+      INST(HF, HF,  F, 2, 1, 1, false, false),
+      INST( F, HF,  F, 1, 1, 1, false, false),
+      INST( F,  F, HF, 1, 1, 2, true,  false),
+      INST( F, HF, HF, 1, 2, 1, false, false),
+      INST( F, HF, HF, 1, 2, 2, true,  false),
 
 #undef INST
    };
 
-   /* No half-float math in gen8 */
-   if (devinfo.gen < 9)
+   /* No half-float math in gfx8 */
+   if (devinfo.ver < 9)
       return;
 
    for (unsigned i = 0; i < ARRAY_SIZE(inst); i++) {
-      gen6_math(p, retype(g0, inst[i].dst_type),
+      gfx6_math(p, retype(g0, inst[i].dst_type),
                    BRW_MATH_FUNCTION_POW,
                    retype(g0, inst[i].src0_type),
                    retype(g0, inst[i].src1_type));
@@ -1753,7 +1758,10 @@ TEST_P(validation_test, mixed_float_align1_math_strided_fp16_inputs)
       brw_inst_set_src1_width(&devinfo, last_inst, BRW_WIDTH_4);
       brw_inst_set_src1_hstride(&devinfo, last_inst, inst[i].src1_stride);
 
-      EXPECT_EQ(inst[i].expected_result, validate(p));
+      if (devinfo.verx10 >= 125)
+         EXPECT_EQ(inst[i].expected_result_gfx125, validate(p));
+      else
+         EXPECT_EQ(inst[i].expected_result, validate(p));
 
       clear_instructions(p);
    }
@@ -1770,9 +1778,11 @@ TEST_P(validation_test, mixed_float_align1_packed_fp16_dst)
       unsigned dst_subnr;
       bool expected_result_bdw;
       bool expected_result_chv_skl;
+      bool expected_result_gfx125;
    } inst[] = {
 #define INST(exec_size, dst_type, src0_type, src1_type, dst_stride, dst_subnr, \
-             expected_result_bdw, expected_result_chv_skl)                     \
+             expected_result_bdw, expected_result_chv_skl,                     \
+             expected_result_gfx125)                                           \
       {                                                                        \
          BRW_EXECUTE_##exec_size,                                              \
          BRW_REGISTER_TYPE_##dst_type,                                         \
@@ -1781,35 +1791,36 @@ TEST_P(validation_test, mixed_float_align1_packed_fp16_dst)
          BRW_HORIZONTAL_STRIDE_##dst_stride,                                   \
          dst_subnr,                                                            \
          expected_result_bdw,                                                  \
-         expected_result_chv_skl                                               \
+         expected_result_chv_skl,                                              \
+         expected_result_gfx125                                                \
       }
 
       /* SIMD8 packed fp16 dst won't cross oword boundaries if region is
        * oword-aligned
        */
-      INST( 8, HF, HF,  F, 1,  0, false, true),
-      INST( 8, HF, HF,  F, 1,  2, false, false),
-      INST( 8, HF, HF,  F, 1,  4, false, false),
-      INST( 8, HF, HF,  F, 1,  8, false, false),
-      INST( 8, HF, HF,  F, 1, 16, false, true),
+      INST( 8, HF, HF,  F, 1,  0, false, true,  false),
+      INST( 8, HF, HF,  F, 1,  2, false, false, false),
+      INST( 8, HF, HF,  F, 1,  4, false, false, false),
+      INST( 8, HF, HF,  F, 1,  8, false, false, false),
+      INST( 8, HF, HF,  F, 1, 16, false, true,  false),
 
       /* SIMD16 packed fp16 always crosses oword boundaries */
-      INST(16, HF, HF,  F, 1,  0, false, false),
-      INST(16, HF, HF,  F, 1,  2, false, false),
-      INST(16, HF, HF,  F, 1,  4, false, false),
-      INST(16, HF, HF,  F, 1,  8, false, false),
-      INST(16, HF, HF,  F, 1, 16, false, false),
+      INST(16, HF, HF,  F, 1,  0, false, false, false),
+      INST(16, HF, HF,  F, 1,  2, false, false, false),
+      INST(16, HF, HF,  F, 1,  4, false, false, false),
+      INST(16, HF, HF,  F, 1,  8, false, false, false),
+      INST(16, HF, HF,  F, 1, 16, false, false, false),
 
       /* If destination is not packed (or not fp16) we can cross oword
        * boundaries
        */
-      INST( 8, HF, HF,  F, 2,  0, true, true),
-      INST( 8,  F, HF,  F, 1,  0, true, true),
+      INST( 8, HF, HF,  F, 2,  0, true, true, false),
+      INST( 8,  F, HF,  F, 1,  0, true, true, false),
 
 #undef INST
    };
 
-   if (devinfo.gen < 8)
+   if (devinfo.ver < 8)
       return;
 
    for (unsigned i = 0; i < ARRAY_SIZE(inst); i++) {
@@ -1830,7 +1841,9 @@ TEST_P(validation_test, mixed_float_align1_packed_fp16_dst)
 
       brw_inst_set_exec_size(&devinfo, last_inst, inst[i].exec_size);
 
-      if (devinfo.is_cherryview || devinfo.gen >= 9)
+      if (devinfo.verx10 >= 125)
+         EXPECT_EQ(inst[i].expected_result_gfx125, validate(p));
+      else if (devinfo.platform == INTEL_PLATFORM_CHV || devinfo.ver >= 9)
          EXPECT_EQ(inst[i].expected_result_chv_skl, validate(p));
       else
          EXPECT_EQ(inst[i].expected_result_bdw, validate(p));
@@ -1878,7 +1891,7 @@ TEST_P(validation_test, mixed_float_align16_packed_data)
 #undef INST
    };
 
-   if (devinfo.gen < 8 || devinfo.gen >= 11)
+   if (devinfo.ver < 8 || devinfo.ver >= 11)
       return;
 
    brw_set_default_access_mode(p, BRW_ALIGN_16);
@@ -1929,7 +1942,7 @@ TEST_P(validation_test, mixed_float_align16_no_simd16)
 #undef INST
    };
 
-   if (devinfo.gen < 8 || devinfo.gen >= 11)
+   if (devinfo.ver < 8 || devinfo.ver >= 11)
       return;
 
    brw_set_default_access_mode(p, BRW_ALIGN_16);
@@ -1980,7 +1993,7 @@ TEST_P(validation_test, mixed_float_align16_no_acc_read)
 #undef INST
    };
 
-   if (devinfo.gen < 8 || devinfo.gen >= 11)
+   if (devinfo.ver < 8 || devinfo.ver >= 11)
       return;
 
    brw_set_default_access_mode(p, BRW_ALIGN_16);
@@ -2034,14 +2047,14 @@ TEST_P(validation_test, mixed_float_align16_math_packed_format)
 #undef INST
    };
 
-   /* Align16 Math for mixed float mode is not supported in gen8 */
-   if (devinfo.gen < 9 || devinfo.gen >= 11)
+   /* Align16 Math for mixed float mode is not supported in gfx8 */
+   if (devinfo.ver < 9 || devinfo.ver >= 11)
       return;
 
    brw_set_default_access_mode(p, BRW_ALIGN_16);
 
    for (unsigned i = 0; i < ARRAY_SIZE(inst); i++) {
-      gen6_math(p, retype(g0, inst[i].dst_type),
+      gfx6_math(p, retype(g0, inst[i].dst_type),
                    BRW_MATH_FUNCTION_POW,
                    retype(g0, inst[i].src0_type),
                    retype(g0, inst[i].src1_type));
@@ -2078,8 +2091,8 @@ TEST_P(validation_test, vector_immediate_destination_alignment)
    };
 
    for (unsigned i = 0; i < ARRAY_SIZE(move); i++) {
-      /* UV type is Gen6+ */
-      if (devinfo.gen < 6 &&
+      /* UV type is Gfx6+ */
+      if (devinfo.ver < 6 &&
           move[i].src_type == BRW_REGISTER_TYPE_UV)
          continue;
 
@@ -2120,8 +2133,8 @@ TEST_P(validation_test, vector_immediate_destination_stride)
    };
 
    for (unsigned i = 0; i < ARRAY_SIZE(move); i++) {
-      /* UV type is Gen6+ */
-      if (devinfo.gen < 6 &&
+      /* UV type is Gfx6+ */
+      if (devinfo.ver < 6 &&
           move[i].src_type == BRW_REGISTER_TYPE_UV)
          continue;
 
@@ -2271,12 +2284,12 @@ TEST_P(validation_test, qword_low_power_align1_regioning_restrictions)
 #undef INST
    };
 
-   /* These restrictions only apply to Gen8+ */
-   if (devinfo.gen < 8)
+   /* These restrictions only apply to Gfx8+ */
+   if (devinfo.ver < 8)
       return;
 
-   /* NoDDChk/NoDDClr does not exist on Gen12+ */
-   if (devinfo.gen >= 12)
+   /* NoDDChk/NoDDClr does not exist on Gfx12+ */
+   if (devinfo.ver >= 12)
       return;
 
    for (unsigned i = 0; i < ARRAY_SIZE(inst); i++) {
@@ -2312,7 +2325,8 @@ TEST_P(validation_test, qword_low_power_align1_regioning_restrictions)
       brw_inst_set_src0_width(&devinfo, last_inst, inst[i].src_width);
       brw_inst_set_src0_hstride(&devinfo, last_inst, inst[i].src_hstride);
 
-      if (devinfo.is_cherryview || gen_device_info_is_9lp(&devinfo)) {
+      if (devinfo.platform == INTEL_PLATFORM_CHV ||
+          intel_device_info_is_9lp(&devinfo)) {
          EXPECT_EQ(inst[i].expected_result, validate(p));
       } else {
          EXPECT_TRUE(validate(p));
@@ -2407,8 +2421,8 @@ TEST_P(validation_test, qword_low_power_no_indirect_addressing)
 #undef INST
    };
 
-   /* These restrictions only apply to Gen8+ */
-   if (devinfo.gen < 8)
+   /* These restrictions only apply to Gfx8+ */
+   if (devinfo.ver < 8)
       return;
 
    for (unsigned i = 0; i < ARRAY_SIZE(inst); i++) {
@@ -2444,7 +2458,8 @@ TEST_P(validation_test, qword_low_power_no_indirect_addressing)
       brw_inst_set_src0_width(&devinfo, last_inst, inst[i].src_width);
       brw_inst_set_src0_hstride(&devinfo, last_inst, inst[i].src_hstride);
 
-      if (devinfo.is_cherryview || gen_device_info_is_9lp(&devinfo)) {
+      if (devinfo.platform == INTEL_PLATFORM_CHV ||
+          intel_device_info_is_9lp(&devinfo)) {
          EXPECT_EQ(inst[i].expected_result, validate(p));
       } else {
          EXPECT_TRUE(validate(p));
@@ -2555,8 +2570,8 @@ TEST_P(validation_test, qword_low_power_no_64bit_arf)
 #undef INST
    };
 
-   /* These restrictions only apply to Gen8+ */
-   if (devinfo.gen < 8)
+   /* These restrictions only apply to Gfx8+ */
+   if (devinfo.ver < 8)
       return;
 
    for (unsigned i = 0; i < ARRAY_SIZE(inst); i++) {
@@ -2580,7 +2595,7 @@ TEST_P(validation_test, qword_low_power_no_64bit_arf)
          brw_MUL(p, retype(inst[i].dst, inst[i].dst_type),
                     retype(inst[i].src, inst[i].src_type),
                     retype(zero, inst[i].src_type));
-         brw_inst_set_opcode(&devinfo, last_inst, inst[i].opcode);
+         brw_inst_set_opcode(&isa, last_inst, inst[i].opcode);
       }
       brw_inst_set_exec_size(&devinfo, last_inst, inst[i].exec_size);
       brw_inst_set_acc_wr_control(&devinfo, last_inst, inst[i].acc_wr);
@@ -2591,7 +2606,15 @@ TEST_P(validation_test, qword_low_power_no_64bit_arf)
       brw_inst_set_src0_width(&devinfo, last_inst, inst[i].src_width);
       brw_inst_set_src0_hstride(&devinfo, last_inst, inst[i].src_hstride);
 
-      if (devinfo.is_cherryview || gen_device_info_is_9lp(&devinfo)) {
+      /* Note: The Broadwell PRM also lists the restriction that destination
+       * of DWord multiplication cannot be the accumulator.
+       */
+      if (devinfo.platform == INTEL_PLATFORM_CHV ||
+          intel_device_info_is_9lp(&devinfo) ||
+          (devinfo.ver == 8 &&
+           inst[i].opcode == BRW_OPCODE_MUL &&
+           brw_inst_dst_reg_file(&devinfo, last_inst) == BRW_ARCHITECTURE_REGISTER_FILE &&
+           brw_inst_dst_da_reg_nr(&devinfo, last_inst) != BRW_ARF_NULL)) {
          EXPECT_EQ(inst[i].expected_result, validate(p));
       } else {
          EXPECT_TRUE(validate(p));
@@ -2607,7 +2630,8 @@ TEST_P(validation_test, qword_low_power_no_64bit_arf)
    brw_MAC(p, retype(g0, BRW_REGISTER_TYPE_DF),
               retype(stride(g0, 4, 4, 1), BRW_REGISTER_TYPE_DF),
               retype(stride(g0, 4, 4, 1), BRW_REGISTER_TYPE_DF));
-   if (devinfo.is_cherryview || gen_device_info_is_9lp(&devinfo)) {
+   if (devinfo.platform == INTEL_PLATFORM_CHV ||
+       intel_device_info_is_9lp(&devinfo)) {
       EXPECT_FALSE(validate(p));
    } else {
       EXPECT_TRUE(validate(p));
@@ -2660,12 +2684,12 @@ TEST_P(validation_test, align16_64_bit_integer)
 #undef INST
    };
 
-   /* 64-bit integer types exist on Gen8+ */
-   if (devinfo.gen < 8)
+   /* 64-bit integer types exist on Gfx8+ */
+   if (devinfo.ver < 8)
       return;
 
-   /* Align16 does not exist on Gen11+ */
-   if (devinfo.gen >= 11)
+   /* Align16 does not exist on Gfx11+ */
+   if (devinfo.ver >= 11)
       return;
 
    brw_set_default_access_mode(p, BRW_ALIGN_16);
@@ -2768,12 +2792,12 @@ TEST_P(validation_test, qword_low_power_no_depctrl)
 #undef INST
    };
 
-   /* These restrictions only apply to Gen8+ */
-   if (devinfo.gen < 8)
+   /* These restrictions only apply to Gfx8+ */
+   if (devinfo.ver < 8)
       return;
 
-   /* NoDDChk/NoDDClr does not exist on Gen12+ */
-   if (devinfo.gen >= 12)
+   /* NoDDChk/NoDDClr does not exist on Gfx12+ */
+   if (devinfo.ver >= 12)
       return;
 
    for (unsigned i = 0; i < ARRAY_SIZE(inst); i++) {
@@ -2809,7 +2833,8 @@ TEST_P(validation_test, qword_low_power_no_depctrl)
       brw_inst_set_no_dd_check(&devinfo, last_inst, inst[i].no_dd_check);
       brw_inst_set_no_dd_clear(&devinfo, last_inst, inst[i].no_dd_clear);
 
-      if (devinfo.is_cherryview || gen_device_info_is_9lp(&devinfo)) {
+      if (devinfo.platform == INTEL_PLATFORM_CHV ||
+          intel_device_info_is_9lp(&devinfo)) {
          EXPECT_EQ(inst[i].expected_result, validate(p));
       } else {
          EXPECT_TRUE(validate(p));
@@ -2819,7 +2844,7 @@ TEST_P(validation_test, qword_low_power_no_depctrl)
    }
 }
 
-TEST_P(validation_test, gen11_no_byte_src_1_2)
+TEST_P(validation_test, gfx11_no_byte_src_1_2)
 {
    static const struct {
       enum opcode opcode;
@@ -2833,14 +2858,14 @@ TEST_P(validation_test, gen11_no_byte_src_1_2)
          unsigned hstride;
       } srcs[3];
 
-      int  gen;
+      int  gfx_ver;
       bool expected_result;
    } inst[] = {
 #define INST(opcode, access_mode, dst_type,                             \
              src0_type, src0_vstride, src0_width, src0_hstride,         \
              src1_type, src1_vstride, src1_width, src1_hstride,         \
              src2_type,                                                 \
-             gen, expected_result)                                      \
+             gfx_ver, expected_result)                                  \
       {                                                                 \
          BRW_OPCODE_##opcode,                                           \
          BRW_ALIGN_##access_mode,                                       \
@@ -2862,7 +2887,7 @@ TEST_P(validation_test, gen11_no_byte_src_1_2)
                BRW_REGISTER_TYPE_##src2_type,                           \
             },                                                          \
          },                                                             \
-         gen,                                                           \
+         gfx_ver,                                                       \
          expected_result,                                               \
       }
 
@@ -2886,8 +2911,8 @@ TEST_P(validation_test, gen11_no_byte_src_1_2)
 
 
    for (unsigned i = 0; i < ARRAY_SIZE(inst); i++) {
-      /* Skip instruction not meant for this gen. */
-      if (devinfo.gen != inst[i].gen)
+      /* Skip instruction not meant for this gfx_ver. */
+      if (devinfo.ver != inst[i].gfx_ver)
          continue;
 
       brw_push_insn_state(p);
@@ -2935,6 +2960,506 @@ TEST_P(validation_test, gen11_no_byte_src_1_2)
       brw_pop_insn_state(p);
 
       EXPECT_EQ(inst[i].expected_result, validate(p));
+
+      clear_instructions(p);
+   }
+}
+
+TEST_P(validation_test, add3_source_types)
+{
+   static const struct {
+      enum brw_reg_type dst_type;
+      enum brw_reg_type src0_type;
+      enum brw_reg_type src1_type;
+      enum brw_reg_type src2_type;
+      bool expected_result;
+   } inst[] = {
+#define INST(dst_type, src0_type, src1_type, src2_type, expected_result)  \
+      {                                                                   \
+         BRW_REGISTER_TYPE_##dst_type,                                    \
+         BRW_REGISTER_TYPE_##src0_type,                                   \
+         BRW_REGISTER_TYPE_##src1_type,                                   \
+         BRW_REGISTER_TYPE_##src2_type,                                   \
+         expected_result,                                                 \
+      }
+
+      INST( F,  F,  F,  F, false),
+      INST(HF, HF, HF, HF, false),
+      INST( B,  B,  B,  B, false),
+      INST(UB, UB, UB, UB, false),
+
+      INST( W,  W,  W,  W, true),
+      INST(UW, UW, UW, UW, true),
+      INST( D,  D,  D,  D, true),
+      INST(UD, UD, UD, UD, true),
+
+      INST( W,  D,  W,  W, true),
+      INST(UW, UW, UD, UW, true),
+      INST( D,  D,  W,  D, true),
+      INST(UD, UD, UD, UW, true),
+#undef INST
+   };
+
+
+   if (devinfo.verx10 < 125)
+      return;
+
+   for (unsigned i = 0; i < ARRAY_SIZE(inst); i++) {
+      brw_ADD3(p,
+               retype(g0, inst[i].dst_type),
+               retype(g0, inst[i].src0_type),
+               retype(g0, inst[i].src1_type),
+               retype(g0, inst[i].src2_type));
+
+      EXPECT_EQ(inst[i].expected_result, validate(p));
+
+      clear_instructions(p);
+   }
+}
+
+TEST_P(validation_test, add3_immediate_types)
+{
+   static const struct {
+      enum brw_reg_type reg_type;
+      enum brw_reg_type imm_type;
+      unsigned imm_src;
+      bool expected_result;
+   } inst[] = {
+#define INST(reg_type, imm_type, imm_src, expected_result)                \
+      {                                                                   \
+         BRW_REGISTER_TYPE_##reg_type,                                    \
+         BRW_REGISTER_TYPE_##imm_type,                                    \
+         imm_src,                                                         \
+         expected_result,                                                 \
+      }
+
+      INST( W,  W,  0, true),
+      INST( W,  W,  2, true),
+      INST(UW, UW,  0, true),
+      INST(UW, UW,  2, true),
+      INST( D,  W,  0, true),
+      INST(UD,  W,  2, true),
+      INST( D, UW,  0, true),
+      INST(UW, UW,  2, true),
+
+      INST( W,  D,  0, false),
+      INST( W,  D,  2, false),
+      INST(UW, UD,  0, false),
+      INST(UW, UD,  2, false),
+      INST( D,  D,  0, false),
+      INST(UD,  D,  2, false),
+      INST( D, UD,  0, false),
+      INST(UW, UD,  2, false),
+#undef INST
+   };
+
+
+   if (devinfo.verx10 < 125)
+      return;
+
+   for (unsigned i = 0; i < ARRAY_SIZE(inst); i++) {
+      brw_ADD3(p,
+               retype(g0, inst[i].reg_type),
+               inst[i].imm_src == 0 ? retype(brw_imm_d(0x1234), inst[i].imm_type)
+                                    : retype(g0, inst[i].reg_type),
+               retype(g0, inst[i].reg_type),
+               inst[i].imm_src == 2 ? retype(brw_imm_d(0x2143), inst[i].imm_type)
+                                    : retype(g0, inst[i].reg_type));
+
+      EXPECT_EQ(inst[i].expected_result, validate(p));
+
+      clear_instructions(p);
+   }
+}
+
+TEST_P(validation_test, dpas_sdepth)
+{
+   if (devinfo.verx10 < 125)
+      return;
+
+   static const enum gfx12_systolic_depth depth[] = {
+      BRW_SYSTOLIC_DEPTH_16,
+      BRW_SYSTOLIC_DEPTH_2,
+      BRW_SYSTOLIC_DEPTH_4,
+      BRW_SYSTOLIC_DEPTH_8,
+   };
+
+   for (unsigned i = 0; i < ARRAY_SIZE(depth); i++) {
+      brw_DPAS(p,
+               depth[i],
+               8,
+               retype(brw_vec8_grf(0, 0), BRW_REGISTER_TYPE_F),
+               null,
+               retype(brw_vec8_grf(16, 0), BRW_REGISTER_TYPE_HF),
+               retype(brw_vec8_grf(32, 0), BRW_REGISTER_TYPE_HF));
+
+      const bool expected_result = depth[i] == BRW_SYSTOLIC_DEPTH_8;
+
+      EXPECT_EQ(expected_result, validate(p)) <<
+         "Encoded systolic depth value is: " << depth[i];
+
+      clear_instructions(p);
+   }
+}
+
+TEST_P(validation_test, dpas_exec_size)
+{
+   if (devinfo.verx10 < 125)
+      return;
+
+   static const enum brw_execution_size test_vectors[] = {
+      BRW_EXECUTE_1,
+      BRW_EXECUTE_2,
+      BRW_EXECUTE_4,
+      BRW_EXECUTE_8,
+      BRW_EXECUTE_16,
+      BRW_EXECUTE_32,
+   };
+
+   for (unsigned i = 0; i < ARRAY_SIZE(test_vectors); i++) {
+      brw_set_default_exec_size(p, test_vectors[i]);
+
+      brw_DPAS(p,
+               BRW_SYSTOLIC_DEPTH_8,
+               8,
+               retype(brw_vec8_grf(0, 0), BRW_REGISTER_TYPE_F),
+               null,
+               retype(brw_vec8_grf(16, 0), BRW_REGISTER_TYPE_HF),
+               retype(brw_vec8_grf(32, 0), BRW_REGISTER_TYPE_HF));
+
+      const bool expected_result = test_vectors[i] == BRW_EXECUTE_8;
+
+      EXPECT_EQ(expected_result, validate(p)) <<
+         "Exec size = " << (1u << test_vectors[i]);
+
+      clear_instructions(p);
+   }
+
+   brw_set_default_exec_size(p, BRW_EXECUTE_8);
+}
+
+TEST_P(validation_test, dpas_sub_byte_precision)
+{
+   if (devinfo.verx10 < 125)
+      return;
+
+   static const struct {
+      brw_reg_type dst_type;
+      brw_reg_type src0_type;
+      brw_reg_type src1_type;
+      enum gfx12_sub_byte_precision src1_prec;
+      brw_reg_type src2_type;
+      enum gfx12_sub_byte_precision src2_prec;
+      bool expected_result;
+   } test_vectors[] = {
+      {
+         BRW_REGISTER_TYPE_F,
+         BRW_REGISTER_TYPE_F,
+         BRW_REGISTER_TYPE_HF, BRW_SUB_BYTE_PRECISION_NONE,
+         BRW_REGISTER_TYPE_HF, BRW_SUB_BYTE_PRECISION_NONE,
+         true,
+      },
+      {
+         BRW_REGISTER_TYPE_F,
+         BRW_REGISTER_TYPE_F,
+         BRW_REGISTER_TYPE_HF, BRW_SUB_BYTE_PRECISION_NONE,
+         BRW_REGISTER_TYPE_HF, BRW_SUB_BYTE_PRECISION_4BIT,
+         false,
+      },
+      {
+         BRW_REGISTER_TYPE_F,
+         BRW_REGISTER_TYPE_F,
+         BRW_REGISTER_TYPE_HF, BRW_SUB_BYTE_PRECISION_NONE,
+         BRW_REGISTER_TYPE_HF, BRW_SUB_BYTE_PRECISION_2BIT,
+         false,
+      },
+      {
+         BRW_REGISTER_TYPE_F,
+         BRW_REGISTER_TYPE_F,
+         BRW_REGISTER_TYPE_HF, BRW_SUB_BYTE_PRECISION_4BIT,
+         BRW_REGISTER_TYPE_HF, BRW_SUB_BYTE_PRECISION_NONE,
+         false,
+      },
+      {
+         BRW_REGISTER_TYPE_F,
+         BRW_REGISTER_TYPE_F,
+         BRW_REGISTER_TYPE_HF, BRW_SUB_BYTE_PRECISION_2BIT,
+         BRW_REGISTER_TYPE_HF, BRW_SUB_BYTE_PRECISION_NONE,
+         false,
+      },
+
+      {
+         BRW_REGISTER_TYPE_UD,
+         BRW_REGISTER_TYPE_UD,
+         BRW_REGISTER_TYPE_UB, BRW_SUB_BYTE_PRECISION_NONE,
+         BRW_REGISTER_TYPE_UB, BRW_SUB_BYTE_PRECISION_NONE,
+         true,
+      },
+      {
+         BRW_REGISTER_TYPE_UD,
+         BRW_REGISTER_TYPE_UD,
+         BRW_REGISTER_TYPE_UB, BRW_SUB_BYTE_PRECISION_NONE,
+         BRW_REGISTER_TYPE_UB, BRW_SUB_BYTE_PRECISION_4BIT,
+         true,
+      },
+      {
+         BRW_REGISTER_TYPE_UD,
+         BRW_REGISTER_TYPE_UD,
+         BRW_REGISTER_TYPE_UB, BRW_SUB_BYTE_PRECISION_NONE,
+         BRW_REGISTER_TYPE_UB, BRW_SUB_BYTE_PRECISION_2BIT,
+         true,
+      },
+      {
+         BRW_REGISTER_TYPE_UD,
+         BRW_REGISTER_TYPE_UD,
+         BRW_REGISTER_TYPE_UB, BRW_SUB_BYTE_PRECISION_NONE,
+         BRW_REGISTER_TYPE_UB, (enum gfx12_sub_byte_precision) 3,
+         false,
+      },
+      {
+         BRW_REGISTER_TYPE_UD,
+         BRW_REGISTER_TYPE_UD,
+         BRW_REGISTER_TYPE_UB, BRW_SUB_BYTE_PRECISION_4BIT,
+         BRW_REGISTER_TYPE_UB, BRW_SUB_BYTE_PRECISION_NONE,
+         true,
+      },
+      {
+         BRW_REGISTER_TYPE_UD,
+         BRW_REGISTER_TYPE_UD,
+         BRW_REGISTER_TYPE_UB, BRW_SUB_BYTE_PRECISION_2BIT,
+         BRW_REGISTER_TYPE_UB, BRW_SUB_BYTE_PRECISION_NONE,
+         true,
+      },
+      {
+         BRW_REGISTER_TYPE_UD,
+         BRW_REGISTER_TYPE_UD,
+         BRW_REGISTER_TYPE_UB, (enum gfx12_sub_byte_precision) 3,
+         BRW_REGISTER_TYPE_UB, BRW_SUB_BYTE_PRECISION_NONE,
+         false,
+      },
+   };
+
+   for (unsigned i = 0; i < ARRAY_SIZE(test_vectors); i++) {
+      brw_inst *inst =
+         brw_DPAS(p,
+                  BRW_SYSTOLIC_DEPTH_8,
+                  8,
+                  retype(brw_vec8_grf(0, 0), test_vectors[i].dst_type),
+                  retype(brw_vec8_grf(16, 0), test_vectors[i].src0_type),
+                  retype(brw_vec8_grf(32, 0), test_vectors[i].src1_type),
+                  retype(brw_vec8_grf(48, 0), test_vectors[i].src2_type));
+
+      brw_inst_set_dpas_3src_src1_subbyte(&devinfo, inst,
+                                          test_vectors[i].src1_prec);
+      brw_inst_set_dpas_3src_src2_subbyte(&devinfo, inst,
+                                          test_vectors[i].src2_prec);
+
+      EXPECT_EQ(test_vectors[i].expected_result, validate(p)) <<
+         "test vector index = " << i;
+
+      clear_instructions(p);
+   }
+}
+
+TEST_P(validation_test, dpas_types)
+{
+   if (devinfo.verx10 < 125)
+      return;
+
+#define TV(a, b, c, d, r)                              \
+   { BRW_REGISTER_TYPE_ ## a, BRW_REGISTER_TYPE_ ## b, \
+     BRW_REGISTER_TYPE_ ## c, BRW_REGISTER_TYPE_ ## d, \
+     r }
+
+   static const struct {
+      brw_reg_type dst_type;
+      brw_reg_type src0_type;
+      brw_reg_type src1_type;
+      brw_reg_type src2_type;
+      bool expected_result;
+   } test_vectors[] = {
+      TV( F,  F, HF, HF, true),
+      TV( F, HF, HF, HF, false),
+      TV(HF,  F, HF, HF, false),
+      TV( F,  F,  F, HF, false),
+      TV( F,  F, HF,  F, false),
+
+      TV(DF, DF, DF, DF, false),
+      TV(DF, DF, DF,  F, false),
+      TV(DF, DF,  F, DF, false),
+      TV(DF,  F, DF, DF, false),
+      TV(DF, DF, DF, HF, false),
+      TV(DF, DF, HF, DF, false),
+      TV(DF, HF, DF, DF, false),
+
+      TV(UD, UD, UB, UB, true),
+      TV(UD, UD, UB, UD, false),
+      TV(UD, UD, UD, UB, false),
+      TV(UD, UD, UB, UW, false),
+      TV(UD, UD, UW, UB, false),
+
+      TV(UD, UB, UB, UB, false),
+      TV(UD, UW, UB, UB, false),
+
+      TV(UQ, UQ, UB, UB, false),
+      TV(UQ, UQ, UB, UQ, false),
+      TV(UQ, UQ, UQ, UB, false),
+      TV(UQ, UQ, UB, UW, false),
+      TV(UQ, UQ, UW, UB, false),
+
+      TV( D,  D,  B,  B, true),
+      TV( D,  D,  B, UB, true),
+      TV( D,  D, UB,  B, true),
+      TV( D, UD,  B,  B, true),
+
+      TV( D,  D,  B,  D, false),
+      TV( D,  D,  D,  B, false),
+      TV( D,  D,  B,  W, false),
+      TV( D,  D,  W,  B, false),
+
+      TV( D,  B,  B,  B, false),
+      TV( D,  W,  B,  B, false),
+
+      TV( Q,  Q,  B,  B, false),
+      TV( Q,  Q,  B,  Q, false),
+      TV( Q,  Q,  Q,  B, false),
+      TV( Q,  Q,  B,  W, false),
+      TV( Q,  Q,  W,  B, false),
+
+      TV(UD, UD, UB,  B, false),
+      TV(UD, UD,  B, UB, false),
+      TV(UD,  D, UB, UB, false),
+   };
+
+#undef TV
+
+   for (unsigned i = 0; i < ARRAY_SIZE(test_vectors); i++) {
+      brw_DPAS(p,
+               BRW_SYSTOLIC_DEPTH_8,
+               8,
+               retype(brw_vec8_grf(0, 0), test_vectors[i].dst_type),
+               retype(brw_vec8_grf(16, 0), test_vectors[i].src0_type),
+               retype(brw_vec8_grf(32, 0), test_vectors[i].src1_type),
+               retype(brw_vec8_grf(48, 0), test_vectors[i].src2_type));
+
+      EXPECT_EQ(test_vectors[i].expected_result, validate(p)) <<
+         "test vector index = " << i;
+
+      clear_instructions(p);
+   }
+}
+
+TEST_P(validation_test, dpas_src_subreg_nr)
+{
+   if (devinfo.verx10 < 125)
+      return;
+
+#define TV(dt, od, t0, o0, t1, o1, o2, r) {  \
+      BRW_REGISTER_TYPE_ ## dt, od,          \
+      BRW_REGISTER_TYPE_ ## t0, o0,          \
+      BRW_REGISTER_TYPE_ ## t1, o1, o2,      \
+      r }
+
+   static const struct {
+      brw_reg_type dst_type;
+      unsigned dst_subnr;
+      brw_reg_type src0_type;
+      unsigned src0_subnr;
+      brw_reg_type src1_src2_type;
+      unsigned src1_subnr;
+      unsigned src2_subnr;
+      bool expected_result;
+   } test_vectors[] = {
+      TV( F,  0,  F,  0, HF,  0,  0, true),
+      TV( D,  0,  D,  0,  B,  0,  0, true),
+      TV( D,  0,  D,  0, UB,  0,  0, true),
+      TV( D,  0, UD,  0,  B,  0,  0, true),
+
+      TV( F,  1,  F,  0, HF,  0,  0, false),
+      TV( F,  2,  F,  0, HF,  0,  0, false),
+      TV( F,  3,  F,  0, HF,  0,  0, false),
+      TV( F,  4,  F,  0, HF,  0,  0, false),
+      TV( F,  5,  F,  0, HF,  0,  0, false),
+      TV( F,  6,  F,  0, HF,  0,  0, false),
+      TV( F,  7,  F,  0, HF,  0,  0, false),
+
+      TV( F,  0,  F,  1, HF,  0,  0, false),
+      TV( F,  0,  F,  2, HF,  0,  0, false),
+      TV( F,  0,  F,  3, HF,  0,  0, false),
+      TV( F,  0,  F,  4, HF,  0,  0, false),
+      TV( F,  0,  F,  5, HF,  0,  0, false),
+      TV( F,  0,  F,  6, HF,  0,  0, false),
+      TV( F,  0,  F,  7, HF,  0,  0, false),
+
+      TV( F,  0,  F,  0, HF,  1,  0, false),
+      TV( F,  0,  F,  0, HF,  2,  0, false),
+      TV( F,  0,  F,  0, HF,  3,  0, false),
+      TV( F,  0,  F,  0, HF,  4,  0, false),
+      TV( F,  0,  F,  0, HF,  5,  0, false),
+      TV( F,  0,  F,  0, HF,  6,  0, false),
+      TV( F,  0,  F,  0, HF,  7,  0, false),
+      TV( F,  0,  F,  0, HF,  8,  0, false),
+      TV( F,  0,  F,  0, HF,  9,  0, false),
+      TV( F,  0,  F,  0, HF, 10,  0, false),
+      TV( F,  0,  F,  0, HF, 11,  0, false),
+      TV( F,  0,  F,  0, HF, 12,  0, false),
+      TV( F,  0,  F,  0, HF, 13,  0, false),
+      TV( F,  0,  F,  0, HF, 14,  0, false),
+      TV( F,  0,  F,  0, HF, 15,  0, false),
+
+      TV( F,  0,  F,  0, HF,  0,  1, false),
+      TV( F,  0,  F,  0, HF,  0,  2, false),
+      TV( F,  0,  F,  0, HF,  0,  3, false),
+      TV( F,  0,  F,  0, HF,  0,  4, false),
+      TV( F,  0,  F,  0, HF,  0,  5, false),
+      TV( F,  0,  F,  0, HF,  0,  6, false),
+      TV( F,  0,  F,  0, HF,  0,  7, false),
+      TV( F,  0,  F,  0, HF,  0,  8, false),
+      TV( F,  0,  F,  0, HF,  0,  9, false),
+      TV( F,  0,  F,  0, HF,  0, 10, false),
+      TV( F,  0,  F,  0, HF,  0, 11, false),
+      TV( F,  0,  F,  0, HF,  0, 12, false),
+      TV( F,  0,  F,  0, HF,  0, 13, false),
+      TV( F,  0,  F,  0, HF,  0, 14, false),
+      TV( F,  0,  F,  0, HF,  0, 15, false),
+
+      /* These meet the requirements, but they specify a subnr that is part of
+       * the next register. It is currently not possible to specify a subnr of
+       * 32 for the B and UB values because brw_reg::subnr is only 5 bits.
+       */
+      TV( F, 16,  F,  0, HF,  0,  0, false),
+      TV( F,  0,  F, 16, HF,  0,  0, false),
+      TV( F,  0,  F,  0, HF,  0, 16, false),
+
+      TV( D, 16,  D,  0,  B,  0,  0, false),
+      TV( D,  0,  D, 16,  B,  0,  0, false),
+   };
+
+#undef TV
+
+   for (unsigned i = 0; i < ARRAY_SIZE(test_vectors); i++) {
+      struct brw_reg dst =
+         retype(brw_vec8_grf( 0, 0), test_vectors[i].dst_type);
+      struct brw_reg src0 =
+         retype(brw_vec8_grf(16, 0), test_vectors[i].src0_type);
+      struct brw_reg src1 =
+         retype(brw_vec8_grf(32, 0), test_vectors[i].src1_src2_type);
+      struct brw_reg src2 =
+         retype(brw_vec8_grf(48, 0), test_vectors[i].src1_src2_type);
+
+      /* subnr for DPAS is in units of datatype precision instead of bytes as
+       * it is for every other instruction. Set the value by hand instead of
+       * using byte_offset() or similar.
+       */
+      dst.subnr = test_vectors[i].dst_subnr;
+      src0.subnr = test_vectors[i].src0_subnr;
+      src1.subnr = test_vectors[i].src1_subnr;
+      src2.subnr = test_vectors[i].src2_subnr;
+
+      brw_DPAS(p, BRW_SYSTOLIC_DEPTH_8, 8, dst, src0, src1, src2);
+
+      EXPECT_EQ(test_vectors[i].expected_result, validate(p)) <<
+         "test vector index = " << i;
 
       clear_instructions(p);
    }

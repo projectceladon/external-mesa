@@ -77,7 +77,7 @@ public:
    {
       foreach_in_list_safe(assignment_entry, entry, this->assignments) {
 	 if (entry->lhs == var) {
-	    if (var->type->is_scalar() || var->type->is_vector()) {
+	    if (glsl_type_is_scalar(var->type) || glsl_type_is_vector(var->type)) {
 	       if (debug)
 		  printf("used %s (0x%01x - 0x%01x)\n", entry->lhs->name,
 			 entry->unused, used & 0xf);
@@ -169,28 +169,23 @@ public:
  * of a variable to a variable.
  */
 static bool
-process_assignment(void *lin_ctx, ir_assignment *ir, exec_list *assignments)
+process_assignment(linear_ctx *lin_ctx, ir_assignment *ir, exec_list *assignments)
 {
    ir_variable *var = NULL;
    bool progress = false;
    kill_for_derefs_visitor v(assignments);
 
-   if (ir->condition == NULL) {
-      /* If this is an assignment of the form "foo = foo;", remove the whole
-       * instruction and be done with it.
-       */
-      const ir_variable *const lhs_var = ir->whole_variable_written();
-      if (lhs_var != NULL && lhs_var == ir->rhs->whole_variable_referenced()) {
-         ir->remove();
-         return true;
-      }
+   /* If this is an assignment of the form "foo = foo;", remove the whole
+    * instruction and be done with it.
+    */
+   const ir_variable *const lhs_var = ir->whole_variable_written();
+   if (lhs_var != NULL && lhs_var == ir->rhs->whole_variable_referenced()) {
+      ir->remove();
+      return true;
    }
 
    /* Kill assignment entries for things used to produce this assignment. */
    ir->rhs->accept(&v);
-   if (ir->condition) {
-      ir->condition->accept(&v);
-   }
 
    /* Kill assignment enties used as array indices.
     */
@@ -199,93 +194,91 @@ process_assignment(void *lin_ctx, ir_assignment *ir, exec_list *assignments)
    assert(var);
 
    /* Now, check if we did a whole-variable assignment. */
-   if (!ir->condition) {
-      ir_dereference_variable *deref_var = ir->lhs->as_dereference_variable();
+   ir_dereference_variable *deref_var = ir->lhs->as_dereference_variable();
 
-      /* If it's a vector type, we can do per-channel elimination of
-       * use of the RHS.
+   /* If it's a vector type, we can do per-channel elimination of
+    * use of the RHS.
+    */
+   if (deref_var && (glsl_type_is_scalar(deref_var->var->type) ||
+                     glsl_type_is_vector(deref_var->var->type))) {
+
+      if (debug)
+         printf("looking for %s.0x%01x to remove\n", var->name,
+                ir->write_mask);
+
+      foreach_in_list_safe(assignment_entry, entry, assignments) {
+         if (entry->lhs != var)
+            continue;
+
+         /* Skip if the assignment we're trying to eliminate isn't a plain
+          * variable deref. */
+         if (entry->ir->lhs->ir_type != ir_type_dereference_variable)
+            continue;
+
+         int remove = entry->unused & ir->write_mask;
+         if (debug) {
+            printf("%s 0x%01x - 0x%01x = 0x%01x\n",
+                   var->name,
+                   entry->ir->write_mask,
+                   remove, entry->ir->write_mask & ~remove);
+         }
+         if (remove) {
+            progress = true;
+
+            if (debug) {
+               printf("rewriting:\n  ");
+               entry->ir->print();
+               printf("\n");
+            }
+
+            entry->ir->write_mask &= ~remove;
+            entry->unused &= ~remove;
+            if (entry->ir->write_mask == 0) {
+               /* Delete the dead assignment. */
+               entry->ir->remove();
+               entry->remove();
+            } else {
+               void *mem_ctx = ralloc_parent(entry->ir);
+               /* Reswizzle the RHS arguments according to the new
+                * write_mask.
+                */
+               unsigned components[4];
+               unsigned channels = 0;
+               unsigned next = 0;
+
+               for (int i = 0; i < 4; i++) {
+                  if ((entry->ir->write_mask | remove) & (1 << i)) {
+                     if (!(remove & (1 << i)))
+                        components[channels++] = next;
+                     next++;
+                  }
+               }
+
+               entry->ir->rhs = new(mem_ctx) ir_swizzle(entry->ir->rhs,
+                                                        components,
+                                                        channels);
+               if (debug) {
+                  printf("to:\n  ");
+                  entry->ir->print();
+                  printf("\n");
+               }
+            }
+         }
+      }
+   } else if (ir->whole_variable_written() != NULL) {
+      /* We did a whole-variable assignment.  So, any instruction in
+       * the assignment list with the same LHS is dead.
        */
-      if (deref_var && (deref_var->var->type->is_scalar() ||
-			deref_var->var->type->is_vector())) {
-
-	 if (debug)
-	    printf("looking for %s.0x%01x to remove\n", var->name,
-		   ir->write_mask);
-
-	 foreach_in_list_safe(assignment_entry, entry, assignments) {
-	    if (entry->lhs != var)
-	       continue;
-
-            /* Skip if the assignment we're trying to eliminate isn't a plain
-             * variable deref. */
-            if (entry->ir->lhs->ir_type != ir_type_dereference_variable)
-               continue;
-
-	    int remove = entry->unused & ir->write_mask;
-	    if (debug) {
-	       printf("%s 0x%01x - 0x%01x = 0x%01x\n",
-		      var->name,
-		      entry->ir->write_mask,
-		      remove, entry->ir->write_mask & ~remove);
-	    }
-	    if (remove) {
-	       progress = true;
-
-	       if (debug) {
-		  printf("rewriting:\n  ");
-		  entry->ir->print();
-		  printf("\n");
-	       }
-
-	       entry->ir->write_mask &= ~remove;
-	       entry->unused &= ~remove;
-	       if (entry->ir->write_mask == 0) {
-		  /* Delete the dead assignment. */
-		  entry->ir->remove();
-		  entry->remove();
-	       } else {
-		  void *mem_ctx = ralloc_parent(entry->ir);
-		  /* Reswizzle the RHS arguments according to the new
-		   * write_mask.
-		   */
-		  unsigned components[4];
-		  unsigned channels = 0;
-		  unsigned next = 0;
-
-		  for (int i = 0; i < 4; i++) {
-		     if ((entry->ir->write_mask | remove) & (1 << i)) {
-			if (!(remove & (1 << i)))
-			   components[channels++] = next;
-			next++;
-		     }
-		  }
-
-		  entry->ir->rhs = new(mem_ctx) ir_swizzle(entry->ir->rhs,
-							   components,
-							   channels);
-		  if (debug) {
-		     printf("to:\n  ");
-		     entry->ir->print();
-		     printf("\n");
-		  }
-	       }
-	    }
-	 }
-      } else if (ir->whole_variable_written() != NULL) {
-	 /* We did a whole-variable assignment.  So, any instruction in
-	  * the assignment list with the same LHS is dead.
-	  */
-	 if (debug)
-	    printf("looking for %s to remove\n", var->name);
-	 foreach_in_list_safe(assignment_entry, entry, assignments) {
-	    if (entry->lhs == var) {
-	       if (debug)
-		  printf("removing %s\n", var->name);
-	       entry->ir->remove();
-	       entry->remove();
-	       progress = true;
-	    }
-	 }
+      if (debug)
+         printf("looking for %s to remove\n", var->name);
+      foreach_in_list_safe(assignment_entry, entry, assignments) {
+         if (entry->lhs == var) {
+            if (debug)
+               printf("removing %s\n", var->name);
+            entry->ir->remove();
+            entry->remove();
+            progress = true;
+         }
       }
    }
 
@@ -317,7 +310,7 @@ dead_code_local_basic_block(ir_instruction *first,
    bool progress = false;
 
    void *ctx = ralloc_context(NULL);
-   void *lin_ctx = linear_alloc_parent(ctx, 0);
+   linear_ctx *lin_ctx = linear_context(ctx);
 
    /* Safe looping, since process_assignment */
    for (ir = first, ir_next = (ir_instruction *)first->next;;

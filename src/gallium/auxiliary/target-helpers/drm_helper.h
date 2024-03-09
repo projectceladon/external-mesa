@@ -60,6 +60,16 @@ const struct drm_driver_descriptor descriptor_name = {         \
 
 #endif
 
+#ifdef GALLIUM_KMSRO_ONLY
+#undef GALLIUM_V3D
+#undef GALLIUM_VC4
+#undef GALLIUM_FREEDRENO
+#undef GALLIUM_ETNAVIV
+#undef GALLIUM_PANFROST
+#undef GALLIUM_LIMA
+#undef GALLIUM_ASAHI
+#endif
+
 #ifdef GALLIUM_I915
 #include "i915/drm/i915_drm_public.h"
 #include "i915/i915_public.h"
@@ -103,6 +113,26 @@ DRM_DRIVER_DESCRIPTOR(iris, iris_driconf, ARRAY_SIZE(iris_driconf))
 DRM_DRIVER_DESCRIPTOR_STUB(iris)
 #endif
 
+#ifdef GALLIUM_CROCUS
+#include "crocus/drm/crocus_drm_public.h"
+
+static struct pipe_screen *
+pipe_crocus_create_screen(int fd, const struct pipe_screen_config *config)
+{
+   struct pipe_screen *screen;
+
+   screen = crocus_drm_screen_create(fd, config);
+   return screen ? debug_screen_wrap(screen) : NULL;
+}
+
+const driOptionDescription crocus_driconf[] = {
+      #include "crocus/driinfo_crocus.h"
+};
+DRM_DRIVER_DESCRIPTOR(crocus, crocus_driconf, ARRAY_SIZE(crocus_driconf))
+#else
+DRM_DRIVER_DESCRIPTOR_STUB(crocus)
+#endif
+
 #ifdef GALLIUM_NOUVEAU
 #include "nouveau/drm/nouveau_drm_public.h"
 
@@ -126,30 +156,8 @@ const driOptionDescription v3d_driconf[] = {
 };
 #endif
 
-#ifdef GALLIUM_KMSRO
-#include "kmsro/drm/kmsro_drm_public.h"
-
-static struct pipe_screen *
-pipe_kmsro_create_screen(int fd, const struct pipe_screen_config *config)
-{
-   struct pipe_screen *screen;
-
-   screen = kmsro_drm_screen_create(fd, config);
-   return screen ? debug_screen_wrap(screen) : NULL;
-}
-#if defined(GALLIUM_VC4) || defined(GALLIUM_V3D)
-DRM_DRIVER_DESCRIPTOR(kmsro, v3d_driconf, ARRAY_SIZE(v3d_driconf))
-#else
-DRM_DRIVER_DESCRIPTOR(kmsro, NULL, 0)
-#endif
-
-#else
-DRM_DRIVER_DESCRIPTOR_STUB(kmsro)
-#endif
-
 #ifdef GALLIUM_R300
-#include "radeon/radeon_winsys.h"
-#include "radeon/drm/radeon_drm_public.h"
+#include "winsys/radeon_winsys.h"
 #include "r300/r300_public.h"
 
 static struct pipe_screen *
@@ -167,8 +175,7 @@ DRM_DRIVER_DESCRIPTOR_STUB(r300)
 #endif
 
 #ifdef GALLIUM_R600
-#include "radeon/radeon_winsys.h"
-#include "radeon/drm/radeon_drm_public.h"
+#include "winsys/radeon_winsys.h"
 #include "r600/r600_public.h"
 
 static struct pipe_screen *
@@ -236,25 +243,40 @@ pipe_msm_create_screen(int fd, const struct pipe_screen_config *config)
 {
    struct pipe_screen *screen;
 
-   screen = fd_drm_screen_create(fd, NULL);
+   screen = fd_drm_screen_create_renderonly(fd, NULL, config);
    return screen ? debug_screen_wrap(screen) : NULL;
 }
-DRM_DRIVER_DESCRIPTOR(msm, NULL, 0)
+
+const driOptionDescription msm_driconf[] = {
+#ifdef GALLIUM_FREEDRENO
+      #include "freedreno/driinfo_freedreno.h"
+#endif
+};
+DRM_DRIVER_DESCRIPTOR(msm, msm_driconf, ARRAY_SIZE(msm_driconf))
+DRM_DRIVER_DESCRIPTOR_ALIAS(msm, kgsl, msm_driconf, ARRAY_SIZE(msm_driconf))
 #else
 DRM_DRIVER_DESCRIPTOR_STUB(msm)
+DRM_DRIVER_DESCRIPTOR_STUB(kgsl)
 #endif
-DRM_DRIVER_DESCRIPTOR_ALIAS(msm, kgsl, NULL, 0)
 
-#ifdef GALLIUM_VIRGL
+#if defined(GALLIUM_VIRGL) || (defined(GALLIUM_FREEDRENO) && !defined(PIPE_LOADER_DYNAMIC))
 #include "virgl/drm/virgl_drm_public.h"
 #include "virgl/virgl_public.h"
 
 static struct pipe_screen *
 pipe_virtio_gpu_create_screen(int fd, const struct pipe_screen_config *config)
 {
-   struct pipe_screen *screen;
+   struct pipe_screen *screen = NULL;
 
-   screen = virgl_drm_screen_create(fd, config);
+   /* Try native guest driver(s) first, and then fallback to virgl: */
+#ifdef GALLIUM_FREEDRENO
+   if (!screen)
+      screen = fd_drm_screen_create_renderonly(fd, NULL, config);
+#endif
+#ifdef GALLIUM_VIRGL
+   if (!screen)
+      screen = virgl_drm_screen_create(fd, config);
+#endif
    return screen ? debug_screen_wrap(screen) : NULL;
 }
 
@@ -316,6 +338,27 @@ DRM_DRIVER_DESCRIPTOR(panfrost, NULL, 0)
 
 #else
 DRM_DRIVER_DESCRIPTOR_STUB(panfrost)
+#endif
+
+#ifdef GALLIUM_ASAHI
+#include "asahi/drm/asahi_drm_public.h"
+
+static struct pipe_screen *
+pipe_asahi_create_screen(int fd, const struct pipe_screen_config *config)
+{
+   struct pipe_screen *screen;
+
+   screen = asahi_drm_screen_create(fd, config);
+   return screen ? debug_screen_wrap(screen) : NULL;
+}
+
+const driOptionDescription asahi_driconf[] = {
+      #include "asahi/driinfo_asahi.h"
+};
+DRM_DRIVER_DESCRIPTOR(asahi, asahi_driconf, ARRAY_SIZE(asahi_driconf))
+
+#else
+DRM_DRIVER_DESCRIPTOR_STUB(asahi)
 #endif
 
 #ifdef GALLIUM_ETNAVIV
@@ -389,5 +432,35 @@ DRM_DRIVER_DESCRIPTOR(zink, zink_driconf, ARRAY_SIZE(zink_driconf))
 #else
 DRM_DRIVER_DESCRIPTOR_STUB(zink)
 #endif
+
+#ifdef GALLIUM_KMSRO
+#include "kmsro/drm/kmsro_drm_public.h"
+
+static struct pipe_screen *
+pipe_kmsro_create_screen(int fd, const struct pipe_screen_config *config)
+{
+   struct pipe_screen *screen;
+
+   screen = kmsro_drm_screen_create(fd, config);
+   return screen ? debug_screen_wrap(screen) : NULL;
+}
+const driOptionDescription kmsro_driconf[] = {
+#if defined(GALLIUM_VC4) || defined(GALLIUM_V3D)
+      #include "v3d/driinfo_v3d.h"
+#endif
+#ifdef GALLIUM_ASAHI
+      #include "asahi/driinfo_asahi.h"
+#endif
+#ifdef GALLIUM_FREEDRENO
+      #include "freedreno/driinfo_freedreno.h"
+#endif
+};
+DRM_DRIVER_DESCRIPTOR(kmsro, kmsro_driconf, ARRAY_SIZE(kmsro_driconf))
+
+#else
+DRM_DRIVER_DESCRIPTOR_STUB(kmsro)
+#endif
+
+/* kmsro should be the last entry in the file. */
 
 #endif /* DRM_HELPER_H */

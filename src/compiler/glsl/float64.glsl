@@ -40,7 +40,7 @@
  * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
-#version 430
+#version 400
 #extension GL_ARB_gpu_shader_int64 : enable
 #extension GL_ARB_shader_bit_encoding : enable
 #extension GL_EXT_shader_integer_mix : enable
@@ -1174,12 +1174,6 @@ __int_to_fp64(int a)
    return __packFloat64(zSign, 0x412 - shiftCount, zFrac0, zFrac1);
 }
 
-bool
-__fp64_to_bool(uint64_t a)
-{
-   return !__feq64_nonnan(__fabs64(a), 0ul);
-}
-
 uint64_t
 __bool_to_fp64(bool a)
 {
@@ -1622,7 +1616,7 @@ __ftrunc64(uint64_t __a)
 uint64_t
 __ffloor64(uint64_t a)
 {
-   /* The big assumtion is that when 'a' is NaN, __ftrunc(a) returns a.  Based
+   /* The big assumption is that when 'a' is NaN, __ftrunc(a) returns a.  Based
     * on that assumption, NaN values that don't have the sign bit will safely
     * return NaN (identity).  This is guarded by RELAXED_NAN_PROPAGATION
     * because otherwise the NaN should have the "signal" bit set.  The
@@ -1655,7 +1649,7 @@ __fround64(uint64_t __a)
    if (unbiasedExp < 20) {
       if (unbiasedExp < 0) {
          if ((aHi & 0x80000000u) != 0u && aLo == 0u) {
-            return 0;
+            return 0ul;
          }
          aHi &= 0x80000000u;
          if ((a.y & 0x000FFFFFu) == 0u && a.x == 0u) {
@@ -1721,4 +1715,10 @@ uint64_t
 __ffract64(uint64_t a)
 {
    return __fadd64(a, __fneg64(__ffloor64(a)));
+}
+
+bool
+__fisfinite64(uint64_t __a)
+{
+   return __extractFloat64Exp(__a) != 0x7ff;
 }

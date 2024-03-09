@@ -40,6 +40,7 @@
 
 #include <stdlib.h>
 #include "brw_eu.h"
+#include "brw_disasm_info.h"
 
 /* We're going to do lots of string concatenation, so this should help. */
 struct string {
@@ -79,7 +80,7 @@ contains(const struct string haystack, const struct string needle)
 
 #define CHECK(func, args...)                             \
    do {                                                  \
-      struct string __msg = func(devinfo, inst, ##args); \
+      struct string __msg = func(isa, inst, ##args); \
       if (__msg.str) {                                   \
          cat(&error_msg, __msg);                         \
          free(__msg.str);                                \
@@ -90,9 +91,9 @@ contains(const struct string haystack, const struct string needle)
 #define WIDTH(width)   (1 << (width))
 
 static bool
-inst_is_send(const struct gen_device_info *devinfo, const brw_inst *inst)
+inst_is_send(const struct brw_isa_info *isa, const brw_inst *inst)
 {
-   switch (brw_inst_opcode(devinfo, inst)) {
+   switch (brw_inst_opcode(isa, inst)) {
    case BRW_OPCODE_SEND:
    case BRW_OPCODE_SENDC:
    case BRW_OPCODE_SENDS:
@@ -104,12 +105,14 @@ inst_is_send(const struct gen_device_info *devinfo, const brw_inst *inst)
 }
 
 static bool
-inst_is_split_send(const struct gen_device_info *devinfo, const brw_inst *inst)
+inst_is_split_send(const struct brw_isa_info *isa, const brw_inst *inst)
 {
-   if (devinfo->gen >= 12) {
-      return inst_is_send(devinfo, inst);
+   const struct intel_device_info *devinfo = isa->devinfo;
+
+   if (devinfo->ver >= 12) {
+      return inst_is_send(isa, inst);
    } else {
-      switch (brw_inst_opcode(devinfo, inst)) {
+      switch (brw_inst_opcode(isa, inst)) {
       case BRW_OPCODE_SENDS:
       case BRW_OPCODE_SENDSC:
          return true;
@@ -132,16 +135,20 @@ signed_type(unsigned type)
 }
 
 static enum brw_reg_type
-inst_dst_type(const struct gen_device_info *devinfo, const brw_inst *inst)
+inst_dst_type(const struct brw_isa_info *isa, const brw_inst *inst)
 {
-   return (devinfo->gen < 12 || !inst_is_send(devinfo, inst)) ?
+   const struct intel_device_info *devinfo = isa->devinfo;
+
+   return (devinfo->ver < 12 || !inst_is_send(isa, inst)) ?
       brw_inst_dst_type(devinfo, inst) : BRW_REGISTER_TYPE_D;
 }
 
 static bool
-inst_is_raw_move(const struct gen_device_info *devinfo, const brw_inst *inst)
+inst_is_raw_move(const struct brw_isa_info *isa, const brw_inst *inst)
 {
-   unsigned dst_type = signed_type(inst_dst_type(devinfo, inst));
+   const struct intel_device_info *devinfo = isa->devinfo;
+
+   unsigned dst_type = signed_type(inst_dst_type(isa, inst));
    unsigned src_type = signed_type(brw_inst_src0_type(devinfo, inst));
 
    if (brw_inst_src0_reg_file(devinfo, inst) == BRW_IMMEDIATE_VALUE) {
@@ -156,20 +163,20 @@ inst_is_raw_move(const struct gen_device_info *devinfo, const brw_inst *inst)
       return false;
    }
 
-   return brw_inst_opcode(devinfo, inst) == BRW_OPCODE_MOV &&
+   return brw_inst_opcode(isa, inst) == BRW_OPCODE_MOV &&
           brw_inst_saturate(devinfo, inst) == 0 &&
           dst_type == src_type;
 }
 
 static bool
-dst_is_null(const struct gen_device_info *devinfo, const brw_inst *inst)
+dst_is_null(const struct intel_device_info *devinfo, const brw_inst *inst)
 {
    return brw_inst_dst_reg_file(devinfo, inst) == BRW_ARCHITECTURE_REGISTER_FILE &&
           brw_inst_dst_da_reg_nr(devinfo, inst) == BRW_ARF_NULL;
 }
 
 static bool
-src0_is_null(const struct gen_device_info *devinfo, const brw_inst *inst)
+src0_is_null(const struct intel_device_info *devinfo, const brw_inst *inst)
 {
    return brw_inst_src0_address_mode(devinfo, inst) == BRW_ADDRESS_DIRECT &&
           brw_inst_src0_reg_file(devinfo, inst) == BRW_ARCHITECTURE_REGISTER_FILE &&
@@ -177,28 +184,29 @@ src0_is_null(const struct gen_device_info *devinfo, const brw_inst *inst)
 }
 
 static bool
-src1_is_null(const struct gen_device_info *devinfo, const brw_inst *inst)
+src1_is_null(const struct intel_device_info *devinfo, const brw_inst *inst)
 {
    return brw_inst_src1_reg_file(devinfo, inst) == BRW_ARCHITECTURE_REGISTER_FILE &&
           brw_inst_src1_da_reg_nr(devinfo, inst) == BRW_ARF_NULL;
 }
 
 static bool
-src0_is_acc(const struct gen_device_info *devinfo, const brw_inst *inst)
+src0_is_acc(const struct intel_device_info *devinfo, const brw_inst *inst)
 {
    return brw_inst_src0_reg_file(devinfo, inst) == BRW_ARCHITECTURE_REGISTER_FILE &&
           (brw_inst_src0_da_reg_nr(devinfo, inst) & 0xF0) == BRW_ARF_ACCUMULATOR;
 }
 
 static bool
-src1_is_acc(const struct gen_device_info *devinfo, const brw_inst *inst)
+src1_is_acc(const struct intel_device_info *devinfo, const brw_inst *inst)
 {
    return brw_inst_src1_reg_file(devinfo, inst) == BRW_ARCHITECTURE_REGISTER_FILE &&
           (brw_inst_src1_da_reg_nr(devinfo, inst) & 0xF0) == BRW_ARF_ACCUMULATOR;
 }
 
 static bool
-src0_has_scalar_region(const struct gen_device_info *devinfo, const brw_inst *inst)
+src0_has_scalar_region(const struct intel_device_info *devinfo,
+                       const brw_inst *inst)
 {
    return brw_inst_src0_vstride(devinfo, inst) == BRW_VERTICAL_STRIDE_0 &&
           brw_inst_src0_width(devinfo, inst) == BRW_WIDTH_1 &&
@@ -206,72 +214,20 @@ src0_has_scalar_region(const struct gen_device_info *devinfo, const brw_inst *in
 }
 
 static bool
-src1_has_scalar_region(const struct gen_device_info *devinfo, const brw_inst *inst)
+src1_has_scalar_region(const struct intel_device_info *devinfo,
+                       const brw_inst *inst)
 {
    return brw_inst_src1_vstride(devinfo, inst) == BRW_VERTICAL_STRIDE_0 &&
           brw_inst_src1_width(devinfo, inst) == BRW_WIDTH_1 &&
           brw_inst_src1_hstride(devinfo, inst) == BRW_HORIZONTAL_STRIDE_0;
 }
 
-static unsigned
-num_sources_from_inst(const struct gen_device_info *devinfo,
-                      const brw_inst *inst)
-{
-   const struct opcode_desc *desc =
-      brw_opcode_desc(devinfo, brw_inst_opcode(devinfo, inst));
-   unsigned math_function;
-
-   if (brw_inst_opcode(devinfo, inst) == BRW_OPCODE_MATH) {
-      math_function = brw_inst_math_function(devinfo, inst);
-   } else if (devinfo->gen < 6 &&
-              brw_inst_opcode(devinfo, inst) == BRW_OPCODE_SEND) {
-      if (brw_inst_sfid(devinfo, inst) == BRW_SFID_MATH) {
-         /* src1 must be a descriptor (including the information to determine
-          * that the SEND is doing an extended math operation), but src0 can
-          * actually be null since it serves as the source of the implicit GRF
-          * to MRF move.
-          *
-          * If we stop using that functionality, we'll have to revisit this.
-          */
-         return 2;
-      } else {
-         /* Send instructions are allowed to have null sources since they use
-          * the base_mrf field to specify which message register source.
-          */
-         return 0;
-      }
-   } else {
-      assert(desc->nsrc < 4);
-      return desc->nsrc;
-   }
-
-   switch (math_function) {
-   case BRW_MATH_FUNCTION_INV:
-   case BRW_MATH_FUNCTION_LOG:
-   case BRW_MATH_FUNCTION_EXP:
-   case BRW_MATH_FUNCTION_SQRT:
-   case BRW_MATH_FUNCTION_RSQ:
-   case BRW_MATH_FUNCTION_SIN:
-   case BRW_MATH_FUNCTION_COS:
-   case BRW_MATH_FUNCTION_SINCOS:
-   case GEN8_MATH_FUNCTION_INVM:
-   case GEN8_MATH_FUNCTION_RSQRTM:
-      return 1;
-   case BRW_MATH_FUNCTION_FDIV:
-   case BRW_MATH_FUNCTION_POW:
-   case BRW_MATH_FUNCTION_INT_DIV_QUOTIENT_AND_REMAINDER:
-   case BRW_MATH_FUNCTION_INT_DIV_QUOTIENT:
-   case BRW_MATH_FUNCTION_INT_DIV_REMAINDER:
-      return 2;
-   default:
-      unreachable("not reached");
-   }
-}
-
 static struct string
-invalid_values(const struct gen_device_info *devinfo, const brw_inst *inst)
+invalid_values(const struct brw_isa_info *isa, const brw_inst *inst)
 {
-   unsigned num_sources = num_sources_from_inst(devinfo, inst);
+   const struct intel_device_info *devinfo = isa->devinfo;
+
+   unsigned num_sources = brw_num_sources_from_inst(isa, inst);
    struct string error_msg = { .str = NULL, .len = 0 };
 
    switch ((enum brw_execution_size) brw_inst_exec_size(devinfo, inst)) {
@@ -287,32 +243,28 @@ invalid_values(const struct gen_device_info *devinfo, const brw_inst *inst)
       break;
    }
 
-   if (inst_is_send(devinfo, inst))
+   if (error_msg.str)
       return error_msg;
 
-   if (num_sources == 3) {
-      /* Nothing to test:
-       *    No 3-src instructions on Gen4-5
-       *    No reg file bits on Gen6-10 (align16)
-       *    No invalid encodings on Gen10-12 (align1)
-       */
-   } else {
-      if (devinfo->gen > 6) {
-         ERROR_IF(brw_inst_dst_reg_file(devinfo, inst) == MRF ||
-                  (num_sources > 0 &&
-                   brw_inst_src0_reg_file(devinfo, inst) == MRF) ||
-                  (num_sources > 1 &&
-                   brw_inst_src1_reg_file(devinfo, inst) == MRF),
-                  "invalid register file encoding");
-      }
+   if (devinfo->ver >= 12) {
+      unsigned group_size = 1 << brw_inst_exec_size(devinfo, inst);
+      unsigned qtr_ctrl = brw_inst_qtr_control(devinfo, inst);
+      unsigned nib_ctrl = brw_inst_nib_control(devinfo, inst);
+
+      unsigned chan_off = (qtr_ctrl * 2 + nib_ctrl) << 2;
+      ERROR_IF(chan_off % group_size != 0,
+               "The execution size must be a factor of the chosen offset");
    }
+
+   if (inst_is_send(isa, inst))
+      return error_msg;
 
    if (error_msg.str)
       return error_msg;
 
    if (num_sources == 3) {
       if (brw_inst_access_mode(devinfo, inst) == BRW_ALIGN_1) {
-         if (devinfo->gen >= 10) {
+         if (devinfo->ver >= 10) {
             ERROR_IF(brw_inst_3src_a1_dst_type (devinfo, inst) == INVALID_REG_TYPE ||
                      brw_inst_3src_a1_src0_type(devinfo, inst) == INVALID_REG_TYPE ||
                      brw_inst_3src_a1_src1_type(devinfo, inst) == INVALID_REG_TYPE ||
@@ -339,10 +291,11 @@ invalid_values(const struct gen_device_info *devinfo, const brw_inst *inst)
 }
 
 static struct string
-sources_not_null(const struct gen_device_info *devinfo,
+sources_not_null(const struct brw_isa_info *isa,
                  const brw_inst *inst)
 {
-   unsigned num_sources = num_sources_from_inst(devinfo, inst);
+   const struct intel_device_info *devinfo = isa->devinfo;
+   unsigned num_sources = brw_num_sources_from_inst(isa, inst);
    struct string error_msg = { .str = NULL, .len = 0 };
 
    /* Nothing to test. 3-src instructions can only have GRF sources, and
@@ -354,10 +307,10 @@ sources_not_null(const struct gen_device_info *devinfo,
    /* Nothing to test.  Split sends can only encode a file in sources that are
     * allowed to be NULL.
     */
-   if (inst_is_split_send(devinfo, inst))
+   if (inst_is_split_send(isa, inst))
       return (struct string){};
 
-   if (num_sources >= 1 && brw_inst_opcode(devinfo, inst) != BRW_OPCODE_SYNC)
+   if (num_sources >= 1 && brw_inst_opcode(isa, inst) != BRW_OPCODE_SYNC)
       ERROR_IF(src0_is_null(devinfo, inst), "src0 is null");
 
    if (num_sources == 2)
@@ -367,22 +320,26 @@ sources_not_null(const struct gen_device_info *devinfo,
 }
 
 static struct string
-alignment_supported(const struct gen_device_info *devinfo,
+alignment_supported(const struct brw_isa_info *isa,
                     const brw_inst *inst)
 {
+   const struct intel_device_info *devinfo = isa->devinfo;
    struct string error_msg = { .str = NULL, .len = 0 };
 
-   ERROR_IF(devinfo->gen >= 11 && brw_inst_access_mode(devinfo, inst) == BRW_ALIGN_16,
+   ERROR_IF(devinfo->ver >= 11 && brw_inst_access_mode(devinfo, inst) == BRW_ALIGN_16,
             "Align16 not supported");
 
    return error_msg;
 }
 
 static bool
-inst_uses_src_acc(const struct gen_device_info *devinfo, const brw_inst *inst)
+inst_uses_src_acc(const struct brw_isa_info *isa,
+                  const brw_inst *inst)
 {
+   const struct intel_device_info *devinfo = isa->devinfo;
+
    /* Check instructions that use implicit accumulator sources */
-   switch (brw_inst_opcode(devinfo, inst)) {
+   switch (brw_inst_opcode(isa, inst)) {
    case BRW_OPCODE_MAC:
    case BRW_OPCODE_MACH:
    case BRW_OPCODE_SADA2:
@@ -392,19 +349,21 @@ inst_uses_src_acc(const struct gen_device_info *devinfo, const brw_inst *inst)
    }
 
    /* FIXME: support 3-src instructions */
-   unsigned num_sources = num_sources_from_inst(devinfo, inst);
+   unsigned num_sources = brw_num_sources_from_inst(isa, inst);
    assert(num_sources < 3);
 
    return src0_is_acc(devinfo, inst) || (num_sources > 1 && src1_is_acc(devinfo, inst));
 }
 
 static struct string
-send_restrictions(const struct gen_device_info *devinfo,
+send_restrictions(const struct brw_isa_info *isa,
                   const brw_inst *inst)
 {
+   const struct intel_device_info *devinfo = isa->devinfo;
+
    struct string error_msg = { .str = NULL, .len = 0 };
 
-   if (inst_is_split_send(devinfo, inst)) {
+   if (inst_is_split_send(isa, inst)) {
       ERROR_IF(brw_inst_send_src1_reg_file(devinfo, inst) == BRW_ARCHITECTURE_REGISTER_FILE &&
                brw_inst_send_src1_reg_nr(devinfo, inst) != BRW_ARF_NULL,
                "src1 of split send must be a GRF or NULL");
@@ -417,18 +376,20 @@ send_restrictions(const struct gen_device_info *devinfo,
                brw_inst_send_src1_reg_nr(devinfo, inst) < 112,
                "send with EOT must use g112-g127");
 
-      if (brw_inst_send_src1_reg_file(devinfo, inst) == BRW_GENERAL_REGISTER_FILE) {
+      if (brw_inst_send_src0_reg_file(devinfo, inst) == BRW_GENERAL_REGISTER_FILE &&
+          brw_inst_send_src1_reg_file(devinfo, inst) == BRW_GENERAL_REGISTER_FILE) {
          /* Assume minimums if we don't know */
          unsigned mlen = 1;
          if (!brw_inst_send_sel_reg32_desc(devinfo, inst)) {
             const uint32_t desc = brw_inst_send_desc(devinfo, inst);
-            mlen = brw_message_desc_mlen(devinfo, desc);
+            mlen = brw_message_desc_mlen(devinfo, desc) / reg_unit(devinfo);
          }
 
          unsigned ex_mlen = 1;
          if (!brw_inst_send_sel_reg32_ex_desc(devinfo, inst)) {
             const uint32_t ex_desc = brw_inst_sends_ex_desc(devinfo, inst);
-            ex_mlen = brw_message_ex_desc_ex_mlen(devinfo, ex_desc);
+            ex_mlen = brw_message_ex_desc_ex_mlen(devinfo, ex_desc) /
+                      reg_unit(devinfo);
          }
          const unsigned src0_reg_nr = brw_inst_src0_da_reg_nr(devinfo, inst);
          const unsigned src1_reg_nr = brw_inst_send_src1_reg_nr(devinfo, inst);
@@ -438,38 +399,34 @@ send_restrictions(const struct gen_device_info *devinfo,
                    src0_reg_nr < src1_reg_nr + ex_mlen),
                    "split send payloads must not overlap");
       }
-   } else if (inst_is_send(devinfo, inst)) {
+   } else if (inst_is_send(isa, inst)) {
       ERROR_IF(brw_inst_src0_address_mode(devinfo, inst) != BRW_ADDRESS_DIRECT,
                "send must use direct addressing");
 
-      if (devinfo->gen >= 7) {
-         ERROR_IF(brw_inst_send_src0_reg_file(devinfo, inst) != BRW_GENERAL_REGISTER_FILE,
-                  "send from non-GRF");
-         ERROR_IF(brw_inst_eot(devinfo, inst) &&
-                  brw_inst_src0_da_reg_nr(devinfo, inst) < 112,
-                  "send with EOT must use g112-g127");
-      }
+      ERROR_IF(brw_inst_send_src0_reg_file(devinfo, inst) != BRW_GENERAL_REGISTER_FILE,
+               "send from non-GRF");
+      ERROR_IF(brw_inst_eot(devinfo, inst) &&
+               brw_inst_src0_da_reg_nr(devinfo, inst) < 112,
+               "send with EOT must use g112-g127");
 
-      if (devinfo->gen >= 8) {
-         ERROR_IF(!dst_is_null(devinfo, inst) &&
-                  (brw_inst_dst_da_reg_nr(devinfo, inst) +
-                   brw_inst_rlen(devinfo, inst) > 127) &&
-                  (brw_inst_src0_da_reg_nr(devinfo, inst) +
-                   brw_inst_mlen(devinfo, inst) >
-                   brw_inst_dst_da_reg_nr(devinfo, inst)),
-                  "r127 must not be used for return address when there is "
-                  "a src and dest overlap");
-      }
+      ERROR_IF(!dst_is_null(devinfo, inst) &&
+               (brw_inst_dst_da_reg_nr(devinfo, inst) +
+                brw_inst_rlen(devinfo, inst) > 127) &&
+               (brw_inst_src0_da_reg_nr(devinfo, inst) +
+                brw_inst_mlen(devinfo, inst) >
+                brw_inst_dst_da_reg_nr(devinfo, inst)),
+               "r127 must not be used for return address when there is "
+               "a src and dest overlap");
    }
 
    return error_msg;
 }
 
 static bool
-is_unsupported_inst(const struct gen_device_info *devinfo,
+is_unsupported_inst(const struct brw_isa_info *isa,
                     const brw_inst *inst)
 {
-   return brw_inst_opcode(devinfo, inst) == BRW_OPCODE_ILLEGAL;
+   return brw_inst_opcode(isa, inst) == BRW_OPCODE_ILLEGAL;
 }
 
 /**
@@ -519,15 +476,17 @@ execution_type_for_type(enum brw_reg_type type)
  * Returns the execution type of an instruction \p inst
  */
 static enum brw_reg_type
-execution_type(const struct gen_device_info *devinfo, const brw_inst *inst)
+execution_type(const struct brw_isa_info *isa, const brw_inst *inst)
 {
-   unsigned num_sources = num_sources_from_inst(devinfo, inst);
+   const struct intel_device_info *devinfo = isa->devinfo;
+
+   unsigned num_sources = brw_num_sources_from_inst(isa, inst);
    enum brw_reg_type src0_exec_type, src1_exec_type;
 
    /* Execution data type is independent of destination data type, except in
     * mixed F/HF instructions.
     */
-   enum brw_reg_type dst_exec_type = inst_dst_type(devinfo, inst);
+   enum brw_reg_type dst_exec_type = inst_dst_type(isa, inst);
 
    src0_exec_type = execution_type_for_type(brw_inst_src0_type(devinfo, inst));
    if (num_sources == 1) {
@@ -549,14 +508,6 @@ execution_type(const struct gen_device_info *devinfo, const brw_inst *inst)
    if (src0_exec_type == BRW_REGISTER_TYPE_NF ||
        src1_exec_type == BRW_REGISTER_TYPE_NF)
       return BRW_REGISTER_TYPE_NF;
-
-   /* Mixed operand types where one is float is float on Gen < 6
-    * (and not allowed on later platforms)
-    */
-   if (devinfo->gen < 6 &&
-       (src0_exec_type == BRW_REGISTER_TYPE_F ||
-        src1_exec_type == BRW_REGISTER_TYPE_F))
-      return BRW_REGISTER_TYPE_F;
 
    if (src0_exec_type == BRW_REGISTER_TYPE_Q ||
        src1_exec_type == BRW_REGISTER_TYPE_Q)
@@ -598,16 +549,31 @@ is_packed(unsigned vstride, unsigned width, unsigned hstride)
 }
 
 /**
+ * Returns whether a region is linear
+ *
+ * A region is linear if its elements do not overlap and are not replicated.
+ * Unlike a packed region, intervening space (i.e. strided values) is allowed.
+ */
+static bool
+is_linear(unsigned vstride, unsigned width, unsigned hstride)
+{
+   return vstride == width * hstride ||
+          (hstride == 0 && width == 1);
+}
+
+/**
  * Returns whether an instruction is an explicit or implicit conversion
  * to/from half-float.
  */
 static bool
-is_half_float_conversion(const struct gen_device_info *devinfo,
+is_half_float_conversion(const struct brw_isa_info *isa,
                          const brw_inst *inst)
 {
+   const struct intel_device_info *devinfo = isa->devinfo;
+
    enum brw_reg_type dst_type = brw_inst_dst_type(devinfo, inst);
 
-   unsigned num_sources = num_sources_from_inst(devinfo, inst);
+   unsigned num_sources = brw_num_sources_from_inst(isa, inst);
    enum brw_reg_type src0_type = brw_inst_src0_type(devinfo, inst);
 
    if (dst_type != src0_type &&
@@ -627,21 +593,20 @@ is_half_float_conversion(const struct gen_device_info *devinfo,
  * Returns whether an instruction is using mixed float operation mode
  */
 static bool
-is_mixed_float(const struct gen_device_info *devinfo, const brw_inst *inst)
+is_mixed_float(const struct brw_isa_info *isa, const brw_inst *inst)
 {
-   if (devinfo->gen < 8)
+   const struct intel_device_info *devinfo = isa->devinfo;
+
+   if (inst_is_send(isa, inst))
       return false;
 
-   if (inst_is_send(devinfo, inst))
-      return false;
-
-   unsigned opcode = brw_inst_opcode(devinfo, inst);
-   const struct opcode_desc *desc = brw_opcode_desc(devinfo, opcode);
+   unsigned opcode = brw_inst_opcode(isa, inst);
+   const struct opcode_desc *desc = brw_opcode_desc(isa, opcode);
    if (desc->ndst == 0)
       return false;
 
    /* FIXME: support 3-src instructions */
-   unsigned num_sources = num_sources_from_inst(devinfo, inst);
+   unsigned num_sources = brw_num_sources_from_inst(isa, inst);
    assert(num_sources < 3);
 
    enum brw_reg_type dst_type = brw_inst_dst_type(devinfo, inst);
@@ -662,12 +627,14 @@ is_mixed_float(const struct gen_device_info *devinfo, const brw_inst *inst)
  * to/from byte.
  */
 static bool
-is_byte_conversion(const struct gen_device_info *devinfo,
+is_byte_conversion(const struct brw_isa_info *isa,
                    const brw_inst *inst)
 {
+   const struct intel_device_info *devinfo = isa->devinfo;
+
    enum brw_reg_type dst_type = brw_inst_dst_type(devinfo, inst);
 
-   unsigned num_sources = num_sources_from_inst(devinfo, inst);
+   unsigned num_sources = brw_num_sources_from_inst(isa, inst);
    enum brw_reg_type src0_type = brw_inst_src0_type(devinfo, inst);
 
    if (dst_type != src0_type &&
@@ -687,20 +654,25 @@ is_byte_conversion(const struct gen_device_info *devinfo,
  * in the "Register Region Restrictions" section.
  */
 static struct string
-general_restrictions_based_on_operand_types(const struct gen_device_info *devinfo,
+general_restrictions_based_on_operand_types(const struct brw_isa_info *isa,
                                             const brw_inst *inst)
 {
+   const struct intel_device_info *devinfo = isa->devinfo;
+
    const struct opcode_desc *desc =
-      brw_opcode_desc(devinfo, brw_inst_opcode(devinfo, inst));
-   unsigned num_sources = num_sources_from_inst(devinfo, inst);
+      brw_opcode_desc(isa, brw_inst_opcode(isa, inst));
+   unsigned num_sources = brw_num_sources_from_inst(isa, inst);
    unsigned exec_size = 1 << brw_inst_exec_size(devinfo, inst);
    struct string error_msg = { .str = NULL, .len = 0 };
 
-   if (inst_is_send(devinfo, inst))
+   if (inst_is_send(isa, inst))
       return error_msg;
 
-   if (devinfo->gen >= 11) {
-      if (num_sources == 3) {
+   if (devinfo->ver >= 11) {
+      /* A register type of B or UB for DPAS actually means 4 bytes packed into
+       * a D or UD, so it is allowed.
+       */
+      if (num_sources == 3 && brw_inst_opcode(isa, inst) != BRW_OPCODE_DPAS) {
          ERROR_IF(brw_reg_type_to_size(brw_inst_3src_a1_src1_type(devinfo, inst)) == 1 ||
                   brw_reg_type_to_size(brw_inst_3src_a1_src2_type(devinfo, inst)) == 1,
                   "Byte data type is not supported for src1/2 register regioning. This includes "
@@ -711,6 +683,57 @@ general_restrictions_based_on_operand_types(const struct gen_device_info *devinf
                   "Byte data type is not supported for src1 register regioning. This includes "
                   "byte broadcast as well.");
       }
+   }
+
+   enum brw_reg_type dst_type;
+
+   if (num_sources == 3) {
+      if (brw_inst_access_mode(devinfo, inst) == BRW_ALIGN_1)
+         dst_type = brw_inst_3src_a1_dst_type(devinfo, inst);
+      else
+         dst_type = brw_inst_3src_a16_dst_type(devinfo, inst);
+   } else {
+      dst_type = inst_dst_type(isa, inst);
+   }
+
+   ERROR_IF(dst_type == BRW_REGISTER_TYPE_DF &&
+            !devinfo->has_64bit_float,
+            "64-bit float destination, but platform does not support it");
+
+   ERROR_IF((dst_type == BRW_REGISTER_TYPE_Q ||
+             dst_type == BRW_REGISTER_TYPE_UQ) &&
+            !devinfo->has_64bit_int,
+            "64-bit int destination, but platform does not support it");
+
+   for (unsigned s = 0; s < num_sources; s++) {
+      enum brw_reg_type src_type;
+      if (num_sources == 3) {
+         if (brw_inst_access_mode(devinfo, inst) == BRW_ALIGN_1) {
+            switch (s) {
+            case 0: src_type = brw_inst_3src_a1_src0_type(devinfo, inst); break;
+            case 1: src_type = brw_inst_3src_a1_src1_type(devinfo, inst); break;
+            case 2: src_type = brw_inst_3src_a1_src2_type(devinfo, inst); break;
+            default: unreachable("invalid src");
+            }
+         } else {
+            src_type = brw_inst_3src_a16_src_type(devinfo, inst);
+         }
+      } else {
+         switch (s) {
+         case 0: src_type = brw_inst_src0_type(devinfo, inst); break;
+         case 1: src_type = brw_inst_src1_type(devinfo, inst); break;
+         default: unreachable("invalid src");
+         }
+      }
+
+      ERROR_IF(src_type == BRW_REGISTER_TYPE_DF &&
+               !devinfo->has_64bit_float,
+               "64-bit float source, but platform does not support it");
+
+      ERROR_IF((src_type == BRW_REGISTER_TYPE_Q ||
+                src_type == BRW_REGISTER_TYPE_UQ) &&
+               !devinfo->has_64bit_int,
+               "64-bit int source, but platform does not support it");
    }
 
    if (num_sources == 3)
@@ -738,32 +761,23 @@ general_restrictions_based_on_operand_types(const struct gen_device_info *devinf
     */
 
    unsigned dst_stride = STRIDE(brw_inst_dst_hstride(devinfo, inst));
-   enum brw_reg_type dst_type = inst_dst_type(devinfo, inst);
    bool dst_type_is_byte =
-      inst_dst_type(devinfo, inst) == BRW_REGISTER_TYPE_B ||
-      inst_dst_type(devinfo, inst) == BRW_REGISTER_TYPE_UB;
+      inst_dst_type(isa, inst) == BRW_REGISTER_TYPE_B ||
+      inst_dst_type(isa, inst) == BRW_REGISTER_TYPE_UB;
 
    if (dst_type_is_byte) {
       if (is_packed(exec_size * dst_stride, exec_size, dst_stride)) {
-         if (!inst_is_raw_move(devinfo, inst))
+         if (!inst_is_raw_move(isa, inst))
             ERROR("Only raw MOV supports a packed-byte destination");
          return error_msg;
       }
    }
 
-   unsigned exec_type = execution_type(devinfo, inst);
+   unsigned exec_type = execution_type(isa, inst);
    unsigned exec_type_size = brw_reg_type_to_size(exec_type);
    unsigned dst_type_size = brw_reg_type_to_size(dst_type);
 
-   /* On IVB/BYT, region parameters and execution size for DF are in terms of
-    * 32-bit elements, so they are doubled. For evaluating the validity of an
-    * instruction, we halve them.
-    */
-   if (devinfo->gen == 7 && !devinfo->is_haswell &&
-       exec_type_size == 8 && dst_type_size == 4)
-      dst_type_size = 8;
-
-   if (is_byte_conversion(devinfo, inst)) {
+   if (is_byte_conversion(isa, inst)) {
       /* From the BDW+ PRM, Volume 2a, Command Reference, Instructions - MOV:
        *
        *    "There is no direct conversion from B/UB to DF or DF to B/UB.
@@ -788,7 +802,7 @@ general_restrictions_based_on_operand_types(const struct gen_device_info *devinf
                "There are no direct conversions between 64-bit types and B/UB");
    }
 
-   if (is_half_float_conversion(devinfo, inst)) {
+   if (is_half_float_conversion(isa, inst)) {
       /**
        * A helper to validate used in the validation of the following restriction
        * from the BDW+ PRM, Volume 2a, Command Reference, Instructions - MOV:
@@ -859,11 +873,10 @@ general_restrictions_based_on_operand_types(const struct gen_device_info *devinf
             ERROR_IF(subreg % 4 != 0,
                      "Conversions between integer and half-float must be "
                      "aligned to a DWord on the destination");
-         } else if ((devinfo->is_cherryview || devinfo->gen >= 9) &&
-                    dst_type == BRW_REGISTER_TYPE_HF) {
+         } else if (dst_type == BRW_REGISTER_TYPE_HF) {
             unsigned subreg = brw_inst_dst_da1_subreg_nr(devinfo, inst);
             ERROR_IF(dst_stride != 2 &&
-                     !(is_mixed_float(devinfo, inst) &&
+                     !(is_mixed_float(isa, inst) &&
                        dst_stride == 1 && subreg % 16 == 0),
                      "Conversions to HF must have either all words in even "
                      "word locations or all words in odd word locations or "
@@ -876,13 +889,11 @@ general_restrictions_based_on_operand_types(const struct gen_device_info *devinf
     * override the general rule for the ratio of sizes of the destination type
     * and the execution type. We will add validation for those in a later patch.
     */
-   bool validate_dst_size_and_exec_size_ratio =
-      !is_mixed_float(devinfo, inst) ||
-      !(devinfo->is_cherryview || devinfo->gen >= 9);
+   bool validate_dst_size_and_exec_size_ratio = !is_mixed_float(isa, inst);
 
    if (validate_dst_size_and_exec_size_ratio &&
        exec_type_size > dst_type_size) {
-      if (!(dst_type_is_byte && inst_is_raw_move(devinfo, inst))) {
+      if (!(dst_type_is_byte && inst_is_raw_move(isa, inst))) {
          ERROR_IF(dst_stride * dst_type_size != exec_type_size,
                   "Destination stride must be equal to the ratio of the sizes "
                   "of the execution data type to the destination type");
@@ -897,7 +908,7 @@ general_restrictions_based_on_operand_types(const struct gen_device_info *devinf
           *    Implementation Restriction: The relaxed alignment rule for byte
           *    destination (#10.5) is not supported.
           */
-         if ((devinfo->gen > 4 || devinfo->is_g4x) && dst_type_is_byte) {
+         if (dst_type_is_byte) {
             ERROR_IF(subreg % exec_type_size != 0 &&
                      subreg % exec_type_size != 1,
                      "Destination subreg must be aligned to the size of the "
@@ -919,12 +930,14 @@ general_restrictions_based_on_operand_types(const struct gen_device_info *devinf
  * in the "Register Region Restrictions" section.
  */
 static struct string
-general_restrictions_on_region_parameters(const struct gen_device_info *devinfo,
+general_restrictions_on_region_parameters(const struct brw_isa_info *isa,
                                           const brw_inst *inst)
 {
+   const struct intel_device_info *devinfo = isa->devinfo;
+
    const struct opcode_desc *desc =
-      brw_opcode_desc(devinfo, brw_inst_opcode(devinfo, inst));
-   unsigned num_sources = num_sources_from_inst(devinfo, inst);
+      brw_opcode_desc(isa, brw_inst_opcode(isa, inst));
+   unsigned num_sources = brw_num_sources_from_inst(isa, inst);
    unsigned exec_size = 1 << brw_inst_exec_size(devinfo, inst);
    struct string error_msg = { .str = NULL, .len = 0 };
 
@@ -934,7 +947,7 @@ general_restrictions_on_region_parameters(const struct gen_device_info *devinfo,
    /* Split sends don't have the bits in the instruction to encode regions so
     * there's nothing to check.
     */
-   if (inst_is_split_send(devinfo, inst))
+   if (inst_is_split_send(isa, inst))
       return (struct string){};
 
    if (brw_inst_access_mode(devinfo, inst) == BRW_ALIGN_16) {
@@ -943,33 +956,19 @@ general_restrictions_on_region_parameters(const struct gen_device_info *devinfo,
                   "Destination Horizontal Stride must be 1");
 
       if (num_sources >= 1) {
-         if (devinfo->is_haswell || devinfo->gen >= 8) {
-            ERROR_IF(brw_inst_src0_reg_file(devinfo, inst) != BRW_IMMEDIATE_VALUE &&
-                     brw_inst_src0_vstride(devinfo, inst) != BRW_VERTICAL_STRIDE_0 &&
-                     brw_inst_src0_vstride(devinfo, inst) != BRW_VERTICAL_STRIDE_2 &&
-                     brw_inst_src0_vstride(devinfo, inst) != BRW_VERTICAL_STRIDE_4,
-                     "In Align16 mode, only VertStride of 0, 2, or 4 is allowed");
-         } else {
-            ERROR_IF(brw_inst_src0_reg_file(devinfo, inst) != BRW_IMMEDIATE_VALUE &&
-                     brw_inst_src0_vstride(devinfo, inst) != BRW_VERTICAL_STRIDE_0 &&
-                     brw_inst_src0_vstride(devinfo, inst) != BRW_VERTICAL_STRIDE_4,
-                     "In Align16 mode, only VertStride of 0 or 4 is allowed");
-         }
+         ERROR_IF(brw_inst_src0_reg_file(devinfo, inst) != BRW_IMMEDIATE_VALUE &&
+                  brw_inst_src0_vstride(devinfo, inst) != BRW_VERTICAL_STRIDE_0 &&
+                  brw_inst_src0_vstride(devinfo, inst) != BRW_VERTICAL_STRIDE_2 &&
+                  brw_inst_src0_vstride(devinfo, inst) != BRW_VERTICAL_STRIDE_4,
+                  "In Align16 mode, only VertStride of 0, 2, or 4 is allowed");
       }
 
       if (num_sources == 2) {
-         if (devinfo->is_haswell || devinfo->gen >= 8) {
-            ERROR_IF(brw_inst_src1_reg_file(devinfo, inst) != BRW_IMMEDIATE_VALUE &&
-                     brw_inst_src1_vstride(devinfo, inst) != BRW_VERTICAL_STRIDE_0 &&
-                     brw_inst_src1_vstride(devinfo, inst) != BRW_VERTICAL_STRIDE_2 &&
-                     brw_inst_src1_vstride(devinfo, inst) != BRW_VERTICAL_STRIDE_4,
-                     "In Align16 mode, only VertStride of 0, 2, or 4 is allowed");
-         } else {
-            ERROR_IF(brw_inst_src1_reg_file(devinfo, inst) != BRW_IMMEDIATE_VALUE &&
-                     brw_inst_src1_vstride(devinfo, inst) != BRW_VERTICAL_STRIDE_0 &&
-                     brw_inst_src1_vstride(devinfo, inst) != BRW_VERTICAL_STRIDE_4,
-                     "In Align16 mode, only VertStride of 0 or 4 is allowed");
-         }
+         ERROR_IF(brw_inst_src1_reg_file(devinfo, inst) != BRW_IMMEDIATE_VALUE &&
+                  brw_inst_src1_vstride(devinfo, inst) != BRW_VERTICAL_STRIDE_0 &&
+                  brw_inst_src1_vstride(devinfo, inst) != BRW_VERTICAL_STRIDE_2 &&
+                  brw_inst_src1_vstride(devinfo, inst) != BRW_VERTICAL_STRIDE_4,
+                  "In Align16 mode, only VertStride of 0, 2, or 4 is allowed");
       }
 
       return error_msg;
@@ -997,14 +996,6 @@ general_restrictions_on_region_parameters(const struct gen_device_info *devinfo,
          DO_SRC(1);
       }
 #undef DO_SRC
-
-      /* On IVB/BYT, region parameters and execution size for DF are in terms of
-       * 32-bit elements, so they are doubled. For evaluating the validity of an
-       * instruction, we halve them.
-       */
-      if (devinfo->gen == 7 && !devinfo->is_haswell &&
-          element_size == 8)
-         element_size = 4;
 
       /* ExecSize must be greater than or equal to Width. */
       ERROR_IF(exec_size < width, "ExecSize must be greater than or equal "
@@ -1078,17 +1069,19 @@ general_restrictions_on_region_parameters(const struct gen_device_info *devinfo,
 }
 
 static struct string
-special_restrictions_for_mixed_float_mode(const struct gen_device_info *devinfo,
+special_restrictions_for_mixed_float_mode(const struct brw_isa_info *isa,
                                           const brw_inst *inst)
 {
+   const struct intel_device_info *devinfo = isa->devinfo;
+
    struct string error_msg = { .str = NULL, .len = 0 };
 
-   const unsigned opcode = brw_inst_opcode(devinfo, inst);
-   const unsigned num_sources = num_sources_from_inst(devinfo, inst);
+   const unsigned opcode = brw_inst_opcode(isa, inst);
+   const unsigned num_sources = brw_num_sources_from_inst(isa, inst);
    if (num_sources >= 3)
       return error_msg;
 
-   if (!is_mixed_float(devinfo, inst))
+   if (!is_mixed_float(isa, inst))
       return error_msg;
 
    unsigned exec_size = 1 << brw_inst_exec_size(devinfo, inst);
@@ -1183,7 +1176,7 @@ special_restrictions_for_mixed_float_mode(const struct gen_device_info *devinfo,
        *
        *    "No accumulator read access for Align16 mixed float."
        */
-      ERROR_IF(inst_uses_src_acc(devinfo, inst),
+      ERROR_IF(inst_uses_src_acc(isa, inst),
                "No accumulator read access for Align16 mixed float");
    } else {
       assert(!is_align16);
@@ -1283,7 +1276,7 @@ special_restrictions_for_mixed_float_mode(const struct gen_device_info *devinfo,
        *        validate the explicit implication, which is clearly described.
        */
       if (dst_type == BRW_REGISTER_TYPE_HF &&
-          inst_uses_src_acc(devinfo, inst)) {
+          inst_uses_src_acc(isa, inst)) {
          ERROR_IF(dst_stride != 2,
                   "Mixed float mode with implicit/explicit accumulator "
                   "source and half-float destination requires a stride "
@@ -1359,12 +1352,13 @@ registers_read(const uint64_t access_mask[static 32])
  * Region Restrictions" section.
  */
 static struct string
-region_alignment_rules(const struct gen_device_info *devinfo,
+region_alignment_rules(const struct brw_isa_info *isa,
                        const brw_inst *inst)
 {
+   const struct intel_device_info *devinfo = isa->devinfo;
    const struct opcode_desc *desc =
-      brw_opcode_desc(devinfo, brw_inst_opcode(devinfo, inst));
-   unsigned num_sources = num_sources_from_inst(devinfo, inst);
+      brw_opcode_desc(isa, brw_inst_opcode(isa, inst));
+   unsigned num_sources = brw_num_sources_from_inst(isa, inst);
    unsigned exec_size = 1 << brw_inst_exec_size(devinfo, inst);
    uint64_t dst_access_mask[32], src0_access_mask[32], src1_access_mask[32];
    struct string error_msg = { .str = NULL, .len = 0 };
@@ -1375,7 +1369,7 @@ region_alignment_rules(const struct gen_device_info *devinfo,
    if (brw_inst_access_mode(devinfo, inst) == BRW_ALIGN_16)
       return (struct string){};
 
-   if (inst_is_send(devinfo, inst))
+   if (inst_is_send(isa, inst))
       return (struct string){};
 
    memset(dst_access_mask, 0, sizeof(dst_access_mask));
@@ -1422,7 +1416,7 @@ region_alignment_rules(const struct gen_device_info *devinfo,
       unsigned hstride_elements = (num_hstride - 1) * hstride;
       unsigned offset = (vstride_elements + hstride_elements) * element_size +
                         subreg;
-      ERROR_IF(offset >= 64,
+      ERROR_IF(offset >= 64 * reg_unit(devinfo),
                "A source cannot span more than 2 adjacent GRF registers");
    }
 
@@ -1430,23 +1424,15 @@ region_alignment_rules(const struct gen_device_info *devinfo,
       return error_msg;
 
    unsigned stride = STRIDE(brw_inst_dst_hstride(devinfo, inst));
-   enum brw_reg_type dst_type = inst_dst_type(devinfo, inst);
+   enum brw_reg_type dst_type = inst_dst_type(isa, inst);
    unsigned element_size = brw_reg_type_to_size(dst_type);
    unsigned subreg = brw_inst_dst_da1_subreg_nr(devinfo, inst);
    unsigned offset = ((exec_size - 1) * stride * element_size) + subreg;
-   ERROR_IF(offset >= 64,
+   ERROR_IF(offset >= 64 * reg_unit(devinfo),
             "A destination cannot span more than 2 adjacent GRF registers");
 
    if (error_msg.str)
       return error_msg;
-
-   /* On IVB/BYT, region parameters and execution size for DF are in terms of
-    * 32-bit elements, so they are doubled. For evaluating the validity of an
-    * instruction, we halve them.
-    */
-   if (devinfo->gen == 7 && !devinfo->is_haswell &&
-       element_size == 8)
-      element_size = 4;
 
    align1_access_mask(dst_access_mask, exec_size, element_size, subreg,
                       exec_size == 1 ? 0 : exec_size * stride,
@@ -1454,60 +1440,8 @@ region_alignment_rules(const struct gen_device_info *devinfo,
                       exec_size == 1 ? 0 : stride);
 
    unsigned dst_regs = registers_read(dst_access_mask);
-   unsigned src0_regs = registers_read(src0_access_mask);
-   unsigned src1_regs = registers_read(src1_access_mask);
 
-   /* The SNB, IVB, HSW, BDW, and CHV PRMs say:
-    *
-    *    When an instruction has a source region spanning two registers and a
-    *    destination region contained in one register, the number of elements
-    *    must be the same between two sources and one of the following must be
-    *    true:
-    *
-    *       1. The destination region is entirely contained in the lower OWord
-    *          of a register.
-    *       2. The destination region is entirely contained in the upper OWord
-    *          of a register.
-    *       3. The destination elements are evenly split between the two OWords
-    *          of a register.
-    */
-   if (devinfo->gen <= 8) {
-      if (dst_regs == 1 && (src0_regs == 2 || src1_regs == 2)) {
-         unsigned upper_oword_writes = 0, lower_oword_writes = 0;
-
-         for (unsigned i = 0; i < exec_size; i++) {
-            if (dst_access_mask[i] > 0x0000FFFF) {
-               upper_oword_writes++;
-            } else {
-               assert(dst_access_mask[i] != 0);
-               lower_oword_writes++;
-            }
-         }
-
-         ERROR_IF(lower_oword_writes != 0 &&
-                  upper_oword_writes != 0 &&
-                  upper_oword_writes != lower_oword_writes,
-                  "Writes must be to only one OWord or "
-                  "evenly split between OWords");
-      }
-   }
-
-   /* The IVB and HSW PRMs say:
-    *
-    *    When an instruction has a source region that spans two registers and
-    *    the destination spans two registers, the destination elements must be
-    *    evenly split between the two registers [...]
-    *
-    * The SNB PRM contains similar wording (but written in a much more
-    * confusing manner).
-    *
-    * The BDW PRM says:
-    *
-    *    When destination spans two registers, the source may be one or two
-    *    registers. The destination elements must be evenly split between the
-    *    two registers.
-    *
-    * The SKL PRM says:
+   /* The SKL PRM says:
     *
     *    When destination of MATH instruction spans two registers, the
     *    destination elements must be evenly split between the two registers.
@@ -1515,15 +1449,7 @@ region_alignment_rules(const struct gen_device_info *devinfo,
     * It is not known whether this restriction applies to KBL other Gens after
     * SKL.
     */
-   if (devinfo->gen <= 8 ||
-       brw_inst_opcode(devinfo, inst) == BRW_OPCODE_MATH) {
-
-      /* Nothing explicitly states that on Gen < 8 elements must be evenly
-       * split between two destination registers in the two exceptional
-       * source-region-spans-one-register cases, but since Broadwell requires
-       * evenly split writes regardless of source region, we assume that it was
-       * an oversight and require it.
-       */
+   if (brw_inst_opcode(isa, inst) == BRW_OPCODE_MATH) {
       if (dst_regs == 2) {
          unsigned upper_reg_writes = 0, lower_reg_writes = 0;
 
@@ -1542,144 +1468,20 @@ region_alignment_rules(const struct gen_device_info *devinfo,
       }
    }
 
-   /* The IVB and HSW PRMs say:
-    *
-    *    When an instruction has a source region that spans two registers and
-    *    the destination spans two registers, the destination elements must be
-    *    evenly split between the two registers and each destination register
-    *    must be entirely derived from one source register.
-    *
-    *    Note: In such cases, the regioning parameters must ensure that the
-    *    offset from the two source registers is the same.
-    *
-    * The SNB PRM contains similar wording (but written in a much more
-    * confusing manner).
-    *
-    * There are effectively three rules stated here:
-    *
-    *    For an instruction with a source and a destination spanning two
-    *    registers,
-    *
-    *       (1) destination elements must be evenly split between the two
-    *           registers
-    *       (2) all destination elements in a register must be derived
-    *           from one source register
-    *       (3) the offset (i.e. the starting location in each of the two
-    *           registers spanned by a region) must be the same in the two
-    *           registers spanned by a region
-    *
-    * It is impossible to violate rule (1) without violating (2) or (3), so we
-    * do not attempt to validate it.
-    */
-   if (devinfo->gen <= 7 && dst_regs == 2) {
-      for (unsigned i = 0; i < num_sources; i++) {
-#define DO_SRC(n)                                                             \
-         if (src ## n ## _regs <= 1)                                          \
-            continue;                                                         \
-                                                                              \
-         for (unsigned i = 0; i < exec_size; i++) {                           \
-            if ((dst_access_mask[i] > 0xFFFFFFFF) !=                          \
-                (src ## n ## _access_mask[i] > 0xFFFFFFFF)) {                 \
-               ERROR("Each destination register must be entirely derived "    \
-                     "from one source register");                             \
-               break;                                                         \
-            }                                                                 \
-         }                                                                    \
-                                                                              \
-         unsigned offset_0 =                                                  \
-            brw_inst_src ## n ## _da1_subreg_nr(devinfo, inst);               \
-         unsigned offset_1 = offset_0;                                        \
-                                                                              \
-         for (unsigned i = 0; i < exec_size; i++) {                           \
-            if (src ## n ## _access_mask[i] > 0xFFFFFFFF) {                   \
-               offset_1 = __builtin_ctzll(src ## n ## _access_mask[i]) - 32;  \
-               break;                                                         \
-            }                                                                 \
-         }                                                                    \
-                                                                              \
-         ERROR_IF(num_sources == 2 && offset_0 != offset_1,                   \
-                  "The offset from the two source registers "                 \
-                  "must be the same")
-
-         if (i == 0) {
-            DO_SRC(0);
-         } else {
-            DO_SRC(1);
-         }
-#undef DO_SRC
-      }
-   }
-
-   /* The IVB and HSW PRMs say:
-    *
-    *    When destination spans two registers, the source MUST span two
-    *    registers. The exception to the above rule:
-    *        1. When source is scalar, the source registers are not
-    *           incremented.
-    *        2. When source is packed integer Word and destination is packed
-    *           integer DWord, the source register is not incremented by the
-    *           source sub register is incremented.
-    *
-    * The SNB PRM does not contain this rule, but the internal documentation
-    * indicates that it applies to SNB as well. We assume that the rule applies
-    * to Gen <= 5 although their PRMs do not state it.
-    *
-    * While the documentation explicitly says in exception (2) that the
-    * destination must be an integer DWord, the hardware allows at least a
-    * float destination type as well. We emit such instructions from
-    *
-    *    fs_visitor::emit_interpolation_setup_gen6
-    *    fs_visitor::emit_fragcoord_interpolation
-    *
-    * and have for years with no ill effects.
-    *
-    * Additionally the simulator source code indicates that the real condition
-    * is that the size of the destination type is 4 bytes.
-    */
-   if (devinfo->gen <= 7 && dst_regs == 2) {
-      enum brw_reg_type dst_type = inst_dst_type(devinfo, inst);
-      bool dst_is_packed_dword =
-         is_packed(exec_size * stride, exec_size, stride) &&
-         brw_reg_type_to_size(dst_type) == 4;
-
-      for (unsigned i = 0; i < num_sources; i++) {
-#define DO_SRC(n)                                                                  \
-         unsigned vstride, width, hstride;                                         \
-         vstride = STRIDE(brw_inst_src ## n ## _vstride(devinfo, inst));           \
-         width = WIDTH(brw_inst_src ## n ## _width(devinfo, inst));                \
-         hstride = STRIDE(brw_inst_src ## n ## _hstride(devinfo, inst));           \
-         bool src ## n ## _is_packed_word =                                        \
-            is_packed(vstride, width, hstride) &&                                  \
-            (brw_inst_src ## n ## _type(devinfo, inst) == BRW_REGISTER_TYPE_W ||   \
-             brw_inst_src ## n ## _type(devinfo, inst) == BRW_REGISTER_TYPE_UW);   \
-                                                                                   \
-         ERROR_IF(src ## n ## _regs == 1 &&                                        \
-                  !src ## n ## _has_scalar_region(devinfo, inst) &&                \
-                  !(dst_is_packed_dword && src ## n ## _is_packed_word),           \
-                  "When the destination spans two registers, the source must "     \
-                  "span two registers\n" ERROR_INDENT "(exceptions for scalar "    \
-                  "source and packed-word to packed-dword expansion)")
-
-         if (i == 0) {
-            DO_SRC(0);
-         } else {
-            DO_SRC(1);
-         }
-#undef DO_SRC
-      }
-   }
-
    return error_msg;
 }
 
 static struct string
-vector_immediate_restrictions(const struct gen_device_info *devinfo,
+vector_immediate_restrictions(const struct brw_isa_info *isa,
                               const brw_inst *inst)
 {
-   unsigned num_sources = num_sources_from_inst(devinfo, inst);
+   const struct intel_device_info *devinfo = isa->devinfo;
+
+   unsigned num_sources = brw_num_sources_from_inst(isa, inst);
    struct string error_msg = { .str = NULL, .len = 0 };
 
-   if (num_sources == 3 || num_sources == 0)
+   if (num_sources == 3 || num_sources == 0 ||
+       (devinfo->ver >= 12 && inst_is_send(isa, inst)))
       return (struct string){};
 
    unsigned file = num_sources == 1 ?
@@ -1688,7 +1490,7 @@ vector_immediate_restrictions(const struct gen_device_info *devinfo,
    if (file != BRW_IMMEDIATE_VALUE)
       return (struct string){};
 
-   enum brw_reg_type dst_type = inst_dst_type(devinfo, inst);
+   enum brw_reg_type dst_type = inst_dst_type(isa, inst);
    unsigned dst_type_size = brw_reg_type_to_size(dst_type);
    unsigned dst_subreg = brw_inst_access_mode(devinfo, inst) == BRW_ALIGN_1 ?
                          brw_inst_dst_da1_subreg_nr(devinfo, inst) : 0;
@@ -1735,24 +1537,26 @@ vector_immediate_restrictions(const struct gen_device_info *devinfo,
 
 static struct string
 special_requirements_for_handling_double_precision_data_types(
-                                       const struct gen_device_info *devinfo,
+                                       const struct brw_isa_info *isa,
                                        const brw_inst *inst)
 {
-   unsigned num_sources = num_sources_from_inst(devinfo, inst);
+   const struct intel_device_info *devinfo = isa->devinfo;
+
+   unsigned num_sources = brw_num_sources_from_inst(isa, inst);
    struct string error_msg = { .str = NULL, .len = 0 };
 
    if (num_sources == 3 || num_sources == 0)
       return (struct string){};
 
    /* Split sends don't have types so there's no doubles there. */
-   if (inst_is_split_send(devinfo, inst))
+   if (inst_is_split_send(isa, inst))
       return (struct string){};
 
-   enum brw_reg_type exec_type = execution_type(devinfo, inst);
+   enum brw_reg_type exec_type = execution_type(isa, inst);
    unsigned exec_type_size = brw_reg_type_to_size(exec_type);
 
    enum brw_reg_file dst_file = brw_inst_dst_reg_file(devinfo, inst);
-   enum brw_reg_type dst_type = inst_dst_type(devinfo, inst);
+   enum brw_reg_type dst_type = inst_dst_type(isa, inst);
    unsigned dst_type_size = brw_reg_type_to_size(dst_type);
    unsigned dst_hstride = STRIDE(brw_inst_dst_hstride(devinfo, inst));
    unsigned dst_reg = brw_inst_dst_da_reg_nr(devinfo, inst);
@@ -1760,15 +1564,14 @@ special_requirements_for_handling_double_precision_data_types(
    unsigned dst_address_mode = brw_inst_dst_address_mode(devinfo, inst);
 
    bool is_integer_dword_multiply =
-      devinfo->gen >= 8 &&
-      brw_inst_opcode(devinfo, inst) == BRW_OPCODE_MUL &&
+      brw_inst_opcode(isa, inst) == BRW_OPCODE_MUL &&
       (brw_inst_src0_type(devinfo, inst) == BRW_REGISTER_TYPE_D ||
        brw_inst_src0_type(devinfo, inst) == BRW_REGISTER_TYPE_UD) &&
       (brw_inst_src1_type(devinfo, inst) == BRW_REGISTER_TYPE_D ||
        brw_inst_src1_type(devinfo, inst) == BRW_REGISTER_TYPE_UD);
 
-   if (dst_type_size != 8 && exec_type_size != 8 && !is_integer_dword_multiply)
-      return (struct string){};
+   const bool is_double_precision =
+      dst_type_size == 8 || exec_type_size == 8 || is_integer_dword_multiply;
 
    for (unsigned i = 0; i < num_sources; i++) {
       unsigned vstride, width, hstride, type_size, reg, subreg, address_mode;
@@ -1799,6 +1602,9 @@ special_requirements_for_handling_double_precision_data_types(
       }
 #undef DO_SRC
 
+      const unsigned src_stride = (hstride ? hstride : vstride) * type_size;
+      const unsigned dst_stride = dst_hstride * dst_type_size;
+
       /* The PRMs say that for CHV, BXT:
        *
        *    When source or destination datatype is 64b or operation is integer
@@ -1812,11 +1618,9 @@ special_requirements_for_handling_double_precision_data_types(
        *
        * We assume that the restriction applies to GLK as well.
        */
-      if (brw_inst_access_mode(devinfo, inst) == BRW_ALIGN_1 &&
-          (devinfo->is_cherryview || gen_device_info_is_9lp(devinfo))) {
-         unsigned src_stride = hstride * type_size;
-         unsigned dst_stride = dst_hstride * dst_type_size;
-
+      if (is_double_precision &&
+          brw_inst_access_mode(devinfo, inst) == BRW_ALIGN_1 &&
+          intel_device_info_is_9lp(devinfo)) {
          ERROR_IF(!is_scalar_region &&
                   (src_stride % 8 != 0 ||
                    dst_stride % 8 != 0 ||
@@ -1840,7 +1644,8 @@ special_requirements_for_handling_double_precision_data_types(
        *
        * We assume that the restriction applies to GLK as well.
        */
-      if (devinfo->is_cherryview || gen_device_info_is_9lp(devinfo)) {
+      if (is_double_precision &&
+          intel_device_info_is_9lp(devinfo)) {
          ERROR_IF(BRW_ADDRESS_REGISTER_INDIRECT_REGISTER == address_mode ||
                   BRW_ADDRESS_REGISTER_INDIRECT_REGISTER == dst_address_mode,
                   "Indirect addressing is not allowed when the execution type "
@@ -1856,8 +1661,9 @@ special_requirements_for_handling_double_precision_data_types(
        *
        * We assume that the restriction does not apply to the null register.
        */
-      if (devinfo->is_cherryview || gen_device_info_is_9lp(devinfo)) {
-         ERROR_IF(brw_inst_opcode(devinfo, inst) == BRW_OPCODE_MAC ||
+      if (is_double_precision &&
+          intel_device_info_is_9lp(devinfo)) {
+         ERROR_IF(brw_inst_opcode(isa, inst) == BRW_OPCODE_MAC ||
                   brw_inst_acc_wr_control(devinfo, inst) ||
                   (BRW_ARCHITECTURE_REGISTER_FILE == file &&
                    reg != BRW_ARF_NULL) ||
@@ -1866,6 +1672,59 @@ special_requirements_for_handling_double_precision_data_types(
                   "Architecture registers cannot be used when the execution "
                   "type is 64-bit");
       }
+
+      /* From the hardware spec section "Register Region Restrictions":
+       *
+       * There are two rules:
+       *
+       * "In case of all floating point data types used in destination:" and
+       *
+       * "In case where source or destination datatype is 64b or operation is
+       *  integer DWord multiply:"
+       *
+       * both of which list the same restrictions:
+       *
+       *  "1. Register Regioning patterns where register data bit location
+       *      of the LSB of the channels are changed between source and
+       *      destination are not supported on Src0 and Src1 except for
+       *      broadcast of a scalar.
+       *
+       *   2. Explicit ARF registers except null and accumulator must not be
+       *      used."
+       */
+      if (devinfo->verx10 >= 125 &&
+          (brw_reg_type_is_floating_point(dst_type) ||
+           is_double_precision)) {
+         ERROR_IF(!is_scalar_region &&
+                  BRW_ADDRESS_REGISTER_INDIRECT_REGISTER != address_mode &&
+                  (!is_linear(vstride, width, hstride) ||
+                   src_stride != dst_stride ||
+                   subreg != dst_subreg),
+                  "Register Regioning patterns where register data bit "
+                  "location of the LSB of the channels are changed between "
+                  "source and destination are not supported except for "
+                  "broadcast of a scalar.");
+
+         ERROR_IF((address_mode == BRW_ADDRESS_DIRECT && file == BRW_ARCHITECTURE_REGISTER_FILE &&
+                   reg != BRW_ARF_NULL && !(reg >= BRW_ARF_ACCUMULATOR && reg < BRW_ARF_FLAG)) ||
+                  (dst_file == BRW_ARCHITECTURE_REGISTER_FILE &&
+                   dst_reg != BRW_ARF_NULL && dst_reg != BRW_ARF_ACCUMULATOR),
+                  "Explicit ARF registers except null and accumulator must not "
+                  "be used.");
+      }
+
+      /* From the hardware spec section "Register Region Restrictions":
+       *
+       * "Vx1 and VxH indirect addressing for Float, Half-Float, Double-Float and
+       *  Quad-Word data must not be used."
+       */
+      if (devinfo->verx10 >= 125 &&
+          (brw_reg_type_is_floating_point(type) || type_sz(type) == 8)) {
+         ERROR_IF(address_mode == BRW_ADDRESS_REGISTER_INDIRECT_REGISTER &&
+                  vstride == BRW_VERTICAL_STRIDE_ONE_DIMENSIONAL,
+                  "Vx1 and VxH indirect addressing for Float, Half-Float, "
+                  "Double-Float and Quad-Word data must not be used");
+      }
    }
 
    /* The PRMs say that for BDW, SKL:
@@ -1873,9 +1732,9 @@ special_requirements_for_handling_double_precision_data_types(
     *    If Align16 is required for an operation with QW destination and non-QW
     *    source datatypes, the execution size cannot exceed 2.
     *
-    * We assume that the restriction applies to all Gen8+ parts.
+    * We assume that the restriction applies to all Gfx8+ parts.
     */
-   if (devinfo->gen >= 8) {
+   if (is_double_precision) {
       enum brw_reg_type src0_type = brw_inst_src0_type(devinfo, inst);
       enum brw_reg_type src1_type =
          num_sources > 1 ? brw_inst_src1_type(devinfo, inst) : src0_type;
@@ -1897,7 +1756,8 @@ special_requirements_for_handling_double_precision_data_types(
     *
     * We assume that the restriction applies to GLK as well.
     */
-   if (devinfo->is_cherryview || gen_device_info_is_9lp(devinfo)) {
+   if (is_double_precision &&
+       intel_device_info_is_9lp(devinfo)) {
       ERROR_IF(brw_inst_no_dd_check(devinfo, inst) ||
                brw_inst_no_dd_clear(devinfo, inst),
                "DepCtrl is not allowed when the execution type is 64-bit");
@@ -1907,19 +1767,20 @@ special_requirements_for_handling_double_precision_data_types(
 }
 
 static struct string
-instruction_restrictions(const struct gen_device_info *devinfo,
+instruction_restrictions(const struct brw_isa_info *isa,
                          const brw_inst *inst)
 {
+   const struct intel_device_info *devinfo = isa->devinfo;
    struct string error_msg = { .str = NULL, .len = 0 };
 
-   /* From GEN:BUG:1604601757:
+   /* From Wa_1604601757:
     *
     * "When multiplying a DW and any lower precision integer, source modifier
     *  is not supported."
     */
-   if (devinfo->gen >= 12 &&
-       brw_inst_opcode(devinfo, inst) == BRW_OPCODE_MUL) {
-      enum brw_reg_type exec_type = execution_type(devinfo, inst);
+   if (devinfo->ver >= 12 &&
+       brw_inst_opcode(isa, inst) == BRW_OPCODE_MUL) {
+      enum brw_reg_type exec_type = execution_type(isa, inst);
       const bool src0_valid = type_sz(brw_inst_src0_type(devinfo, inst)) == 4 ||
          brw_inst_src0_reg_file(devinfo, inst) == BRW_IMMEDIATE_VALUE ||
          !(brw_inst_src0_negate(devinfo, inst) ||
@@ -1935,17 +1796,526 @@ instruction_restrictions(const struct gen_device_info *devinfo,
                "modifier is not supported.");
    }
 
+   if (brw_inst_opcode(isa, inst) == BRW_OPCODE_CMP ||
+       brw_inst_opcode(isa, inst) == BRW_OPCODE_CMPN) {
+      ERROR_IF(brw_inst_cond_modifier(devinfo, inst) == BRW_CONDITIONAL_NONE,
+               "CMP (or CMPN) must have a condition.");
+   }
+
+   if (brw_inst_opcode(isa, inst) == BRW_OPCODE_SEL) {
+      ERROR_IF((brw_inst_cond_modifier(devinfo, inst) != BRW_CONDITIONAL_NONE) ==
+               (brw_inst_pred_control(devinfo, inst) != BRW_PREDICATE_NONE),
+               "SEL must either be predicated or have a condition modifiers");
+   }
+
+   if (brw_inst_opcode(isa, inst) == BRW_OPCODE_MUL) {
+      const enum brw_reg_type src0_type = brw_inst_src0_type(devinfo, inst);
+      const enum brw_reg_type src1_type = brw_inst_src1_type(devinfo, inst);
+      const enum brw_reg_type dst_type = inst_dst_type(isa, inst);
+
+      /* Page 966 (page 982 of the PDF) of Broadwell PRM volume 2a says:
+       *
+       *    When multiplying a DW and any lower precision integer, the DW
+       *    operand must on src0.
+       *
+       * Ivy Bridge, Haswell, Skylake, and Ice Lake PRMs contain the same
+       * text.
+       */
+      ERROR_IF(brw_reg_type_is_integer(src1_type) &&
+               type_sz(src0_type) < 4 && type_sz(src1_type) == 4,
+               "When multiplying a DW and any lower precision integer, the "
+               "DW operand must be src0.");
+
+      /* Page 971 (page 987 of the PDF), section "Accumulator
+       * Restrictions," of the Broadwell PRM volume 7 says:
+       *
+       *    Integer source operands cannot be accumulators.
+       *
+       * The Skylake and Ice Lake PRMs contain the same text.
+       */
+      ERROR_IF((src0_is_acc(devinfo, inst) &&
+                brw_reg_type_is_integer(src0_type)) ||
+               (src1_is_acc(devinfo, inst) &&
+                brw_reg_type_is_integer(src1_type)),
+               "Integer source operands cannot be accumulators.");
+
+      /* Page 935 (page 951 of the PDF) of the Ice Lake PRM volume 2a says:
+       *
+       *    When multiplying integer data types, if one of the sources is a
+       *    DW, the resulting full precision data is stored in the
+       *    accumulator. However, if the destination data type is either W or
+       *    DW, the low bits of the result are written to the destination
+       *    register and the remaining high bits are discarded. This results
+       *    in undefined Overflow and Sign flags. Therefore, conditional
+       *    modifiers and saturation (.sat) cannot be used in this case.
+       *
+       * Similar text appears in every version of the PRM.
+       *
+       * The wording of the last sentence is not very clear.  It could either
+       * be interpreted as "conditional modifiers combined with saturation
+       * cannot be used" or "neither conditional modifiers nor saturation can
+       * be used."  I have interpreted it as the latter primarily because that
+       * is the more restrictive interpretation.
+       */
+      ERROR_IF((src0_type == BRW_REGISTER_TYPE_UD ||
+                src0_type == BRW_REGISTER_TYPE_D ||
+                src1_type == BRW_REGISTER_TYPE_UD ||
+                src1_type == BRW_REGISTER_TYPE_D) &&
+               (dst_type == BRW_REGISTER_TYPE_UD ||
+                dst_type == BRW_REGISTER_TYPE_D ||
+                dst_type == BRW_REGISTER_TYPE_UW ||
+                dst_type == BRW_REGISTER_TYPE_W) &&
+               (brw_inst_saturate(devinfo, inst) != 0 ||
+                brw_inst_cond_modifier(devinfo, inst) != BRW_CONDITIONAL_NONE),
+               "Neither Saturate nor conditional modifier allowed with DW "
+               "integer multiply.");
+   }
+
+   if (brw_inst_opcode(isa, inst) == BRW_OPCODE_MATH) {
+      unsigned math_function = brw_inst_math_function(devinfo, inst);
+      switch (math_function) {
+      case BRW_MATH_FUNCTION_INT_DIV_QUOTIENT_AND_REMAINDER:
+      case BRW_MATH_FUNCTION_INT_DIV_QUOTIENT:
+      case BRW_MATH_FUNCTION_INT_DIV_REMAINDER: {
+         /* Page 442 of the Broadwell PRM Volume 2a "Extended Math Function" says:
+          *    INT DIV function does not support source modifiers.
+          * Bspec 6647 extends it back to Ivy Bridge.
+          */
+         bool src0_valid = !brw_inst_src0_negate(devinfo, inst) &&
+                           !brw_inst_src0_abs(devinfo, inst);
+         bool src1_valid = !brw_inst_src1_negate(devinfo, inst) &&
+                           !brw_inst_src1_abs(devinfo, inst);
+         ERROR_IF(!src0_valid || !src1_valid,
+                  "INT DIV function does not support source modifiers.");
+         break;
+      }
+      default:
+         break;
+      }
+   }
+
+   if (brw_inst_opcode(isa, inst) == BRW_OPCODE_DP4A) {
+      /* Page 396 (page 412 of the PDF) of the DG1 PRM volume 2a says:
+       *
+       *    Only one of src0 or src1 operand may be an the (sic) accumulator
+       *    register (acc#).
+       */
+      ERROR_IF(src0_is_acc(devinfo, inst) && src1_is_acc(devinfo, inst),
+               "Only one of src0 or src1 operand may be an accumulator "
+               "register (acc#).");
+
+   }
+
+   if (brw_inst_opcode(isa, inst) == BRW_OPCODE_ADD3) {
+      const enum brw_reg_type dst_type = inst_dst_type(isa, inst);
+
+      ERROR_IF(dst_type != BRW_REGISTER_TYPE_D &&
+               dst_type != BRW_REGISTER_TYPE_UD &&
+               dst_type != BRW_REGISTER_TYPE_W &&
+               dst_type != BRW_REGISTER_TYPE_UW,
+               "Destination must be integer D, UD, W, or UW type.");
+
+      for (unsigned i = 0; i < 3; i++) {
+         enum brw_reg_type src_type;
+
+         switch (i) {
+         case 0: src_type = brw_inst_3src_a1_src0_type(devinfo, inst); break;
+         case 1: src_type = brw_inst_3src_a1_src1_type(devinfo, inst); break;
+         case 2: src_type = brw_inst_3src_a1_src2_type(devinfo, inst); break;
+         default: unreachable("invalid src");
+         }
+
+         ERROR_IF(src_type != BRW_REGISTER_TYPE_D &&
+                  src_type != BRW_REGISTER_TYPE_UD &&
+                  src_type != BRW_REGISTER_TYPE_W &&
+                  src_type != BRW_REGISTER_TYPE_UW,
+                  "Source must be integer D, UD, W, or UW type.");
+
+         if (i == 0) {
+            if (brw_inst_3src_a1_src0_is_imm(devinfo, inst)) {
+               ERROR_IF(src_type != BRW_REGISTER_TYPE_W &&
+                        src_type != BRW_REGISTER_TYPE_UW,
+                        "Immediate source must be integer W or UW type.");
+            }
+         } else if (i == 2) {
+            if (brw_inst_3src_a1_src2_is_imm(devinfo, inst)) {
+               ERROR_IF(src_type != BRW_REGISTER_TYPE_W &&
+                        src_type != BRW_REGISTER_TYPE_UW,
+                        "Immediate source must be integer W or UW type.");
+            }
+         }
+      }
+   }
+
+   if (brw_inst_opcode(isa, inst) == BRW_OPCODE_OR ||
+       brw_inst_opcode(isa, inst) == BRW_OPCODE_AND ||
+       brw_inst_opcode(isa, inst) == BRW_OPCODE_XOR ||
+       brw_inst_opcode(isa, inst) == BRW_OPCODE_NOT) {
+      /* While the behavior of the negate source modifier is defined as
+       * logical not, the behavior of abs source modifier is not
+       * defined. Disallow it to be safe.
+       */
+      ERROR_IF(brw_inst_src0_abs(devinfo, inst),
+               "Behavior of abs source modifier in logic ops is undefined.");
+      ERROR_IF(brw_inst_opcode(isa, inst) != BRW_OPCODE_NOT &&
+               brw_inst_src1_reg_file(devinfo, inst) != BRW_IMMEDIATE_VALUE &&
+               brw_inst_src1_abs(devinfo, inst),
+               "Behavior of abs source modifier in logic ops is undefined.");
+
+      /* Page 479 (page 495 of the PDF) of the Broadwell PRM volume 2a says:
+       *
+       *    Source modifier is not allowed if source is an accumulator.
+       *
+       * The same text also appears for OR, NOT, and XOR instructions.
+       */
+      ERROR_IF((brw_inst_src0_abs(devinfo, inst) ||
+                brw_inst_src0_negate(devinfo, inst)) &&
+               src0_is_acc(devinfo, inst),
+               "Source modifier is not allowed if source is an accumulator.");
+      ERROR_IF(brw_num_sources_from_inst(isa, inst) > 1 &&
+               (brw_inst_src1_abs(devinfo, inst) ||
+                brw_inst_src1_negate(devinfo, inst)) &&
+               src1_is_acc(devinfo, inst),
+               "Source modifier is not allowed if source is an accumulator.");
+
+      /* Page 479 (page 495 of the PDF) of the Broadwell PRM volume 2a says:
+       *
+       *    This operation does not produce sign or overflow conditions. Only
+       *    the .e/.z or .ne/.nz conditional modifiers should be used.
+       *
+       * The same text also appears for OR, NOT, and XOR instructions.
+       *
+       * Per the comment around nir_op_imod in brw_fs_nir.cpp, we have
+       * determined this to not be true. The only conditions that seem
+       * absolutely sketchy are O, R, and U.  Some OpenGL shaders from Doom
+       * 2016 have been observed to generate and.g and operate correctly.
+       */
+      const enum brw_conditional_mod cmod =
+         brw_inst_cond_modifier(devinfo, inst);
+      ERROR_IF(cmod == BRW_CONDITIONAL_O ||
+               cmod == BRW_CONDITIONAL_R ||
+               cmod == BRW_CONDITIONAL_U,
+               "O, R, and U conditional modifiers should not be used.");
+   }
+
+   if (brw_inst_opcode(isa, inst) == BRW_OPCODE_BFI2) {
+      ERROR_IF(brw_inst_cond_modifier(devinfo, inst) != BRW_CONDITIONAL_NONE,
+               "BFI2 cannot have conditional modifier");
+
+      ERROR_IF(brw_inst_saturate(devinfo, inst),
+               "BFI2 cannot have saturate modifier");
+
+      enum brw_reg_type dst_type;
+
+      if (brw_inst_access_mode(devinfo, inst) == BRW_ALIGN_1)
+         dst_type = brw_inst_3src_a1_dst_type(devinfo, inst);
+      else
+         dst_type = brw_inst_3src_a16_dst_type(devinfo, inst);
+
+      ERROR_IF(dst_type != BRW_REGISTER_TYPE_D &&
+               dst_type != BRW_REGISTER_TYPE_UD,
+               "BFI2 destination type must be D or UD");
+
+      for (unsigned s = 0; s < 3; s++) {
+         enum brw_reg_type src_type;
+
+         if (brw_inst_access_mode(devinfo, inst) == BRW_ALIGN_1) {
+            switch (s) {
+            case 0: src_type = brw_inst_3src_a1_src0_type(devinfo, inst); break;
+            case 1: src_type = brw_inst_3src_a1_src1_type(devinfo, inst); break;
+            case 2: src_type = brw_inst_3src_a1_src2_type(devinfo, inst); break;
+            default: unreachable("invalid src");
+            }
+         } else {
+            src_type = brw_inst_3src_a16_src_type(devinfo, inst);
+         }
+
+         ERROR_IF(src_type != dst_type,
+                  "BFI2 source type must match destination type");
+      }
+   }
+
+   if (brw_inst_opcode(isa, inst) == BRW_OPCODE_CSEL) {
+      ERROR_IF(brw_inst_pred_control(devinfo, inst) != BRW_PREDICATE_NONE,
+               "CSEL cannot be predicated");
+
+      /* CSEL is CMP and SEL fused into one. The condition modifier, which
+       * does not actually modify the flags, controls the built-in comparison.
+       */
+      ERROR_IF(brw_inst_cond_modifier(devinfo, inst) == BRW_CONDITIONAL_NONE,
+               "CSEL must have a condition.");
+
+      enum brw_reg_type dst_type;
+
+      if (brw_inst_access_mode(devinfo, inst) == BRW_ALIGN_1)
+         dst_type = brw_inst_3src_a1_dst_type(devinfo, inst);
+      else
+         dst_type = brw_inst_3src_a16_dst_type(devinfo, inst);
+
+      if (devinfo->ver == 9) {
+         ERROR_IF(dst_type != BRW_REGISTER_TYPE_F,
+                  "CSEL destination type must be F");
+      } else {
+         ERROR_IF(dst_type != BRW_REGISTER_TYPE_F &&
+                  dst_type != BRW_REGISTER_TYPE_HF &&
+                  dst_type != BRW_REGISTER_TYPE_D &&
+                  dst_type != BRW_REGISTER_TYPE_W,
+                  "CSEL destination type must be F, HF, D, or W");
+      }
+
+      for (unsigned s = 0; s < 3; s++) {
+         enum brw_reg_type src_type;
+
+         if (brw_inst_access_mode(devinfo, inst) == BRW_ALIGN_1) {
+            switch (s) {
+            case 0: src_type = brw_inst_3src_a1_src0_type(devinfo, inst); break;
+            case 1: src_type = brw_inst_3src_a1_src1_type(devinfo, inst); break;
+            case 2: src_type = brw_inst_3src_a1_src2_type(devinfo, inst); break;
+            default: unreachable("invalid src");
+            }
+         } else {
+            src_type = brw_inst_3src_a16_src_type(devinfo, inst);
+         }
+
+         ERROR_IF(src_type != dst_type,
+                  "CSEL source type must match destination type");
+      }
+   }
+
+   if (brw_inst_opcode(isa, inst) == BRW_OPCODE_DPAS) {
+      ERROR_IF(brw_inst_dpas_3src_sdepth(devinfo, inst) != BRW_SYSTOLIC_DEPTH_8,
+               "Systolic depth must be 8.");
+
+      const unsigned sdepth = 8;
+
+      const enum brw_reg_type dst_type =
+         brw_inst_dpas_3src_dst_type(devinfo, inst);
+      const enum brw_reg_type src0_type =
+         brw_inst_dpas_3src_src0_type(devinfo, inst);
+      const enum brw_reg_type src1_type =
+         brw_inst_dpas_3src_src1_type(devinfo, inst);
+      const enum brw_reg_type src2_type =
+         brw_inst_dpas_3src_src2_type(devinfo, inst);
+
+      const enum gfx12_sub_byte_precision src1_sub_byte =
+         brw_inst_dpas_3src_src1_subbyte(devinfo, inst);
+
+      if (src1_type != BRW_REGISTER_TYPE_B && src1_type != BRW_REGISTER_TYPE_UB) {
+         ERROR_IF(src1_sub_byte != BRW_SUB_BYTE_PRECISION_NONE,
+                  "Sub-byte precision must be None for source type larger than Byte.");
+      } else {
+         ERROR_IF(src1_sub_byte != BRW_SUB_BYTE_PRECISION_NONE &&
+                  src1_sub_byte != BRW_SUB_BYTE_PRECISION_4BIT &&
+                  src1_sub_byte != BRW_SUB_BYTE_PRECISION_2BIT,
+                  "Invalid sub-byte precision.");
+      }
+
+      const enum gfx12_sub_byte_precision src2_sub_byte =
+         brw_inst_dpas_3src_src2_subbyte(devinfo, inst);
+
+      if (src2_type != BRW_REGISTER_TYPE_B && src2_type != BRW_REGISTER_TYPE_UB) {
+         ERROR_IF(src2_sub_byte != BRW_SUB_BYTE_PRECISION_NONE,
+                  "Sub-byte precision must be None.");
+      } else {
+         ERROR_IF(src2_sub_byte != BRW_SUB_BYTE_PRECISION_NONE &&
+                  src2_sub_byte != BRW_SUB_BYTE_PRECISION_4BIT &&
+                  src2_sub_byte != BRW_SUB_BYTE_PRECISION_2BIT,
+                  "Invalid sub-byte precision.");
+      }
+
+      const unsigned src1_bits_per_element =
+         (8 * brw_reg_type_to_size(src1_type)) >>
+         brw_inst_dpas_3src_src1_subbyte(devinfo, inst);
+
+      const unsigned src2_bits_per_element =
+         (8 * brw_reg_type_to_size(src2_type)) >>
+         brw_inst_dpas_3src_src2_subbyte(devinfo, inst);
+
+      /* The MAX2(1, ...) is just to prevent possible division by 0 later. */
+      const unsigned ops_per_chan =
+         MAX2(1, 32 / MAX2(src1_bits_per_element, src2_bits_per_element));
+
+      ERROR_IF(brw_inst_exec_size(devinfo, inst) != BRW_EXECUTE_8,
+               "DPAS execution size must be 8.");
+
+      const unsigned exec_size = 8;
+
+      const unsigned dst_subnr  = brw_inst_dpas_3src_dst_subreg_nr(devinfo, inst);
+      const unsigned src0_subnr = brw_inst_dpas_3src_src0_subreg_nr(devinfo, inst);
+      const unsigned src1_subnr = brw_inst_dpas_3src_src1_subreg_nr(devinfo, inst);
+      const unsigned src2_subnr = brw_inst_dpas_3src_src2_subreg_nr(devinfo, inst);
+
+      /* Until HF is supported as dst type, this is effectively subnr == 0. */
+      ERROR_IF(dst_subnr % exec_size != 0,
+               "Destination subregister offset must be a multiple of ExecSize.");
+
+      /* Until HF is supported as src0 type, this is effectively subnr == 0. */
+      ERROR_IF(src0_subnr % exec_size != 0,
+               "Src0 subregister offset must be a multiple of ExecSize.");
+
+      ERROR_IF(src1_subnr != 0,
+               "Src1 subregister offsets must be 0.");
+
+      /* In nearly all cases, this effectively requires that src2.subnr be
+       * 0. It is only when src1 is 8 bits and src2 is 2 or 4 bits that the
+       * ops_per_chan value can allow non-zero src2.subnr.
+       */
+      ERROR_IF(src2_subnr % (sdepth * ops_per_chan) != 0,
+               "Src2 subregister offset must be a multiple of SystolicDepth "
+               "times OPS_PER_CHAN.");
+
+      ERROR_IF(dst_subnr * type_sz(dst_type) >= REG_SIZE,
+               "Destination subregister specifies next register.");
+
+      ERROR_IF(src0_subnr * type_sz(src0_type) >= REG_SIZE,
+               "Src0 subregister specifies next register.");
+
+      ERROR_IF((src1_subnr * type_sz(src1_type) * src1_bits_per_element) / 8 >= REG_SIZE,
+               "Src1 subregister specifies next register.");
+
+      ERROR_IF((src2_subnr * type_sz(src2_type) * src2_bits_per_element) / 8 >= REG_SIZE,
+               "Src2 subregister specifies next register.");
+
+      if (brw_inst_3src_atomic_control(devinfo, inst)) {
+         /* FINISHME: When we start emitting DPAS with Atomic set, figure out
+          * a way to validate it. Also add a test in test_eu_validate.cpp.
+          */
+         ERROR_IF(true,
+                  "When instruction option Atomic is used it must be follwed by a "
+                  "DPAS instruction.");
+      }
+
+      if (brw_inst_dpas_3src_exec_type(devinfo, inst) ==
+          BRW_ALIGN1_3SRC_EXEC_TYPE_FLOAT) {
+         ERROR_IF(dst_type != BRW_REGISTER_TYPE_F,
+                  "DPAS destination type must be F.");
+         ERROR_IF(src0_type != BRW_REGISTER_TYPE_F,
+                  "DPAS src0 type must be F.");
+         ERROR_IF(src1_type != BRW_REGISTER_TYPE_HF,
+                  "DPAS src1 type must be HF.");
+         ERROR_IF(src2_type != BRW_REGISTER_TYPE_HF,
+                  "DPAS src2 type must be HF.");
+      } else {
+         ERROR_IF(dst_type != BRW_REGISTER_TYPE_D &&
+                  dst_type != BRW_REGISTER_TYPE_UD,
+                  "DPAS destination type must be D or UD.");
+         ERROR_IF(src0_type != BRW_REGISTER_TYPE_D &&
+                  src0_type != BRW_REGISTER_TYPE_UD,
+                  "DPAS src0 type must be D or UD.");
+         ERROR_IF(src1_type != BRW_REGISTER_TYPE_B &&
+                  src1_type != BRW_REGISTER_TYPE_UB,
+                  "DPAS src1 base type must be B or UB.");
+         ERROR_IF(src2_type != BRW_REGISTER_TYPE_B &&
+                  src2_type != BRW_REGISTER_TYPE_UB,
+                  "DPAS src2 base type must be B or UB.");
+
+         if (brw_reg_type_is_unsigned_integer(dst_type)) {
+            ERROR_IF(!brw_reg_type_is_unsigned_integer(src0_type) ||
+                     !brw_reg_type_is_unsigned_integer(src1_type) ||
+                     !brw_reg_type_is_unsigned_integer(src2_type),
+                     "If any source datatype is signed, destination datatype "
+                     "must be signed.");
+         }
+      }
+
+      /* FINISHME: Additional restrictions mentioned in the Bspec that are not
+       * yet enforced here:
+       *
+       *    - General Accumulator registers access is not supported. This is
+       *      currently enforced in brw_dpas_three_src (brw_eu_emit.c).
+       *
+       *    - Given any combination of datatypes in the sources of a DPAS
+       *      instructions, the boundaries of a register should not be crossed.
+       */
+   }
+
+   return error_msg;
+}
+
+static struct string
+send_descriptor_restrictions(const struct brw_isa_info *isa,
+                             const brw_inst *inst)
+{
+   const struct intel_device_info *devinfo = isa->devinfo;
+   struct string error_msg = { .str = NULL, .len = 0 };
+
+   if (inst_is_split_send(isa, inst)) {
+      /* We can only validate immediate descriptors */
+      if (brw_inst_send_sel_reg32_desc(devinfo, inst))
+         return error_msg;
+   } else if (inst_is_send(isa, inst)) {
+      /* We can only validate immediate descriptors */
+      if (brw_inst_src1_reg_file(devinfo, inst) != BRW_IMMEDIATE_VALUE)
+         return error_msg;
+   } else {
+      return error_msg;
+   }
+
+   const uint32_t desc = brw_inst_send_desc(devinfo, inst);
+
+   switch (brw_inst_sfid(devinfo, inst)) {
+   case BRW_SFID_URB:
+      if (devinfo->ver < 20)
+         break;
+      FALLTHROUGH;
+   case GFX12_SFID_TGM:
+   case GFX12_SFID_SLM:
+   case GFX12_SFID_UGM:
+      ERROR_IF(!devinfo->has_lsc, "Platform does not support LSC");
+
+      ERROR_IF(lsc_opcode_has_transpose(lsc_msg_desc_opcode(devinfo, desc)) &&
+               lsc_msg_desc_transpose(devinfo, desc) &&
+               brw_inst_exec_size(devinfo, inst) != BRW_EXECUTE_1,
+               "Transposed vectors are restricted to Exec_Mask = 1.");
+      break;
+
+   default:
+      break;
+   }
+
+   if (brw_inst_sfid(devinfo, inst) == BRW_SFID_URB && devinfo->ver < 20) {
+      ERROR_IF(!brw_inst_header_present(devinfo, inst),
+               "Header must be present for all URB messages.");
+
+      switch (brw_inst_urb_opcode(devinfo, inst)) {
+      case BRW_URB_OPCODE_READ_HWORD:
+      case BRW_URB_OPCODE_READ_OWORD:
+      case BRW_URB_OPCODE_WRITE_HWORD:
+      case BRW_URB_OPCODE_WRITE_OWORD:
+      case GFX7_URB_OPCODE_ATOMIC_INC:
+      case GFX7_URB_OPCODE_ATOMIC_MOV:
+      case GFX8_URB_OPCODE_ATOMIC_ADD:
+      case GFX8_URB_OPCODE_SIMD8_WRITE:
+         break;
+
+      case GFX8_URB_OPCODE_SIMD8_READ:
+         ERROR_IF(brw_inst_rlen(devinfo, inst) == 0,
+                  "URB SIMD8 read message must read some data.");
+         break;
+
+      case GFX125_URB_OPCODE_FENCE:
+         ERROR_IF(devinfo->verx10 < 125,
+                  "URB fence message only valid on gfx >= 12.5");
+         break;
+
+      default:
+         ERROR_IF(true, "Invalid URB message");
+         break;
+      }
+   }
+
    return error_msg;
 }
 
 bool
-brw_validate_instruction(const struct gen_device_info *devinfo,
+brw_validate_instruction(const struct brw_isa_info *isa,
                          const brw_inst *inst, int offset,
+                         unsigned inst_size,
                          struct disasm_info *disasm)
 {
    struct string error_msg = { .str = NULL, .len = 0 };
 
-   if (is_unsupported_inst(devinfo, inst)) {
+   if (is_unsupported_inst(isa, inst)) {
       ERROR("Instruction not supported on this Gen");
    } else {
       CHECK(invalid_values);
@@ -1961,11 +2331,12 @@ brw_validate_instruction(const struct gen_device_info *devinfo,
          CHECK(vector_immediate_restrictions);
          CHECK(special_requirements_for_handling_double_precision_data_types);
          CHECK(instruction_restrictions);
+         CHECK(send_descriptor_restrictions);
       }
    }
 
    if (error_msg.str && disasm) {
-      disasm_insert_error(disasm, offset, error_msg.str);
+      disasm_insert_error(disasm, offset, inst_size, error_msg.str);
    }
    free(error_msg.str);
 
@@ -1973,10 +2344,11 @@ brw_validate_instruction(const struct gen_device_info *devinfo,
 }
 
 bool
-brw_validate_instructions(const struct gen_device_info *devinfo,
+brw_validate_instructions(const struct brw_isa_info *isa,
                           const void *assembly, int start_offset, int end_offset,
                           struct disasm_info *disasm)
 {
+   const struct intel_device_info *devinfo = isa->devinfo;
    bool valid = true;
 
    for (int src_offset = start_offset; src_offset < end_offset;) {
@@ -1988,11 +2360,12 @@ brw_validate_instructions(const struct gen_device_info *devinfo,
 
       if (is_compact) {
          brw_compact_inst *compacted = (void *)inst;
-         brw_uncompact_instruction(devinfo, &uncompacted, compacted);
+         brw_uncompact_instruction(isa, &uncompacted, compacted);
          inst = &uncompacted;
       }
 
-      bool v = brw_validate_instruction(devinfo, inst, src_offset, disasm);
+      bool v = brw_validate_instruction(isa, inst, src_offset,
+                                        inst_size, disasm);
       valid = valid && v;
 
       src_offset += inst_size;

@@ -46,7 +46,7 @@ static void vid_dec_h264_BeginFrame(vid_dec_PrivateType *priv)
       templat.entrypoint = PIPE_VIDEO_ENTRYPOINT_BITSTREAM;
       templat.chroma_format = PIPE_VIDEO_CHROMA_FORMAT_420;
       templat.max_references = priv->picture.h264.num_ref_frames;
-      templat.expect_chunked_decode = true;
+      templat.expect_chunked_decode = false;
 #if ENABLE_ST_OMX_BELLAGIO
       omx_base_video_PortType *port;
       port = (omx_base_video_PortType *)priv->ports[OMX_BASE_FILTER_INPUTPORT_INDEX];
@@ -316,6 +316,7 @@ static void seq_parameter_set(vid_dec_PrivateType *priv, struct vl_rbsp *rbsp)
 
    sps->direct_8x8_inference_flag = vl_rbsp_u(rbsp, 1);
 
+   sps->MinLumaBiPredSize8x8 = (sps->level_idc >= 31); /* See section A.3.3.2 of H264 spec */;
 #if ENABLE_ST_OMX_TIZONIA
    priv->stream_info.width = pic_width_in_samplesl;
 
@@ -438,8 +439,7 @@ static void picture_parameter_set(vid_dec_PrivateType *priv, struct vl_rbsp *rbs
 
    pps->pic_init_qp_minus26 = vl_rbsp_se(rbsp);
 
-   /* pic_init_qs_minus26 */
-   vl_rbsp_se(rbsp);
+   pps->pic_init_qs_minus26 = vl_rbsp_se(rbsp);
 
    pps->chroma_qp_index_offset = vl_rbsp_se(rbsp);
 
@@ -1002,7 +1002,7 @@ void vid_dec_h264_Decode(vid_dec_PrivateType *priv, struct vl_vlc *vlc, unsigned
 
    if (nal_unit_type == 7) {
       struct vl_rbsp rbsp;
-      vl_rbsp_init(&rbsp, vlc, ~0);
+      vl_rbsp_init(&rbsp, vlc, ~0, /* emulation_bytes */ true);
       seq_parameter_set(priv, &rbsp);
 #if ENABLE_ST_OMX_TIZONIA
       update_port_parameters(priv);
@@ -1010,7 +1010,7 @@ void vid_dec_h264_Decode(vid_dec_PrivateType *priv, struct vl_vlc *vlc, unsigned
 
    } else if (nal_unit_type == 8) {
       struct vl_rbsp rbsp;
-      vl_rbsp_init(&rbsp, vlc, ~0);
+      vl_rbsp_init(&rbsp, vlc, ~0, /* emulation_bytes */ true);
       picture_parameter_set(priv, &rbsp);
 
    } else if (nal_unit_type == 1 || nal_unit_type == 5) {
@@ -1032,7 +1032,7 @@ void vid_dec_h264_Decode(vid_dec_PrivateType *priv, struct vl_vlc *vlc, unsigned
       priv->bytes_left = (vl_vlc_bits_left(vlc) - bits) / 8;
       priv->slice = vlc->data;
 
-      vl_rbsp_init(&rbsp, vlc, 128);
+      vl_rbsp_init(&rbsp, vlc, 128, /* emulation_bytes */ true);
       slice_header(priv, &rbsp, nal_ref_idc, nal_unit_type);
 
       vid_dec_h264_BeginFrame(priv);

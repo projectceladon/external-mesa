@@ -1,5 +1,5 @@
 /*
- * Copyright © 2019 Raspberry Pi
+ * Copyright © 2019 Raspberry Pi Ltd
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
  * copy of this software and associated documentation files (the "Software"),
@@ -31,11 +31,12 @@
 
 /* Default max size of the bo cache, in MB.
  *
- * FIXME: we got this value when testing some apps using the rpi4 with 4GB,
- * but it should depend on the total amount of RAM. But for that we would need
- * to test on real hw with different amount of RAM. Using this value for now.
+ * This value comes from testing different Vulkan application. Greater values
+ * didn't get any further performance benefit. This looks somewhat small, but
+ * from testing those applications, the main consumer of the bo cache are
+ * the bos used for the CLs, that are usually small.
  */
-#define DEFAULT_MAX_BO_CACHE_SIZE 512
+#define DEFAULT_MAX_BO_CACHE_SIZE 64
 
 /* Discarded to use a V3D_DEBUG for this, as it would mean adding a run-time
  * check for most of the calls
@@ -67,8 +68,8 @@ bo_dump_stats(struct v3dv_device *device)
 
       struct timespec time;
       clock_gettime(CLOCK_MONOTONIC, &time);
-      fprintf(stderr, "  now:               %ld\n",
-              time.tv_sec);
+      fprintf(stderr, "  now:               %lld\n",
+              (long long)time.tv_sec);
    }
 
    if (cache->size_list_size) {
@@ -117,8 +118,8 @@ bo_from_cache(struct v3dv_device *device, uint32_t size, const char *name)
       }
 
       bo_remove_from_cache(cache, bo);
-
       bo->name = name;
+      p_atomic_set(&bo->refcnt, 1);
    }
    mtx_unlock(&cache->lock);
    return bo;
@@ -131,28 +132,39 @@ bo_free(struct v3dv_device *device,
    if (!bo)
       return true;
 
-   if (bo->map)
-      v3dv_bo_unmap(device, bo);
+   assert(p_atomic_read(&bo->refcnt) == 0);
+   assert(bo->map == NULL);
+
+   if (!bo->is_import) {
+      device->bo_count--;
+      device->bo_size -= bo->size;
+
+      if (dump_stats) {
+         fprintf(stderr, "Freed %s%s%dkb:\n",
+                 bo->name ? bo->name : "",
+                 bo->name ? " " : "",
+                 bo->size / 1024);
+         bo_dump_stats(device);
+      }
+   }
+
+   uint32_t handle = bo->handle;
+   /* Our BO structs are stored in a sparse array in the physical device,
+    * so we don't want to free the BO pointer, instead we want to reset it
+    * to 0, to signal that array entry as being free.
+    *
+    * We must do the reset before we actually free the BO in the kernel, since
+    * otherwise there is a chance the application creates another BO in a
+    * different thread and gets the same array entry, causing a race.
+    */
+   memset(bo, 0, sizeof(*bo));
 
    struct drm_gem_close c;
    memset(&c, 0, sizeof(c));
-   c.handle = bo->handle;
-   int ret = v3dv_ioctl(device->render_fd, DRM_IOCTL_GEM_CLOSE, &c);
+   c.handle = handle;
+   int ret = v3dv_ioctl(device->pdevice->render_fd, DRM_IOCTL_GEM_CLOSE, &c);
    if (ret != 0)
-      fprintf(stderr, "close object %d: %s\n", bo->handle, strerror(errno));
-
-   device->bo_count--;
-   device->bo_size -= bo->size;
-
-   if (dump_stats) {
-      fprintf(stderr, "Freed %s%s%dkb:\n",
-              bo->name ? bo->name : "",
-              bo->name ? " " : "",
-              bo->size / 1024);
-      bo_dump_stats(device);
-   }
-
-   vk_free(&device->alloc, bo);
+      fprintf(stderr, "close object %d: %s\n", handle, strerror(errno));
 
    return ret == 0;
 }
@@ -183,7 +195,9 @@ v3dv_bo_init(struct v3dv_bo *bo,
              const char *name,
              bool private)
 {
+   p_atomic_set(&bo->refcnt, 1);
    bo->handle = handle;
+   bo->handle_bit = 1ull << (handle % 64);
    bo->size = size;
    bo->offset = offset;
    bo->map = NULL;
@@ -191,7 +205,19 @@ v3dv_bo_init(struct v3dv_bo *bo,
    bo->name = name;
    bo->private = private;
    bo->dumb_handle = -1;
+   bo->is_import = false;
    list_inithead(&bo->list_link);
+}
+
+void
+v3dv_bo_init_import(struct v3dv_bo *bo,
+                    uint32_t handle,
+                    uint32_t size,
+                    uint32_t offset,
+                    bool private)
+{
+   v3dv_bo_init(bo, handle, size, offset, "import", private);
+   bo->is_import = true;
 }
 
 struct v3dv_bo *
@@ -217,14 +243,6 @@ v3dv_bo_alloc(struct v3dv_device *device,
       }
    }
 
-   bo = vk_alloc(&device->alloc, sizeof(struct v3dv_bo), 8,
-                 VK_SYSTEM_ALLOCATION_SCOPE_DEVICE);
-
-   if (!bo) {
-      fprintf(stderr, "Failed to allocate host memory for BO\n");
-      return NULL;
-   }
-
  retry:
    ;
 
@@ -233,7 +251,8 @@ v3dv_bo_alloc(struct v3dv_device *device,
       .size = size
    };
 
-   int ret = v3dv_ioctl(device->render_fd, DRM_IOCTL_V3D_CREATE_BO, &create);
+   int ret = v3dv_ioctl(device->pdevice->render_fd,
+                        DRM_IOCTL_V3D_CREATE_BO, &create);
    if (ret != 0) {
       if (!list_is_empty(&device->bo_cache.time_list) &&
           !cleared_and_retried) {
@@ -242,13 +261,15 @@ v3dv_bo_alloc(struct v3dv_device *device,
          goto retry;
       }
 
-      vk_free(&device->alloc, bo);
       fprintf(stderr, "Failed to allocate device memory for BO\n");
       return NULL;
    }
 
    assert(create.offset % page_align == 0);
    assert((create.offset & 0xffffffff) == create.offset);
+
+   bo = v3dv_device_lookup_bo(device->pdevice, create.handle);
+   assert(bo && bo->handle == 0);
 
    v3dv_bo_init(bo, create.handle, size, create.offset, name, private);
 
@@ -275,14 +296,15 @@ v3dv_bo_map_unsynchronized(struct v3dv_device *device,
    struct drm_v3d_mmap_bo map;
    memset(&map, 0, sizeof(map));
    map.handle = bo->handle;
-   int ret = v3dv_ioctl(device->render_fd, DRM_IOCTL_V3D_MMAP_BO, &map);
+   int ret = v3dv_ioctl(device->pdevice->render_fd,
+                        DRM_IOCTL_V3D_MMAP_BO, &map);
    if (ret != 0) {
       fprintf(stderr, "map ioctl failure\n");
       return false;
    }
 
    bo->map = mmap(NULL, size, PROT_READ | PROT_WRITE, MAP_SHARED,
-                  device->render_fd, map.offset);
+                  device->pdevice->render_fd, map.offset);
    if (bo->map == MAP_FAILED) {
       fprintf(stderr, "mmap of bo %d (offset 0x%016llx, size %d) failed\n",
               bo->handle, (long long)map.offset, (uint32_t)bo->size);
@@ -304,7 +326,8 @@ v3dv_bo_wait(struct v3dv_device *device,
       .handle = bo->handle,
       .timeout_ns = timeout_ns,
    };
-   return v3dv_ioctl(device->render_fd, DRM_IOCTL_V3D_WAIT_BO, &wait) == 0;
+   return v3dv_ioctl(device->pdevice->render_fd,
+                     DRM_IOCTL_V3D_WAIT_BO, &wait) == 0;
 }
 
 bool
@@ -316,8 +339,7 @@ v3dv_bo_map(struct v3dv_device *device, struct v3dv_bo *bo, uint32_t size)
    if (!ok)
       return false;
 
-   const uint64_t infinite = 0xffffffffffffffffull;
-   ok = v3dv_bo_wait(device, bo, infinite);
+   ok = v3dv_bo_wait(device, bo, OS_TIMEOUT_INFINITE);
    if (!ok) {
       fprintf(stderr, "memory wait for map failed\n");
       return false;
@@ -337,13 +359,13 @@ v3dv_bo_unmap(struct v3dv_device *device, struct v3dv_bo *bo)
    bo->map_size = 0;
 }
 
-static boolean
+static bool
 reallocate_size_list(struct v3dv_bo_cache *cache,
                      struct v3dv_device *device,
                      uint32_t size)
 {
    struct list_head *new_list =
-      vk_alloc(&device->alloc, sizeof(struct list_head) * size, 8,
+      vk_alloc(&device->vk.alloc, sizeof(struct list_head) * size, 8,
                VK_SYSTEM_ALLOCATION_SCOPE_DEVICE);
 
    if (!new_list) {
@@ -371,7 +393,7 @@ reallocate_size_list(struct v3dv_bo_cache *cache,
 
    cache->size_list = new_list;
    cache->size_list_size = size;
-   vk_free(&device->alloc, old_list);
+   vk_free(&device->vk.alloc, old_list);
 
    return true;
 }
@@ -397,16 +419,18 @@ v3dv_bo_cache_init(struct v3dv_device *device)
       fprintf(stderr, "MAX BO CACHE SIZE: %iMB\n", device->bo_cache.max_cache_size);
    }
 
+   mtx_lock(&device->bo_cache.lock);
    device->bo_cache.max_cache_size *= 1024 * 1024;
    device->bo_cache.cache_count = 0;
    device->bo_cache.cache_size = 0;
+   mtx_unlock(&device->bo_cache.lock);
 }
 
 void
 v3dv_bo_cache_destroy(struct v3dv_device *device)
 {
    bo_cache_free_all(device, true);
-   vk_free(&device->alloc, device->bo_cache.size_list);
+   vk_free(&device->vk.alloc, device->bo_cache.size_list);
 
    if (dump_stats) {
       fprintf(stderr, "BO stats after screen destroy:\n");
@@ -451,6 +475,12 @@ v3dv_bo_free(struct v3dv_device *device,
 {
    if (!bo)
       return true;
+
+   if (!p_atomic_dec_zero(&bo->refcnt))
+      return true;
+
+   if (bo->map)
+      v3dv_bo_unmap(device, bo);
 
    struct timespec time;
    struct v3dv_bo_cache *cache = &device->bo_cache;

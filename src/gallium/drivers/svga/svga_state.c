@@ -1,5 +1,5 @@
 /**********************************************************
- * Copyright 2008-2009 VMware, Inc.  All rights reserved.
+ * Copyright 2008-2022 VMware, Inc.  All rights reserved.
  *
  * Permission is hereby granted, free of charge, to any person
  * obtaining a copy of this software and associated documentation
@@ -138,6 +138,39 @@ static const struct svga_tracked_state *hw_draw_state_sm5[] =
 };
 
 
+/**
+ * Atoms to update hardware state prior to emitting a draw packet
+ * for GL43 device which includes uav update.
+ */
+static const struct svga_tracked_state *hw_draw_state_gl43[] =
+{
+   &svga_need_tgsi_transform,
+   &svga_need_rawbuf_srv,
+   &svga_hw_uav,
+   &svga_hw_fs,
+   &svga_hw_gs,
+   &svga_hw_tes,
+   &svga_hw_tcs,
+   &svga_hw_vs,
+   &svga_hw_rss,
+   &svga_hw_sampler,
+   &svga_hw_sampler_bindings,
+   &svga_hw_clip_planes,
+   &svga_hw_vdecl,
+   &svga_hw_fs_constants,
+   &svga_hw_fs_constbufs,
+   &svga_hw_gs_constants,
+   &svga_hw_gs_constbufs,
+   &svga_hw_tes_constants,
+   &svga_hw_tes_constbufs,
+   &svga_hw_tcs_constants,
+   &svga_hw_tcs_constbufs,
+   &svga_hw_vs_constants,
+   &svga_hw_vs_constbufs,
+   NULL
+};
+
+
 static const struct svga_tracked_state *swtnl_draw_state[] =
 {
    &svga_update_swtnl_draw,
@@ -184,9 +217,9 @@ update_state(struct svga_context *svga,
              uint64_t *state)
 {
 #ifdef DEBUG
-   boolean debug = TRUE;
+   bool debug = true;
 #else
-   boolean debug = FALSE;
+   bool debug = false;
 #endif
    enum pipe_error ret = PIPE_OK;
    unsigned i;
@@ -309,7 +342,6 @@ svga_update_state_retry(struct svga_context *svga, unsigned max_level)
 }
 
 
-
 #define EMIT_RS(_rs, _count, _name, _value)     \
 do {                                            \
    _rs[_count].state = _name;                   \
@@ -383,7 +415,45 @@ svga_init_tracked_state(struct svga_context *svga)
 {
    /* Set the hw_draw_state atom list to the one for the particular gpu version.
     */
-   state_levels[2] = svga_have_sm5(svga) ? hw_draw_state_sm5 :
-                       (svga_have_vgpu10(svga) ? hw_draw_state_vgpu10 :
-                                                 hw_draw_state_vgpu9);
+   state_levels[2] =
+      svga_have_gl43(svga) ? hw_draw_state_gl43 :
+         (svga_have_sm5(svga) ? hw_draw_state_sm5 :
+            ((svga_have_vgpu10(svga) ? hw_draw_state_vgpu10 :
+                                       hw_draw_state_vgpu9)));
+}
+
+
+static const struct svga_tracked_state *compute_state[] =
+{
+   &svga_hw_cs_uav,
+   &svga_hw_cs_sampler,
+   &svga_hw_cs_sampler_bindings,
+   &svga_hw_cs,
+   &svga_hw_cs_constants,
+   &svga_hw_cs_constbufs,
+   NULL
+};
+
+/**
+ * Update compute state.
+ * If the first attempt fails, flush the command buffer and retry.
+ * \return  true if success, false if second attempt fails.
+ */
+bool
+svga_update_compute_state(struct svga_context *svga)
+{
+   enum pipe_error ret = PIPE_OK;
+   uint64_t compute_dirty = svga->dirty;
+
+   if (compute_dirty) {
+      SVGA_RETRY_OOM(svga, ret, update_state(svga, compute_state,
+                                             &compute_dirty));
+
+      /* Set the dirty flag to the remaining dirty bits which are
+       * not processed in the compute pipeline.
+       */
+      svga->dirty = compute_dirty;
+   }
+
+   return ret == PIPE_OK;
 }

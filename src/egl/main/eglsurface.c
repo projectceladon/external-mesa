@@ -27,23 +27,21 @@
  *
  **************************************************************************/
 
-
 /**
  * Surface-related functions.
  */
 
-
+#include "eglsurface.h"
 #include <assert.h>
 #include <stdlib.h>
 #include <string.h>
+#include "eglconfig.h"
+#include "eglcontext.h"
+#include "eglcurrent.h"
 #include "egldefines.h"
 #include "egldisplay.h"
 #include "egldriver.h"
-#include "eglcontext.h"
-#include "eglconfig.h"
-#include "eglcurrent.h"
 #include "egllog.h"
-#include "eglsurface.h"
 
 #include "util/macros.h"
 
@@ -216,9 +214,23 @@ _eglParseSurfaceAttribList(_EGLSurface *surf, const EGLint *attrib_list)
             surf->ActiveRenderBuffer = val;
          }
          break;
+      case EGL_PRESENT_OPAQUE_EXT:
+         if (!disp->Extensions.EXT_present_opaque) {
+            err = EGL_BAD_ATTRIBUTE;
+            break;
+         }
+         if (type != EGL_WINDOW_BIT) {
+            err = EGL_BAD_ATTRIBUTE;
+            break;
+         }
+         if (val != EGL_TRUE && val != EGL_FALSE) {
+            err = EGL_BAD_PARAMETER;
+            break;
+         }
+         surf->PresentOpaque = val;
+         break;
       case EGL_POST_SUB_BUFFER_SUPPORTED_NV:
-         if (!disp->Extensions.NV_post_sub_buffer ||
-             type != EGL_WINDOW_BIT) {
+         if (!disp->Extensions.NV_post_sub_buffer || type != EGL_WINDOW_BIT) {
             err = EGL_BAD_ATTRIBUTE;
             break;
          }
@@ -304,7 +316,8 @@ _eglParseSurfaceAttribList(_EGLSurface *surf, const EGLint *attrib_list)
          surf->MipmapTexture = !!val;
          break;
       case EGL_PROTECTED_CONTENT_EXT:
-         if (!disp->Extensions.EXT_protected_surface) {
+         if (!disp->Extensions.EXT_protected_content &&
+             !disp->Extensions.EXT_protected_surface) {
             err = EGL_BAD_ATTRIBUTE;
             break;
          }
@@ -322,9 +335,12 @@ _eglParseSurfaceAttribList(_EGLSurface *surf, const EGLint *attrib_list)
    }
 
    if (err == EGL_SUCCESS && type == EGL_PBUFFER_BIT) {
-      if ((surf->TextureTarget == EGL_NO_TEXTURE && surf->TextureFormat != EGL_NO_TEXTURE) ||
-          (surf->TextureFormat == EGL_NO_TEXTURE && surf->TextureTarget != EGL_NO_TEXTURE)) {
-         attr = surf->TextureTarget == EGL_NO_TEXTURE ? EGL_TEXTURE_TARGET : EGL_TEXTURE_FORMAT;
+      if ((surf->TextureTarget == EGL_NO_TEXTURE &&
+           surf->TextureFormat != EGL_NO_TEXTURE) ||
+          (surf->TextureFormat == EGL_NO_TEXTURE &&
+           surf->TextureTarget != EGL_NO_TEXTURE)) {
+         attr = surf->TextureTarget == EGL_NO_TEXTURE ? EGL_TEXTURE_TARGET
+                                                      : EGL_TEXTURE_FORMAT;
          err = EGL_BAD_MATCH;
       }
    }
@@ -334,7 +350,6 @@ _eglParseSurfaceAttribList(_EGLSurface *surf, const EGLint *attrib_list)
 
    return err;
 }
-
 
 /**
  * Do error check on parameters and initialize the given _EGLSurface object.
@@ -392,6 +407,7 @@ _eglInitSurface(_EGLSurface *surf, _EGLDisplay *disp, EGLint type,
    surf->VGColorspace = EGL_VG_COLORSPACE_sRGB;
    surf->GLColorspace = EGL_GL_COLORSPACE_LINEAR_KHR;
    surf->ProtectedContent = EGL_FALSE;
+   surf->PresentOpaque = EGL_FALSE;
 
    surf->MipmapLevel = 0;
    surf->MultisampleResolve = EGL_MULTISAMPLE_RESOLVE_DEFAULT;
@@ -436,10 +452,9 @@ _eglInitSurface(_EGLSurface *surf, _EGLDisplay *disp, EGLint type,
    return EGL_TRUE;
 }
 
-
 EGLBoolean
-_eglQuerySurface(_EGLDisplay *disp, _EGLSurface *surface,
-                 EGLint attribute, EGLint *value)
+_eglQuerySurface(_EGLDisplay *disp, _EGLSurface *surface, EGLint attribute,
+                 EGLint *value)
 {
    switch (attribute) {
    case EGL_WIDTH:
@@ -543,13 +558,22 @@ _eglQuerySurface(_EGLDisplay *disp, _EGLSurface *surface,
          return _eglError(EGL_BAD_ATTRIBUTE, "eglQuerySurface");
 
       _EGLContext *ctx = _eglGetCurrentContext();
-      EGLint result = disp->Driver->QueryBufferAge(disp, surface);
-      /* error happened */
-      if (result < 0)
-         return EGL_FALSE;
       if (_eglGetContextHandle(ctx) == EGL_NO_CONTEXT ||
           ctx->DrawSurface != surface)
          return _eglError(EGL_BAD_SURFACE, "eglQuerySurface");
+
+      EGLint result = disp->Driver->QueryBufferAge(disp, surface);
+      if (result < 0)
+         return EGL_FALSE;
+
+      if (disp->Options.GalliumHudWarn && result > 0) {
+         _eglLog(_EGL_WARNING,
+                 "GALLIUM_HUD is not accounted for when querying "
+                 "buffer age, possibly causing artifacts, try running with "
+                 "MESA_EXTENSION_OVERRIDE=\"-EGL_EXT_buffer_age "
+                 "-EGL_KHR_partial_update\"");
+         disp->Options.GalliumHudWarn = EGL_FALSE;
+      }
 
       *value = result;
       surface->BufferAgeRead = EGL_TRUE;
@@ -591,9 +615,15 @@ _eglQuerySurface(_EGLDisplay *disp, _EGLSurface *surface,
       *value = surface->HdrMetadata.max_fall;
       break;
    case EGL_PROTECTED_CONTENT_EXT:
-      if (!disp->Extensions.EXT_protected_surface)
+      if (!disp->Extensions.EXT_protected_content &&
+          !disp->Extensions.EXT_protected_surface)
          return _eglError(EGL_BAD_ATTRIBUTE, "eglQuerySurface");
       *value = surface->ProtectedContent;
+      break;
+   case EGL_PRESENT_OPAQUE_EXT:
+      if (!disp->Extensions.EXT_present_opaque)
+         return _eglError(EGL_BAD_ATTRIBUTE, "eglQuerySurface");
+      *value = surface->PresentOpaque;
       break;
    default:
       return _eglError(EGL_BAD_ATTRIBUTE, "eglQuerySurface");
@@ -602,19 +632,17 @@ _eglQuerySurface(_EGLDisplay *disp, _EGLSurface *surface,
    return EGL_TRUE;
 }
 
-
 /**
  * Default fallback routine - drivers might override this.
  */
 EGLBoolean
-_eglSurfaceAttrib(_EGLDisplay *disp, _EGLSurface *surface,
-                  EGLint attribute, EGLint value)
+_eglSurfaceAttrib(_EGLDisplay *disp, _EGLSurface *surface, EGLint attribute,
+                  EGLint value)
 {
    EGLint confval;
    EGLint err = EGL_SUCCESS;
-   EGLint all_es_bits = EGL_OPENGL_ES_BIT |
-                        EGL_OPENGL_ES2_BIT |
-                        EGL_OPENGL_ES3_BIT_KHR;
+   EGLint all_es_bits =
+      EGL_OPENGL_ES_BIT | EGL_OPENGL_ES2_BIT | EGL_OPENGL_ES3_BIT_KHR;
 
    switch (attribute) {
    case EGL_MIPMAP_LEVEL:
@@ -730,7 +758,6 @@ _eglSurfaceAttrib(_EGLDisplay *disp, _EGLSurface *surface,
    return EGL_TRUE;
 }
 
-
 EGLBoolean
 _eglBindTexImage(_EGLDisplay *disp, _EGLSurface *surface, EGLint buffer)
 {
@@ -772,8 +799,7 @@ _eglReleaseTexImage(_EGLDisplay *disp, _EGLSurface *surf, EGLint buffer)
    if (surf == EGL_NO_SURFACE)
       return _eglError(EGL_BAD_SURFACE, "eglReleaseTexImage");
 
-   if (!surf->BoundToTexture)
-   {
+   if (!surf->BoundToTexture) {
       /* Not an error, simply nothing to do */
       return EGL_TRUE;
    }
@@ -798,8 +824,7 @@ _eglReleaseTexImage(_EGLDisplay *disp, _EGLSurface *surf, EGLint buffer)
 EGLBoolean
 _eglSurfaceHasMutableRenderBuffer(_EGLSurface *surf)
 {
-   return surf->Type == EGL_WINDOW_BIT &&
-          surf->Config &&
+   return surf->Type == EGL_WINDOW_BIT && surf->Config &&
           (surf->Config->SurfaceType & EGL_MUTABLE_RENDER_BUFFER_BIT_KHR);
 }
 

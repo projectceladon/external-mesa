@@ -58,7 +58,7 @@ def find_result_types(spirv):
                 'OpDecorationGroup',
                 'OpLabel',
             ]
-            assert name.startswith('OpType') or name in untyped_insts
+            assert name.startswith('OpType') or name.startswith('OpAlias') or name in untyped_insts
 
         if res_arg_idx >= 0 or res_type_arg_idx >= 0:
             yield (name, res_arg_idx, res_type_arg_idx)
@@ -115,7 +115,7 @@ if __name__ == "__main__":
     opcodes = list(find_result_types(spirv_info))
 
     try:
-        with open(args.out, 'w') as f:
+        with open(args.out, 'w', encoding='utf-8') as f:
             f.write(TEMPLATE.render(opcodes=opcodes))
     except Exception:
         # In the even there's an error this imports some helpers from mako
