@@ -18,18 +18,20 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
-files_mesa_format = [
+files_mesa_format = files(
   'u_format.c',
   'u_format_bptc.c',
   'u_format_etc.c',
+  'u_format_fxt1.c',
   'u_format_latc.c',
   'u_format_other.c',
   'u_format_rgtc.c',
   'u_format_s3tc.c',
   'u_format_tests.c',
+  'u_format_unpack_neon.c',
   'u_format_yuv.c',
   'u_format_zs.c',
-]
+)
 
 u_format_pack_h = custom_target(
   'u_format_pack.h',
@@ -49,12 +51,4 @@ u_format_table_c = custom_target(
   capture : true,
 )
 
-libmesa_format = static_library(
-  'mesa_format',
-  [files_mesa_format, u_format_table_c, u_format_pack_h],
-  include_directories : [inc_include, inc_src, inc_mapi, inc_mesa, inc_gallium, inc_gallium_aux],
-  dependencies : dep_m,
-  c_args : [c_msvc_compat_args],
-  gnu_symbol_visibility : 'hidden',
-  build_by_default : false
-)
+files_mesa_format += [u_format_pack_h, u_format_table_c]

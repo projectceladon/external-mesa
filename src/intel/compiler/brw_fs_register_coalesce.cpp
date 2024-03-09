@@ -177,7 +177,8 @@ can_coalesce_vars(const fs_live_variables &live, const cfg_t *cfg,
          /* See the big comment above */
          if (regions_overlap(scan_inst->dst, scan_inst->size_written,
                              inst->src[0], inst->size_read(0))) {
-            if (seen_copy || scan_block != block)
+            if (seen_copy || scan_block != block ||
+                (scan_inst->force_writemask_all && !inst->force_writemask_all))
                return false;
             seen_src_write = true;
          }
@@ -188,20 +189,22 @@ can_coalesce_vars(const fs_live_variables &live, const cfg_t *cfg,
 }
 
 bool
-fs_visitor::register_coalesce()
+brw_fs_opt_register_coalesce(fs_visitor &s)
 {
+   const intel_device_info *devinfo = s.devinfo;
+
    bool progress = false;
-   fs_live_variables &live = live_analysis.require();
+   fs_live_variables &live = s.live_analysis.require();
    int src_size = 0;
    int channels_remaining = 0;
    unsigned src_reg = ~0u, dst_reg = ~0u;
-   int dst_reg_offset[MAX_VGRF_SIZE];
-   fs_inst *mov[MAX_VGRF_SIZE];
-   int dst_var[MAX_VGRF_SIZE];
-   int src_var[MAX_VGRF_SIZE];
+   int *dst_reg_offset = new int[MAX_VGRF_SIZE(devinfo)];
+   fs_inst **mov = new fs_inst *[MAX_VGRF_SIZE(devinfo)];
+   int *dst_var = new int[MAX_VGRF_SIZE(devinfo)];
+   int *src_var = new int[MAX_VGRF_SIZE(devinfo)];
 
-   foreach_block_and_inst(block, fs_inst, inst, cfg) {
-      if (!is_coalesce_candidate(this, inst))
+   foreach_block_and_inst(block, fs_inst, inst, s.cfg) {
+      if (!is_coalesce_candidate(&s, inst))
          continue;
 
       if (is_nop_mov(inst)) {
@@ -213,11 +216,11 @@ fs_visitor::register_coalesce()
       if (src_reg != inst->src[0].nr) {
          src_reg = inst->src[0].nr;
 
-         src_size = alloc.sizes[inst->src[0].nr];
-         assert(src_size <= MAX_VGRF_SIZE);
+         src_size = s.alloc.sizes[inst->src[0].nr];
+         assert(src_size <= MAX_VGRF_SIZE(devinfo));
 
          channels_remaining = src_size;
-         memset(mov, 0, sizeof(mov));
+         memset(mov, 0, sizeof(*mov) * MAX_VGRF_SIZE(devinfo));
 
          dst_reg = inst->dst.nr;
       }
@@ -264,7 +267,7 @@ fs_visitor::register_coalesce()
          dst_var[i] = live.var_from_vgrf[dst_reg] + dst_reg_offset[i];
          src_var[i] = live.var_from_vgrf[src_reg] + i;
 
-         if (!can_coalesce_vars(live, cfg, block, inst, dst_var[i], src_var[i])) {
+         if (!can_coalesce_vars(live, s.cfg, block, inst, dst_var[i], src_var[i])) {
             can_coalesce = false;
             src_reg = ~0u;
             break;
@@ -300,7 +303,7 @@ fs_visitor::register_coalesce()
          }
       }
 
-      foreach_block_and_inst(block, fs_inst, scan_inst, cfg) {
+      foreach_block_and_inst(block, fs_inst, scan_inst, s.cfg) {
          if (scan_inst->dst.file == VGRF &&
              scan_inst->dst.nr == src_reg) {
             scan_inst->dst.nr = dst_reg;
@@ -328,14 +331,21 @@ fs_visitor::register_coalesce()
    }
 
    if (progress) {
-      foreach_block_and_inst_safe (block, backend_instruction, inst, cfg) {
+      foreach_block_and_inst_safe (block, backend_instruction, inst, s.cfg) {
          if (inst->opcode == BRW_OPCODE_NOP) {
-            inst->remove(block);
+            inst->remove(block, true);
          }
       }
 
-      invalidate_analysis(DEPENDENCY_INSTRUCTIONS);
+      s.cfg->adjust_block_ips();
+
+      s.invalidate_analysis(DEPENDENCY_INSTRUCTIONS);
    }
+
+   delete[] src_var;
+   delete[] dst_var;
+   delete[] mov;
+   delete[] dst_reg_offset;
 
    return progress;
 }

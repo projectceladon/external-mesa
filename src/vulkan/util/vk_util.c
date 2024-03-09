@@ -23,9 +23,11 @@
  * IN THE SOFTWARE.
  */
 
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include "vk_util.h"
+#include "util/u_debug.h"
 
 uint32_t vk_get_driver_version(void)
 {
@@ -59,11 +61,21 @@ uint32_t vk_get_version_override(void)
 
    int major = atoi(str);
    int minor = minor_str ? atoi(minor_str + 1) : 0;
-   int patch = patch_str ? atoi(patch_str + 1) : 0;
+   int patch = patch_str ? atoi(patch_str + 1) : VK_HEADER_VERSION;
 
    /* Do some basic version sanity checking */
    if (major < 1 || minor < 0 || patch < 0 || minor > 1023 || patch > 4095)
       return 0;
 
    return VK_MAKE_VERSION(major, minor, patch);
+}
+
+void
+vk_warn_non_conformant_implementation(const char *driver_name)
+{
+   if (debug_get_bool_option("MESA_VK_IGNORE_CONFORMANCE_WARNING", false))
+      return;
+
+   fprintf(stderr, "WARNING: %s is not a conformant Vulkan implementation, "
+                   "testing use only.\n", driver_name);
 }

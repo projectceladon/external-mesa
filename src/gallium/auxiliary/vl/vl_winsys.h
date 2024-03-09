@@ -29,14 +29,22 @@
  * Target makefiles directly refer to vl_winsys_dri.c to avoid DRI dependency
  */
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 #ifndef vl_winsys_h
 #define vl_winsys_h
 
 #ifdef HAVE_X11_PLATFORM
 #include <X11/Xlib.h>
 #endif
+#ifdef _WIN32
+#include <windows.h>
+#include <unknwn.h>
+#endif
 #include "pipe/p_defines.h"
-#include "pipe/p_format.h"
+#include "util/format/u_formats.h"
 
 struct pipe_screen;
 struct pipe_surface;
@@ -92,8 +100,28 @@ static inline struct vl_screen *
 vl_dri3_screen_create(void *display, int screen) { return NULL; };
 #endif
 
+#ifdef _WIN32
+struct vl_screen *vl_win32_screen_create(LUID *adapter);
+struct vl_screen *vl_win32_screen_create_from_d3d12_device(IUnknown* d3d12_device);
+#else
 /* Always enable the DRM vl winsys */
 struct vl_screen *
 vl_drm_screen_create(int fd);
 
+#ifdef USE_XSHM
+struct vl_screen *
+vl_xlib_swrast_screen_create(Display *display, int screen);
+static inline struct vl_screen *
+vl_vgem_drm_screen_create(int fd) { return NULL; }
+#else
+struct vl_screen *
+vl_vgem_drm_screen_create(int fd);
+static inline struct vl_screen *
+vl_xlib_swrast_screen_create(void *display, int screen) { return NULL; }
+#endif
+#endif
+
+#endif
+#ifdef __cplusplus
+}
 #endif

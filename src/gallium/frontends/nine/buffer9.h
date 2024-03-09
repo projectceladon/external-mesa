@@ -29,8 +29,11 @@
 #include "nine_state.h"
 #include "resource9.h"
 #include "pipe/p_context.h"
+#include "pipe/p_defines.h"
 #include "pipe/p_state.h"
 #include "util/list.h"
+#include "util/u_box.h"
+#include "util/u_upload_mgr.h"
 
 struct pipe_screen;
 struct pipe_context;
@@ -49,24 +52,32 @@ struct NineBuffer9
 
     /* G3D */
     struct NineTransfer *maps;
-    int nmaps, maxmaps;
+    int nlocks, nmaps, maxmaps;
     UINT size;
 
     int16_t bind_count; /* to Device9->state.stream */
     /* Whether only discard and nooverwrite were used so far
      * for this buffer. Allows some optimization. */
-    boolean discard_nooverwrite_only;
-    boolean need_sync_if_nooverwrite;
+    bool discard_nooverwrite_only;
+    bool need_sync_if_nooverwrite;
     struct nine_subbuffer *buf;
 
     /* Specific to managed buffers */
     struct {
         void *data;
-        boolean dirty;
-        struct pipe_box dirty_box;
+        bool dirty;
+        struct pipe_box dirty_box; /* region in the resource to update */
+        struct pipe_box upload_pending_regions; /* region with uploads pending */
         struct list_head list; /* for update_buffers */
         struct list_head list2; /* for managed_buffers */
         unsigned pending_upload; /* for uploads */
+        /* SYSTEMMEM DYNAMIC */
+        bool can_unsynchronized; /* Whether the upload can use nooverwrite */
+        struct pipe_box valid_region; /* Region in the GPU buffer with valid content */
+        struct pipe_box required_valid_region; /* Region that needs to be valid right now. */
+        struct pipe_box filled_region; /* Region in the GPU buffer filled since last discard */
+        unsigned num_worker_thread_syncs;
+        unsigned frame_count_last_discard;
     } managed;
 };
 static inline struct NineBuffer9 *
@@ -99,20 +110,8 @@ NineBuffer9_Lock( struct NineBuffer9 *This,
 HRESULT NINE_WINAPI
 NineBuffer9_Unlock( struct NineBuffer9 *This );
 
-static inline void
-NineBuffer9_Upload( struct NineBuffer9 *This )
-{
-    struct NineDevice9 *device = This->base.base.device;
-
-    assert(This->base.pool == D3DPOOL_MANAGED && This->managed.dirty);
-    nine_context_range_upload(device, &This->managed.pending_upload,
-                              (struct NineUnknown *)This,
-                              This->base.resource,
-                              This->managed.dirty_box.x,
-                              This->managed.dirty_box.width,
-                              (char *)This->managed.data + This->managed.dirty_box.x);
-    This->managed.dirty = FALSE;
-}
+void
+NineBuffer9_Upload( struct NineBuffer9 *This );
 
 static void inline
 NineBindBufferToDevice( struct NineDevice9 *device,

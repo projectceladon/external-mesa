@@ -28,6 +28,8 @@
 #include <stdbool.h>
 #include <stdint.h>
 
+#include "hw/common.xml.h"
+#include "hw/common_3d.xml.h"
 #include "hw/state.xml.h"
 #include "hw/state_3d.xml.h"
 
@@ -77,6 +79,8 @@ struct etna_specs {
    unsigned has_new_transcendentals : 1;
    /* has the new dp2/dpX_norm instructions, among others */
    unsigned has_halti2_instructions : 1;
+   /* has no limit on the number of constant sources per instruction */
+   unsigned has_no_oneconst_limit : 1;
    /* has V4_COMPRESSION */
    unsigned v4_compression : 1;
    /* supports single-buffer rendering with multiple pixel pipes */
@@ -139,6 +143,16 @@ struct etna_specs {
    unsigned pixel_pipes;
    /* number of constants */
    unsigned num_constants;
+   /* number of NN cores */
+   unsigned nn_core_count;
+   /* number of MAD units per NN core */
+   unsigned nn_mad_per_core;
+   /* number of TP cores */
+   unsigned tp_core_count;
+   /* Size of on-chip SRAM */
+   unsigned on_chip_sram_size;
+   /* Size of SRAM behind AXI */
+   unsigned axi_sram_size;
 };
 
 /* Compiled Gallium state. All the different compiled state atoms are woven
@@ -215,11 +229,11 @@ struct compiled_vertex_elements_state {
    uint32_t NFE_GENERIC_ATTRIB_CONFIG1[VIVS_NFE_GENERIC_ATTRIB__LEN];
    unsigned num_buffers;
    uint32_t NFE_VERTEX_STREAMS_VERTEX_DIVISOR[VIVS_NFE_VERTEX_STREAMS__LEN];
+   uint32_t FE_VERTEX_STREAM_CONTROL[VIVS_NFE_VERTEX_STREAMS__LEN];
 };
 
 /* Compiled context->set_vertex_buffer result */
 struct compiled_set_vertex_buffer {
-   uint32_t FE_VERTEX_STREAM_CONTROL;
    struct etna_reloc FE_VERTEX_STREAM_BASE_ADDR;
 };
 

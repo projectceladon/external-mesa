@@ -23,11 +23,14 @@
 
 #include "util/u_pack_color.h"
 #include "util/u_upload_mgr.h"
-#include "util/format_srgb.h"
 
 #include "v3d_context.h"
 #include "compiler/v3d_compiler.h"
-#include "broadcom/cle/v3d_packet_v33_pack.h"
+
+/* We don't expect that the packets we use in this file change across across
+ * hw versions, so we just include directly the v42 header
+ */
+#include "broadcom/cle/v3d_packet_v42_pack.h"
 
 static uint32_t
 get_texrect_scale(struct v3d_texture_stateobj *texstate,
@@ -51,20 +54,32 @@ get_texture_size(struct v3d_texture_stateobj *texstate,
                  uint32_t data)
 {
         struct pipe_sampler_view *texture = texstate->textures[data];
-
         switch (contents) {
         case QUNIFORM_TEXTURE_WIDTH:
-                return u_minify(texture->texture->width0,
-                                texture->u.tex.first_level);
+                if (texture->target == PIPE_BUFFER) {
+                        return texture->u.buf.size /
+                                util_format_get_blocksize(texture->format);
+                } else {
+                        return u_minify(texture->texture->width0,
+                                        texture->u.tex.first_level);
+                }
         case QUNIFORM_TEXTURE_HEIGHT:
                 return u_minify(texture->texture->height0,
                                 texture->u.tex.first_level);
         case QUNIFORM_TEXTURE_DEPTH:
+                assert(texture->target != PIPE_BUFFER);
                 return u_minify(texture->texture->depth0,
                                 texture->u.tex.first_level);
         case QUNIFORM_TEXTURE_ARRAY_SIZE:
-                return texture->texture->array_size;
+                assert(texture->target != PIPE_BUFFER);
+                if (texture->target != PIPE_TEXTURE_CUBE_ARRAY) {
+                        return texture->texture->array_size;
+                } else {
+                        assert(texture->texture->array_size % 6 == 0);
+                        return texture->texture->array_size / 6;
+                }
         case QUNIFORM_TEXTURE_LEVELS:
+                assert(texture->target != PIPE_BUFFER);
                 return (texture->u.tex.last_level -
                         texture->u.tex.first_level) + 1;
         default:
@@ -81,67 +96,32 @@ get_image_size(struct v3d_shaderimg_stateobj *shaderimg,
 
         switch (contents) {
         case QUNIFORM_IMAGE_WIDTH:
-                return u_minify(image->base.resource->width0,
-                                image->base.u.tex.level);
+                if (image->base.resource->target == PIPE_BUFFER) {
+                        return image->base.u.buf.size /
+                                util_format_get_blocksize(image->base.format);
+                } else {
+                        return u_minify(image->base.resource->width0,
+                                        image->base.u.tex.level);
+                }
         case QUNIFORM_IMAGE_HEIGHT:
+                assert(image->base.resource->target != PIPE_BUFFER);
                 return u_minify(image->base.resource->height0,
                                 image->base.u.tex.level);
         case QUNIFORM_IMAGE_DEPTH:
+                assert(image->base.resource->target != PIPE_BUFFER);
                 return u_minify(image->base.resource->depth0,
                                 image->base.u.tex.level);
         case QUNIFORM_IMAGE_ARRAY_SIZE:
-                return image->base.resource->array_size;
+                assert(image->base.resource->target != PIPE_BUFFER);
+                if (image->base.resource->target != PIPE_TEXTURE_CUBE_ARRAY) {
+                        return image->base.resource->array_size;
+                } else {
+                        assert(image->base.resource->array_size % 6 == 0);
+                        return image->base.resource->array_size / 6;
+                }
         default:
                 unreachable("Bad texture size field");
         }
-}
-
-/**
- *  Writes the V3D 3.x P0 (CFG_MODE=1) texture parameter.
- *
- * Some bits of this field are dependent on the type of sample being done by
- * the shader, while other bits are dependent on the sampler state.  We OR the
- * two together here.
- */
-static void
-write_texture_p0(struct v3d_job *job,
-                 struct v3d_cl_out **uniforms,
-                 struct v3d_texture_stateobj *texstate,
-                 uint32_t unit,
-                 uint32_t shader_data)
-{
-        struct pipe_sampler_state *psampler = texstate->samplers[unit];
-        struct v3d_sampler_state *sampler = v3d_sampler_state(psampler);
-
-        cl_aligned_u32(uniforms, shader_data | sampler->p0);
-}
-
-/** Writes the V3D 3.x P1 (CFG_MODE=1) texture parameter. */
-static void
-write_texture_p1(struct v3d_job *job,
-                 struct v3d_cl_out **uniforms,
-                 struct v3d_texture_stateobj *texstate,
-                 uint32_t data)
-{
-        /* Extract the texture unit from the top bits, and the compiler's
-         * packed p1 from the bottom.
-         */
-        uint32_t unit = data >> 5;
-        uint32_t p1 = data & 0x1f;
-
-        struct pipe_sampler_view *psview = texstate->textures[unit];
-        struct v3d_sampler_view *sview = v3d_sampler_view(psview);
-
-        struct V3D33_TEXTURE_UNIFORM_PARAMETER_1_CFG_MODE1 unpacked = {
-                .texture_state_record_base_address = texstate->texture_state[unit],
-        };
-
-        uint32_t packed;
-        V3D33_TEXTURE_UNIFORM_PARAMETER_1_CFG_MODE1_pack(&job->indirect,
-                                                         (uint8_t *)&packed,
-                                                         &unpacked);
-
-        cl_aligned_u32(uniforms, p1 | packed | sview->p1);
 }
 
 /** Writes the V3D 4.x TMU configuration parameter 0. */
@@ -154,6 +134,20 @@ write_tmu_p0(struct v3d_job *job,
         int unit = v3d_unit_data_get_unit(data);
         struct pipe_sampler_view *psview = texstate->textures[unit];
         struct v3d_sampler_view *sview = v3d_sampler_view(psview);
+        /* GL_OES_texture_buffer spec:
+         *     "If no buffer object is bound to the buffer texture, the
+         *      results of the texel access are undefined."
+         *
+         * This can be interpreted as allowing any result to come back, but
+         * not terminate the program (and some tests interpret that).
+         *
+         * FIXME: just return is not a full valid solution, as it could still
+         * try to get a wrong address for the shader state address. Perhaps we
+         * would need to set up a BO with a "default texture state"
+         */
+        if (sview == NULL)
+                return;
+
         struct v3d_resource *rsc = v3d_resource(sview->texture);
 
         cl_aligned_reloc(&job->indirect, uniforms, sview->bo,
@@ -196,6 +190,15 @@ write_tmu_p1(struct v3d_job *job,
         struct v3d_sampler_view *sview = v3d_sampler_view(psview);
         int variant = 0;
 
+        /* If we are being asked by the compiler to write parameter 1, then we
+         * need that. So if we are at this point, we should expect to have a
+         * sampler and psampler. As an additional assert, we can check that we
+         * are not on a texel buffer case, as these don't have a sampler.
+         */
+        assert(psview->target != PIPE_BUFFER);
+        assert(sampler);
+        assert(psampler);
+
         if (sampler->border_color_variants)
                 variant = sview->sampler_variant;
 
@@ -210,6 +213,7 @@ v3d_write_uniforms(struct v3d_context *v3d, struct v3d_job *job,
                    struct v3d_compiled_shader *shader,
                    enum pipe_shader_type stage)
 {
+        struct v3d_device_info *devinfo = &v3d->screen->devinfo;
         struct v3d_constbuf_stateobj *cb = &v3d->constbuf[stage];
         struct v3d_texture_stateobj *texstate = &v3d->tex[stage];
         struct v3d_uniform_list *uinfo = &shader->prog_data.base->uniforms;
@@ -241,13 +245,16 @@ v3d_write_uniforms(struct v3d_context *v3d, struct v3d_job *job,
                 case QUNIFORM_UNIFORM:
                         cl_aligned_u32(&uniforms, gallium_uniforms[data]);
                         break;
-                case QUNIFORM_VIEWPORT_X_SCALE:
-                        cl_aligned_f(&uniforms, v3d->viewport.scale[0] * 256.0f);
+                case QUNIFORM_VIEWPORT_X_SCALE: {
+                        float clipper_xy_granularity = V3DV_X(devinfo, CLIPPER_XY_GRANULARITY);
+                        cl_aligned_f(&uniforms, v3d->viewport.scale[0] * clipper_xy_granularity);
                         break;
-                case QUNIFORM_VIEWPORT_Y_SCALE:
-                        cl_aligned_f(&uniforms, v3d->viewport.scale[1] * 256.0f);
+                }
+                case QUNIFORM_VIEWPORT_Y_SCALE: {
+                        float clipper_xy_granularity = V3DV_X(devinfo, CLIPPER_XY_GRANULARITY);
+                        cl_aligned_f(&uniforms, v3d->viewport.scale[1] * clipper_xy_granularity);
                         break;
-
+                }
                 case QUNIFORM_VIEWPORT_Z_OFFSET:
                         cl_aligned_f(&uniforms, v3d->viewport.translate[2]);
                         break;
@@ -271,11 +278,6 @@ v3d_write_uniforms(struct v3d_context *v3d, struct v3d_job *job,
                 case QUNIFORM_IMAGE_TMU_CONFIG_P0:
                         write_image_tmu_p0(job, &uniforms,
                                            &v3d->shaderimg[stage], data);
-                        break;
-
-                case QUNIFORM_TEXTURE_CONFIG_P1:
-                        write_texture_p1(job, &uniforms, texstate,
-                                         data);
                         break;
 
                 case QUNIFORM_TEXRECT_SCALE_X:
@@ -305,11 +307,6 @@ v3d_write_uniforms(struct v3d_context *v3d, struct v3d_job *job,
                                        get_image_size(&v3d->shaderimg[stage],
                                                       uinfo->contents[i],
                                                       data));
-                        break;
-
-                case QUNIFORM_ALPHA_REF:
-                        cl_aligned_f(&uniforms,
-                                     v3d->zsa->base.alpha.ref_value);
                         break;
 
                 case QUNIFORM_LINE_WIDTH:
@@ -387,13 +384,7 @@ v3d_write_uniforms(struct v3d_context *v3d, struct v3d_job *job,
                         break;
 
                 default:
-                        assert(quniform_contents_is_texture_p0(uinfo->contents[i]));
-
-                        write_texture_p0(job, &uniforms, texstate,
-                                         uinfo->contents[i] -
-                                         QUNIFORM_TEXTURE_CONFIG_P0_0,
-                                         data);
-                        break;
+                        unreachable("Unknown QUNIFORM");
 
                 }
 #if 0
@@ -414,7 +405,7 @@ v3d_write_uniforms(struct v3d_context *v3d, struct v3d_job *job,
 void
 v3d_set_shader_uniform_dirty_flags(struct v3d_compiled_shader *shader)
 {
-        uint32_t dirty = 0;
+        uint64_t dirty = 0;
 
         for (int i = 0; i < shader->prog_data.base->uniforms.count; i++) {
                 switch (shader->prog_data.base->uniforms.contents[i]) {
@@ -422,18 +413,18 @@ v3d_set_shader_uniform_dirty_flags(struct v3d_compiled_shader *shader)
                         break;
                 case QUNIFORM_UNIFORM:
                 case QUNIFORM_UBO_ADDR:
-                        dirty |= VC5_DIRTY_CONSTBUF;
+                        dirty |= V3D_DIRTY_CONSTBUF;
                         break;
 
                 case QUNIFORM_VIEWPORT_X_SCALE:
                 case QUNIFORM_VIEWPORT_Y_SCALE:
                 case QUNIFORM_VIEWPORT_Z_OFFSET:
                 case QUNIFORM_VIEWPORT_Z_SCALE:
-                        dirty |= VC5_DIRTY_VIEWPORT;
+                        dirty |= V3D_DIRTY_VIEWPORT;
                         break;
 
                 case QUNIFORM_USER_CLIP_PLANE:
-                        dirty |= VC5_DIRTY_CLIP;
+                        dirty |= V3D_DIRTY_CLIP;
                         break;
 
                 case QUNIFORM_TMU_CONFIG_P0:
@@ -452,13 +443,13 @@ v3d_set_shader_uniform_dirty_flags(struct v3d_compiled_shader *shader)
                         /* We could flag this on just the stage we're
                          * compiling for, but it's not passed in.
                          */
-                        dirty |= VC5_DIRTY_FRAGTEX | VC5_DIRTY_VERTTEX |
-                                 VC5_DIRTY_GEOMTEX | VC5_DIRTY_COMPTEX;
+                        dirty |= V3D_DIRTY_FRAGTEX | V3D_DIRTY_VERTTEX |
+                                 V3D_DIRTY_GEOMTEX | V3D_DIRTY_COMPTEX;
                         break;
 
                 case QUNIFORM_SSBO_OFFSET:
                 case QUNIFORM_GET_SSBO_SIZE:
-                        dirty |= VC5_DIRTY_SSBO;
+                        dirty |= V3D_DIRTY_SSBO;
                         break;
 
                 case QUNIFORM_IMAGE_TMU_CONFIG_P0:
@@ -466,16 +457,12 @@ v3d_set_shader_uniform_dirty_flags(struct v3d_compiled_shader *shader)
                 case QUNIFORM_IMAGE_HEIGHT:
                 case QUNIFORM_IMAGE_DEPTH:
                 case QUNIFORM_IMAGE_ARRAY_SIZE:
-                        dirty |= VC5_DIRTY_SHADER_IMAGE;
-                        break;
-
-                case QUNIFORM_ALPHA_REF:
-                        dirty |= VC5_DIRTY_ZSA;
+                        dirty |= V3D_DIRTY_SHADER_IMAGE;
                         break;
 
                 case QUNIFORM_LINE_WIDTH:
                 case QUNIFORM_AA_LINE_WIDTH:
-                        dirty |= VC5_DIRTY_RASTERIZER;
+                        dirty |= V3D_DIRTY_RASTERIZER;
                         break;
 
                 case QUNIFORM_NUM_WORK_GROUPS:
@@ -484,13 +471,13 @@ v3d_set_shader_uniform_dirty_flags(struct v3d_compiled_shader *shader)
                         break;
 
                 case QUNIFORM_FB_LAYERS:
-                        dirty |= VC5_DIRTY_FRAMEBUFFER;
+                        dirty |= V3D_DIRTY_FRAMEBUFFER;
                         break;
 
                 default:
                         assert(quniform_contents_is_texture_p0(shader->prog_data.base->uniforms.contents[i]));
-                        dirty |= VC5_DIRTY_FRAGTEX | VC5_DIRTY_VERTTEX |
-                                 VC5_DIRTY_GEOMTEX | VC5_DIRTY_COMPTEX;
+                        dirty |= V3D_DIRTY_FRAGTEX | V3D_DIRTY_VERTTEX |
+                                 V3D_DIRTY_GEOMTEX | V3D_DIRTY_COMPTEX;
                         break;
                 }
         }

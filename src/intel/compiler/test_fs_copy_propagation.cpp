@@ -23,48 +23,68 @@
 
 #include <gtest/gtest.h>
 #include "brw_fs.h"
+#include "brw_fs_builder.h"
 #include "brw_cfg.h"
-#include "program/program.h"
 
 using namespace brw;
 
 class copy_propagation_test : public ::testing::Test {
-   virtual void SetUp();
+protected:
+   copy_propagation_test();
+   ~copy_propagation_test() override;
 
-public:
    struct brw_compiler *compiler;
-   struct gen_device_info *devinfo;
-   struct gl_context *ctx;
+   struct brw_compile_params params;
+   struct intel_device_info *devinfo;
+   void *ctx;
    struct brw_wm_prog_data *prog_data;
    struct gl_shader_program *shader_prog;
    fs_visitor *v;
+   fs_builder bld;
 };
 
 class copy_propagation_fs_visitor : public fs_visitor
 {
 public:
    copy_propagation_fs_visitor(struct brw_compiler *compiler,
+                               struct brw_compile_params *params,
                                struct brw_wm_prog_data *prog_data,
                                nir_shader *shader)
-      : fs_visitor(compiler, NULL, NULL, NULL,
-                   &prog_data->base, shader, 8, -1) {}
+      : fs_visitor(compiler, params, NULL,
+                   &prog_data->base, shader, 8, false, false) {}
 };
 
 
-void copy_propagation_test::SetUp()
+copy_propagation_test::copy_propagation_test()
+   : bld(NULL, 0)
 {
-   ctx = (struct gl_context *)calloc(1, sizeof(*ctx));
-   compiler = (struct brw_compiler *)calloc(1, sizeof(*compiler));
-   devinfo = (struct gen_device_info *)calloc(1, sizeof(*devinfo));
+   ctx = ralloc_context(NULL);
+   compiler = rzalloc(ctx, struct brw_compiler);
+   devinfo = rzalloc(ctx, struct intel_device_info);
    compiler->devinfo = devinfo;
 
-   prog_data = ralloc(NULL, struct brw_wm_prog_data);
+   params = {};
+   params.mem_ctx = ctx;
+
+   prog_data = ralloc(ctx, struct brw_wm_prog_data);
    nir_shader *shader =
-      nir_shader_create(NULL, MESA_SHADER_FRAGMENT, NULL, NULL);
+      nir_shader_create(ctx, MESA_SHADER_FRAGMENT, NULL, NULL);
 
-   v = new copy_propagation_fs_visitor(compiler, prog_data, shader);
+   v = new copy_propagation_fs_visitor(compiler, &params, prog_data, shader);
 
-   devinfo->gen = 4;
+   bld = fs_builder(v).at_end();
+
+   devinfo->ver = 9;
+   devinfo->verx10 = devinfo->ver * 10;
+}
+
+copy_propagation_test::~copy_propagation_test()
+{
+   delete v;
+   v = NULL;
+
+   ralloc_free(ctx);
+   ctx = NULL;
 }
 
 static fs_inst *
@@ -87,7 +107,7 @@ copy_propagation(fs_visitor *v)
       v->cfg->dump();
    }
 
-   bool ret = v->opt_copy_propagation();
+   bool ret = brw_fs_opt_copy_propagation(*v);
 
    if (print) {
       fprintf(stderr, "\n= After =\n");
@@ -99,11 +119,10 @@ copy_propagation(fs_visitor *v)
 
 TEST_F(copy_propagation_test, basic)
 {
-   const fs_builder &bld = v->bld;
-   fs_reg vgrf0 = v->vgrf(glsl_type::float_type);
-   fs_reg vgrf1 = v->vgrf(glsl_type::float_type);
-   fs_reg vgrf2 = v->vgrf(glsl_type::float_type);
-   fs_reg vgrf3 = v->vgrf(glsl_type::float_type);
+   fs_reg vgrf0 = v->vgrf(glsl_float_type());
+   fs_reg vgrf1 = v->vgrf(glsl_float_type());
+   fs_reg vgrf2 = v->vgrf(glsl_float_type());
+   fs_reg vgrf3 = v->vgrf(glsl_float_type());
    bld.MOV(vgrf0, vgrf2);
    bld.ADD(vgrf1, vgrf0, vgrf3);
 
@@ -141,10 +160,9 @@ TEST_F(copy_propagation_test, basic)
 
 TEST_F(copy_propagation_test, maxmax_sat_imm)
 {
-   const fs_builder &bld = v->bld;
-   fs_reg vgrf0 = v->vgrf(glsl_type::float_type);
-   fs_reg vgrf1 = v->vgrf(glsl_type::float_type);
-   fs_reg vgrf2 = v->vgrf(glsl_type::float_type);
+   fs_reg vgrf0 = v->vgrf(glsl_float_type());
+   fs_reg vgrf1 = v->vgrf(glsl_float_type());
+   fs_reg vgrf2 = v->vgrf(glsl_float_type());
 
    static const struct {
       enum brw_conditional_mod conditional_mod;
@@ -152,12 +170,12 @@ TEST_F(copy_propagation_test, maxmax_sat_imm)
       bool expected_result;
    } test[] = {
       /*   conditional mod,     imm, expected_result */
-      { BRW_CONDITIONAL_GE  ,  0.1f, true },
-      { BRW_CONDITIONAL_L   ,  0.1f, true },
-      { BRW_CONDITIONAL_GE  ,  0.5f, true },
-      { BRW_CONDITIONAL_L   ,  0.5f, true },
-      { BRW_CONDITIONAL_GE  ,  0.9f, true },
-      { BRW_CONDITIONAL_L   ,  0.9f, true },
+      { BRW_CONDITIONAL_GE  ,  0.1f, false },
+      { BRW_CONDITIONAL_L   ,  0.1f, false },
+      { BRW_CONDITIONAL_GE  ,  0.5f, false },
+      { BRW_CONDITIONAL_L   ,  0.5f, false },
+      { BRW_CONDITIONAL_GE  ,  0.9f, false },
+      { BRW_CONDITIONAL_L   ,  0.9f, false },
       { BRW_CONDITIONAL_GE  , -1.5f, false },
       { BRW_CONDITIONAL_L   , -1.5f, false },
       { BRW_CONDITIONAL_GE  ,  1.5f, false },

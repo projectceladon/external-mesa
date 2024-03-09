@@ -29,18 +29,21 @@
  */
 
 
-#include "main/glheader.h"
+#include "util/glheader.h"
 #include "main/context.h"
+#include "main/draw_validate.h"
 #include "main/hash.h"
 
 #include "main/macros.h"
 #include "main/mtypes.h"
-#include "main/arbprogram.h"
 #include "main/shaderapi.h"
 #include "main/state.h"
 #include "program/arbprogparse.h"
 #include "program/program.h"
 #include "program/prog_print.h"
+#include "api_exec_decl.h"
+
+#include "state_tracker/st_program.h"
 
 static void
 flush_vertices_for_program_constants(struct gl_context *ctx, GLenum target)
@@ -55,7 +58,7 @@ flush_vertices_for_program_constants(struct gl_context *ctx, GLenum target)
          ctx->DriverFlags.NewShaderConstants[MESA_SHADER_VERTEX];
    }
 
-   FLUSH_VERTICES(ctx, new_driver_state ? 0 : _NEW_PROGRAM_CONSTANTS);
+   FLUSH_VERTICES(ctx, new_driver_state ? 0 : _NEW_PROGRAM_CONSTANTS, 0);
    ctx->NewDriverState |= new_driver_state;
 }
 
@@ -76,7 +79,6 @@ lookup_or_create_program(GLuint id, GLenum target, const char* caller)
       /* Bind a user program */
       newProg = _mesa_lookup_program(ctx, id);
       if (!newProg || newProg == &_mesa_DummyProgram) {
-         bool isGenName = newProg != NULL;
          /* allocate a new program now */
          newProg = ctx->Driver.NewProgram(ctx, _mesa_program_enum_to_shader_stage(target),
                                           id, true);
@@ -84,7 +86,7 @@ lookup_or_create_program(GLuint id, GLenum target, const char* caller)
             _mesa_error(ctx, GL_OUT_OF_MEMORY, "%s", caller);
             return NULL;
          }
-         _mesa_HashInsert(ctx->Shared->Programs, id, newProg, isGenName);
+         _mesa_HashInsert(&ctx->Shared->Programs, id, newProg);
       }
       else if (newProg->Target != target) {
          _mesa_error(ctx, GL_INVALID_OPERATION,
@@ -136,7 +138,7 @@ _mesa_BindProgramARB(GLenum target, GLuint id)
    }
 
    /* signal new program (and its new constants) */
-   FLUSH_VERTICES(ctx, _NEW_PROGRAM);
+   FLUSH_VERTICES(ctx, _NEW_PROGRAM, 0);
    flush_vertices_for_program_constants(ctx, target);
 
    /* bind newProg */
@@ -148,6 +150,7 @@ _mesa_BindProgramARB(GLenum target, GLuint id)
    }
 
    _mesa_update_vertex_processing_mode(ctx);
+   _mesa_update_valid_to_render_state(ctx);
 
    /* Never null pointers */
    assert(ctx->VertexProgram.Current);
@@ -166,7 +169,7 @@ _mesa_DeleteProgramsARB(GLsizei n, const GLuint *ids)
    GLint i;
    GET_CURRENT_CONTEXT(ctx);
 
-   FLUSH_VERTICES(ctx, 0);
+   FLUSH_VERTICES(ctx, 0, 0);
 
    if (n < 0) {
       _mesa_error( ctx, GL_INVALID_VALUE, "glDeleteProgramsNV" );
@@ -177,7 +180,7 @@ _mesa_DeleteProgramsARB(GLsizei n, const GLuint *ids)
       if (ids[i] != 0) {
          struct gl_program *prog = _mesa_lookup_program(ctx, ids[i]);
          if (prog == &_mesa_DummyProgram) {
-            _mesa_HashRemove(ctx->Shared->Programs, ids[i]);
+            _mesa_HashRemove(&ctx->Shared->Programs, ids[i]);
          }
          else if (prog) {
             /* Unbind program if necessary */
@@ -201,7 +204,7 @@ _mesa_DeleteProgramsARB(GLsizei n, const GLuint *ids)
                return;
             }
             /* The ID is immediately available for re-use now */
-            _mesa_HashRemove(ctx->Shared->Programs, ids[i]);
+            _mesa_HashRemove(&ctx->Shared->Programs, ids[i]);
             _mesa_reference_program(ctx, &prog, NULL);
          }
       }
@@ -228,17 +231,17 @@ _mesa_GenProgramsARB(GLsizei n, GLuint *ids)
    if (!ids)
       return;
 
-   _mesa_HashLockMutex(ctx->Shared->Programs);
+   _mesa_HashLockMutex(&ctx->Shared->Programs);
 
-   _mesa_HashFindFreeKeys(ctx->Shared->Programs, ids, n);
+   _mesa_HashFindFreeKeys(&ctx->Shared->Programs, ids, n);
 
    /* Insert pointer to dummy program as placeholder */
    for (i = 0; i < (GLuint) n; i++) {
-      _mesa_HashInsertLocked(ctx->Shared->Programs, ids[i],
-                             &_mesa_DummyProgram, true);
+      _mesa_HashInsertLocked(&ctx->Shared->Programs, ids[i],
+                             &_mesa_DummyProgram);
    }
 
-   _mesa_HashUnlockMutex(ctx->Shared->Programs);
+   _mesa_HashUnlockMutex(&ctx->Shared->Programs);
 }
 
 
@@ -287,26 +290,37 @@ get_current_program(struct gl_context* ctx, GLenum target, const char* caller)
 static GLboolean
 get_local_param_pointer(struct gl_context *ctx, const char *func,
                         struct gl_program* prog, GLenum target,
-                        GLuint index, GLfloat **param)
+                        GLuint index, unsigned count, GLfloat **param)
 {
-   GLuint maxParams;
+   if (unlikely(index + count > prog->arb.MaxLocalParams)) {
+      /* If arb.MaxLocalParams == 0, we need to do initialization. */
+      if (!prog->arb.MaxLocalParams) {
+         unsigned max;
 
-   if (target == GL_VERTEX_PROGRAM_ARB) {
-      maxParams = ctx->Const.Program[MESA_SHADER_VERTEX].MaxLocalParams;
-   } else {
-      maxParams = ctx->Const.Program[MESA_SHADER_FRAGMENT].MaxLocalParams;
-   }
+         if (target == GL_VERTEX_PROGRAM_ARB)
+            max = ctx->Const.Program[MESA_SHADER_VERTEX].MaxLocalParams;
+         else
+            max = ctx->Const.Program[MESA_SHADER_FRAGMENT].MaxLocalParams;
 
-   if (index >= maxParams) {
-      _mesa_error(ctx, GL_INVALID_VALUE, "%s(index)", func);
-      return GL_FALSE;
-   }
+         /* Allocate LocalParams. */
+         if (!prog->arb.LocalParams) {
+            prog->arb.LocalParams = rzalloc_array_size(prog, sizeof(float[4]),
+                                                       max);
+            if (!prog->arb.LocalParams) {
+               _mesa_error(ctx, GL_OUT_OF_MEMORY, "%s", func);
+               return GL_FALSE;
+            }
+         }
 
-   if (!prog->arb.LocalParams) {
-      prog->arb.LocalParams = rzalloc_array_size(prog, sizeof(float[4]),
-                                             maxParams);
-      if (!prog->arb.LocalParams)
+         /* Initialize MaxLocalParams. */
+         prog->arb.MaxLocalParams = max;
+      }
+
+      /* Check again after initializing MaxLocalParams. */
+      if (index + count > prog->arb.MaxLocalParams) {
+         _mesa_error(ctx, GL_INVALID_VALUE, "%s(index)", func);
          return GL_FALSE;
+      }
    }
 
    *param = prog->arb.LocalParams[index];
@@ -348,7 +362,7 @@ set_program_string(struct gl_program *prog, GLenum target, GLenum format, GLsize
    bool failed;
    GET_CURRENT_CONTEXT(ctx);
 
-   FLUSH_VERTICES(ctx, _NEW_PROGRAM);
+   FLUSH_VERTICES(ctx, _NEW_PROGRAM, 0);
 
    if (!ctx->Extensions.ARB_vertex_program
        && !ctx->Extensions.ARB_fragment_program) {
@@ -366,12 +380,15 @@ set_program_string(struct gl_program *prog, GLenum target, GLenum format, GLsize
 
    gl_shader_stage stage = _mesa_program_enum_to_shader_stage(target);
 
+   uint8_t sha1[SHA1_DIGEST_LENGTH];
+   _mesa_sha1_compute(string, len, sha1);
+
    /* Dump original shader source to MESA_SHADER_DUMP_PATH and replace
     * if corresponding entry found from MESA_SHADER_READ_PATH.
     */
-   _mesa_dump_shader_source(stage, string);
+   _mesa_dump_shader_source(stage, string, sha1);
 
-   replacement = _mesa_read_shader_source(stage, string);
+   replacement = _mesa_read_shader_source(stage, string, sha1);
    if (replacement)
       string = replacement;
 #endif /* ENABLE_SHADER_CACHE */
@@ -392,7 +409,7 @@ set_program_string(struct gl_program *prog, GLenum target, GLenum format, GLsize
 
    if (!failed) {
       /* finally, give the program to the driver for translation/checking */
-      if (!ctx->Driver.ProgramStringNotify(ctx, target, prog)) {
+      if (!st_program_string_notify(ctx, target, prog)) {
          failed = true;
          _mesa_error(ctx, GL_INVALID_OPERATION,
                      "glProgramStringARB(rejected by driver");
@@ -400,6 +417,7 @@ set_program_string(struct gl_program *prog, GLenum target, GLenum format, GLsize
    }
 
    _mesa_update_vertex_processing_mode(ctx);
+   _mesa_update_valid_to_render_state(ctx);
 
    if (ctx->_Shader->Flags & GLSL_DUMP) {
       const char *shader_type =
@@ -626,7 +644,7 @@ _mesa_ProgramLocalParameter4fARB(GLenum target, GLuint index,
    flush_vertices_for_program_constants(ctx, target);
 
    if (get_local_param_pointer(ctx, "glProgramLocalParameterARB",
-			       prog, target, index, &param)) {
+			       prog, target, index, 1, &param)) {
       assert(index < MAX_PROGRAM_LOCAL_PARAMS);
       ASSIGN_4V(param, x, y, z, w);
    }
@@ -651,7 +669,7 @@ _mesa_NamedProgramLocalParameter4fEXT(GLuint program, GLenum target, GLuint inde
    }
 
    if (get_local_param_pointer(ctx, "glNamedProgramLocalParameter4fEXT",
-                prog, target, index, &param)) {
+                prog, target, index, 1, &param)) {
       assert(index < MAX_PROGRAM_LOCAL_PARAMS);
       ASSIGN_4V(param, x, y, z, w);
    }
@@ -689,20 +707,8 @@ program_local_parameters4fv(struct gl_program* prog, GLuint index, GLsizei count
    }
 
    if (get_local_param_pointer(ctx, caller,
-                               prog, prog->Target, index, &dest)) {
-      GLuint maxParams = prog->Target == GL_FRAGMENT_PROGRAM_ARB ?
-         ctx->Const.Program[MESA_SHADER_FRAGMENT].MaxLocalParams :
-         ctx->Const.Program[MESA_SHADER_VERTEX].MaxLocalParams;
-
-      if ((index + count) > maxParams) {
-         _mesa_error(ctx, GL_INVALID_VALUE,
-                     "%s(index + count)",
-                     caller);
-         return;
-      }
-
+                               prog, prog->Target, index, count, &dest))
       memcpy(dest, params, count * 4 * sizeof(GLfloat));
-   }
 }
 
 
@@ -789,7 +795,7 @@ _mesa_GetProgramLocalParameterfvARB(GLenum target, GLuint index,
    }
 
    if (get_local_param_pointer(ctx, "glProgramLocalParameters4fvEXT",
-				prog, target, index, &param)) {
+				prog, target, index, 1, &param)) {
       COPY_4V(params, param);
    }
 }
@@ -808,7 +814,7 @@ _mesa_GetNamedProgramLocalParameterfvEXT(GLuint program, GLenum target, GLuint i
    }
 
    if (get_local_param_pointer(ctx, "glGetNamedProgramLocalParameterfvEXT",
-            prog, target, index, &param)) {
+            prog, target, index, 1, &param)) {
       COPY_4V(params, param);
    }
 }
@@ -826,7 +832,7 @@ _mesa_GetProgramLocalParameterdvARB(GLenum target, GLuint index,
    }
 
    if (get_local_param_pointer(ctx, "glProgramLocalParameters4fvEXT",
-				prog, target, index, &param)) {
+				prog, target, index, 1, &param)) {
       COPY_4V(params, param);
    }
 }
@@ -845,7 +851,7 @@ _mesa_GetNamedProgramLocalParameterdvEXT(GLuint program, GLenum target, GLuint i
    }
 
    if (get_local_param_pointer(ctx, "glGetNamedProgramLocalParameterdvEXT",
-            prog, target, index, &param)) {
+            prog, target, index, 1, &param)) {
       COPY_4V(params, param);
    }
 }
@@ -958,10 +964,6 @@ get_program_iv(struct gl_program *prog, GLenum target, GLenum pname,
          if (prog->Id == 0) {
             /* default/null program */
             *params = GL_FALSE;
-         }
-	 else if (ctx->Driver.IsProgramNative) {
-            /* ask the driver */
-	    *params = ctx->Driver.IsProgramNative( ctx, target, prog );
          }
 	 else {
             /* probably running in software */

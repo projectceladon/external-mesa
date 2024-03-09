@@ -27,12 +27,13 @@
 #include "math.h"
 #include "nir/nir_builtin_builder.h"
 
+#include "util/u_printf.h"
 #include "vtn_private.h"
 #include "OpenCL.std.h"
 
-typedef nir_ssa_def *(*nir_handler)(struct vtn_builder *b,
+typedef nir_def *(*nir_handler)(struct vtn_builder *b,
                                     uint32_t opcode,
-                                    unsigned num_srcs, nir_ssa_def **srcs,
+                                    unsigned num_srcs, nir_def **srcs,
                                     struct vtn_type **src_types,
                                     const struct vtn_type *dest_type);
 
@@ -45,6 +46,7 @@ static int to_llvm_address_space(SpvStorageClass mode)
    case SpvStorageClassUniform:
    case SpvStorageClassUniformConstant: return 2;
    case SpvStorageClassWorkgroup: return 3;
+   case SpvStorageClassGeneric: return 4;
    default: return -1;
    }
 }
@@ -137,24 +139,15 @@ static nir_function *mangle_and_find(struct vtn_builder *b,
                                      struct vtn_type **src_types)
 {
    char *mname;
-   nir_function *found = NULL;
 
    vtn_opencl_mangle(name, const_mask, num_srcs, src_types, &mname);
+
    /* try and find in current shader first. */
-   nir_foreach_function(funcs, b->shader) {
-      if (!strcmp(funcs->name, mname)) {
-         found = funcs;
-         break;
-      }
-   }
+   nir_function *found = nir_shader_get_function_for_name(b->shader, mname);
+
    /* if not found here find in clc shader and create a decl mirroring it */
    if (!found && b->options->clc_shader && b->options->clc_shader != b->shader) {
-      nir_foreach_function(funcs, b->options->clc_shader) {
-         if (!strcmp(funcs->name, mname)) {
-            found = funcs;
-            break;
-         }
-      }
+      found = nir_shader_get_function_for_name(b->options->clc_shader, mname);
       if (found) {
          nir_function *decl = nir_function_create(b->shader, mname);
          decl->num_params = found->num_params;
@@ -177,7 +170,7 @@ static bool call_mangled_function(struct vtn_builder *b,
                                   uint32_t num_srcs,
                                   struct vtn_type **src_types,
                                   const struct vtn_type *dest_type,
-                                  nir_ssa_def **srcs,
+                                  nir_def **srcs,
                                   nir_deref_instr **ret_deref_ptr)
 {
    nir_function *found = mangle_and_find(b, name, const_mask, num_srcs, src_types);
@@ -193,7 +186,7 @@ static bool call_mangled_function(struct vtn_builder *b,
                                                         glsl_get_bare_type(dest_type->type),
                                                         "return_tmp");
       ret_deref = nir_build_deref_var(&b->nb, ret_tmp);
-      call->params[param_idx++] = nir_src_for_ssa(&ret_deref->dest.ssa);
+      call->params[param_idx++] = nir_src_for_ssa(&ret_deref->def);
    }
 
    for (unsigned i = 0; i < num_srcs; i++)
@@ -210,7 +203,7 @@ handle_instr(struct vtn_builder *b, uint32_t opcode,
 {
    struct vtn_type *dest_type = w_dest ? vtn_get_type(b, w_dest[0]) : NULL;
 
-   nir_ssa_def *srcs[5] = { NULL };
+   nir_def *srcs[5] = { NULL };
    struct vtn_type *src_types[5] = { NULL };
    vtn_assert(num_srcs <= ARRAY_SIZE(srcs));
    for (unsigned i = 0; i < num_srcs; i++) {
@@ -220,7 +213,7 @@ handle_instr(struct vtn_builder *b, uint32_t opcode,
       src_types[i] = val->type;
    }
 
-   nir_ssa_def *result = handler(b, opcode, num_srcs, srcs, src_types, dest_type);
+   nir_def *result = handler(b, opcode, num_srcs, srcs, src_types, dest_type);
    if (result) {
       vtn_push_nir_ssa(b, w_dest[1], result);
    } else {
@@ -278,15 +271,15 @@ nir_alu_op_for_opencl_opcode(struct vtn_builder *b,
    }
 }
 
-static nir_ssa_def *
+static nir_def *
 handle_alu(struct vtn_builder *b, uint32_t opcode,
-           unsigned num_srcs, nir_ssa_def **srcs, struct vtn_type **src_types,
+           unsigned num_srcs, nir_def **srcs, struct vtn_type **src_types,
            const struct vtn_type *dest_type)
 {
-   nir_ssa_def *ret = nir_build_alu(&b->nb, nir_alu_op_for_opencl_opcode(b, (enum OpenCLstd_Entrypoints)opcode),
+   nir_def *ret = nir_build_alu(&b->nb, nir_alu_op_for_opencl_opcode(b, (enum OpenCLstd_Entrypoints)opcode),
                                     srcs[0], srcs[1], srcs[2], NULL);
    if (opcode == OpenCLstd_Popcount)
-      ret = nir_u2u(&b->nb, ret, glsl_get_bit_size(dest_type->type));
+      ret = nir_u2uN(&b->nb, ret, glsl_get_bit_size(dest_type->type));
    return ret;
 }
 
@@ -393,7 +386,7 @@ static const char *remap_clc_opcode(enum OpenCLstd_Entrypoints opcode)
 static struct vtn_type *
 get_vtn_type_for_glsl_type(struct vtn_builder *b, const struct glsl_type *type)
 {
-   struct vtn_type *ret = rzalloc(b, struct vtn_type);
+   struct vtn_type *ret = vtn_zalloc(b, struct vtn_type);
    assert(glsl_type_is_vector_or_scalar(type));
    ret->type = type;
    ret->length = glsl_get_vector_elements(type);
@@ -404,7 +397,7 @@ get_vtn_type_for_glsl_type(struct vtn_builder *b, const struct glsl_type *type)
 static struct vtn_type *
 get_pointer_type(struct vtn_builder *b, struct vtn_type *t, SpvStorageClass storage_class)
 {
-   struct vtn_type *ret = rzalloc(b, struct vtn_type);
+   struct vtn_type *ret = vtn_zalloc(b, struct vtn_type);
    ret->type = nir_address_format_to_glsl_type(
             vtn_mode_to_address_format(
                b, vtn_storage_class_to_mode(b, storage_class, NULL, NULL)));
@@ -425,10 +418,10 @@ get_signed_type(struct vtn_builder *b, struct vtn_type *t)
                           glsl_get_vector_elements(t->type)));
 }
 
-static nir_ssa_def *
+static nir_def *
 handle_clc_fn(struct vtn_builder *b, enum OpenCLstd_Entrypoints opcode,
               int num_srcs,
-              nir_ssa_def **srcs,
+              nir_def **srcs,
               struct vtn_type **src_types,
               const struct vtn_type *dest_type)
 {
@@ -473,9 +466,9 @@ handle_clc_fn(struct vtn_builder *b, enum OpenCLstd_Entrypoints opcode,
    return ret_deref ? nir_load_deref(&b->nb, ret_deref) : NULL;
 }
 
-static nir_ssa_def *
+static nir_def *
 handle_special(struct vtn_builder *b, uint32_t opcode,
-               unsigned num_srcs, nir_ssa_def **srcs, struct vtn_type **src_types,
+               unsigned num_srcs, nir_def **srcs, struct vtn_type **src_types,
                const struct vtn_type *dest_type)
 {
    nir_builder *nb = &b->nb;
@@ -494,13 +487,13 @@ handle_special(struct vtn_builder *b, uint32_t opcode,
    case OpenCLstd_UMad_hi:
       return nir_umad_hi(nb, srcs[0], srcs[1], srcs[2]);
    case OpenCLstd_SMul24:
-      return nir_imul24(nb, srcs[0], srcs[1]);
+      return nir_imul24_relaxed(nb, srcs[0], srcs[1]);
    case OpenCLstd_UMul24:
-      return nir_umul24(nb, srcs[0], srcs[1]);
+      return nir_umul24_relaxed(nb, srcs[0], srcs[1]);
    case OpenCLstd_SMad24:
-      return nir_imad24(nb, srcs[0], srcs[1], srcs[2]);
+      return nir_iadd(nb, nir_imul24_relaxed(nb, srcs[0], srcs[1]), srcs[2]);
    case OpenCLstd_UMad24:
-      return nir_umad24(nb, srcs[0], srcs[1], srcs[2]);
+      return nir_umad24_relaxed(nb, srcs[0], srcs[1], srcs[2]);
    case OpenCLstd_FClamp:
       return nir_fclamp(nb, srcs[0], srcs[1], srcs[2]);
    case OpenCLstd_SClamp:
@@ -515,12 +508,25 @@ handle_special(struct vtn_builder *b, uint32_t opcode,
       return nir_cross3(nb, srcs[0], srcs[1]);
    case OpenCLstd_Fdim:
       return nir_fdim(nb, srcs[0], srcs[1]);
-   case OpenCLstd_Fmod:
-      if (nb->shader->options->lower_fmod)
-         break;
-      return nir_fmod(nb, srcs[0], srcs[1]);
-   case OpenCLstd_Mad:
-      return nir_fmad(nb, srcs[0], srcs[1], srcs[2]);
+   case OpenCLstd_Mad: {
+      /* The spec says mad is
+       *
+       *    Implemented either as a correctly rounded fma or as a multiply
+       *    followed by an add both of which are correctly rounded
+       *
+       * So lower to fmul+fadd if we have to, but fuse to an ffma if the backend
+       * supports that. This can be significantly faster.
+       */
+      bool lower =
+         ((nb->shader->options->lower_ffma16 && srcs[0]->bit_size == 16) ||
+          (nb->shader->options->lower_ffma32 && srcs[0]->bit_size == 32) ||
+          (nb->shader->options->lower_ffma64 && srcs[0]->bit_size == 64));
+
+      if (lower)
+         return nir_fmad(nb, srcs[0], srcs[1], srcs[2]);
+      else
+         return nir_ffma(nb, srcs[0], srcs[1], srcs[2]);
+   }
    case OpenCLstd_Maxmag:
       return nir_maxmag(nb, srcs[0], srcs[1]);
    case OpenCLstd_Minmag:
@@ -560,20 +566,22 @@ handle_special(struct vtn_builder *b, uint32_t opcode,
       if (nb->shader->options->lower_ffma32 && srcs[0]->bit_size == 32)
          break;
       return nir_ffma(nb, srcs[0], srcs[1], srcs[2]);
+   case OpenCLstd_Rotate:
+      return nir_urol(nb, srcs[0], nir_u2u32(nb, srcs[1]));
    default:
       break;
    }
 
-   nir_ssa_def *ret = handle_clc_fn(b, opcode, num_srcs, srcs, src_types, dest_type);
+   nir_def *ret = handle_clc_fn(b, opcode, num_srcs, srcs, src_types, dest_type);
    if (!ret)
       vtn_fail("No NIR equivalent");
 
    return ret;
 }
 
-static nir_ssa_def *
+static nir_def *
 handle_core(struct vtn_builder *b, uint32_t opcode,
-            unsigned num_srcs, nir_ssa_def **srcs, struct vtn_type **src_types,
+            unsigned num_srcs, nir_def **srcs, struct vtn_type **src_types,
             const struct vtn_type *dest_type)
 {
    nir_deref_instr *ret_deref = NULL;
@@ -601,9 +609,16 @@ handle_core(struct vtn_builder *b, uint32_t opcode,
       break;
    }
    case SpvOpGroupWaitEvents: {
-      src_types[0] = get_vtn_type_for_glsl_type(b, glsl_int_type());
-      if (!call_mangled_function(b, "wait_group_events", 0, num_srcs, src_types, dest_type, srcs, &ret_deref))
-         return NULL;
+      /* libclc and clang don't agree on the mangling of this function.
+       * The libclc we have uses a __local pointer but clang gives us generic
+       * pointers.  Fortunately, the whole function is just a barrier.
+       */
+      nir_barrier(&b->nb, .execution_scope = SCOPE_WORKGROUP,
+                          .memory_scope = SCOPE_WORKGROUP,
+                          .memory_semantics = NIR_MEMORY_ACQUIRE |
+                                              NIR_MEMORY_RELEASE,
+                          .memory_modes = nir_var_mem_shared |
+                                          nir_var_mem_global);
       break;
    }
    default:
@@ -629,9 +644,18 @@ _handle_v_load_store(struct vtn_builder *b, enum OpenCLstd_Entrypoints opcode,
    enum glsl_base_type base_type = glsl_get_base_type(type->type);
    unsigned components = glsl_get_vector_elements(type->type);
 
-   nir_ssa_def *offset = vtn_get_nir_ssa(b, w[5 + a]);
+   nir_def *offset = vtn_get_nir_ssa(b, w[5 + a]);
    struct vtn_value *p = vtn_value(b, w[6 + a], vtn_value_type_pointer);
 
+   struct vtn_ssa_value *comps[NIR_MAX_VEC_COMPONENTS];
+   nir_def *ncomps[NIR_MAX_VEC_COMPONENTS];
+
+   nir_def *moffset = nir_imul_imm(&b->nb, offset,
+      (vec_aligned && components == 3) ? 4 : components);
+   nir_deref_instr *deref = vtn_pointer_to_deref(b, p->pointer);
+
+   unsigned alignment = vec_aligned ? glsl_get_cl_alignment(type->type) :
+                                      glsl_get_bit_size(type->type) / 8;
    enum glsl_base_type ptr_base_type =
       glsl_get_base_type(p->pointer->type->type);
    if (base_type != ptr_base_type) {
@@ -641,21 +665,15 @@ _handle_v_load_store(struct vtn_builder *b, enum OpenCLstd_Entrypoints opcode,
                   "vload/vstore cannot do type conversion. "
                   "vload/vstore_half can only convert from half to other "
                   "floating-point types.");
+
+      /* Above-computed alignment was for floats/doubles, not halves */
+      alignment /= glsl_get_bit_size(type->type) / glsl_base_type_get_bit_size(ptr_base_type);
    }
 
-   struct vtn_ssa_value *comps[NIR_MAX_VEC_COMPONENTS];
-   nir_ssa_def *ncomps[NIR_MAX_VEC_COMPONENTS];
-
-   nir_ssa_def *moffset = nir_imul_imm(&b->nb, offset,
-      (vec_aligned && components == 3) ? 4 : components);
-   nir_deref_instr *deref = vtn_pointer_to_deref(b, p->pointer);
-
-   unsigned alignment = vec_aligned ? glsl_get_cl_alignment(type->type) :
-                                      glsl_get_bit_size(type->type) / 8;
    deref = nir_alignment_deref_cast(&b->nb, deref, alignment, 0);
 
    for (int i = 0; i < components; i++) {
-      nir_ssa_def *coffset = nir_iadd_imm(&b->nb, moffset, i);
+      nir_def *coffset = nir_iadd_imm(&b->nb, moffset, i);
       nir_deref_instr *arr_deref = nir_build_deref_ptr_as_array(&b->nb, deref, coffset);
 
       if (load) {
@@ -679,8 +697,8 @@ _handle_v_load_store(struct vtn_builder *b, enum OpenCLstd_Entrypoints opcode,
             if (rounding == nir_rounding_mode_undef) {
                ssa->def = nir_f2f16(&b->nb, ssa->def);
             } else {
-               ssa->def = nir_convert_alu_types(&b->nb, ssa->def,
-                                                nir_type_float,
+               ssa->def = nir_convert_alu_types(&b->nb, 16, ssa->def,
+                                                nir_type_float | ssa->def->bit_size,
                                                 nir_type_float16,
                                                 rounding, false);
             }
@@ -720,40 +738,151 @@ vtn_handle_opencl_vstore_half_r(struct vtn_builder *b, enum OpenCLstd_Entrypoint
                         vtn_rounding_mode_to_nir(b, w[8]));
 }
 
-static nir_ssa_def *
-handle_printf(struct vtn_builder *b, uint32_t opcode,
-              unsigned num_srcs, nir_ssa_def **srcs, struct vtn_type **src_types,
-              const struct vtn_type *dest_type)
+static unsigned
+vtn_add_printf_string(struct vtn_builder *b, uint32_t id, u_printf_info *info)
 {
-   /* hahah, yeah, right.. */
-   return nir_imm_int(&b->nb, -1);
+   nir_deref_instr *deref = vtn_nir_deref(b, id);
+
+   while (deref->deref_type != nir_deref_type_var) {
+      nir_scalar parent = nir_scalar_resolved(deref->parent.ssa, 0);
+      if (parent.def->parent_instr->type != nir_instr_type_deref) {
+         deref = NULL;
+         break;
+      }
+      vtn_assert(parent.comp == 0);
+      deref = nir_instr_as_deref(parent.def->parent_instr);
+   }
+
+   vtn_fail_if(deref == NULL || !nir_deref_mode_is(deref, nir_var_mem_constant),
+               "Printf string argument must be a pointer to a constant variable");
+   vtn_fail_if(deref->var->constant_initializer == NULL,
+               "Printf string argument must have an initializer");
+   vtn_fail_if(!glsl_type_is_array(deref->var->type),
+               "Printf string must be an char array");
+   const struct glsl_type *char_type = glsl_get_array_element(deref->var->type);
+   vtn_fail_if(char_type != glsl_uint8_t_type() &&
+               char_type != glsl_int8_t_type(),
+               "Printf string must be an char array");
+
+   nir_constant *c = deref->var->constant_initializer;
+   assert(c->num_elements == glsl_get_length(deref->var->type));
+
+   unsigned idx = info->string_size;
+   info->strings = reralloc_size(b->shader, info->strings,
+                                 idx + c->num_elements);
+   info->string_size += c->num_elements;
+
+   char *str = &info->strings[idx];
+   bool found_null = false;
+   for (unsigned i = 0; i < c->num_elements; i++) {
+      memcpy((char *)str + i, c->elements[i]->values, 1);
+      if (str[i] == '\0')
+         found_null = true;
+   }
+   vtn_fail_if(!found_null, "Printf string must be null terminated");
+   return idx;
 }
 
-static nir_ssa_def *
+/* printf is special because there are no limits on args */
+static void
+handle_printf(struct vtn_builder *b, uint32_t opcode,
+              const uint32_t *w_src, unsigned num_srcs, const uint32_t *w_dest)
+{
+   if (!b->options->caps.printf) {
+      vtn_push_nir_ssa(b, w_dest[1], nir_imm_int(&b->nb, -1));
+      return;
+   }
+
+   /* Step 1. extract the format string */
+
+   /*
+    * info_idx is 1-based to match clover/llvm
+    * the backend indexes the info table at info_idx - 1.
+    */
+   b->shader->printf_info_count++;
+   unsigned info_idx = b->shader->printf_info_count;
+
+   b->shader->printf_info = reralloc(b->shader, b->shader->printf_info,
+                                     u_printf_info, info_idx);
+   u_printf_info *info = &b->shader->printf_info[info_idx - 1];
+
+   info->strings = NULL;
+   info->string_size = 0;
+
+   vtn_add_printf_string(b, w_src[0], info);
+
+   info->num_args = num_srcs - 1;
+   info->arg_sizes = ralloc_array(b->shader, unsigned, info->num_args);
+
+   /* Step 2, build an ad-hoc struct type out of the args */
+   unsigned field_offset = 0;
+   struct glsl_struct_field *fields =
+      rzalloc_array(b, struct glsl_struct_field, num_srcs - 1);
+   for (unsigned i = 1; i < num_srcs; ++i) {
+      struct vtn_value *val = vtn_untyped_value(b, w_src[i]);
+      struct vtn_type *src_type = val->type;
+      fields[i - 1].type = src_type->type;
+      fields[i - 1].name = ralloc_asprintf(b->shader, "arg_%u", i);
+      field_offset = align(field_offset, 4);
+      fields[i - 1].offset = field_offset;
+      info->arg_sizes[i - 1] = glsl_get_cl_size(src_type->type);
+      field_offset += glsl_get_cl_size(src_type->type);
+   }
+   const struct glsl_type *struct_type =
+      glsl_struct_type(fields, num_srcs - 1, "printf", true);
+
+   /* Step 3, create a variable of that type and populate its fields */
+   nir_variable *var = nir_local_variable_create(b->nb.impl, struct_type, NULL);
+   nir_deref_instr *deref_var = nir_build_deref_var(&b->nb, var);
+   size_t fmt_pos = 0;
+   for (unsigned i = 1; i < num_srcs; ++i) {
+      nir_deref_instr *field_deref =
+         nir_build_deref_struct(&b->nb, deref_var, i - 1);
+      nir_def *field_src = vtn_ssa_value(b, w_src[i])->def;
+      /* extract strings */
+      fmt_pos = util_printf_next_spec_pos(info->strings, fmt_pos);
+      if (fmt_pos != -1 && info->strings[fmt_pos] == 's') {
+         unsigned idx = vtn_add_printf_string(b, w_src[i], info);
+         nir_store_deref(&b->nb, field_deref,
+                         nir_imm_intN_t(&b->nb, idx, field_src->bit_size),
+                         ~0 /* write_mask */);
+      } else
+         nir_store_deref(&b->nb, field_deref, field_src, ~0);
+   }
+
+   /* Lastly, the actual intrinsic */
+   nir_def *fmt_idx = nir_imm_int(&b->nb, info_idx);
+   nir_def *ret = nir_printf(&b->nb, fmt_idx, &deref_var->def);
+   vtn_push_nir_ssa(b, w_dest[1], ret);
+
+   b->nb.shader->info.uses_printf = true;
+}
+
+static nir_def *
 handle_round(struct vtn_builder *b, uint32_t opcode,
-             unsigned num_srcs, nir_ssa_def **srcs, struct vtn_type **src_types,
+             unsigned num_srcs, nir_def **srcs, struct vtn_type **src_types,
              const struct vtn_type *dest_type)
 {
-   nir_ssa_def *src = srcs[0];
+   nir_def *src = srcs[0];
    nir_builder *nb = &b->nb;
-   nir_ssa_def *half = nir_imm_floatN_t(nb, 0.5, src->bit_size);
-   nir_ssa_def *truncated = nir_ftrunc(nb, src);
-   nir_ssa_def *remainder = nir_fsub(nb, src, truncated);
+   nir_def *half = nir_imm_floatN_t(nb, 0.5, src->bit_size);
+   nir_def *truncated = nir_ftrunc(nb, src);
+   nir_def *remainder = nir_fsub(nb, src, truncated);
 
    return nir_bcsel(nb, nir_fge(nb, nir_fabs(nb, remainder), half),
                     nir_fadd(nb, truncated, nir_fsign(nb, src)), truncated);
 }
 
-static nir_ssa_def *
+static nir_def *
 handle_shuffle(struct vtn_builder *b, uint32_t opcode,
-               unsigned num_srcs, nir_ssa_def **srcs, struct vtn_type **src_types,
+               unsigned num_srcs, nir_def **srcs, struct vtn_type **src_types,
                const struct vtn_type *dest_type)
 {
-   struct nir_ssa_def *input = srcs[0];
-   struct nir_ssa_def *mask = srcs[1];
+   struct nir_def *input = srcs[0];
+   struct nir_def *mask = srcs[1];
 
    unsigned out_elems = dest_type->length;
-   nir_ssa_def *outres[NIR_MAX_VEC_COMPONENTS];
+   nir_def *outres[NIR_MAX_VEC_COMPONENTS];
    unsigned in_elems = input->num_components;
    if (mask->bit_size != 32)
       mask = nir_u2u32(&b->nb, mask);
@@ -764,17 +893,17 @@ handle_shuffle(struct vtn_builder *b, uint32_t opcode,
    return nir_vec(&b->nb, outres, out_elems);
 }
 
-static nir_ssa_def *
+static nir_def *
 handle_shuffle2(struct vtn_builder *b, uint32_t opcode,
-                unsigned num_srcs, nir_ssa_def **srcs, struct vtn_type **src_types,
+                unsigned num_srcs, nir_def **srcs, struct vtn_type **src_types,
                 const struct vtn_type *dest_type)
 {
-   struct nir_ssa_def *input0 = srcs[0];
-   struct nir_ssa_def *input1 = srcs[1];
-   struct nir_ssa_def *mask = srcs[2];
+   struct nir_def *input0 = srcs[0];
+   struct nir_def *input1 = srcs[1];
+   struct nir_def *mask = srcs[2];
 
    unsigned out_elems = dest_type->length;
-   nir_ssa_def *outres[NIR_MAX_VEC_COMPONENTS];
+   nir_def *outres[NIR_MAX_VEC_COMPONENTS];
    unsigned in_elems = input0->num_components;
    unsigned total_mask = 2 * in_elems - 1;
    unsigned half_mask = in_elems - 1;
@@ -782,11 +911,11 @@ handle_shuffle2(struct vtn_builder *b, uint32_t opcode,
       mask = nir_u2u32(&b->nb, mask);
    mask = nir_iand(&b->nb, mask, nir_imm_intN_t(&b->nb, total_mask, mask->bit_size));
    for (unsigned i = 0; i < out_elems; i++) {
-      nir_ssa_def *this_mask = nir_channel(&b->nb, mask, i);
-      nir_ssa_def *vmask = nir_iand(&b->nb, this_mask, nir_imm_intN_t(&b->nb, half_mask, mask->bit_size));
-      nir_ssa_def *val0 = nir_vector_extract(&b->nb, input0, vmask);
-      nir_ssa_def *val1 = nir_vector_extract(&b->nb, input1, vmask);
-      nir_ssa_def *sel = nir_ilt(&b->nb, this_mask, nir_imm_intN_t(&b->nb, in_elems, mask->bit_size));
+      nir_def *this_mask = nir_channel(&b->nb, mask, i);
+      nir_def *vmask = nir_iand(&b->nb, this_mask, nir_imm_intN_t(&b->nb, half_mask, mask->bit_size));
+      nir_def *val0 = nir_vector_extract(&b->nb, input0, vmask);
+      nir_def *val1 = nir_vector_extract(&b->nb, input1, vmask);
+      nir_def *sel = nir_ilt_imm(&b->nb, this_mask, in_elems);
       outres[i] = nir_bcsel(&b->nb, sel, val0, val1);
    }
    return nir_vec(&b->nb, outres, out_elems);
@@ -974,7 +1103,7 @@ vtn_handle_opencl_instruction(struct vtn_builder *b, SpvOp ext_opcode,
       handle_instr(b, ext_opcode, w + 5, count - 5, w + 1, handle_round);
       return true;
    case OpenCLstd_Printf:
-      handle_instr(b, ext_opcode, w + 5, count - 5, w + 1, handle_printf);
+      handle_printf(b, ext_opcode, w + 5, count - 5, w + 1);
       return true;
    case OpenCLstd_Prefetch:
       /* TODO maybe add a nir instruction for this? */

@@ -31,96 +31,124 @@
 #include "anv_private.h"
 #include "vk_enum_to_str.h"
 
-/** Log an error message.  */
-void anv_printflike(1, 2)
-anv_loge(const char *format, ...)
-{
-   va_list va;
-
-   va_start(va, format);
-   anv_loge_v(format, va);
-   va_end(va);
-}
-
-/** \see anv_loge() */
 void
-anv_loge_v(const char *format, va_list va)
-{
-   mesa_loge_v(format, va);
-}
-
-void anv_printflike(6, 7)
-__anv_perf_warn(struct anv_device *device, const void *object,
-                VkDebugReportObjectTypeEXT type,
+__anv_perf_warn(struct anv_device *device,
+                const struct vk_object_base *object,
                 const char *file, int line, const char *format, ...)
 {
    va_list ap;
    char buffer[256];
-   char report[512];
 
    va_start(ap, format);
    vsnprintf(buffer, sizeof(buffer), format, ap);
    va_end(ap);
 
-   snprintf(report, sizeof(report), "%s: %s", file, buffer);
-
-   vk_debug_report(&device->physical->instance->debug_report_callbacks,
-                   VK_DEBUG_REPORT_PERFORMANCE_WARNING_BIT_EXT,
-                   type,
-                   (uint64_t) (uintptr_t) object,
-                   line,
-                   0,
-                   "anv",
-                   report);
-
-   mesa_logw("%s:%d: PERF: %s", file, line, buffer);
-}
-
-VkResult
-__vk_errorv(struct anv_instance *instance, const void *object,
-            VkDebugReportObjectTypeEXT type, VkResult error,
-            const char *file, int line, const char *format, va_list ap)
-{
-   char buffer[256];
-   char report[512];
-
-   const char *error_str = vk_Result_to_str(error);
-
-   if (format) {
-      vsnprintf(buffer, sizeof(buffer), format, ap);
-
-      snprintf(report, sizeof(report), "%s:%d: %s (%s)", file, line, buffer,
-               error_str);
+   if (object) {
+      __vk_log(VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT,
+               VK_DEBUG_UTILS_MESSAGE_TYPE_PERFORMANCE_BIT_EXT,
+               VK_LOG_OBJS(object), file, line,
+               "PERF: %s", buffer);
    } else {
-      snprintf(report, sizeof(report), "%s:%d: %s", file, line, error_str);
+      __vk_log(VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT,
+               VK_DEBUG_UTILS_MESSAGE_TYPE_PERFORMANCE_BIT_EXT,
+               VK_LOG_NO_OBJS(device->physical->instance), file, line,
+               "PERF: %s", buffer);
    }
-
-   if (instance) {
-      vk_debug_report(&instance->debug_report_callbacks,
-                      VK_DEBUG_REPORT_ERROR_BIT_EXT,
-                      type,
-                      (uint64_t) (uintptr_t) object,
-                      line,
-                      0,
-                      "anv",
-                      report);
-   }
-
-   mesa_loge("%s", report);
-
-   return error;
 }
 
-VkResult
-__vk_errorf(struct anv_instance *instance, const void *object,
-            VkDebugReportObjectTypeEXT type, VkResult error,
-            const char *file, int line, const char *format, ...)
+void
+anv_dump_pipe_bits(enum anv_pipe_bits bits, FILE *f)
 {
-   va_list ap;
+   if (bits & ANV_PIPE_DEPTH_CACHE_FLUSH_BIT)
+      fputs("+depth_flush ", f);
+   if (bits & ANV_PIPE_DATA_CACHE_FLUSH_BIT)
+      fputs("+dc_flush ", f);
+   if (bits & ANV_PIPE_HDC_PIPELINE_FLUSH_BIT)
+      fputs("+hdc_flush ", f);
+   if (bits & ANV_PIPE_RENDER_TARGET_CACHE_FLUSH_BIT)
+      fputs("+rt_flush ", f);
+   if (bits & ANV_PIPE_TILE_CACHE_FLUSH_BIT)
+      fputs("+tile_flush ", f);
+   if (bits & ANV_PIPE_STATE_CACHE_INVALIDATE_BIT)
+      fputs("+state_inval ", f);
+   if (bits & ANV_PIPE_CONSTANT_CACHE_INVALIDATE_BIT)
+      fputs("+const_inval ", f);
+   if (bits & ANV_PIPE_VF_CACHE_INVALIDATE_BIT)
+      fputs("+vf_inval ", f);
+   if (bits & ANV_PIPE_TEXTURE_CACHE_INVALIDATE_BIT)
+      fputs("+tex_inval ", f);
+   if (bits & ANV_PIPE_INSTRUCTION_CACHE_INVALIDATE_BIT)
+      fputs("+ic_inval ", f);
+   if (bits & ANV_PIPE_STALL_AT_SCOREBOARD_BIT)
+      fputs("+pb_stall ", f);
+   if (bits & ANV_PIPE_PSS_STALL_SYNC_BIT)
+      fputs("+pss_stall ", f);
+   if (bits & ANV_PIPE_DEPTH_STALL_BIT)
+      fputs("+depth_stall ", f);
+   if (bits & ANV_PIPE_CS_STALL_BIT ||
+       bits & ANV_PIPE_END_OF_PIPE_SYNC_BIT)
+      fputs("+cs_stall ", f);
+   if (bits & ANV_PIPE_UNTYPED_DATAPORT_CACHE_FLUSH_BIT)
+      fputs("+utdp_flush", f);
+   if (bits & ANV_PIPE_CCS_CACHE_FLUSH_BIT)
+      fputs("+ccs_flush ", f);
+}
 
-   va_start(ap, format);
-   __vk_errorv(instance, object, type, error, file, line, format, ap);
-   va_end(ap);
-
-   return error;
+const char *
+anv_gfx_state_bit_to_str(enum anv_gfx_state_bits state)
+{
+#define NAME(name) case ANV_GFX_STATE_##name: return #name;
+   switch (state) {
+      NAME(URB);
+      NAME(VF_STATISTICS);
+      NAME(VF_SGVS);
+      NAME(VF_SGVS_2);
+      NAME(VF_SGVS_INSTANCING);
+      NAME(PRIMITIVE_REPLICATION);
+      NAME(MULTISAMPLE);
+      NAME(SBE);
+      NAME(SBE_SWIZ);
+      NAME(SO_DECL_LIST);
+      NAME(VS);
+      NAME(HS);
+      NAME(DS);
+      NAME(GS);
+      NAME(PS);
+      NAME(PS_EXTRA);
+      NAME(SBE_MESH);
+      NAME(CLIP_MESH);
+      NAME(MESH_CONTROL);
+      NAME(MESH_SHADER);
+      NAME(MESH_DISTRIB);
+      NAME(TASK_CONTROL);
+      NAME(TASK_SHADER);
+      NAME(TASK_REDISTRIB);
+      NAME(BLEND_STATE_POINTERS);
+      NAME(CLIP);
+      NAME(CC_STATE);
+      NAME(CPS);
+      NAME(DEPTH_BOUNDS);
+      NAME(INDEX_BUFFER);
+      NAME(LINE_STIPPLE);
+      NAME(PS_BLEND);
+      NAME(RASTER);
+      NAME(SAMPLE_MASK);
+      NAME(SAMPLE_PATTERN);
+      NAME(SCISSOR);
+      NAME(SF);
+      NAME(STREAMOUT);
+      NAME(TE);
+      NAME(VERTEX_INPUT);
+      NAME(VF);
+      NAME(VF_TOPOLOGY);
+      NAME(VFG);
+      NAME(VIEWPORT_CC);
+      NAME(VIEWPORT_SF_CLIP);
+      NAME(WM);
+      NAME(WM_DEPTH_STENCIL);
+      NAME(PMA_FIX);
+      NAME(WA_18019816803);
+      NAME(TBIMR_TILE_PASS_INFO);
+   default: unreachable("invalid state");
+   }
 }

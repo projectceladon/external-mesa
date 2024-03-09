@@ -1,30 +1,14 @@
 /*
  * Copyright 2014-2019 Advanced Micro Devices, Inc.
  *
- * Permission is hereby granted, free of charge, to any person obtaining a
- * copy of this software and associated documentation files (the "Software"),
- * to deal in the Software without restriction, including without limitation
- * the rights to use, copy, modify, merge, publish, distribute, sublicense,
- * and/or sell copies of the Software, and to permit persons to whom the
- * Software is furnished to do so, subject to the following conditions:
- *
- * The above copyright notice and this permission notice (including the next
- * paragraph) shall be included in all copies or substantial portions of the
- * Software.
- *
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
- * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
- * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL
- * THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
- * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
- * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
- * SOFTWARE.
+ * SPDX-License-Identifier: MIT
  */
 
 #include "ac_rtld.h"
 
 #include "ac_binary.h"
 #include "ac_gpu_info.h"
+#include "util/compiler.h"
 #include "util/u_dynarray.h"
 #include "util/u_math.h"
 
@@ -35,8 +19,10 @@
 #include <stdlib.h>
 #include <string.h>
 
+#ifndef EM_AMDGPU
 // Old distributions may not have this enum constant
-#define MY_EM_AMDGPU 224
+#define EM_AMDGPU 224
+#endif
 
 #ifndef STT_AMDGPU_LDS
 #define STT_AMDGPU_LDS 13 // this is deprecated -- remove
@@ -79,17 +65,13 @@ struct ac_rtld_part {
    unsigned num_sections;
 };
 
-static void report_erroraf(const char *fmt, va_list va)
+static void report_errorvf(const char *fmt, va_list va)
 {
-   char *msg;
-   int ret = vasprintf(&msg, fmt, va);
-   if (ret < 0)
-      msg = "(vasprintf failed)";
+   fprintf(stderr, "ac_rtld error: ");
 
-   fprintf(stderr, "ac_rtld error: %s\n", msg);
+   vfprintf(stderr, fmt, va);
 
-   if (ret >= 0)
-      free(msg);
+   fprintf(stderr, "\n");
 }
 
 static void report_errorf(const char *fmt, ...) PRINTFLIKE(1, 2);
@@ -98,7 +80,7 @@ static void report_errorf(const char *fmt, ...)
 {
    va_list va;
    va_start(va, fmt);
-   report_erroraf(fmt, va);
+   report_errorvf(fmt, va);
    va_end(va);
 }
 
@@ -108,7 +90,7 @@ static void report_elf_errorf(const char *fmt, ...)
 {
    va_list va;
    va_start(va, fmt);
-   report_erroraf(fmt, va);
+   report_errorvf(fmt, va);
    va_end(va);
 
    fprintf(stderr, "ELF error: %s\n", elf_errmsg(elf_errno()));
@@ -125,7 +107,7 @@ static const struct ac_rtld_symbol *find_symbol(const struct util_dynarray *symb
       if ((symbol->part_idx == ~0u || symbol->part_idx == part_idx) && !strcmp(name, symbol->name))
          return symbol;
    }
-   return 0;
+   return NULL;
 }
 
 static int compare_symbol_by_align(const void *lhsp, const void *rhsp)
@@ -157,7 +139,7 @@ static bool layout_symbols(struct ac_rtld_symbol *symbols, unsigned num_symbols,
       s->offset = total_size;
 
       if (total_size + s->size < total_size) {
-         report_errorf("%s: size overflow", __FUNCTION__);
+         report_errorf("%s: size overflow", __func__);
          return false;
       }
 
@@ -258,6 +240,7 @@ bool ac_rtld_open(struct ac_rtld_binary *binary, struct ac_rtld_open_info i)
    memset(binary, 0, sizeof(*binary));
    memcpy(&binary->options, &i.options, sizeof(binary->options));
    binary->wave_size = i.wave_size;
+   binary->gfx_level = i.info->gfx_level;
    binary->num_parts = i.num_parts;
    binary->parts = calloc(sizeof(*binary->parts), i.num_parts);
    if (!binary->parts)
@@ -295,11 +278,7 @@ bool ac_rtld_open(struct ac_rtld_binary *binary, struct ac_rtld_open_info i)
    util_dynarray_foreach (&binary->lds_symbols, struct ac_rtld_symbol, symbol)
       symbol->part_idx = ~0u;
 
-   unsigned max_lds_size = 64 * 1024;
-
-   if (i.info->chip_class == GFX6 ||
-       (i.shader_type != MESA_SHADER_COMPUTE && i.shader_type != MESA_SHADER_FRAGMENT))
-      max_lds_size = 32 * 1024;
+   unsigned max_lds_size = i.info->gfx_level == GFX6 ? 32 * 1024 : 64 * 1024;
 
    uint64_t shared_lds_size = 0;
    if (!layout_symbols(binary->lds_symbols.data, i.num_shared_lds_symbols, &shared_lds_size))
@@ -329,7 +308,7 @@ bool ac_rtld_open(struct ac_rtld_binary *binary, struct ac_rtld_open_info i)
 
       const Elf64_Ehdr *ehdr = elf64_getehdr(part->elf);
       report_elf_if(!ehdr);
-      report_if(ehdr->e_machine != MY_EM_AMDGPU);
+      report_if(ehdr->e_machine != EM_AMDGPU);
 
       size_t section_str_index;
       size_t num_shdrs;
@@ -437,25 +416,6 @@ bool ac_rtld_open(struct ac_rtld_binary *binary, struct ac_rtld_open_info i)
    binary->rx_size += rx_size;
    binary->exec_size = exec_size;
 
-   if (i.info->chip_class >= GFX10) {
-      /* In gfx10, the SQ fetches up to 3 cache lines of 16 dwords
-       * ahead of the PC, configurable by SH_MEM_CONFIG and
-       * S_INST_PREFETCH. This can cause two issues:
-       *
-       * (1) Crossing a page boundary to an unmapped page. The logic
-       *     does not distinguish between a required fetch and a "mere"
-       *     prefetch and will fault.
-       *
-       * (2) Prefetching instructions that will be changed for a
-       *     different shader.
-       *
-       * (2) is not currently an issue because we flush the I$ at IB
-       * boundaries, but (1) needs to be addressed. Due to buffer
-       * suballocation, we just play it safe.
-       */
-      binary->rx_size = align(binary->rx_size + 3 * 64, 64);
-   }
-
    return true;
 
 #undef report_if
@@ -521,7 +481,7 @@ bool ac_rtld_read_config(const struct radeon_info *info, struct ac_rtld_binary *
 
       /* TODO: be precise about scratch use? */
       struct ac_shader_config c = {0};
-      ac_parse_shader_binary_config(config_data, config_nbytes, binary->wave_size, true, info, &c);
+      ac_parse_shader_binary_config(config_data, config_nbytes, binary->wave_size, info, &c);
 
       config->num_sgprs = MAX2(config->num_sgprs, c.num_sgprs);
       config->num_vgprs = MAX2(config->num_vgprs, c.num_vgprs);
@@ -567,7 +527,7 @@ static bool resolve_symbol(const struct ac_rtld_upload_info *u, unsigned part_id
 
       /* TODO: resolve from other parts */
 
-      if (u->get_external_symbol(u->cb_data, name, value))
+      if (u->get_external_symbol(u->binary->gfx_level, u->cb_data, name, value))
          return true;
 
       report_errorf("symbol %s: unknown", name);
@@ -691,6 +651,7 @@ static bool apply_relocs(const struct ac_rtld_upload_info *u, unsigned part_idx,
       switch (r_type) {
       case R_AMDGPU_ABS32:
          assert((uint32_t)abs == abs);
+         FALLTHROUGH;
       case R_AMDGPU_ABS32_LO:
          *(uint32_t *)dst_ptr = util_cpu_to_le32(abs);
          break;
@@ -702,6 +663,7 @@ static bool apply_relocs(const struct ac_rtld_upload_info *u, unsigned part_idx,
          break;
       case R_AMDGPU_REL32:
          assert((int64_t)(int32_t)(abs - va) == (int64_t)(abs - va));
+         FALLTHROUGH;
       case R_AMDGPU_REL32_LO:
          *(uint32_t *)dst_ptr = util_cpu_to_le32(abs - va);
          break;
@@ -726,23 +688,24 @@ static bool apply_relocs(const struct ac_rtld_upload_info *u, unsigned part_idx,
  * Upload the binary or binaries to the provided GPU buffers, including
  * relocations.
  */
-bool ac_rtld_upload(struct ac_rtld_upload_info *u)
+int ac_rtld_upload(struct ac_rtld_upload_info *u)
 {
 #define report_if(cond)                                                                            \
    do {                                                                                            \
       if ((cond)) {                                                                                \
          report_errorf(#cond);                                                                     \
-         return false;                                                                             \
+         return -1;                                                                             \
       }                                                                                            \
    } while (false)
 #define report_elf_if(cond)                                                                        \
    do {                                                                                            \
       if ((cond)) {                                                                                \
          report_errorf(#cond);                                                                     \
-         return false;                                                                             \
+         return -1;                                                                             \
       }                                                                                            \
    } while (false)
 
+   int size = 0;
    if (u->binary->options.halt_at_entry) {
       /* s_sethalt 1 */
       *(uint32_t *)u->rx_ptr = util_cpu_to_le32(0xbf8d0001);
@@ -765,6 +728,8 @@ bool ac_rtld_upload(struct ac_rtld_upload_info *u)
          Elf_Data *data = elf_getdata(section, NULL);
          report_elf_if(!data || data->d_size != shdr->sh_size);
          memcpy(u->rx_ptr + s->offset, data->d_buf, shdr->sh_size);
+
+         size = MAX2(size, s->offset + shdr->sh_size);
       }
    }
 
@@ -772,6 +737,7 @@ bool ac_rtld_upload(struct ac_rtld_upload_info *u)
       uint32_t *dst = (uint32_t *)(u->rx_ptr + u->binary->rx_end_markers);
       for (unsigned i = 0; i < DEBUGGER_NUM_MARKERS; ++i)
          *dst++ = util_cpu_to_le32(DEBUGGER_END_OF_CODE_MARKER);
+      size += 4 * DEBUGGER_NUM_MARKERS;
    }
 
    /* Second pass: handle relocations, overwriting uploaded data where
@@ -785,15 +751,15 @@ bool ac_rtld_upload(struct ac_rtld_upload_info *u)
             Elf_Data *relocs = elf_getdata(section, NULL);
             report_elf_if(!relocs || relocs->d_size != shdr->sh_size);
             if (!apply_relocs(u, i, shdr, relocs))
-               return false;
+               return -1;
          } else if (shdr->sh_type == SHT_RELA) {
             report_errorf("SHT_RELA not supported");
-            return false;
+            return -1;
          }
       }
    }
 
-   return true;
+   return size;
 
 #undef report_if
 #undef report_elf_if

@@ -36,6 +36,8 @@
 
 #include <GL/gl.h> /* dri_interface needs GL types */
 #include "GL/internal/dri_interface.h"
+#include "GL/internal/mesa_interface.h"
+#include "kopper_interface.h"
 
 struct gbm_dri_surface;
 struct gbm_dri_bo;
@@ -43,19 +45,6 @@ struct gbm_dri_bo;
 struct gbm_dri_visual {
    uint32_t gbm_format;
    int dri_image_format;
-   struct {
-      int red;
-      int green;
-      int blue;
-      int alpha;
-   } rgba_shifts;
-   struct {
-      unsigned int red;
-      unsigned int green;
-      unsigned int blue;
-      unsigned int alpha;
-   } rgba_sizes;
-   bool is_float;
 };
 
 struct gbm_dri_device {
@@ -63,16 +52,18 @@ struct gbm_dri_device {
 
    void *driver;
    char *driver_name; /* Name of the DRI module, without the _dri suffix */
+   bool software; /* A software driver was loaded */
 
    __DRIscreen *screen;
    __DRIcontext *context;
    mtx_t mutex;
 
    const __DRIcoreExtension   *core;
-   const __DRIdri2Extension   *dri2;
-   const __DRI2fenceExtension *fence;
+   const __DRImesaCoreExtension   *mesa;
    const __DRIimageExtension  *image;
+   const __DRIimageDriverExtension  *image_driver;
    const __DRIswrastExtension *swrast;
+   const __DRIkopperExtension *kopper;
    const __DRI2flushExtension *flush;
 
    const __DRIconfig   **driver_configs;
@@ -80,17 +71,11 @@ struct gbm_dri_device {
    const __DRIextension **driver_extensions;
 
    __DRIimage *(*lookup_image)(__DRIscreen *screen, void *image, void *data);
+   GLboolean (*validate_image)(void *image, void *data);
+   __DRIimage *(*lookup_image_validated)(void *image, void *data);
    void *lookup_user_data;
 
-   __DRIbuffer *(*get_buffers)(__DRIdrawable * driDrawable,
-                               int *width, int *height,
-                               unsigned int *attachments, int count,
-                               int *out_count, void *data);
    void (*flush_front_buffer)(__DRIdrawable * driDrawable, void *data);
-   __DRIbuffer *(*get_buffers_with_format)(__DRIdrawable * driDrawable,
-			     int *width, int *height,
-			     unsigned int *attachments, int count,
-			     int *out_count, void *data);
    int (*image_get_buffers)(__DRIdrawable *driDrawable,
                             unsigned int format,
                             uint32_t *stamp,
@@ -169,12 +154,12 @@ gbm_dri_bo_map_dumb(struct gbm_dri_bo *bo)
    memset(&map_arg, 0, sizeof(map_arg));
    map_arg.handle = bo->handle;
 
-   ret = drmIoctl(bo->base.gbm->fd, DRM_IOCTL_MODE_MAP_DUMB, &map_arg);
+   ret = drmIoctl(bo->base.gbm->v0.fd, DRM_IOCTL_MODE_MAP_DUMB, &map_arg);
    if (ret)
       return NULL;
 
-   bo->map = mmap(0, bo->size, PROT_WRITE,
-                  MAP_SHARED, bo->base.gbm->fd, map_arg.offset);
+   bo->map = mmap(NULL, bo->size, PROT_WRITE,
+                  MAP_SHARED, bo->base.gbm->v0.fd, map_arg.offset);
    if (bo->map == MAP_FAILED) {
       bo->map = NULL;
       return NULL;

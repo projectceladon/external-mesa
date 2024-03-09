@@ -34,15 +34,14 @@
 #include "r300_reg.h"
 
 struct r300_stencilref_context {
-    void (*draw_vbo)(struct pipe_context *pipe,
-                     const struct pipe_draw_info *info);
+    pipe_draw_func draw_vbo;
 
     uint32_t rs_cull_mode;
     uint32_t zb_stencilrefmask;
-    ubyte ref_value_front;
+    uint8_t ref_value_front;
 };
 
-static boolean r300_stencilref_needed(struct r300_context *r300)
+static bool r300_stencilref_needed(struct r300_context *r300)
 {
     struct r300_dsa_state *dsa = (struct r300_dsa_state*)r300->dsa_state.state;
 
@@ -101,18 +100,22 @@ static void r300_stencilref_end(struct r300_context *r300)
 }
 
 static void r300_stencilref_draw_vbo(struct pipe_context *pipe,
-                                     const struct pipe_draw_info *info)
+                                     const struct pipe_draw_info *info,
+                                     unsigned drawid_offset,
+                                     const struct pipe_draw_indirect_info *indirect,
+                                     const struct pipe_draw_start_count_bias *draws,
+                                     unsigned num_draws)
 {
     struct r300_context *r300 = r300_context(pipe);
     struct r300_stencilref_context *sr = r300->stencilref_fallback;
 
     if (!r300_stencilref_needed(r300)) {
-        sr->draw_vbo(pipe, info);
+        sr->draw_vbo(pipe, info, drawid_offset, NULL, draws, num_draws);
     } else {
         r300_stencilref_begin(r300);
-        sr->draw_vbo(pipe, info);
+        sr->draw_vbo(pipe, info, drawid_offset, NULL, draws, num_draws);
         r300_stencilref_switch_side(r300);
-        sr->draw_vbo(pipe, info);
+        sr->draw_vbo(pipe, info, drawid_offset, NULL, draws, num_draws);
         r300_stencilref_end(r300);
     }
 }

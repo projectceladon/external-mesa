@@ -63,7 +63,7 @@ struct etna_gpu *etna_gpu_new(struct etna_device *dev, unsigned int core)
 	if (!gpu->model)
 		goto fail;
 
-	INFO_MSG(" GPU model:          0x%x (rev %x)", gpu->model, gpu->revision);
+	DEBUG_MSG(" GPU model:          0x%x (rev %x)", gpu->model, gpu->revision);
 
 	return gpu;
 fail:
@@ -115,6 +115,21 @@ int etna_gpu_get_param(struct etna_gpu *gpu, enum etna_param_id param,
 	case ETNA_GPU_FEATURES_7:
 		*value = get_param(dev, core, ETNAVIV_PARAM_GPU_FEATURES_7);
 		return 0;
+	case ETNA_GPU_FEATURES_8:
+		*value = get_param(dev, core, ETNAVIV_PARAM_GPU_FEATURES_8);
+		return 0;
+	case ETNA_GPU_FEATURES_9:
+		*value = get_param(dev, core, ETNAVIV_PARAM_GPU_FEATURES_9);
+		return 0;
+	case ETNA_GPU_FEATURES_10:
+		*value = get_param(dev, core, ETNAVIV_PARAM_GPU_FEATURES_10);
+		return 0;
+	case ETNA_GPU_FEATURES_11:
+		*value = get_param(dev, core, ETNAVIV_PARAM_GPU_FEATURES_11);
+		return 0;
+	case ETNA_GPU_FEATURES_12:
+		*value = get_param(dev, core, ETNAVIV_PARAM_GPU_FEATURES_12);
+		return 0;
 	case ETNA_GPU_STREAM_COUNT:
 		*value = get_param(dev, core, ETNA_GPU_STREAM_COUNT);
 		return 0;
@@ -147,6 +162,33 @@ int etna_gpu_get_param(struct etna_gpu *gpu, enum etna_param_id param,
 		return 0;
 	case ETNA_GPU_NUM_VARYINGS:
 		*value = get_param(dev, core, ETNA_GPU_NUM_VARYINGS);
+		return 0;
+	case ETNA_SOFTPIN_START_ADDR:
+		*value = get_param(dev, core, ETNA_SOFTPIN_START_ADDR);
+		return 0;
+	case ETNA_GPU_PRODUCT_ID:
+		*value = get_param(dev, core, ETNA_GPU_PRODUCT_ID);
+		return 0;
+	case ETNA_GPU_CUSTOMER_ID:
+		*value = get_param(dev, core, ETNA_GPU_CUSTOMER_ID);
+		return 0;
+	case ETNA_GPU_ECO_ID:
+		*value = get_param(dev, core, ETNA_GPU_ECO_ID);
+		return 0;
+	case ETNA_GPU_NN_CORE_COUNT:
+		*value = get_param(dev, core, ETNA_GPU_NN_CORE_COUNT);
+		return 0;
+	case ETNA_GPU_NN_MAD_PER_CORE:
+		*value = get_param(dev, core, ETNA_GPU_NN_MAD_PER_CORE);
+		return 0;
+	case ETNA_GPU_TP_CORE_COUNT:
+		*value = get_param(dev, core, ETNA_GPU_TP_CORE_COUNT);
+		return 0;
+	case ETNA_GPU_ON_CHIP_SRAM_SIZE:
+		*value = get_param(dev, core, ETNA_GPU_ON_CHIP_SRAM_SIZE);
+		return 0;
+	case ETNA_GPU_AXI_SRAM_SIZE:
+		*value = get_param(dev, core, ETNA_GPU_AXI_SRAM_SIZE);
 		return 0;
 
 	default:

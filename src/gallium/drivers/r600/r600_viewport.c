@@ -48,7 +48,7 @@
 #define R_0282D0_PA_SC_VPORT_ZMIN_0                                     0x0282D0
 #define R_0282D4_PA_SC_VPORT_ZMAX_0                                     0x0282D4
 
-#define GET_MAX_SCISSOR(rctx) (rctx->chip_class >= EVERGREEN ? 16384 : 8192)
+#define GET_MAX_SCISSOR(rctx) (rctx->gfx_level >= EVERGREEN ? 16384 : 8192)
 
 static void r600_set_scissor_states(struct pipe_context *ctx,
 				    unsigned start_slot,
@@ -141,13 +141,13 @@ static void r600_scissor_make_union(struct r600_signed_scissor *out,
 void evergreen_apply_scissor_bug_workaround(struct r600_common_context *rctx,
 					    struct pipe_scissor_state *scissor)
 {
-	if (rctx->chip_class == EVERGREEN || rctx->chip_class == CAYMAN) {
+	if (rctx->gfx_level == EVERGREEN || rctx->gfx_level == CAYMAN) {
 		if (scissor->maxx == 0)
 			scissor->minx = 1;
 		if (scissor->maxy == 0)
 			scissor->miny = 1;
 
-		if (rctx->chip_class == CAYMAN &&
+		if (rctx->gfx_level == CAYMAN &&
 		    scissor->maxx == 1 && scissor->maxy == 1)
 			scissor->maxx = 2;
 	}
@@ -180,12 +180,12 @@ static void r600_emit_one_scissor(struct r600_common_context *rctx,
 }
 
 /* the range is [-MAX, MAX] */
-#define GET_MAX_VIEWPORT_RANGE(rctx) (rctx->chip_class >= EVERGREEN ? 32768 : 16384)
+#define GET_MAX_VIEWPORT_RANGE(rctx) (rctx->gfx_level >= EVERGREEN ? 32768 : 16384)
 
 static void r600_emit_guardband(struct r600_common_context *rctx,
 				struct r600_signed_scissor *vp_as_scissor)
 {
-	struct radeon_cmdbuf *cs = rctx->gfx.cs;
+	struct radeon_cmdbuf *cs = &rctx->gfx.cs;
 	struct pipe_viewport_state vp;
 	float left, top, right, bottom, max_range, guardband_x, guardband_y;
 
@@ -222,7 +222,7 @@ static void r600_emit_guardband(struct r600_common_context *rctx,
 	guardband_y = MIN2(-top, bottom);
 
 	/* If any of the GB registers is updated, all of them must be updated. */
-	if (rctx->chip_class >= CAYMAN)
+	if (rctx->gfx_level >= CAYMAN)
 		radeon_set_context_reg_seq(cs, CM_R_028BE8_PA_CL_GB_VERT_CLIP_ADJ, 4);
 	else
 		radeon_set_context_reg_seq(cs, R600_R_028C0C_PA_CL_GB_VERT_CLIP_ADJ, 4);
@@ -235,7 +235,7 @@ static void r600_emit_guardband(struct r600_common_context *rctx,
 
 static void r600_emit_scissors(struct r600_common_context *rctx, struct r600_atom *atom)
 {
-	struct radeon_cmdbuf *cs = rctx->gfx.cs;
+	struct radeon_cmdbuf *cs = &rctx->gfx.cs;
 	struct pipe_scissor_state *states = rctx->scissors.states;
 	unsigned mask = rctx->scissors.dirty_mask;
 	bool scissor_enabled = rctx->scissor_enabled;
@@ -306,7 +306,7 @@ static void r600_set_viewport_states(struct pipe_context *ctx,
 static void r600_emit_one_viewport(struct r600_common_context *rctx,
 				   struct pipe_viewport_state *state)
 {
-	struct radeon_cmdbuf *cs = rctx->gfx.cs;
+	struct radeon_cmdbuf *cs = &rctx->gfx.cs;
 
 	radeon_emit(cs, fui(state->scale[0]));
 	radeon_emit(cs, fui(state->translate[0]));
@@ -318,7 +318,7 @@ static void r600_emit_one_viewport(struct r600_common_context *rctx,
 
 static void r600_emit_viewports(struct r600_common_context *rctx)
 {
-	struct radeon_cmdbuf *cs = rctx->gfx.cs;
+	struct radeon_cmdbuf *cs = &rctx->gfx.cs;
 	struct pipe_viewport_state *states = rctx->viewports.states;
 	unsigned mask = rctx->viewports.dirty_mask;
 
@@ -348,7 +348,7 @@ static void r600_emit_viewports(struct r600_common_context *rctx)
 
 static void r600_emit_depth_ranges(struct r600_common_context *rctx)
 {
-	struct radeon_cmdbuf *cs = rctx->gfx.cs;
+	struct radeon_cmdbuf *cs = &rctx->gfx.cs;
 	struct pipe_viewport_state *states = rctx->viewports.states;
 	unsigned mask = rctx->viewports.depth_range_dirty_mask;
 	float zmin, zmax;

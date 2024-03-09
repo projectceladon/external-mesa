@@ -57,8 +57,8 @@ ir_constant::equals(const ir_instruction *ir, enum ir_node_type) const
    if (type != other->type)
       return false;
 
-   for (unsigned i = 0; i < type->components(); i++) {
-      if (type->is_double()) {
+   for (unsigned i = 0; i < glsl_get_components(type); i++) {
+      if (glsl_type_is_double(type)) {
          if (value.d[i] != other->value.d[i])
             return false;
       } else {
@@ -137,6 +137,9 @@ ir_texture::equals(const ir_instruction *ir, enum ir_node_type ignore) const
    if (op != other->op)
       return false;
 
+   if (is_sparse != other->is_sparse)
+      return false;
+
    if (!possibly_null_equals(coordinate, other->coordinate, ignore))
       return false;
 
@@ -147,6 +150,9 @@ ir_texture::equals(const ir_instruction *ir, enum ir_node_type ignore) const
       return false;
 
    if (!possibly_null_equals(offset, other->offset, ignore))
+      return false;
+
+   if (!possibly_null_equals(clamp, other->clamp, ignore))
       return false;
 
    if (!sampler->equals(other->sampler, ignore))
