@@ -33,6 +33,7 @@
 
 #include <vector>
 #include <llvm/Config/llvm-config.h>
+#include <llvm/IR/Constants.h>
 #include <llvm/IR/Module.h>
 #include <llvm/IR/Metadata.h>
 
@@ -128,8 +129,10 @@ namespace clover {
                      data += "long";
                      break;
                }
-               if (type->isVectorTy())
-                  data += std::to_string(((::llvm::VectorType*)type)->getNumElements());
+               if (compat::is_scalable_vector(type))
+                  throw build_error("hit unexpected scalable vector");
+               if (compat::is_fixed_vector(type))
+                  data += std::to_string(compat::get_fixed_vector_elements(type));
 
             } else {
                ::llvm::raw_string_ostream os { data };
@@ -164,7 +167,7 @@ namespace clover {
       /// Extract the int metadata node \p name corresponding to the kernel
       /// argument given by \p arg.
       ///
-      inline uint
+      inline uint64_t
       get_uint_argument_metadata(const ::llvm::Function &f,
                             const ::llvm::Argument &arg,
                             const std::string &name) {

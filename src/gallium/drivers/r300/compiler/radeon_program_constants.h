@@ -101,7 +101,7 @@ enum {
 	RC_NUM_SPECIAL_REGISTERS
 };
 
-#define RC_REGISTER_INDEX_BITS 10
+#define RC_REGISTER_INDEX_BITS 11
 #define RC_REGISTER_MAX_INDEX (1 << RC_REGISTER_INDEX_BITS)
 
 typedef enum {
@@ -114,6 +114,11 @@ typedef enum {
 	RC_SWIZZLE_HALF,
 	RC_SWIZZLE_UNUSED
 } rc_swizzle;
+
+static inline int is_swizzle_inline_constant(rc_swizzle swizzle){
+	return swizzle >= RC_SWIZZLE_ZERO;
+
+}
 
 #define RC_MAKE_SWIZZLE(a,b,c,d) (((a)<<0) | ((b)<<3) | ((c)<<6) | ((d)<<9))
 #define RC_MAKE_SWIZZLE_SMEAR(a) RC_MAKE_SWIZZLE((a),(a),(a),(a))

@@ -26,20 +26,23 @@
 #ifndef SVGA_SWTNL_H
 #define SVGA_SWTNL_H
 
-#include "pipe/p_compiler.h"
+#include "util/compiler.h"
 
 struct svga_context;
 struct pipe_context;
 struct vbuf_render;
 
 
-boolean svga_init_swtnl( struct svga_context *svga );
+bool svga_init_swtnl( struct svga_context *svga );
 void svga_destroy_swtnl( struct svga_context *svga );
 
 
 enum pipe_error
 svga_swtnl_draw_vbo(struct svga_context *svga,
-                    const struct pipe_draw_info *info);
+                    const struct pipe_draw_info *info,
+                    unsigned drawid_offset,
+                    const struct pipe_draw_indirect_info *indirect,
+                    const struct pipe_draw_start_count_bias *draw);
 
 
 #endif

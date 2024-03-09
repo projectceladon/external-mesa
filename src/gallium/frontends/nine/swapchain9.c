@@ -79,7 +79,7 @@ NineSwapChain9_ctor( struct NineSwapChain9 *This,
     if (!pPresentationParameters->hDeviceWindow)
         pPresentationParameters->hDeviceWindow = hFocusWindow;
 
-    This->rendering_done = FALSE;
+    This->rendering_done = false;
     This->pool = NULL;
     for (i = 0; i < D3DPRESENT_BACK_BUFFERS_MAX_EX + 1; i++) {
         This->pending_presentation[i] = calloc(1, sizeof(BOOL));
@@ -103,11 +103,14 @@ D3DWindowBuffer_create(struct NineSwapChain9 *This,
 
     memset(&whandle, 0, sizeof(whandle));
     whandle.type = WINSYS_HANDLE_TYPE_FD;
-    This->screen->resource_get_handle(This->screen, pipe, resource,
-                                      &whandle,
-                                      for_frontbuffer_reading ?
-                                          PIPE_HANDLE_USAGE_FRAMEBUFFER_WRITE :
-                                          PIPE_HANDLE_USAGE_EXPLICIT_FLUSH);
+    if (!This->screen->resource_get_handle(This->screen, pipe, resource,
+                                           &whandle,
+                                           for_frontbuffer_reading ?
+                                               PIPE_HANDLE_USAGE_FRAMEBUFFER_WRITE :
+                                               PIPE_HANDLE_USAGE_EXPLICIT_FLUSH)) {
+        ERR("Failed to get handle for resource\n");
+        return NULL;
+    }
     nine_context_get_pipe_release(This->base.device);
     stride = whandle.stride;
     dmaBufFd = whandle.handle;
@@ -183,7 +186,7 @@ NineSwapChain9_Resize( struct NineSwapChain9 *This,
     HRESULT hr;
     struct pipe_resource *resource, tmplt;
     enum pipe_format pf;
-    BOOL has_present_buffers = FALSE;
+    BOOL has_present_buffers = false;
     int depth;
     unsigned i, oldBufferCount, newBufferCount;
     D3DMULTISAMPLE_TYPE multisample_type;
@@ -278,7 +281,7 @@ NineSwapChain9_Resize( struct NineSwapChain9 *This,
 
     pf = d3d9_to_pipe_format_checked(This->screen, pParams->BackBufferFormat,
                                      PIPE_TEXTURE_2D, multisample_type,
-                                     PIPE_BIND_RENDER_TARGET, FALSE, FALSE);
+                                     PIPE_BIND_RENDER_TARGET, false, false);
 
     if (This->actx->linear_framebuffer ||
         (pf != PIPE_FORMAT_B8G8R8X8_UNORM &&
@@ -286,7 +289,7 @@ NineSwapChain9_Resize( struct NineSwapChain9 *This,
         pParams->SwapEffect != D3DSWAPEFFECT_DISCARD ||
         multisample_type >= 2 ||
         (This->actx->ref && This->actx->ref == This->screen))
-        has_present_buffers = TRUE;
+        has_present_buffers = true;
 
     /* Note: the buffer depth has to match the window depth.
      * In practice, ARGB buffers can be used with windows
@@ -329,7 +332,7 @@ NineSwapChain9_Resize( struct NineSwapChain9 *This,
     if (This->enable_threadpool)
         This->pool = _mesa_threadpool_create(This);
     if (!This->pool)
-        This->enable_threadpool = FALSE;
+        This->enable_threadpool = false;
 
     for (i = 0; i < oldBufferCount; i++) {
         D3DWindowBuffer_release(This, This->present_handles[i]);
@@ -360,7 +363,7 @@ NineSwapChain9_Resize( struct NineSwapChain9 *This,
                                                    pParams->BackBufferFormat,
                                                    PIPE_TEXTURE_2D,
                                                    tmplt.nr_samples,
-                                                   tmplt.bind, FALSE, FALSE);
+                                                   tmplt.bind, false, false);
         if (tmplt.format == PIPE_FORMAT_NONE)
             return D3DERR_INVALIDCALL;
         resource = nine_resource_create_with_retry(pDevice, This->screen, &tmplt);
@@ -386,7 +389,7 @@ NineSwapChain9_Resize( struct NineSwapChain9 *This,
                 DBG("Failed to create RT surface.\n");
                 return hr;
             }
-            This->buffers[i]->base.base.forward = FALSE;
+            This->buffers[i]->base.base.forward = false;
         }
         if (has_present_buffers) {
             tmplt.format = PIPE_FORMAT_B8G8R8X8_UNORM;
@@ -415,7 +418,7 @@ NineSwapChain9_Resize( struct NineSwapChain9 *This,
                                                    PIPE_TEXTURE_2D,
                                                    tmplt.nr_samples,
                                                    tmplt.bind,
-                                                   FALSE, FALSE);
+                                                   false, false);
 
         if (tmplt.format == PIPE_FORMAT_NONE)
             return D3DERR_INVALIDCALL;
@@ -642,7 +645,7 @@ handle_draw_cursor_and_hud( struct NineSwapChain9 *This, struct pipe_resource *r
 
         blit.mask = PIPE_MASK_RGBA;
         blit.filter = PIPE_TEX_FILTER_NEAREST;
-        blit.scissor_enable = FALSE;
+        blit.scissor_enable = false;
 
         /* NOTE: blit messes up when box.x + box.width < 0, fix driver
          * NOTE2: device->cursor.pos contains coordinates relative to the screen.
@@ -657,7 +660,7 @@ handle_draw_cursor_and_hud( struct NineSwapChain9 *This, struct pipe_resource *r
             blit.src.box.width, blit.src.box.height,
             blit.dst.box.x, blit.dst.box.y);
 
-        blit.alpha_blend = TRUE;
+        blit.alpha_blend = true;
         pipe = NineDevice9_GetPipe(This->base.device);
         pipe->blit(pipe, &blit);
     }
@@ -684,11 +687,11 @@ static void work_present(void *data)
 {
     struct end_present_struct *work = data;
     if (work->fence_to_wait) {
-        (void) work->screen->fence_finish(work->screen, NULL, work->fence_to_wait, PIPE_TIMEOUT_INFINITE);
+        (void) work->screen->fence_finish(work->screen, NULL, work->fence_to_wait, OS_TIMEOUT_INFINITE);
         work->screen->fence_reference(work->screen, &(work->fence_to_wait), NULL);
     }
     ID3DPresent_PresentBuffer(work->present, work->present_handle, work->hDestWindowOverride, NULL, NULL, NULL, 0);
-    p_atomic_set(work->pending_presentation, FALSE);
+    p_atomic_set(work->pending_presentation, false);
     free(work);
 }
 
@@ -704,7 +707,7 @@ static void pend_present(struct NineSwapChain9 *This,
     work->present_handle = This->present_handles[0];
     work->hDestWindowOverride = hDestWindowOverride;
     work->pending_presentation = This->pending_presentation[0];
-    p_atomic_set(work->pending_presentation, TRUE);
+    p_atomic_set(work->pending_presentation, true);
     This->tasks[0] = _mesa_threadpool_queue_task(This->pool, work_present, work);
 
     return;
@@ -872,8 +875,8 @@ present( struct NineSwapChain9 *This,
         blit.filter = (blit.dst.box.width == blit.src.box.width &&
                        blit.dst.box.height == blit.src.box.height) ?
                           PIPE_TEX_FILTER_NEAREST : PIPE_TEX_FILTER_LINEAR;
-        blit.scissor_enable = FALSE;
-        blit.alpha_blend = FALSE;
+        blit.scissor_enable = false;
+        blit.alpha_blend = false;
 
         pipe->blit(pipe, &blit);
     }
@@ -886,7 +889,9 @@ present( struct NineSwapChain9 *This,
         handle_draw_cursor_and_hud(This, resource);
 
     fence = NULL;
-    pipe->flush(pipe, &fence, PIPE_FLUSH_END_OF_FRAME);
+    /* When threadpool is enabled, we don't submit before the fence
+     * tells us rendering was finished, thus we can flush async there */
+    pipe->flush(pipe, &fence, PIPE_FLUSH_END_OF_FRAME | (This->enable_threadpool ? PIPE_FLUSH_ASYNC : 0));
 
     /* Present now for thread_submit, because we have the fence.
      * It's possible we return WASSTILLDRAWING and still Present,
@@ -898,12 +903,12 @@ present( struct NineSwapChain9 *This,
         This->screen->fence_reference(This->screen, &fence, NULL);
     }
 
-    This->rendering_done = TRUE;
+    This->rendering_done = true;
 bypass_rendering:
 
     if (dwFlags & D3DPRESENT_DONOTWAIT) {
         UNTESTED(2);
-        BOOL still_draw = FALSE;
+        BOOL still_draw = false;
         fence = swap_fences_see_front(This);
         if (fence) {
             still_draw = !This->screen->fence_finish(This->screen, NULL, fence, 0);
@@ -916,11 +921,11 @@ bypass_rendering:
     /* Throttle rendering if needed */
     fence = swap_fences_pop_front(This);
     if (fence) {
-        (void) This->screen->fence_finish(This->screen, NULL, fence, PIPE_TIMEOUT_INFINITE);
+        (void) This->screen->fence_finish(This->screen, NULL, fence, OS_TIMEOUT_INFINITE);
         This->screen->fence_reference(This->screen, &fence, NULL);
     }
 
-    This->rendering_done = FALSE;
+    This->rendering_done = false;
 
     if (!This->enable_threadpool) {
         This->tasks[0]=NULL;
@@ -930,6 +935,8 @@ bypass_rendering:
         if (FAILED(hr)) { UNTESTED(3);return hr; }
     }
 
+    This->base.device->end_scene_since_present = 0;
+    This->base.device->frame_count++;
     return D3D_OK;
 }
 
@@ -961,7 +968,7 @@ NineSwapChain9_Present( struct NineSwapChain9 *This,
     } else {
         if (NineSwapChain9_GetOccluded(This) ||
             NineSwapChain9_ResolutionMismatch(This)) {
-            This->base.device->device_needs_reset = TRUE;
+            This->base.device->device_needs_reset = true;
         }
         if (This->base.device->device_needs_reset) {
             DBG("Device is lost. Returning D3DERR_DEVICELOST.\n");
@@ -1242,7 +1249,7 @@ NineSwapChain9_GetOccluded( struct NineSwapChain9 *This )
         return ID3DPresent_GetWindowOccluded(This->present);
     }
 
-    return FALSE;
+    return false;
 }
 
 BOOL
@@ -1252,7 +1259,7 @@ NineSwapChain9_ResolutionMismatch( struct NineSwapChain9 *This )
         return ID3DPresent_ResolutionMismatch(This->present);
     }
 
-    return FALSE;
+    return false;
 }
 
 HANDLE
@@ -1311,6 +1318,9 @@ NineSwapChain9_GetBackBufferCountForParams( struct NineSwapChain9 *This,
              * because in case a pageflip is missed because rendering wasn't finished,
              * the Xserver will hold 4 buffers. */
             else if (!This->actx->thread_submit && count < 5)
+                count = 5;
+            /* Somehow this cases needs 5 with thread_submit, or else you get a small performance hit */
+            if (This->actx->tearfree_discard && count < 5)
                 count = 5;
         }
     }

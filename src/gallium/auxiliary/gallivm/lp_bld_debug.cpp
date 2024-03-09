@@ -35,8 +35,13 @@
 #include <llvm-c/Disassembler.h>
 #include <llvm/Support/raw_ostream.h>
 #include <llvm/Support/Format.h>
-#include <llvm/Support/Host.h>
 #include <llvm/IR/Module.h>
+
+#if LLVM_VERSION_MAJOR >= 17
+#include <llvm/TargetParser/Host.h>
+#else
+#include <llvm/Support/Host.h>
+#endif
 
 #include "util/u_math.h"
 #include "util/u_debug.h"
@@ -58,7 +63,7 @@
  * and stack variables would often make the check a no op, defeating the
  * whole purpose of the exercise.
  */
-extern "C" boolean
+extern "C" bool
 lp_check_alignment(const void *ptr, unsigned alignment)
 {
    assert(util_is_power_of_two_or_zero(alignment));
@@ -160,7 +165,7 @@ disassemble(const void* func, std::ostream &buffer)
        * XXX: This currently assumes x86
        */
 
-#if defined(PIPE_ARCH_X86) || defined(PIPE_ARCH_X86_64)
+#if DETECT_ARCH_X86 || DETECT_ARCH_X86_64
       if (Size == 1 && bytes[pc] == 0xc3) {
          break;
       }
@@ -221,7 +226,7 @@ lp_profile(LLVMValueRef func, const void *code)
 {
 #if defined(__linux__) && defined(PROFILE)
    static std::ofstream perf_asm_file;
-   static boolean first_time = TRUE;
+   static bool first_time = true;
    static FILE *perf_map_file = NULL;
    if (first_time) {
       /*
@@ -238,7 +243,7 @@ lp_profile(LLVMValueRef func, const void *code)
          snprintf(filename, sizeof filename, "/tmp/perf-%llu.map.asm", (unsigned long long)pid);
          perf_asm_file.open(filename);
       }
-      first_time = FALSE;
+      first_time = false;
    }
    if (perf_map_file) {
       const char *symbol = LLVMGetValueName(func);

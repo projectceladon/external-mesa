@@ -26,7 +26,7 @@
 #ifndef SVGA_DEBUG_H
 #define SVGA_DEBUG_H
 
-#include "pipe/p_compiler.h"
+#include "util/compiler.h"
 #include "util/u_debug.h"
 
 #define DEBUG_DMA          0x1
@@ -46,6 +46,8 @@
 #define DEBUG_CACHE        0x8000
 #define DEBUG_STREAMOUT    0x10000
 #define DEBUG_SAMPLERS     0x20000
+#define DEBUG_IMAGE        0x40000
+#define DEBUG_UAV          0x80000
 #define DEBUG_RETRY        0x100000
 
 #ifdef DEBUG

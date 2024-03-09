@@ -30,7 +30,8 @@
 
 #include <windows.h> /* for HDC */
 
-#include "pipe/p_compiler.h"
+#include "util/compiler.h"
+#include "frontend/api.h"
 
 struct pipe_screen;
 struct pipe_context;
@@ -38,10 +39,40 @@ struct pipe_resource;
 
 struct stw_shared_surface;
 
+typedef enum
+{
+   stw_pfd_gdi_support   = 1 << 0,
+   stw_pfd_double_buffer = 1 << 1,
+} stw_pfd_flag;
+
+struct stw_winsys_framebuffer
+{
+   void
+   (*destroy)(struct stw_winsys_framebuffer *fb,
+              struct pipe_context *context);
+
+   bool
+   (*present)(struct stw_winsys_framebuffer *fb,
+              int interval);
+
+   void
+   (*resize)(struct stw_winsys_framebuffer *fb,
+             struct pipe_context *context,
+             struct pipe_resource *templ);
+
+   struct pipe_resource *
+   (*get_resource)(struct stw_winsys_framebuffer *fb,
+                   enum st_attachment_type statt);
+
+   void
+   (*flush_frontbuffer)(struct stw_winsys_framebuffer *fb,
+                        struct pipe_context *context);
+};
+
 struct stw_winsys
 {
    struct pipe_screen *
-   (*create_screen)( void );
+   (*create_screen)( HDC hDC );
 
    /* XXX is it actually possible to have non-zero level/layer ??? */
    /**
@@ -49,6 +80,7 @@ struct stw_winsys
     */
    void
    (*present)( struct pipe_screen *screen,
+               struct pipe_context *context,
                struct pipe_resource *res,
                HDC hDC );
 
@@ -57,8 +89,9 @@ struct stw_winsys
     *
     * @sa GLCBPRESENTBUFFERSDATA::AdapterLuid;
     */
-   boolean
+   bool
    (*get_adapter_luid)( struct pipe_screen *screen,
+                        HDC hDC,
                         LUID *pAdapterLuid );
 
    /**
@@ -90,12 +123,33 @@ struct stw_winsys
                struct stw_shared_surface *dest,
                LPCRECT pRect,
                ULONGLONG PresentHistoryToken );
+
+   /**
+    * Query whether the driver can support GDI and/or double-buffering in its
+    * pixel formats (optional).
+    */
+   unsigned
+   (*get_pfd_flags)( struct pipe_screen *screen );
+
+   /**
+    * Create a winsys-specific object for a given DC's framebuffer
+    */
+   struct stw_winsys_framebuffer *
+   (*create_framebuffer)( struct pipe_screen *screen,
+                          HWND hWnd,
+                          int iPixelFormat );
+
+   /**
+    * Get the name of the screen that was created
+    */
+   const char *
+   (*get_name)(void);
 };
 
-boolean
+bool
 stw_init(const struct stw_winsys *stw_winsys);
 
-boolean
+bool
 stw_init_thread(void);
 
 void

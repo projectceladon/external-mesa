@@ -145,7 +145,7 @@ ir_reader::read_type(s_expression *expr)
 	 return NULL;
       }
 
-      return glsl_type::get_array_instance(base_type, s_size->value());
+      return glsl_array_type(base_type, s_size->value(), 0);
    }
 
    s_symbol *type_sym = SX_AS_SYMBOL(expr);
@@ -585,18 +585,18 @@ ir_reader::read_assignment(s_expression *expr)
    s_pattern pat4[] = { "assign",            mask_list, lhs_expr, rhs_expr };
    s_pattern pat5[] = { "assign", cond_expr, mask_list, lhs_expr, rhs_expr };
    if (!MATCH(expr, pat4) && !MATCH(expr, pat5)) {
-      ir_read_error(expr, "expected (assign [<condition>] (<write mask>) "
-			  "<lhs> <rhs>)");
+      ir_read_error(expr, "expected (assign (<write mask>) <lhs> <rhs>)");
       return NULL;
    }
 
-   ir_rvalue *condition = NULL;
    if (cond_expr != NULL) {
-      condition = read_rvalue(cond_expr);
-      if (condition == NULL) {
-	 ir_read_error(NULL, "when reading condition of assignment");
-	 return NULL;
-      }
+      ir_rvalue *condition = read_rvalue(cond_expr);
+      if (condition == NULL)
+         ir_read_error(NULL, "when reading condition of assignment");
+      else
+         ir_read_error(expr, "conditional assignemnts are deprecated");
+
+      return NULL;
    }
 
    unsigned mask = 0;
@@ -638,12 +638,12 @@ ir_reader::read_assignment(s_expression *expr)
       return NULL;
    }
 
-   if (mask == 0 && (lhs->type->is_vector() || lhs->type->is_scalar())) {
+   if (mask == 0 && (glsl_type_is_vector(lhs->type) || glsl_type_is_scalar(lhs->type))) {
       ir_read_error(expr, "non-zero write mask required.");
       return NULL;
    }
 
-   return new(mem_ctx) ir_assignment(lhs, rhs, condition, mask);
+   return new(mem_ctx) ir_assignment(lhs, rhs, mask);
 }
 
 ir_call *
@@ -694,10 +694,10 @@ ir_reader::read_call(s_expression *expr)
       return NULL;
    }
 
-   if (callee->return_type == glsl_type::void_type && return_deref) {
+   if (callee->return_type == &glsl_type_builtin_void && return_deref) {
       ir_read_error(expr, "call has return value storage but void type");
       return NULL;
-   } else if (callee->return_type != glsl_type::void_type && !return_deref) {
+   } else if (callee->return_type != &glsl_type_builtin_void && !return_deref) {
       ir_read_error(expr, "call has non-void type but no return value storage");
       return NULL;
    }
@@ -806,7 +806,7 @@ ir_reader::read_constant(s_expression *expr)
       return NULL;
    }
 
-   if (type->is_array()) {
+   if (glsl_type_is_array(type)) {
       unsigned elements_supplied = 0;
       exec_list elements;
       foreach_in_list(s_expression, elt, &values->subexpressions) {
@@ -835,7 +835,7 @@ ir_reader::read_constant(s_expression *expr)
 	 return NULL;
       }
 
-      if (type->is_float()) {
+      if (glsl_type_is_float(type)) {
 	 s_number *value = SX_AS_NUMBER(expr);
 	 if (value == NULL) {
 	    ir_read_error(values, "expected numbers");
@@ -869,9 +869,9 @@ ir_reader::read_constant(s_expression *expr)
       }
       ++k;
    }
-   if (k != type->components()) {
+   if (k != glsl_get_components(type)) {
       ir_read_error(values, "expected %u constant values, found %u",
-		    type->components(), k);
+		    glsl_get_components(type), k);
       return NULL;
    }
 
@@ -936,12 +936,14 @@ ir_texture *
 ir_reader::read_texture(s_expression *expr)
 {
    s_symbol *tag = NULL;
+   s_expression *s_sparse = NULL;
    s_expression *s_type = NULL;
    s_expression *s_sampler = NULL;
    s_expression *s_coord = NULL;
    s_expression *s_offset = NULL;
    s_expression *s_proj = NULL;
    s_list *s_shadow = NULL;
+   s_list *s_clamp = NULL;
    s_expression *s_lod = NULL;
    s_expression *s_sample_index = NULL;
    s_expression *s_component = NULL;
@@ -949,28 +951,36 @@ ir_reader::read_texture(s_expression *expr)
    ir_texture_opcode op = ir_tex; /* silence warning */
 
    s_pattern tex_pattern[] =
-      { "tex", s_type, s_sampler, s_coord, s_offset, s_proj, s_shadow };
+      { "tex", s_type, s_sampler, s_coord, s_sparse, s_offset, s_proj, s_shadow, s_clamp };
+   s_pattern txb_pattern[] =
+      { "txb", s_type, s_sampler, s_coord, s_sparse, s_offset, s_proj, s_shadow, s_clamp, s_lod };
+   s_pattern txd_pattern[] =
+      { "txd", s_type, s_sampler, s_coord, s_sparse, s_offset, s_proj, s_shadow, s_clamp, s_lod };
    s_pattern lod_pattern[] =
       { "lod", s_type, s_sampler, s_coord };
    s_pattern txf_pattern[] =
-      { "txf", s_type, s_sampler, s_coord, s_offset, s_lod };
+      { "txf", s_type, s_sampler, s_coord, s_sparse, s_offset, s_lod };
    s_pattern txf_ms_pattern[] =
-      { "txf_ms", s_type, s_sampler, s_coord, s_sample_index };
+      { "txf_ms", s_type, s_sampler, s_coord, s_sparse, s_sample_index };
    s_pattern txs_pattern[] =
       { "txs", s_type, s_sampler, s_lod };
    s_pattern tg4_pattern[] =
-      { "tg4", s_type, s_sampler, s_coord, s_offset, s_component };
+      { "tg4", s_type, s_sampler, s_coord, s_sparse, s_offset, s_component };
    s_pattern query_levels_pattern[] =
       { "query_levels", s_type, s_sampler };
    s_pattern texture_samples_pattern[] =
       { "samples", s_type, s_sampler };
    s_pattern other_pattern[] =
-      { tag, s_type, s_sampler, s_coord, s_offset, s_proj, s_shadow, s_lod };
+      { tag, s_type, s_sampler, s_coord, s_sparse, s_offset, s_proj, s_shadow, s_lod };
 
    if (MATCH(expr, lod_pattern)) {
       op = ir_lod;
    } else if (MATCH(expr, tex_pattern)) {
       op = ir_tex;
+   } else if (MATCH(expr, txb_pattern)) {
+      op = ir_txb;
+   } else if (MATCH(expr, txd_pattern)) {
+      op = ir_txd;
    } else if (MATCH(expr, txf_pattern)) {
       op = ir_txf;
    } else if (MATCH(expr, txf_ms_pattern)) {
@@ -992,7 +1002,17 @@ ir_reader::read_texture(s_expression *expr)
       return NULL;
    }
 
-   ir_texture *tex = new(mem_ctx) ir_texture(op);
+   bool is_sparse = false;
+   if (s_sparse) {
+      s_int *sparse = SX_AS_INT(s_sparse);
+      if (sparse == NULL) {
+         ir_read_error(NULL, "when reading sparse");
+         return NULL;
+      }
+      is_sparse = sparse->value();
+   }
+
+   ir_texture *tex = new(mem_ctx) ir_texture(op, is_sparse);
 
    // Read return type
    const glsl_type *type = read_type(s_type);
@@ -1008,6 +1028,15 @@ ir_reader::read_texture(s_expression *expr)
       ir_read_error(NULL, "when reading sampler in (%s ...)",
 		    tex->opcode_string());
       return NULL;
+   }
+
+   if (is_sparse) {
+      const glsl_type *texel = glsl_get_field_type(type, "texel");
+      if (texel == &glsl_type_builtin_error) {
+         ir_read_error(NULL, "invalid type for sparse texture");
+         return NULL;
+      }
+      type = texel;
    }
    tex->set_sampler(sampler, type);
 
@@ -1057,6 +1086,19 @@ ir_reader::read_texture(s_expression *expr)
 			  tex->opcode_string());
 	    return NULL;
 	 }
+      }
+   }
+
+   if (op == ir_tex || op == ir_txb || op == ir_txd) {
+      if (s_clamp->subexpressions.is_empty()) {
+         tex->clamp = NULL;
+      } else {
+         tex->clamp = read_rvalue(s_clamp);
+         if (tex->clamp == NULL) {
+            ir_read_error(NULL, "when reading clamp in (%s ..)",
+                          tex->opcode_string());
+            return NULL;
+         }
       }
    }
 

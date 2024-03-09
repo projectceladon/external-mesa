@@ -7,12 +7,9 @@ Compilation and Installation Using Meson
 For general information about Meson see the `Meson
 website <https://mesonbuild.com/>`__.
 
-**Mesa's Meson build system is generally considered stable and ready for
-production.**
-
 .. note::
 
-   Mesa requires Meson >= 0.52.0 to build.
+   Mesa requires Meson >= 0.60.0 to build.
 
    If your distribution doesn't have something recent enough in its
    repositories, you can `try the methods suggested here
@@ -28,13 +25,13 @@ Unix-like OSes
 If Meson is not already installed on your system, you can typically
 install it with your package installer. For example:
 
-.. code-block:: console
+.. code-block:: sh
 
    sudo apt-get install meson   # Ubuntu
 
 or
 
-.. code-block:: console
+.. code-block:: sh
 
    sudo dnf install meson   # Fedora
 
@@ -54,22 +51,22 @@ modules (Mako). You also need pkg-config (a hard dependency of Meson),
 Flex, and Bison. The easiest way to install everything you need is with
 `Chocolatey <https://chocolatey.org/>`__.
 
-.. code-block:: console
+.. code-block:: sh
 
    choco install python3 winflexbison pkgconfiglite
 
 You can even use Chocolatey to install MinGW and Ninja (Ninja can be
 used with MSVC as well)
 
-.. code-block:: console
+.. code-block:: sh
 
    choco install ninja mingw
 
 Then install Meson using pip
 
-.. code-block:: console
+.. code-block:: sh
 
-   py -3 -m pip install meson mako
+   py -3 -m pip install meson packaging mako
 
 You may need to add the Python 3 scripts directory to your path for
 Meson.
@@ -90,33 +87,32 @@ for each configuration you might want to use.
 
 Basic configuration is done with:
 
-.. code-block:: console
+.. code-block:: sh
 
-   meson build/
+   meson setup build/
 
 This will create the build directory. If any dependencies are missing,
 you can install them, or try to remove the dependency with a Meson
-configuration option (see below).
+configuration option (see below). Meson will print a summary of the
+build options at the end.
 
 To review the options which Meson chose, run:
 
-.. code-block:: console
+.. code-block:: sh
 
    meson configure build/
 
-Meson does not currently support listing configuration options before
-running "meson build/" but this feature is being discussed upstream. For
-now, we have a ``bin/meson-options.py`` script that prints the options
-for you. If that script doesn't work for some reason, you can always
-look in the
-`meson_options.txt <https://gitlab.freedesktop.org/mesa/mesa/-/blob/master/meson_options.txt>`__
+Recent version of Meson can print the available options and their
+default values by running ``meson configure`` in the source directory.
+If your Meson version is too old, you can always look in the
+`meson_options.txt <https://gitlab.freedesktop.org/mesa/mesa/-/blob/main/meson_options.txt>`__
 file at the root of the project.
 
 With additional arguments ``meson configure`` can be used to change
 options for a previously configured build directory. All options passed
 to this command are in the form ``-D "option"="value"``. For example:
 
-.. code-block:: console
+.. code-block:: sh
 
    meson configure build/ -Dprefix=/tmp/install -Dglx=true
 
@@ -129,7 +125,7 @@ an empty list (``-D platforms=[]``).
 Once you've run the initial ``meson`` command successfully you can use
 your configured backend to build the project in your build directory:
 
-.. code-block:: console
+.. code-block:: sh
 
    ninja -C build/
 
@@ -137,7 +133,7 @@ The next step is to install the Mesa libraries, drivers, etc. This also
 finishes up some final steps of the build process (such as creating
 symbolic links for drivers). To install:
 
-.. code-block:: console
+.. code-block:: sh
 
    ninja -C build/ install
 
@@ -157,9 +153,7 @@ CC and CXX environment variables.
 
 All of these compilers are tested and work with Ninja, but if you want
 Visual Studio integration or you just like msbuild, passing
-``--backend=vs`` to Meson will generate a Visual Studio solution. If you
-want to use ICL or clang-cl with the vsbackend you will need Meson
-0.52.0 or greater. Older versions always use the Microsoft compiler.
+``--backend=vs`` to Meson will generate a Visual Studio solution.
 
 3. Advanced Usage
 -----------------
@@ -167,14 +161,14 @@ want to use ICL or clang-cl with the vsbackend you will need Meson
 Installation Location
 ^^^^^^^^^^^^^^^^^^^^^
 
-Meson default to installing libGL.so in your system's main lib/
-directory and DRI drivers to a dri/ subdirectory.
+Meson default to installing :file:`libGL.so` in your system's main
+:file:`lib/` directory and DRI drivers to a :file:`dri/` subdirectory.
 
 Developers will often want to install Mesa to a testing directory rather
 than the system library directory. This can be done with the --prefix
 option. For example:
 
-.. code-block:: console
+.. code-block:: sh
 
    meson --prefix="${PWD}/build/install" build/
 
@@ -197,24 +191,24 @@ they are guaranteed to persist across rebuilds and reconfigurations.
 This example sets -fmax-errors for compiling C sources and -DMAGIC=123
 for C++ sources:
 
-.. code-block:: console
+.. code-block:: sh
 
-   meson builddir/ -Dc_args=-fmax-errors=10 -Dcpp_args=-DMAGIC=123
+   meson setup builddir/ -Dc_args=-fmax-errors=10 -Dcpp_args=-DMAGIC=123
 
 Compiler Specification
 ^^^^^^^^^^^^^^^^^^^^^^
 
 Meson supports the standard CC and CXX environment variables for
 changing the default compiler. Note that Meson does not allow changing
-the compilers in a configured builddir so you will need to create a new
-build dir for a different compiler.
+the compilers in a configured build directory so you will need to create
+a new build dir for a different compiler.
 
 This is an example of specifying the Clang compilers and cleaning the
 build directory before reconfiguring with an extra C option:
 
-.. code-block:: console
+.. code-block:: sh
 
-   CC=clang CXX=clang++ meson build-clang
+   CC=clang CXX=clang++ meson setup build-clang
    ninja -C build-clang
    ninja -C build-clang clean
    meson configure build -Dc_args="-Wno-typedef-redefinition"
@@ -230,65 +224,53 @@ LLVM
 Meson includes upstream logic to wrap llvm-config using its standard
 dependency interface.
 
-As of Meson 0.51.0 Meson can use CMake to find LLVM (the CMake finder
-was added in Meson 0.49.0, but LLVM cannot be found until 0.51) Due to
-the way LLVM implements its CMake finder it will only find static
-libraries, it will never find libllvm.so. There is also a
-``-Dcmake_module_path`` option in this Meson version, which points to
-the root of an alternative installation (the prefix). For example:
+Meson can use CMake to find LLVM. But due to the way LLVM implements its
+CMake finder it will only find static libraries, it will never find
+:file:`libllvm.so`. There is also a ``-Dcmake_module_path`` option,
+which points to the root of an alternative installation (the prefix).
+For example:
 
-.. code-block:: console
+.. code-block:: sh
 
-   meson builddir -Dcmake_module_path=/home/user/mycmake/prefix
+   meson setup builddir -Dcmake_module_path=/home/user/mycmake/prefix
 
 As of Meson 0.49.0 Meson also has the concept of a `"native
 file" <https://mesonbuild.com/Native-environments.html>`__, these files
 provide information about the native build environment (as opposed to a
-cross build environment). They are ini formatted and can override where
+cross build environment). They are INI formatted and can override where
 to find llvm-config:
 
-custom-llvm.ini
-
-::
+.. code-block:: ini
+   :caption: custom-llvm.ini
 
    [binaries]
    llvm-config = '/usr/local/bin/llvm/llvm-config'
 
 Then configure Meson:
 
-.. code-block:: console
+.. code-block:: sh
 
-   meson builddir/ --native-file custom-llvm.ini
-
-Meson < 0.49 doesn't support native files, so to specify a custom
-``llvm-config`` you need to modify your ``$PATH`` (or ``%PATH%`` on
-Windows), which will be searched for ``llvm-config``,
-``llvm-config$version``, and ``llvm-config-$version``:
-
-.. code-block:: console
-
-   PATH=/path/to/folder/with/llvm-config:$PATH meson build
+   meson setup builddir/ --native-file custom-llvm.ini
 
 For selecting llvm-config for cross compiling a `"cross
 file" <https://mesonbuild.com/Cross-compilation.html#defining-the-environment>`__
 should be used. It uses the same format as the native file above:
 
-cross-llvm.ini
-
-::
+.. code-block:: ini
+   :caption: cross-llvm.ini
 
    [binaries]
    ...
    llvm-config = '/usr/lib/llvm-config-32'
    cmake = '/usr/bin/cmake-for-my-arch'
 
-Obviously, only cmake or llvm-config is required.
+Obviously, only CMake or llvm-config is required.
 
 Then configure Meson:
 
-.. code-block:: console
+.. code-block:: sh
 
-   meson builddir/ --cross-file cross-llvm.ini
+   meson setup builddir/ --cross-file cross-llvm.ini
 
 See the :ref:`Cross Compilation <cross-compilation>` section for more
 information.
@@ -300,7 +282,7 @@ this case a "binary wrap". Follow the steps below:
 
 -  Install the binaries and headers into the
    ``$mesa_src/subprojects/llvm``
--  Add a meson.build file to that directory (more on that later)
+-  Add a :file:`meson.build` file to that directory (more on that later)
 
 The wrap file must define the following:
 
@@ -310,11 +292,10 @@ The wrap file must define the following:
 It may also define:
 
 -  ``irbuilder_h``: a ``files()`` object pointing to llvm/IR/IRBuilder.h
-   (this is required for SWR)
 -  ``has_rtti``: a ``bool`` that declares whether LLVM was built with
    RTTI. Defaults to true
 
-such a meson.build file might look like:
+such a :file:`meson.build` file might look like:
 
 ::
 
@@ -374,15 +355,15 @@ Options
 ^^^^^^^
 
 One of the oddities of Meson is that some options are different when
-passed to the ``meson`` than to ``meson configure``. These options are
-passed as --option=foo to ``meson``, but -Doption=foo to
+passed to :program:`meson` than to ``meson configure``. These options are
+passed as --option=foo to :program:`meson`, but -Doption=foo to
 ``meson configure``. Mesa defined options are always passed as
 -Doption=foo.
 
-For those coming from autotools be aware of the following:
+For those coming from Autotools be aware of the following:
 
 ``--buildtype/-Dbuildtype``
-   This option will set the compiler debug/optimisation levels to aid
+   This option will set the compiler debug/optimization levels to aid
    debugging the Mesa libraries.
 
    Note that in Meson this defaults to ``debugoptimized``, and not
@@ -413,21 +394,21 @@ this file to ``meson`` or ``meson configure`` with the ``--cross-file``
 parameter.
 
 This file can live at any location, but you can use the bare filename
-(without the folder path) if you put it in $XDG_DATA_HOME/meson/cross or
-~/.local/share/meson/cross
+(without the folder path) if you put it in
+:file:`$XDG_DATA_HOME/meson/cross` or :file:`~/.local/share/meson/cross`
 
 Below are a few example of cross files, but keep in mind that you will
 likely have to alter them for your system.
 
-Those running on ArchLinux can use the AUR-maintained packages for some
+Those running on Arch Linux can use the AUR-maintained packages for some
 of those, as they'll have the right values for your system:
 
 -  `meson-cross-x86-linux-gnu <https://aur.archlinux.org/packages/meson-cross-x86-linux-gnu>`__
--  `meson-cross-aarch64-linux-gnu <https://aur.archlinux.org/packages/meson-cross-aarch64-linux-gnu>`__
+-  `meson-cross-aarch64-linux-gnu <https://github.com/dcbaker/archlinux-meson-cross-aarch64-linux-gnu>`__
 
 32-bit build on x86 linux:
 
-::
+.. code-block:: ini
 
    [binaries]
    c = '/usr/bin/gcc'
@@ -451,7 +432,7 @@ of those, as they'll have the right values for your system:
 
 64-bit build on ARM linux:
 
-::
+.. code-block:: ini
 
    [binaries]
    c = '/usr/bin/aarch64-linux-gnu-gcc'
@@ -469,7 +450,7 @@ of those, as they'll have the right values for your system:
 
 64-bit build on x86 Windows:
 
-::
+.. code-block:: ini
 
    [binaries]
    c = '/usr/bin/x86_64-w64-mingw32-gcc'

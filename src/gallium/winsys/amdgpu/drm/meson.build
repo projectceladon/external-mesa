@@ -21,8 +21,8 @@
 libamdgpuwinsys = static_library(
   'amdgpuwinsys',
   files(
-    'amdgpu_bo.c', 'amdgpu_bo.h', 'amdgpu_cs.c', 'amdgpu_cs.h',
-    'amdgpu_public.h', 'amdgpu_surface.c', 'amdgpu_winsys.c',
+    'amdgpu_bo.c', 'amdgpu_bo.h', 'amdgpu_cs.cpp', 'amdgpu_cs.h',
+    'amdgpu_surface.c', 'amdgpu_winsys.c',
     'amdgpu_winsys.h',
   ),
   include_directories : [
@@ -31,5 +31,5 @@ libamdgpuwinsys = static_library(
   ],
   gnu_symbol_visibility : 'hidden',
   link_with : libamdgpu_addrlib,
-  dependencies : [dep_llvm, dep_libdrm_amdgpu, idep_amdgfxregs_h],
+  dependencies : [dep_llvm, dep_libdrm_amdgpu, idep_amdgfxregs_h, idep_mesautil],
 )
