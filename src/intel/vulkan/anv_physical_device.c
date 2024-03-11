@@ -2624,7 +2624,7 @@ anv_physical_device_try_create(struct vk_instance *vk_instance,
             device->sparse_type = ANV_SPARSE_TYPE_VM_BIND;
       } else {
          if (device->info.ver >= 12 && device->has_exec_timeline)
-            device->sparse_type = ANV_SPARSE_TYPE_TRTT;
+            device->sparse_type = ANV_SPARSE_TYPE_NOT_SUPPORTED;
       }
    }
    if (device->sparse_type == ANV_SPARSE_TYPE_NOT_SUPPORTED) {
