@@ -2307,10 +2307,7 @@ anv_physical_device_try_create(struct vk_instance *vk_instance,
       device->sparse_uses_trtt =
          debug_get_bool_option("ANV_SPARSE_USE_TRTT", false);
    } else {
-      device->has_sparse =
-         device->info.ver >= 12 &&
-         device->has_exec_timeline &&
-         debug_get_bool_option("ANV_SPARSE", true);
+      device->has_sparse = false;
       device->sparse_uses_trtt = true;
    }
 
