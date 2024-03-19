@@ -69,7 +69,7 @@ is_target_process(char *target)
    return false;
 }
 
-bool intel_is_dgpu_render() {
+bool intel_is_dgpu_render(void) {
    pid_t process_id = getpid();
    char process_name[BUF_SIZE];
 
@@ -77,7 +77,7 @@ bool intel_is_dgpu_render() {
    return (use_dgpu_render(process_name) || is_target_process(process_name));
 }
 
-bool intel_lower_ctx_priority()
+bool intel_lower_ctx_priority(void)
 {
    pid_t process_id = getpid();
    char process_name[BUF_SIZE];
