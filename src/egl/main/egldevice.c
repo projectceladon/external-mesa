@@ -291,6 +291,17 @@ _eglQueryDeviceStringEXT(_EGLDevice *dev, EGLint name)
    return NULL;
 }
 
+static int compare_devices(const void *a, const void *b) {
+   const drmDevicePtr device_a = *(const drmDevicePtr *)a;
+   const drmDevicePtr device_b = *(const drmDevicePtr *)b;
+   char *name_a = device_a->nodes[DRM_NODE_RENDER];
+   char *name_b = device_b->nodes[DRM_NODE_RENDER];
+   int num_a = atoi(name_a + 16); // skip "/dev/dri/renderD" prefix
+   int num_b = atoi(name_b + 16);
+
+   return num_a - num_b;
+}
+
 /* Do a fresh lookup for devices.
  *
  * Walks through the DeviceList, discarding no longer available ones
@@ -316,6 +327,8 @@ _eglDeviceRefreshList(void)
    int num_devs, ret;
 
    num_devs = drmGetDevices2(0, devices, ARRAY_SIZE(devices));
+   qsort(devices, num_devs, sizeof(drmDevicePtr), compare_devices);
+
    for (int i = 0; i < num_devs; i++) {
       if (!(devices[i]->available_nodes & (1 << DRM_NODE_RENDER))) {
          drmFreeDevice(&devices[i]);
