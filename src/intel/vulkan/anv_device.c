@@ -187,6 +187,9 @@ static const struct vk_instance_extension_table instance_extensions = {
    .KHR_get_surface_capabilities2            = true,
    .KHR_surface                              = true,
    .KHR_surface_protected_capabilities       = true,
+#if defined(ANDROID) && ANDROID_API_LEVEL >= 34
+   .EXT_surface_maintenance1                 = true,
+#endif
    .EXT_swapchain_colorspace                 = true,
 #endif
 #ifdef VK_USE_PLATFORM_WAYLAND_KHR
@@ -391,6 +394,9 @@ get_device_extensions(const struct anv_physical_device *device,
       .EXT_shader_subgroup_vote              = true,
       .EXT_shader_viewport_index_layer       = true,
       .EXT_subgroup_size_control             = true,
+#if defined(ANV_USE_WSI_PLATFORM) && defined(ANDROID) && ANDROID_API_LEVEL >= 34
+      .EXT_swapchain_maintenance1 = true,
+#endif
       .EXT_texel_buffer_alignment            = true,
       .EXT_tooling_info                      = true,
       .EXT_transform_feedback                = true,
@@ -848,6 +854,11 @@ get_features(const struct anv_physical_device *pdevice,
 
       /* VK_EXT_dynamic_rendering_unused_attachments */
       .dynamicRenderingUnusedAttachments = true,
+
+      /* VK_EXT_swapchain_maintenance1 */
+#if defined(ANDROID) && ANDROID_API_LEVEL >= 34
+      .swapchainMaintenance1 = true,
+#endif
 
       /* VK_EXT_depth_bias_control */
       .depthBiasControl = true,
