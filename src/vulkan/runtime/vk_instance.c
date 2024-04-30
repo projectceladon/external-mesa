@@ -30,9 +30,11 @@
 #include "vk_common_entrypoints.h"
 #include "vk_dispatch_trampolines.h"
 #include "vk_log.h"
+#include "util/log.h"
 #include "vk_util.h"
 #include "vk_debug_utils.h"
 #include "vk_physical_device.h"
+#include "common/intel_check.h"
 
 #define VERSION_IS_1_0(version) \
    (VK_API_VERSION_MAJOR(version) == 1 && VK_API_VERSION_MINOR(version) == 0)
@@ -397,6 +399,9 @@ enumerate_drm_physical_devices_locked(struct vk_instance *instance)
       return VK_SUCCESS;
 
    VkResult result;
+
+   set_intel_node_num(max_devices, devices);
+
    for (uint32_t i = 0; i < (uint32_t)max_devices; i++) {
       struct vk_physical_device *pdevice;
       result = instance->physical_devices.try_create_for_drm(instance, devices[i], &pdevice);

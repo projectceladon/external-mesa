@@ -36,6 +36,7 @@
 #include "eglglobals.h"
 #include "egllog.h"
 #include "egltypedefs.h"
+#include "common/intel_check.h"
 
 struct _egl_device {
    _EGLDevice *Next;
@@ -328,6 +329,8 @@ _eglDeviceRefreshList(void)
 
    num_devs = drmGetDevices2(0, devices, ARRAY_SIZE(devices));
    qsort(devices, num_devs, sizeof(drmDevicePtr), compare_devices);
+
+   set_intel_node_num(num_devs, devices);
 
    for (int i = 0; i < num_devs; i++) {
       if (!(devices[i]->available_nodes & (1 << DRM_NODE_RENDER))) {
