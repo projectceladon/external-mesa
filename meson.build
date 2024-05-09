@@ -898,7 +898,8 @@ with_libbacktrace = get_option('android-libbacktrace') \
   .allowed()
 
 if with_libbacktrace
-  cpp_args += '-DWITH_LIBBACKTRACE'
+  # no longer supported in Android
+  #cpp_args += '-DWITH_LIBBACKTRACE'
 endif
 
 if with_platform_android
@@ -907,6 +908,7 @@ if with_platform_android
     dep_android = [
       dependency('cutils'),
       dependency('hardware'),
+      dependency('log'),
       dependency('sync'),
     ]
     if with_libbacktrace
@@ -923,6 +925,7 @@ if with_platform_android
   if get_option('android-strict')
     pre_args += '-DANDROID_STRICT'
   endif
+  pre_args += '-DVK_USE_PLATFORM_ANDROID_KHR=1'
 endif
 
 # On Android, seccomp kills the process on kernels without
