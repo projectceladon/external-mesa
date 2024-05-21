@@ -333,6 +333,7 @@ get_device_extensions(const struct anv_physical_device *device,
       .EXT_depth_range_unrestricted          = device->info.ver >= 20,
       .EXT_depth_clip_enable                 = true,
       .EXT_descriptor_indexing               = true,
+      .EXT_device_memory_report              = true,
 #ifdef VK_USE_PLATFORM_DISPLAY_KHR
       .EXT_display_control                   = true,
 #endif
