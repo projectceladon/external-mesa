@@ -32,5 +32,5 @@ if with_guest
 endif
 if with_host
   subdir('common')
-  subdir('host')
+  #subdir('host')
 endif

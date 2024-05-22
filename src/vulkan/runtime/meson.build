@@ -287,6 +287,6 @@ else
     # Instruct users of this library to link with --whole-archive.  Otherwise,
     # our weak function overloads may not resolve properly.
     link_whole : libvulkan_runtime,
-    dependencies : idep_vulkan_runtime_headers
+    dependencies : [idep_vulkan_runtime_headers, idep_vulkan_common_entrypoints_h]
   )
 endif
