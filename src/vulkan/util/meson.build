@@ -55,6 +55,12 @@ vk_physical_device_properties_gen_depend_files = [
 vk_synchronization_helpers_gen_depend_files = [
   files('vk_extensions.py'),
 ]
+vk_enum_to_str_depend_files = [
+  files('vk_extensions.py'),
+]
+vk_struct_type_cast_depend_files = [
+  files('vk_extensions.py'),
+]
 
 vk_entrypoints_gen = files('vk_entrypoints_gen.py')
 vk_extensions_gen = files('vk_extensions_gen.py')
@@ -99,6 +105,7 @@ vk_enum_to_str = custom_target(
     '--outdir', meson.current_build_dir(),
     '--beta', with_vulkan_beta.to_string()
   ],
+  depend_files : vk_enum_to_str_depend_files,
 )
 
 vk_struct_type_cast = custom_target(
@@ -110,6 +117,7 @@ vk_struct_type_cast = custom_target(
     '--outdir', meson.current_build_dir(),
     '--beta', with_vulkan_beta.to_string()
   ],
+  depend_files : vk_enum_to_str_depend_files,
 )
 
 vk_extensions = custom_target(
