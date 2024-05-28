@@ -60,6 +60,7 @@ def declare_dependency(
       'declared',
       version,
       found=True,
+      compile_args=compile_args,
       include_directories=include_directories,
       dependencies=dependencies,
       sources=sources,

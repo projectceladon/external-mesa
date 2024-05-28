@@ -74,6 +74,7 @@ class Dependency:
       version='',
       found=False,
       targets=[],
+      compile_args=[],
       include_directories=[],
       dependencies=[],
       sources=[],
@@ -84,6 +85,7 @@ class Dependency:
     self.targets = targets
     self._version = version
     self._found = found
+    self.compile_args = compile_args
     self.include_directories = include_directories
     self.dependencies = dependencies
     self.sources = sources
@@ -173,6 +175,9 @@ class FeatureOption:
 
   def enabled(self):
     return self.state == EnableState.ENABLED
+
+  def disabled(self):
+    return self.state == EnableState.DISABLED
 
   def disable_auto_if(self, value: bool):
     if value and self.state == EnableState.AUTO:
@@ -499,13 +504,16 @@ def get_relative_gen_dir(path=''):
 def project(
     name, language_list, version, license, meson_version, default_options
 ):
-  assert type(version) == list
-  version_file = version[0]
-  assert type(version_file) == File
-  with open(version_file.name, 'r') as file:
-    for line in file:
-      _gProjectVersion = line.strip()
-      break
+  if type(version) == str:
+    _gProjectVersion = version
+  else:
+    assert type(version) == list
+    version_file = version[0]
+    assert type(version_file) == File
+    with open(version_file.name, 'r') as file:
+      for line in file:
+        _gProjectVersion = line.strip()
+        break
 
   for option in default_options:
     value_pair = option.split('=')
