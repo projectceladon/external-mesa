@@ -546,7 +546,8 @@ st_create_context_priv(struct gl_context *ctx, struct pipe_context *pipe,
                        screen->is_format_supported(screen, PIPE_FORMAT_DXT1_SRGBA,
                                                    PIPE_TEXTURE_2D, 0, 0,
                                                    PIPE_BIND_SAMPLER_VIEW);
-   st->transcode_astc = options->transcode_astc &&
+   st->transcode_astc = (options->transcode_astc ||
+                        screen->get_param(screen, PIPE_CAP_TRANSCODE_ASTC_WORK_WELL)) &&
                         screen->is_format_supported(screen, PIPE_FORMAT_DXT5_SRGBA,
                                                     PIPE_TEXTURE_2D, 0, 0,
                                                     PIPE_BIND_SAMPLER_VIEW) &&
