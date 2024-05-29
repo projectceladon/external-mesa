@@ -554,6 +554,9 @@ u_pipe_screen_get_param_defaults(struct pipe_screen *pscreen,
       return pscreen->get_driver_query_info && pscreen->get_driver_query_group_info &&
              pscreen->get_driver_query_group_info(pscreen, 0, NULL) != 0;
 
+   case PIPE_CAP_TRANSCODE_ASTC_WORK_WELL:
+      return 1;
+
    default:
       unreachable("bad PIPE_CAP_*");
    }
