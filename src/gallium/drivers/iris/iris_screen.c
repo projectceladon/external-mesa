@@ -365,6 +365,7 @@ iris_init_screen_caps(struct iris_screen *screen)
 
    const struct intel_device_info *devinfo = screen->devinfo;
 
+   caps->transcode_astc_work_well = !intel_device_info_is_mtl(devinfo);
    caps->npot_textures = true;
    caps->anisotropic_filter = true;
    caps->occlusion_query = true;
