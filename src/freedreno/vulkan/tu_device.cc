@@ -2260,9 +2260,11 @@ tu_CreateDevice(VkPhysicalDevice physicalDevice,
    if (physical_device->instance->vk.trace_mode & VK_TRACE_MODE_RMV)
       tu_memory_trace_init(device);
 
+#ifndef TU_HAS_MAGMA
    /* kgsl is not a drm device: */
    if (!is_kgsl(physical_device->instance))
       vk_device_set_drm_fd(&device->vk, device->fd);
+#endif
 
    struct tu6_global *global = NULL;
    uint32_t global_size = sizeof(struct tu6_global);
