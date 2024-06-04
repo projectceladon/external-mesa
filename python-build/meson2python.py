@@ -113,211 +113,229 @@ meson_grammar = r"""
     %ignore COMMENT
 """
 
+
 class TreeToCode(Interpreter):
-    indent = ''
+  indent = ''
 
-    def statement(self, tree):
-        str = ''
-        for child in tree.children:
-            if isinstance(child, Tree):
-                str += self.visit(child)
-            elif child != None:
-                str += child
-        return self.indent + str
+  def statement(self, tree):
+    str = ''
+    for child in tree.children:
+      if isinstance(child, Tree):
+        str += self.visit(child)
+      elif child != None:
+        str += child
+    return self.indent + str
 
-    def more_indent(self):
-        self.indent += '  '
+  def more_indent(self):
+    self.indent += '  '
 
-    def less_indent(self):
-        self.indent = self.indent[0:len(self.indent) - 2]
+  def less_indent(self):
+    self.indent = self.indent[0 : len(self.indent) - 2]
 
-    # Ensure spaces around 'and'
-    def logical_and_expression(self, tree):
-        assert(len(tree.children) == 3)
-        lhs = self.visit(tree.children[0])
-        rhs = self.visit(tree.children[2])
-        return lhs + ' and ' + rhs
+  # Ensure spaces around 'and'
+  def logical_and_expression(self, tree):
+    assert len(tree.children) == 3
+    lhs = self.visit(tree.children[0])
+    rhs = self.visit(tree.children[2])
+    return lhs + ' and ' + rhs
 
-    # Ensure spaces around 'or'
-    def logical_or_expression(self, tree):
-        assert(len(tree.children) == 3)
-        lhs = self.visit(tree.children[0])
-        rhs = self.visit(tree.children[2])
-        return lhs + ' or ' + rhs
+  # Ensure spaces around 'or'
+  def logical_or_expression(self, tree):
+    assert len(tree.children) == 3
+    lhs = self.visit(tree.children[0])
+    rhs = self.visit(tree.children[2])
+    return lhs + ' or ' + rhs
 
-    # A ? B : C becomes B if A else C
-    def conditional_expression(self, tree):
-        assert(len(tree.children) == 3)
-        expr = self.visit(tree.children[0])
-        first = self.visit(tree.children[1])
-        second = self.visit(tree.children[2])
-        return first + ' if ' + expr + ' else ' + second
+  # A ? B : C becomes B if A else C
+  def conditional_expression(self, tree):
+    assert len(tree.children) == 3
+    expr = self.visit(tree.children[0])
+    first = self.visit(tree.children[1])
+    second = self.visit(tree.children[2])
+    return first + ' if ' + expr + ' else ' + second
 
-    def assignment_expression(self, tree):
-        assert(len(tree.children) == 3)
-        lhs = self.visit(tree.children[0])
-        operator = self.visit(tree.children[1])
-        rhs = self.visit(tree.children[2])
-        if operator == '+=' and rhs.startswith('{'):
-            # Convert += to |= for dictionaries
-            return lhs + ' |= ' + rhs
-        elif operator == '+=' and rhs.startswith('\''):
-            # Handle literal string append to list or string
-            return lhs + ' += ' + '[' + rhs + '] if isinstance(' + lhs + ', list) else ' + rhs
-        return lhs + operator + rhs
+  def assignment_expression(self, tree):
+    assert len(tree.children) == 3
+    lhs = self.visit(tree.children[0])
+    operator = self.visit(tree.children[1])
+    rhs = self.visit(tree.children[2])
+    if operator == '+=' and rhs.startswith('{'):
+      # Convert += to |= for dictionaries
+      return lhs + ' |= ' + rhs
+    elif operator == '+=' and rhs.startswith("'"):
+      # Handle literal string append to list or string
+      return (
+          lhs
+          + ' += '
+          + '['
+          + rhs
+          + '] if isinstance('
+          + lhs
+          + ', list) else '
+          + rhs
+      )
+    return lhs + operator + rhs
 
-    def iteration_statement(self, tree):
-        foreach = tree.children[0]
-        identifier_list = self.visit(tree.children[1])
-        colon = tree.children[2]
-        id_expression = self.visit(tree.children[3])
-        newline = tree.children[4]
-        str = 'for ' + identifier_list + ' in ' + id_expression
-        str += '.items():\n' if re.search(r',', identifier_list) != None else ':\n'
-        self.more_indent()
-        lastindex = len(tree.children) - 1
-        for child in tree.children[5:lastindex]:
-            if isinstance(child, Tree):
-                str += self.visit(child)
-            elif child != None:
-                str += child
-        self.less_indent()
-        return str
+  def iteration_statement(self, tree):
+    foreach = tree.children[0]
+    identifier_list = self.visit(tree.children[1])
+    colon = tree.children[2]
+    id_expression = self.visit(tree.children[3])
+    newline = tree.children[4]
+    str = 'for ' + identifier_list + ' in ' + id_expression
+    str += '.items():\n' if re.search(r',', identifier_list) != None else ':\n'
+    self.more_indent()
+    lastindex = len(tree.children) - 1
+    for child in tree.children[5:lastindex]:
+      if isinstance(child, Tree):
+        str += self.visit(child)
+      elif child != None:
+        str += child
+    self.less_indent()
+    return str
 
-    def selection_statement(self, tree):
-        str = ''
-        index = 0
-        while index < len(tree.children):
-            prefix = tree.children[index]
-            index = index + 1
-            if prefix == None:
-                continue
-            if isinstance(prefix, Tree):
-                exit("unexpected prefix: " + prefix.pretty())
-            if re.match(r" *endif", prefix) != None:
-                break
+  def selection_statement(self, tree):
+    str = ''
+    index = 0
+    while index < len(tree.children):
+      prefix = tree.children[index]
+      index = index + 1
+      if prefix == None:
+        continue
+      if isinstance(prefix, Tree):
+        exit('unexpected prefix: ' + prefix.pretty())
+      if re.match(r' *endif', prefix) != None:
+        break
 
-            if re.match(r"if", prefix) != None:
-                condition = self.visit(tree.children[index])
-                index = index + 1
-                # Skip indent here because all statements are prepended with the indentation
-                str += 'if ' + condition + ':\n'
-            elif re.match(r"elif", prefix) != None:
-                condition = self.visit(tree.children[index])
-                index = index + 1
-                str += self.indent + 'elif ' + condition + ':\n'
-            elif re.match(r"else", prefix) != None:
-                str += self.indent + 'else:\n'
-            else:
-                exit("Not a prefix: " + prefix)
+      if re.match(r'if', prefix) != None:
+        condition = self.visit(tree.children[index])
+        index = index + 1
+        # Skip indent here because all statements are prepended with the indentation
+        str += 'if ' + condition + ':\n'
+      elif re.match(r'elif', prefix) != None:
+        condition = self.visit(tree.children[index])
+        index = index + 1
+        str += self.indent + 'elif ' + condition + ':\n'
+      elif re.match(r'else', prefix) != None:
+        str += self.indent + 'else:\n'
+      else:
+        exit('Not a prefix: ' + prefix)
 
-            newline = tree.children[index]
-            index = index + 1
+      newline = tree.children[index]
+      index = index + 1
 
-            statement_count = 0
-            self.more_indent()
-            while index < len(tree.children):
-                statement = tree.children[index]
-                if not isinstance(statement, Tree):
-                    break
-                str += self.visit(statement)
-                index = index + 1
-                statement_count = statement_count + 1
-            if statement_count == 0:
-                str += self.indent + 'noop()\n'
-            self.less_indent()
+      statement_count = 0
+      self.more_indent()
+      while index < len(tree.children):
+        statement = tree.children[index]
+        if not isinstance(statement, Tree):
+          break
+        str += self.visit(statement)
+        index = index + 1
+        statement_count = statement_count + 1
+      if statement_count == 0:
+        str += self.indent + 'noop()\n'
+      self.less_indent()
 
-        return str
+    return str
 
-    def postfix_expression(self, tree):
-        str = ''
-        for child in tree.children:
-            if isinstance(child, Tree):
-                subtree = self.visit(child)
-                subtree = re.sub(r"(.+)\.to_int\(\)", r"int(\g<1>)", subtree)
-                subtree = re.sub(r"(.+)\.to_string\(\)", r"str(\g<1>)", subtree)
-                subtree = re.sub(r"(.+)\.length\(\)", r"len(\g<1>)", subtree)
-                subtree = re.sub(r"(.+)\.to_upper\(\)", r"\g<1>.upper()", subtree)
-                subtree = re.sub(r"(.+)\.underscorify\(\)", r"\g<1>.replace('.', '_').replace('/', '_')", subtree)
-                str += subtree
-            elif child != None:
-                str += child
-        return str
+  def postfix_expression(self, tree):
+    str = ''
+    for child in tree.children:
+      if isinstance(child, Tree):
+        subtree = self.visit(child)
+        subtree = re.sub(r'(.+)\.to_int\(\)', r'int(\g<1>)', subtree)
+        subtree = re.sub(r'(.+)\.to_string\(\)', r'str(\g<1>)', subtree)
+        subtree = re.sub(r'(.+)\.length\(\)', r'len(\g<1>)', subtree)
+        subtree = re.sub(r'(.+)\.to_upper\(\)', r'\g<1>.upper()', subtree)
+        subtree = re.sub(
+            r'(.+)\.underscorify\(\)',
+            r"\g<1>.replace('.', '_').replace('/', '_')",
+            subtree,
+        )
+        str += subtree
+      elif child != None:
+        str += child
+    return str
 
-    def function_expression(self, tree):
-        assert(len(tree.children) == 4)
-        identifier = self.visit(tree.children[0])
-        if identifier == 'import':
-            identifier = 'module_import'
-        lparen = tree.children[1]
-        args = self.visit(tree.children[2]) if isinstance(tree.children[2], Tree) else ''
-        rparen = tree.children[3]
-        if identifier == 'contains':
-            return 'count' + lparen + args + rparen + ' > 0'
-        return identifier + lparen + args + rparen
+  def function_expression(self, tree):
+    assert len(tree.children) == 4
+    identifier = self.visit(tree.children[0])
+    if identifier == 'import':
+      identifier = 'module_import'
+    lparen = tree.children[1]
+    args = (
+        self.visit(tree.children[2])
+        if isinstance(tree.children[2], Tree)
+        else ''
+    )
+    rparen = tree.children[3]
+    if identifier == 'contains':
+      return 'count' + lparen + args + rparen + ' > 0'
+    return identifier + lparen + args + rparen
 
-    def multiplicative_expression(self, tree):
-        assert(len(tree.children) == 3)
-        lhs = self.visit(tree.children[0])
-        operator = self.visit(tree.children[1])
-        rhs = self.visit(tree.children[2])
-        # Slash used mostly to concatenate strings
-        if operator == '/':
-            return '(' + lhs + ' + ' + rhs + ') if isinstance(' + lhs + ', str) else (' + lhs + ' / ' + rhs + ')'
-        return lhs + operator + rhs
+  def multiplicative_expression(self, tree):
+    assert len(tree.children) == 3
+    lhs = self.visit(tree.children[0])
+    operator = self.visit(tree.children[1])
+    rhs = self.visit(tree.children[2])
+    # Slash used mostly to concatenate strings
+    if operator == '/':
+      return (
+          '('
+          + lhs
+          + ' + '
+          + rhs
+          + ') if isinstance('
+          + lhs
+          + ', str) else ('
+          + lhs
+          + ' / '
+          + rhs
+          + ')'
+      )
+    return lhs + operator + rhs
 
-    # Switch from colon to equals
-    def keyword_item(self, tree):
-        str = ''
-        id = self.visit(tree.children[0])
-        args = self.visit(tree.children[1])
-        return id + '=' + args
+  # Switch from colon to equals
+  def keyword_item(self, tree):
+    str = ''
+    id = self.visit(tree.children[0])
+    args = self.visit(tree.children[1])
+    return id + '=' + args
 
-    def boolean_literal(self, tree):
-        assert(len(tree.children) == 1)
-        value = tree.children[0]
-        if value == 'true':
-            return 'True'
-        elif value == 'false':
-            return 'False'
-        exit('Unhandled value: ' + value)
+  def boolean_literal(self, tree):
+    assert len(tree.children) == 1
+    value = tree.children[0]
+    if value == 'true':
+      return 'True'
+    elif value == 'false':
+      return 'False'
+    exit('Unhandled value: ' + value)
 
-    def string_literal(self, tree):
-        assert(len(tree.children) == 1)
-        string = tree.children[0]
-        string = re.sub(r"(@[0-9]@)", r"{}", string)
-        return string
+  def string_literal(self, tree):
+    assert len(tree.children) == 1
+    string = tree.children[0]
+    string = re.sub(r'(@[0-9]@)', r'{}', string)
+    return string
 
-    def __default__(self, tree):
-        str = ''
-        for child in tree.children:
-            if isinstance(child, Tree):
-                str += self.visit(child)
-            elif child != None:
-                str += child
-        return str
+  def __default__(self, tree):
+    str = ''
+    for child in tree.children:
+      if isinstance(child, Tree):
+        str += self.visit(child)
+      elif child != None:
+        str += child
+    return str
+
 
 # Converts the given file from meson to python and returns the content as a string
 def meson2python(file_name):
-    meson_parser = Lark(meson_grammar, parser='earley',
-                   # Using the basic lexer isn't required, and isn't usually recommended.
-                   # But, it's good enough for JSON, and it's slightly faster.
-                   #lexer='basic',
-                   # Disabling propagate_positions and placeholders slightly improves speed
-                   #propagate_positions=False,
-                   #maybe_placeholders=False,
-                   # Using an internal transformer is faster and more memory efficient
-                   #transformer=TreeToPython(),
-                   #debug=True
-                   )
-    with open(file_name) as f:
-        tree = meson_parser.parse(f.read())
-        #transformer = TreeToPython()
-        #python_tree = transformer.transform(tree)
-        #print(tree.pretty())
-        code = TreeToCode().visit(tree)
-        #print(code)
-        return code
+  meson_parser = Lark(meson_grammar, parser='earley')
+  with open(file_name) as f:
+    tree = meson_parser.parse(f.read())
+    code = TreeToCode().visit(tree)
+    return code
+
 
 if __name__ == '__main__':
-    meson2python(sys.argv[1])
+  meson2python(sys.argv[1])
