@@ -27,7 +27,12 @@ else
 fi
 
 # Always generate Android.bp because it's fast
-PYTHONPATH=$BIN_DIR python3 generate_android_build.py
+PYTHONPATH=$BIN_DIR python3 generate_android_build.py \
+    -Dplatforms=android \
+    -Dgallium-drivers= \
+    -Dvulkan-drivers=freedreno \
+    -Dfreedreno-kmds=kgsl \
+    -Dplatform-sdk-version=33
 
 source $ROOT_DIR/build/envsetup.sh
 lunch aosp_trout_arm64-trunk_staging-userdebug
