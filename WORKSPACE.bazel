@@ -1,0 +1,105 @@
+# Copyright 2023 The Fuchsia Authors. All rights reserved.
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+# buildifier: disable=load-on-top
+
+load("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
+
+# Set up bazel skylib and its dependencies
+http_archive(
+    name = "bazel_skylib",
+    sha256 = "f7be3474d42aae265405a592bb7da8e171919d74c16f082a5457840f06054728",
+    urls = [
+        "https://mirror.bazel.build/github.com/bazelbuild/bazel-skylib/releases/download/1.2.1/bazel-skylib-1.2.1.tar.gz",
+        "https://github.com/bazelbuild/bazel-skylib/releases/download/1.2.1/bazel-skylib-1.2.1.tar.gz",
+    ],
+)
+
+load("@bazel_skylib//:workspace.bzl", "bazel_skylib_workspace")
+
+bazel_skylib_workspace()
+
+# The fuchsia_infra repository provides rules which allow us to work inside of
+# fuchsia's infrastructure.
+local_repository(
+    name = "fuchsia_infra",
+    path = "fuchsia-build/third_party/fuchsia-infra-bazel-rules",
+)
+
+load("@fuchsia_infra//:workspace.bzl", "fuchsia_infra_workspace")
+load("@fuchsia_infra//cipd:defs.bzl", "cipd_repository", "cipd_tool_repository")
+
+fuchsia_infra_workspace()
+
+# Create a common cipd binary which will be used to download prebuilts
+cipd_tool_repository(
+    name = "cipd_tool",
+)
+
+# Fetch the Fuchsia SDK and register it as a repostiory. The version that is
+# used is stored in the manifests/bazel_sdk.ensure file so it can be updated by
+# our autoroller infrastructure. When the version changes bazel will fetch the
+# new prebuilts.
+cipd_repository(
+    name = "fuchsia_sdk",
+    cipd_bin = "@cipd_tool//:cipd",
+    ensure_file = "//fuchsia-build/manifests:bazel_sdk.ensure",
+)
+
+load(
+    "@fuchsia_sdk//fuchsia:deps.bzl",
+    "rules_fuchsia_deps",
+)
+
+rules_fuchsia_deps()
+
+# The fuchsia toolchain contains tools like ffx and fidlc.
+register_toolchains("@fuchsia_sdk//:fuchsia_toolchain_sdk")
+
+load(
+    "@fuchsia_sdk//fuchsia:products.bzl",
+    "fuchsia_products_repository",
+)
+
+fuchsia_products_repository(
+    name = "fuchsia_products",
+    cipd_bin = "@cipd_tool//:cipd",
+    ensure_file = "//fuchsia-build/manifests:product_bundles.ensure",
+)
+
+load(
+    "@fuchsia_sdk//fuchsia:clang.bzl",
+    "fuchsia_clang_repository",
+)
+
+# Set up our clang repository.
+fuchsia_clang_repository(
+    name = "fuchsia_clang",
+    cipd_bin = "@cipd_tool//:cipd",
+    cipd_ensure_file = "//fuchsia-build/manifests:clang.ensure",
+)
+
+load("@fuchsia_clang//:defs.bzl", "register_clang_toolchains")
+
+# Register a clang toolchain which will be used to compile fuchsia targets
+register_clang_toolchains()
+
+load("@fuchsia_infra//infra:host_toolchains.bzl", "configure_fuchsia_clang_host_toolchain")
+
+# Configure a host toolchain for local execution. This is not used to compile
+# fuchsia targets but is made available so we don't try to access the host gcc
+# which is not available in infrastructure builds. This call must happen after
+# you create a fuchsia_clang repository.
+configure_fuchsia_clang_host_toolchain(name = "host_clang_toolchain")
+
+# gTest.
+local_repository(
+    name = "com_google_googletest",
+    path = "third_party/googletest",
+)
+
+local_repository(
+    name = "zlib",
+    path = "fuchsia-build/third_party/zlib-1.3.1",
+)

@@ -4,7 +4,7 @@
 option(
   'platforms',
   type : 'array',
-  value : ['android'],
+  value : ['auto'],
   choices : [
     'auto', 'x11', 'wayland', 'haiku', 'android', 'windows',
   ],
@@ -78,9 +78,9 @@ option(
 option(
   'gallium-drivers',
   type : 'array',
-  value : [],
+  value : ['auto'],
   choices : [
-    '', 'auto', 'kmsro', 'radeonsi', 'r300', 'r600', 'nouveau', 'freedreno',
+    'auto', 'kmsro', 'radeonsi', 'r300', 'r600', 'nouveau', 'freedreno',
     'swrast', 'v3d', 'vc4', 'etnaviv', 'tegra', 'i915', 'svga', 'virgl',
     'panfrost', 'iris', 'lima', 'zink', 'd3d12', 'asahi', 'crocus', 'all',
   ],
@@ -218,7 +218,7 @@ option(
 option(
   'vulkan-drivers',
   type : 'array',
-  value : ['freedreno'],
+  value : ['auto'],
   choices : ['auto', 'amd', 'broadcom', 'freedreno', 'intel', 'intel_hasvk',
              'panfrost', 'swrast', 'virtio', 'imagination-experimental',
              'microsoft-experimental', 'nouveau-experimental',
@@ -234,7 +234,7 @@ option(
 option(
   'freedreno-kmds',
   type : 'array',
-  value : ['kgsl'],
+  value : ['msm'],
   choices : ['msm', 'kgsl', 'virtio', 'wsl'],
   description : 'List of kernel-mode drivers to enable for freedreno ' +
                 'gallium and vulkan driver',
@@ -542,7 +542,7 @@ option(
   type : 'integer',
   min : 25,
   max : 10000,
-  value : 33,
+  value : 25,
   description : 'Android Platform SDK version. Default: Nougat version.'
 )
 
@@ -715,6 +715,6 @@ option (
 option(
   'gfxstream-backend',
   type : 'boolean',
-  value : false,
+  value : 'false',
   description : 'Build gfxstream backend'
 )
