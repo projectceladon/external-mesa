@@ -61,6 +61,7 @@
 #include "common/intel_aux_map.h"
 #include "common/intel_uuid.h"
 #include "common/i915/intel_gem.h"
+#include "common/intel_check.h"
 #include "perf/intel_perf.h"
 
 #include "i915/anv_device.h"
@@ -2143,10 +2144,6 @@ anv_physical_device_try_create(struct vk_instance *vk_instance,
    const char *primary_path = drm_device->nodes[DRM_NODE_PRIMARY];
    const char *path = drm_device->nodes[DRM_NODE_RENDER];
 
-   if (path != NULL && strstr(path, "renderD129") != NULL) {
-      return VK_ERROR_INCOMPATIBLE_DRIVER;
-   }
-
    VkResult result;
    int fd;
    int master_fd = -1;
@@ -2167,6 +2164,18 @@ anv_physical_device_try_create(struct vk_instance *vk_instance,
    if (!intel_get_device_info_from_fd(fd, &devinfo)) {
       result = vk_error(instance, VK_ERROR_INCOMPATIBLE_DRIVER);
       goto fail_fd;
+   }
+
+   if (get_intel_node_num() > 1) {
+      if (!is_dgpu(fd) && intel_is_dgpu_render()) {
+         result = VK_ERROR_INCOMPATIBLE_DRIVER;
+         goto fail_fd;
+      }
+
+      if (is_dgpu(fd) && !intel_is_dgpu_render()) {
+         result = VK_ERROR_INCOMPATIBLE_DRIVER;
+         goto fail_fd;
+      }
    }
 
    if (devinfo.ver == 20) {

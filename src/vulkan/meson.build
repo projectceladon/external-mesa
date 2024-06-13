@@ -19,6 +19,7 @@
 # SOFTWARE.
 
 vk_api_xml = files('registry/vk.xml')
+inc_intel = include_directories('../intel/')
 
 vulkan_icd_link_args = []
 vulkan_icd_link_depends = []
