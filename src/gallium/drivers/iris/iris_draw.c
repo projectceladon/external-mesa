@@ -296,6 +296,10 @@ iris_draw_vbo(struct pipe_context *ctx, const struct pipe_draw_info *info,
                                         stage, true);
       }
       iris_predraw_resolve_framebuffer(ice, batch, draw_aux_buffer_disabled);
+      if (screen->driconf.mht_robot_shadow_shader_elimination && ice->state.skipManhattanRobotShadowShader) {
+         ice->state.skipManhattanRobotShadowShader = false;
+         return;
+      };
    }
 
    if (ice->state.dirty & IRIS_DIRTY_RENDER_MISC_BUFFER_FLUSHES) {
