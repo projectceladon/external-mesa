@@ -302,6 +302,10 @@
    DRI_CONF_OPT_B(limit_trig_input_range, def, \
                   "Limit trig input range to [-2p : 2p] to improve sin/cos calculation precision on Intel")
 
+#define DRI_CONF_MHT_ROBOT_SHADOW_SHADER_ELIMINATION(def) \
+   DRI_CONF_OPT_B(mht_robot_shadow_shader_elimination, def, \
+                  "Eliminate draw call for Gfxbench Manhattan3.0 robot shadow when conditions apply.")
+
 /**
  * \brief Image quality-related options
  */
