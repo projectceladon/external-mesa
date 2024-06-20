@@ -2241,7 +2241,8 @@ anv_physical_device_try_create(struct vk_instance *vk_instance,
       isl_format_supports_sampling(&device->info,
                                    ISL_FORMAT_ASTC_LDR_2D_4X4_FLT16);
    if (!device->has_astc_ldr &&
-       driQueryOptionb(&device->instance->dri_options, "vk_require_astc"))
+       (driQueryOptionb(&device->instance->dri_options, "vk_require_astc") ||
+       !intel_device_info_is_mtl(&devinfo)))
       device->emu_astc_ldr = true;
    if (devinfo.ver == 9 && !intel_device_info_is_9lp(&devinfo)) {
       device->flush_astc_ldr_void_extent_denorms =
