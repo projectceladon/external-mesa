@@ -333,6 +333,7 @@ get_device_extensions(const struct anv_physical_device *device,
       .EXT_depth_range_unrestricted          = device->info.ver >= 20,
       .EXT_depth_clip_enable                 = true,
       .EXT_descriptor_indexing               = true,
+      .EXT_device_memory_report              = true,
 #ifdef VK_USE_PLATFORM_DISPLAY_KHR
       .EXT_display_control                   = true,
 #endif
@@ -631,6 +632,9 @@ get_features(const struct anv_physical_device *pdevice,
 
       /* VK_EXT_global_priority_query */
       .globalPriorityQuery = true,
+
+      /* VK_EXT_device_memory_report */
+      .deviceMemoryReport = true,
 
       /* VK_EXT_graphics_pipeline_library */
       .graphicsPipelineLibrary =
@@ -3142,6 +3146,10 @@ VkResult anv_CreateDevice(
    if (result != VK_SUCCESS)
       goto fail_alloc;
 
+   anv_device_memory_report_init(device, pCreateInfo);
+   if (result != VK_SUCCESS)
+      goto fail_device;
+
    if (INTEL_DEBUG(DEBUG_BATCH | DEBUG_BATCH_STATS)) {
       for (unsigned i = 0; i < physical_device->queue.family_count; i++) {
          struct intel_batch_decode_ctx *decoder = &device->decoder[i];
@@ -3169,7 +3177,7 @@ VkResult anv_CreateDevice(
    device->fd = open(physical_device->path, O_RDWR | O_CLOEXEC);
    if (device->fd == -1) {
       result = vk_error(device, VK_ERROR_INITIALIZATION_FAILED);
-      goto fail_device;
+      goto fail_memory_report;
    }
 
    switch (device->info->kmd_type) {
@@ -3727,6 +3735,8 @@ VkResult anv_CreateDevice(
    anv_device_destroy_context_or_vm(device);
  fail_fd:
    close(device->fd);
+ fail_memory_report:
+   anv_device_memory_report_finish(device);
  fail_device:
    vk_device_finish(&device->vk);
  fail_alloc:
@@ -3853,6 +3863,7 @@ void anv_DestroyDevice(
 
    close(device->fd);
 
+   anv_device_memory_report_finish(device);
    vk_device_finish(&device->vk);
    vk_free(&device->vk.alloc, device);
 }
@@ -3963,6 +3974,34 @@ anv_vma_free(struct anv_device *device,
    util_vma_heap_free(vma_heap, addr_48b, size);
 
    pthread_mutex_unlock(&device->vma_mutex);
+}
+
+static void
+anv_device_memory_emit_report(struct anv_device *dev,
+                             struct anv_device_memory *mem,
+                             bool is_alloc,
+                             VkResult result)
+{
+   if (likely(!dev->memory_reports))
+      return;
+
+   const struct vk_device_memory *mem_vk = &mem->vk;
+   VkDeviceMemoryReportEventTypeEXT event_type;
+   if (result != VK_SUCCESS) {
+      event_type = VK_DEVICE_MEMORY_REPORT_EVENT_TYPE_ALLOCATION_FAILED_EXT;
+   } else if (is_alloc) {
+      event_type = mem_vk->import_handle_type
+                ? VK_DEVICE_MEMORY_REPORT_EVENT_TYPE_IMPORT_EXT
+                : VK_DEVICE_MEMORY_REPORT_EVENT_TYPE_ALLOCATE_EXT;
+   } else {
+      event_type = mem_vk->import_handle_type
+                ? VK_DEVICE_MEMORY_REPORT_EVENT_TYPE_UNIMPORT_EXT
+                : VK_DEVICE_MEMORY_REPORT_EVENT_TYPE_FREE_EXT;
+   }
+
+   anv_device_emit_device_memory_report(dev, event_type, mem->bo->gem_handle, mem_vk->size,
+                                       VK_OBJECT_TYPE_DEVICE_MEMORY,
+                                       (uint64_t)anv_device_memory_to_handle(mem), mem->type->heapIndex);
 }
 
 VkResult anv_AllocateMemory(
@@ -4223,10 +4262,12 @@ VkResult anv_AllocateMemory(
    pthread_mutex_unlock(&device->mutex);
 
    *pMem = anv_device_memory_to_handle(mem);
+   anv_device_memory_emit_report(device, mem, true, VK_SUCCESS);
 
    return VK_SUCCESS;
 
  fail:
+   anv_device_memory_emit_report(device, mem, true, VK_ERROR_OUT_OF_HOST_MEMORY);
    vk_device_memory_destroy(&device->vk, pAllocator, &mem->vk);
 
    return result;
@@ -4324,6 +4365,8 @@ void anv_FreeMemory(
 
    p_atomic_add(&device->physical->memory.heaps[mem->type->heapIndex].used,
                 -mem->bo->size);
+
+   anv_device_memory_emit_report(device, mem, false, VK_SUCCESS);
 
    anv_device_release_bo(device, mem->bo);
 
