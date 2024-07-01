@@ -1637,6 +1637,11 @@ struct anv_trtt_batch_bo {
    struct list_head link;
 };
 
+struct anv_device_memory_report {
+   PFN_vkDeviceMemoryReportCallbackEXT callback;
+   void *data;
+};
+
 struct anv_device {
     struct vk_device                            vk;
 
@@ -1865,7 +1870,81 @@ struct anv_device {
     bool                                         using_sparse;
 
     struct anv_device_astc_emu                   astc_emu;
+
+    struct anv_device_memory_report *memory_reports;
+    uint32_t memory_report_count;
 };
+
+static VkResult
+anv_device_memory_report_init(struct anv_device *dev,
+                             const VkDeviceCreateInfo *create_info)
+{
+   const struct vk_features *app_feats = &dev->vk.enabled_features;
+   if (!app_feats->deviceMemoryReport)
+      return VK_SUCCESS;
+
+   uint32_t count = 0;
+   vk_foreach_struct_const(pnext, create_info->pNext) {
+      if (pnext->sType ==
+          VK_STRUCTURE_TYPE_DEVICE_DEVICE_MEMORY_REPORT_CREATE_INFO_EXT)
+         count++;
+   }
+
+   struct anv_device_memory_report *mem_reports = NULL;
+   if (count) {
+      mem_reports =
+         vk_alloc(&dev->vk.alloc, sizeof(*mem_reports) * count,
+                  8, VK_SYSTEM_ALLOCATION_SCOPE_DEVICE);
+      if (!mem_reports)
+         return VK_ERROR_OUT_OF_HOST_MEMORY;
+   }
+
+   count = 0;
+   vk_foreach_struct_const(pnext, create_info->pNext) {
+      if (pnext->sType ==
+          VK_STRUCTURE_TYPE_DEVICE_DEVICE_MEMORY_REPORT_CREATE_INFO_EXT) {
+         const struct VkDeviceDeviceMemoryReportCreateInfoEXT *report =
+            (void *)pnext;
+         mem_reports[count].callback = report->pfnUserCallback;
+         mem_reports[count].data = report->pUserData;
+         count++;
+      }
+   }
+
+   dev->memory_report_count = count;
+   dev->memory_reports = mem_reports;
+
+   return VK_SUCCESS;
+}
+
+static inline void
+anv_device_memory_report_finish(struct anv_device *dev)
+{
+   vk_free(&dev->vk.alloc, dev->memory_reports);
+}
+
+static inline void
+anv_device_emit_device_memory_report(struct anv_device *dev,
+                                    VkDeviceMemoryReportEventTypeEXT type,
+                                    uint64_t mem_obj_id,
+                                    VkDeviceSize size,
+                                    VkObjectType obj_type,
+                                    uint64_t obj_handle,
+                                    uint32_t heap_index)
+{
+   assert(dev->memory_reports);
+   const VkDeviceMemoryReportCallbackDataEXT report = {
+      .sType = VK_STRUCTURE_TYPE_DEVICE_MEMORY_REPORT_CALLBACK_DATA_EXT,
+      .type = type,
+      .memoryObjectId = mem_obj_id,
+      .size = size,
+      .objectType = obj_type,
+      .objectHandle = obj_handle,
+      .heapIndex = heap_index,
+   };
+   for (uint32_t i = 0; i < dev->memory_report_count; i++)
+      dev->memory_reports[i].callback(&report, dev->memory_reports[i].data);
+}
 
 static inline uint32_t
 anv_get_first_render_queue_index(struct anv_physical_device *pdevice)
