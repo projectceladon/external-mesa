@@ -801,7 +801,6 @@ droid_add_configs_for_visuals(_EGLDisplay *disp)
       {HAL_PIXEL_FORMAT_RGBA_8888, {0, 8, 16, 24}, {8, 8, 8, 8}},
       {HAL_PIXEL_FORMAT_RGBX_8888, {0, 8, 16, -1}, {8, 8, 8, 0}},
       {HAL_PIXEL_FORMAT_RGB_565, {11, 5, 0, -1}, {5, 6, 5, 0}},
-      {HAL_PIXEL_FORMAT_RGBA_1010102, {0, 10, 20, 30}, {10, 10, 10, 2}},
       /* This must be after HAL_PIXEL_FORMAT_RGBA_8888, we only keep BGRA
        * visual if it turns out RGBA visual is not available.
        */
@@ -845,6 +844,8 @@ droid_add_configs_for_visuals(_EGLDisplay *disp)
             EGL_NATIVE_VISUAL_TYPE,
             visuals[i].format,
             EGL_FRAMEBUFFER_TARGET_ANDROID,
+            EGL_TRUE,
+            EGL_RECORDABLE_ANDROID,
             EGL_TRUE,
             EGL_NONE,
          };
