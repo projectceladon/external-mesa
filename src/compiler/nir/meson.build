@@ -1,22 +1,5 @@
 # Copyright © 2017 Intel Corporation
-
-# Permission is hereby granted, free of charge, to any person obtaining a copy
-# of this software and associated documentation files (the "Software"), to deal
-# in the Software without restriction, including without limitation the rights
-# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-# copies of the Software, and to permit persons to whom the Software is
-# furnished to do so, subject to the following conditions:
-
-# The above copyright notice and this permission notice shall be included in
-# all copies or substantial portions of the Software.
-
-# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-# SOFTWARE.
+# SPDX-License-Identifier: MIT
 
 nir_depends = files('nir_opcodes.py', 'nir_intrinsics.py')
 
@@ -62,8 +45,7 @@ nir_opt_algebraic_c = custom_target(
   'nir_opt_algebraic.c',
   input : 'nir_opt_algebraic.py',
   output : 'nir_opt_algebraic.c',
-  command : [prog_python, '@INPUT@'],
-  capture : true,
+  command : [prog_python, '@INPUT@', '--out', '@OUTPUT@'],
   depend_files : nir_algebraic_depends,
 )
 
@@ -111,6 +93,7 @@ files_libnir = files(
   'nir_deref.h',
   'nir_divergence_analysis.c',
   'nir_dominance.c',
+  'nir_format_convert.c',
   'nir_format_convert.h',
   'nir_from_ssa.c',
   'nir_functions.c',
@@ -150,7 +133,6 @@ files_libnir = files(
   'nir_lower_convert_alu_types.c',
   'nir_lower_variable_initializers.c',
   'nir_lower_discard_if.c',
-  'nir_lower_discard_or_demote.c',
   'nir_lower_double_ops.c',
   'nir_lower_drawpixels.c',
   'nir_lower_fb_read.c',
@@ -209,6 +191,7 @@ files_libnir = files(
   'nir_lower_subgroups.c',
   'nir_lower_system_values.c',
   'nir_lower_task_shader.c',
+  'nir_lower_terminate_to_demote.c',
   'nir_lower_tess_coord_z.c',
   'nir_lower_tex_shadow.c',
   'nir_lower_tex.c',
@@ -257,6 +240,7 @@ files_libnir = files(
   'nir_opt_memcpy.c',
   'nir_opt_move.c',
   'nir_opt_move_discards_to_top.c',
+  'nir_opt_mqsad.c',
   'nir_opt_non_uniform_access.c',
   'nir_opt_offsets.c',
   'nir_opt_peephole_select.c',
@@ -273,7 +257,9 @@ files_libnir = files(
   'nir_opt_undef.c',
   'nir_opt_uniform_atomics.c',
   'nir_opt_uniform_subgroup.c',
+  'nir_opt_varyings.c',
   'nir_opt_vectorize.c',
+  'nir_opt_vectorize_io.c',
   'nir_passthrough_gs.c',
   'nir_passthrough_tcs.c',
   'nir_phi_builder.c',
@@ -300,6 +286,7 @@ files_libnir = files(
   'nir_sweep.c',
   'nir_to_lcssa.c',
   'nir_trivialize_registers.c',
+  'nir_use_dominance.c',
   'nir_validate.c',
   'nir_vla.h',
   'nir_worklist.c',
@@ -351,6 +338,11 @@ if with_tests
     msvc_designated_initializer = 'cpp_std=c++20'
   endif
 
+  msvc_bigobj = []
+  if cc.get_id() == 'msvc'
+    msvc_bigobj = '/bigobj'
+  endif
+
   test(
     'nir_tests',
     executable(
@@ -362,6 +354,7 @@ if with_tests
         'tests/control_flow_tests.cpp',
         'tests/core_tests.cpp',
         'tests/dce_tests.cpp',
+        'tests/format_convert_tests.cpp',
         'tests/load_store_vectorizer_tests.cpp',
         'tests/loop_analyze_tests.cpp',
         'tests/loop_unroll_tests.cpp',
@@ -369,13 +362,22 @@ if with_tests
         'tests/mod_analysis_tests.cpp',
         'tests/negative_equal_tests.cpp',
         'tests/opt_if_tests.cpp',
+        'tests/opt_loop_tests.cpp',
         'tests/opt_peephole_select.cpp',
         'tests/opt_shrink_vectors_tests.cpp',
+        'tests/opt_varyings_tests_bicm_binary_alu.cpp',
+        'tests/opt_varyings_tests_dead_input.cpp',
+        'tests/opt_varyings_tests_dead_output.cpp',
+        'tests/opt_varyings_tests_dedup.cpp',
+        'tests/opt_varyings_tests_prop_const.cpp',
+        'tests/opt_varyings_tests_prop_ubo.cpp',
+        'tests/opt_varyings_tests_prop_uniform.cpp',
+        'tests/opt_varyings_tests_prop_uniform_expr.cpp',
         'tests/serialize_tests.cpp',
         'tests/range_analysis_tests.cpp',
         'tests/vars_tests.cpp',
       ),
-      cpp_args : [cpp_msvc_compat_args],
+      cpp_args : [cpp_msvc_compat_args, msvc_bigobj],
       override_options: [msvc_designated_initializer],
       gnu_symbol_visibility : 'hidden',
       include_directories : [inc_include, inc_src],

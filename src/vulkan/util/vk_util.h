@@ -23,16 +23,11 @@
 #ifndef VK_UTIL_H
 #define VK_UTIL_H
 
+#include "util/bitscan.h"
 #include "util/macros.h"
-
+#include "compiler/shader_enums.h"
 #include <stdlib.h>
 #include <string.h>
-
-#if USE_VK_COMPILER
-#include "vk_util_compiler.h"
-#else
-#include <stdbool.h>
-#endif
 
 #include "vk_struct_type_cast.h"
 
@@ -114,13 +109,6 @@ vk_pnext_iterator_next(struct vk_pnext_iterator *iter)
         !__iter.done; __iter.done = true) \
       for (const VkBaseInStructure *__e = (VkBaseInStructure *)__iter.pos; \
            __e; __e = (VkBaseInStructure *)vk_pnext_iterator_next(&__iter))
-
-static inline void
-vk_copy_struct_guts(VkBaseOutStructure *dst, VkBaseInStructure *src, size_t struct_size)
-{
-   STATIC_ASSERT(sizeof(*dst) == sizeof(*src));
-   memcpy(dst + 1, src + 1, struct_size - sizeof(VkBaseOutStructure));
-}
 
 /**
  * A wrapper for a Vulkan output array. A Vulkan output array is one that
@@ -321,6 +309,19 @@ struct vk_pipeline_cache_header {
    memcpy((dest), (src), (count) * sizeof(*(src))); \
 } while (0)
 
+static inline gl_shader_stage
+vk_to_mesa_shader_stage(VkShaderStageFlagBits vk_stage)
+{
+   assert(util_bitcount((uint32_t) vk_stage) == 1);
+   return (gl_shader_stage) (ffs((uint32_t) vk_stage) - 1);
+}
+
+static inline VkShaderStageFlagBits
+mesa_to_vk_shader_stage(gl_shader_stage mesa_stage)
+{
+   return (VkShaderStageFlagBits) (1 << ((uint32_t) mesa_stage));
+}
+
 /* iterate over a sequence of indexed multidraws for VK_EXT_multi_draw extension */
 /* 'i' must be explicitly declared */
 #define vk_foreach_multi_draw_indexed(_draw, _i, _pDrawInfo, _num_draws, _stride) \
@@ -335,16 +336,23 @@ struct vk_pipeline_cache_header {
         (_i) < (_num_draws); \
         (_i)++, (_draw) = (const VkMultiDrawInfoEXT*)((const uint8_t*)(_draw) + (_stride)))
 
+
+struct nir_spirv_specialization;
+
+struct nir_spirv_specialization*
+vk_spec_info_to_nir_spirv(const VkSpecializationInfo *spec_info,
+                          uint32_t *out_num_spec_entries);
+
 #define STACK_ARRAY_SIZE 8
 
-#ifdef __cplusplus
-#define STACK_ARRAY_ZERO_INIT {}
-#else
-#define STACK_ARRAY_ZERO_INIT {0}
-#endif
-
+/* Sometimes gcc may claim -Wmaybe-uninitialized for the stack array in some
+ * places it can't verify that when size is 0 nobody down the call chain reads
+ * the array. Please don't try to fix it by zero-initializing the array here
+ * since it's used in a lot of different places. An "if (size == 0) return;"
+ * may work for you.
+ */
 #define STACK_ARRAY(type, name, size) \
-   type _stack_##name[STACK_ARRAY_SIZE] = STACK_ARRAY_ZERO_INIT; \
+   type _stack_##name[STACK_ARRAY_SIZE]; \
    type *const name = \
      ((size) <= STACK_ARRAY_SIZE ? _stack_##name : (type *)malloc((size) * sizeof(type)))
 

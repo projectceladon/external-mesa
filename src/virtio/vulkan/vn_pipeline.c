@@ -222,11 +222,11 @@ struct vn_graphics_pipeline_fix_tmp {
     *
     * TODO: extend when below or more extensions are supported:
     * - VK_KHR_maintenance5
-    * - VK_KHR_fragment_shading_rate
     * - VK_EXT_pipeline_robustness
     */
    VkGraphicsPipelineLibraryCreateInfoEXT *gpl_infos;
    VkPipelineCreationFeedbackCreateInfo *feedback_infos;
+   VkPipelineFragmentShadingRateStateCreateInfoKHR *fsr_infos;
    VkPipelineLibraryCreateInfoKHR *library_infos;
    VkPipelineRenderingCreateInfo *rendering_infos;
 };
@@ -496,8 +496,7 @@ vn_GetPipelineCacheData(VkDevice device,
       return VK_INCOMPLETE;
    }
 
-   const VkPhysicalDeviceProperties *props =
-      &physical_dev->properties.vulkan_1_0;
+   const struct vk_properties *props = &physical_dev->base.base.properties;
    header->header_size = sizeof(*header);
    header->header_version = VK_PIPELINE_CACHE_HEADER_VERSION_ONE;
    header->vendor_id = props->vendorID;
@@ -584,25 +583,46 @@ vn_create_pipeline_handles(struct vn_device *dev,
    return true;
 }
 
-/** For vkCreate*Pipelines.  */
 static void
-vn_destroy_failed_pipelines(struct vn_device *dev,
-                            uint32_t create_info_count,
-                            VkPipeline *pipelines,
-                            const VkAllocationCallbacks *alloc)
+vn_destroy_pipeline_handles_internal(struct vn_device *dev,
+                                     uint32_t pipeline_count,
+                                     VkPipeline *pipeline_handles,
+                                     const VkAllocationCallbacks *alloc,
+                                     bool failed_only)
 {
-   for (uint32_t i = 0; i < create_info_count; i++) {
-      struct vn_pipeline *pipeline = vn_pipeline_from_handle(pipelines[i]);
+   for (uint32_t i = 0; i < pipeline_count; i++) {
+      struct vn_pipeline *pipeline =
+         vn_pipeline_from_handle(pipeline_handles[i]);
 
-      if (pipeline->base.id == 0) {
+      if (!failed_only || pipeline->base.id == 0) {
          if (pipeline->layout) {
             vn_pipeline_layout_unref(dev, pipeline->layout);
          }
          vn_object_base_fini(&pipeline->base);
          vk_free(alloc, pipeline);
-         pipelines[i] = VK_NULL_HANDLE;
+         pipeline_handles[i] = VK_NULL_HANDLE;
       }
    }
+}
+
+static inline void
+vn_destroy_pipeline_handles(struct vn_device *dev,
+                            uint32_t pipeline_count,
+                            VkPipeline *pipeline_handles,
+                            const VkAllocationCallbacks *alloc)
+{
+   vn_destroy_pipeline_handles_internal(dev, pipeline_count, pipeline_handles,
+                                        alloc, false);
+}
+
+static inline void
+vn_destroy_failed_pipeline_handles(struct vn_device *dev,
+                                   uint32_t pipeline_count,
+                                   VkPipeline *pipeline_handles,
+                                   const VkAllocationCallbacks *alloc)
+{
+   vn_destroy_pipeline_handles_internal(dev, pipeline_count, pipeline_handles,
+                                        alloc, true);
 }
 
 #define VN_PIPELINE_CREATE_SYNC_MASK                                         \
@@ -622,6 +642,7 @@ vn_graphics_pipeline_fix_tmp_alloc(const VkAllocationCallbacks *alloc,
    /* for pNext */
    VkGraphicsPipelineLibraryCreateInfoEXT *gpl_infos;
    VkPipelineCreationFeedbackCreateInfo *feedback_infos;
+   VkPipelineFragmentShadingRateStateCreateInfoKHR *fsr_infos;
    VkPipelineLibraryCreateInfoKHR *library_infos;
    VkPipelineRenderingCreateInfo *rendering_infos;
 
@@ -637,6 +658,7 @@ vn_graphics_pipeline_fix_tmp_alloc(const VkAllocationCallbacks *alloc,
       vk_multialloc_add(&ma, &gpl_infos, __typeof__(*gpl_infos), info_count);
       vk_multialloc_add(&ma, &feedback_infos, __typeof__(*feedback_infos),
                         info_count);
+      vk_multialloc_add(&ma, &fsr_infos, __typeof__(*fsr_infos), info_count);
       vk_multialloc_add(&ma, &library_infos, __typeof__(*library_infos),
                         info_count);
       vk_multialloc_add(&ma, &rendering_infos, __typeof__(*rendering_infos),
@@ -653,6 +675,7 @@ vn_graphics_pipeline_fix_tmp_alloc(const VkAllocationCallbacks *alloc,
    if (alloc_pnext) {
       tmp->gpl_infos = gpl_infos;
       tmp->feedback_infos = feedback_infos;
+      tmp->fsr_infos = fsr_infos;
       tmp->library_infos = library_infos;
       tmp->rendering_infos = rendering_infos;
    }
@@ -1372,6 +1395,8 @@ vn_graphics_pipeline_create_info_pnext_init(
    VkGraphicsPipelineLibraryCreateInfoEXT *gpl = &fix_tmp->gpl_infos[index];
    VkPipelineCreationFeedbackCreateInfo *feedback =
       &fix_tmp->feedback_infos[index];
+   VkPipelineFragmentShadingRateStateCreateInfoKHR *fsr =
+      &fix_tmp->fsr_infos[index];
    VkPipelineLibraryCreateInfoKHR *library = &fix_tmp->library_infos[index];
    VkPipelineRenderingCreateInfo *rendering =
       &fix_tmp->rendering_infos[index];
@@ -1388,6 +1413,10 @@ vn_graphics_pipeline_create_info_pnext_init(
       case VK_STRUCTURE_TYPE_PIPELINE_CREATION_FEEDBACK_CREATE_INFO:
          memcpy(feedback, src, sizeof(*feedback));
          next = feedback;
+         break;
+      case VK_STRUCTURE_TYPE_PIPELINE_FRAGMENT_SHADING_RATE_STATE_CREATE_INFO_KHR:
+         memcpy(fsr, src, sizeof(*fsr));
+         next = fsr;
          break;
       case VK_STRUCTURE_TYPE_PIPELINE_LIBRARY_CREATE_INFO_KHR:
          memcpy(library, src, sizeof(*library));
@@ -1513,6 +1542,10 @@ vn_CreateGraphicsPipelines(VkDevice device,
    bool want_sync = false;
    VkResult result;
 
+   /* silence -Wmaybe-uninitialized false alarm on release build with gcc */
+   if (!createInfoCount)
+      return VK_SUCCESS;
+
    memset(pPipelines, 0, sizeof(*pPipelines) * createInfoCount);
 
    if (!vn_create_pipeline_handles(dev, VN_PIPELINE_TYPE_GRAPHICS,
@@ -1533,7 +1566,7 @@ vn_CreateGraphicsPipelines(VkDevice device,
    pCreateInfos = vn_fix_graphics_pipeline_create_infos(
       dev, createInfoCount, pCreateInfos, fix_descs, &fix_tmp, alloc);
    if (!pCreateInfos) {
-      vn_destroy_failed_pipelines(dev, createInfoCount, pPipelines, alloc);
+      vn_destroy_pipeline_handles(dev, createInfoCount, pPipelines, alloc);
       STACK_ARRAY_FINISH(fix_descs);
       return vn_error(dev->instance, VK_ERROR_OUT_OF_HOST_MEMORY);
    }
@@ -1557,7 +1590,7 @@ vn_CreateGraphicsPipelines(VkDevice device,
    struct vn_ring *target_ring = vn_get_target_ring(dev);
    if (!target_ring) {
       vk_free(alloc, fix_tmp);
-      vn_destroy_failed_pipelines(dev, createInfoCount, pPipelines, alloc);
+      vn_destroy_pipeline_handles(dev, createInfoCount, pPipelines, alloc);
       STACK_ARRAY_FINISH(fix_descs);
       return vn_error(dev->instance, VK_ERROR_OUT_OF_HOST_MEMORY);
    }
@@ -1571,7 +1604,8 @@ vn_CreateGraphicsPipelines(VkDevice device,
          target_ring, device, pipelineCache, createInfoCount, pCreateInfos,
          NULL, pPipelines);
       if (result != VK_SUCCESS)
-         vn_destroy_failed_pipelines(dev, createInfoCount, pPipelines, alloc);
+         vn_destroy_failed_pipeline_handles(dev, createInfoCount, pPipelines,
+                                            alloc);
    } else {
       vn_async_vkCreateGraphicsPipelines(target_ring, device, pipelineCache,
                                          createInfoCount, pCreateInfos, NULL,
@@ -1621,7 +1655,7 @@ vn_CreateComputePipelines(VkDevice device,
 
    struct vn_ring *target_ring = vn_get_target_ring(dev);
    if (!target_ring) {
-      vn_destroy_failed_pipelines(dev, createInfoCount, pPipelines, alloc);
+      vn_destroy_pipeline_handles(dev, createInfoCount, pPipelines, alloc);
       return vn_error(dev->instance, VK_ERROR_OUT_OF_HOST_MEMORY);
    }
 
@@ -1630,7 +1664,8 @@ vn_CreateComputePipelines(VkDevice device,
          target_ring, device, pipelineCache, createInfoCount, pCreateInfos,
          NULL, pPipelines);
       if (result != VK_SUCCESS)
-         vn_destroy_failed_pipelines(dev, createInfoCount, pPipelines, alloc);
+         vn_destroy_failed_pipeline_handles(dev, createInfoCount, pPipelines,
+                                            alloc);
    } else {
       vn_async_vkCreateComputePipelines(target_ring, device, pipelineCache,
                                         createInfoCount, pCreateInfos, NULL,

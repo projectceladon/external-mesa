@@ -108,7 +108,7 @@ type_size(const struct glsl_type *type, bool bindless)
    return glsl_count_attribute_slots(type, false);
 }
 
-void
+static void
 lima_program_optimize_vs_nir(struct nir_shader *s)
 {
    bool progress;
@@ -216,7 +216,7 @@ lima_vec_to_regs_filter_cb(const nir_instr *instr, unsigned writemask,
    return !lima_alu_to_scalar_filter_cb(instr, data);
 }
 
-void
+static void
 lima_program_optimize_fs_nir(struct nir_shader *s,
                              struct nir_lower_tex_options *tex_options)
 {
@@ -323,15 +323,25 @@ static bool
 lima_fs_upload_shader(struct lima_context *ctx,
                       struct lima_fs_compiled_shader *fs)
 {
+   static const uint32_t pp_clear_program[] = {
+      PP_CLEAR_PROGRAM
+   };
+   int shader_size = sizeof(pp_clear_program);
+   void *shader = (void *)pp_clear_program;
    struct lima_screen *screen = lima_screen(ctx->base.screen);
 
-   fs->bo = lima_bo_create(screen, fs->state.shader_size, 0);
+   if (fs->state.shader_size) {
+      shader_size = fs->state.shader_size;
+      shader = fs->shader;
+   }
+
+   fs->bo = lima_bo_create(screen, shader_size, 0);
    if (!fs->bo) {
       fprintf(stderr, "lima: create fs shader bo fail\n");
       return false;
    }
 
-   memcpy(lima_bo_map(fs->bo), fs->shader, fs->state.shader_size);
+   memcpy(lima_bo_map(fs->bo), shader, shader_size);
 
    return true;
 }

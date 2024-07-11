@@ -46,6 +46,7 @@
 #include "pan_bo.h"
 #include "pan_cmdstream.h"
 #include "pan_context.h"
+#include "pan_csf.h"
 #include "pan_indirect_dispatch.h"
 #include "pan_jm.h"
 #include "pan_job.h"
@@ -60,6 +61,8 @@
  * functions. */
 #if PAN_ARCH <= 9
 #define JOBX(__suffix) GENX(jm_##__suffix)
+#elif PAN_ARCH <= 10
+#define JOBX(__suffix) GENX(csf_##__suffix)
 #else
 #error "Unsupported arch"
 #endif
@@ -265,7 +268,7 @@ panfrost_get_blend_shaders(struct panfrost_batch *batch,
    }
 
    if (shader_bo)
-      perf_debug_ctx(batch->ctx, "Blend shader use");
+      perf_debug(batch->ctx, "Blend shader use");
 }
 
 #if PAN_ARCH >= 5
@@ -406,6 +409,19 @@ panfrost_emit_compute_shader_meta(struct panfrost_batch *batch,
    panfrost_batch_add_bo(batch, ss->state.bo, PIPE_SHADER_VERTEX);
 
    return ss->state.gpu;
+}
+
+static float
+panfrost_z_depth_offset(struct panfrost_context *ctx, float offset_units)
+{
+   if (ctx->pipe_framebuffer.zsbuf) {
+      if (util_format_is_float(ctx->pipe_framebuffer.zsbuf->format)) {
+         /* no scaling necessary, hw will do this at run time */
+         return offset_units;
+      }
+   }
+   /* if fixed point, apply the minimum resolvable difference scaling here */
+   return 2.0f * offset_units;
 }
 
 #if PAN_ARCH <= 7
@@ -555,7 +571,7 @@ panfrost_prepare_fs_state(struct panfrost_context *ctx, mali_ptr *blend_shaders,
 #endif
 
       cfg.stencil_mask_misc.alpha_to_coverage = alpha_to_coverage;
-      cfg.depth_units = rast->offset_units * 2.0f;
+      cfg.depth_units = panfrost_z_depth_offset(ctx, rast->offset_units);
       cfg.depth_factor = rast->offset_scale;
       cfg.depth_bias_clamp = rast->offset_clamp;
 
@@ -630,6 +646,7 @@ panfrost_emit_frag_shader_meta(struct panfrost_batch *batch)
    struct panfrost_compiled_shader *ss = ctx->prog[PIPE_SHADER_FRAGMENT];
 
    panfrost_batch_add_bo(batch, ss->bin.bo, PIPE_SHADER_FRAGMENT);
+   panfrost_batch_add_bo(batch, ss->state.bo, PIPE_SHADER_FRAGMENT);
 
    struct panfrost_ptr xfer;
 
@@ -761,7 +778,7 @@ panfrost_emit_depth_stencil(struct panfrost_batch *batch)
       cfg.depth_source = pan_depth_source(&fs->info);
 
       cfg.depth_bias_enable = rast->base.offset_tri;
-      cfg.depth_units = rast->base.offset_units * 2.0f;
+      cfg.depth_units = panfrost_z_depth_offset(ctx, rast->base.offset_units);
       cfg.depth_factor = rast->base.offset_scale;
       cfg.depth_bias_clamp = rast->base.offset_clamp;
    }
@@ -967,7 +984,8 @@ panfrost_upload_txs_sysval(struct panfrost_batch *batch,
 
    if (tex->target == PIPE_BUFFER) {
       assert(dim == 1);
-      uniform->i[0] = tex->u.buf.size / util_format_get_blocksize(tex->format);
+      unsigned buf_size = tex->u.buf.size / util_format_get_blocksize(tex->format);
+      uniform->i[0] = MIN2(buf_size, PAN_MAX_TEXEL_BUFFER_ELEMENTS);
       return;
    }
 
@@ -1388,7 +1406,8 @@ panfrost_emit_const_buf(struct panfrost_batch *batch,
             PAN_SYSVAL_TYPE(ss->sysvals.sysvals[sysval_idx]);
          mali_ptr ptr = push_transfer.gpu + (4 * i);
 
-         if (sysval_type == PAN_SYSVAL_NUM_WORK_GROUPS)
+         if (sysval_type == PAN_SYSVAL_NUM_WORK_GROUPS &&
+             sysval_comp < ARRAY_SIZE(batch->num_wg_sysval))
             batch->num_wg_sysval[sysval_comp] = ptr;
       }
       /* Map the UBO, this should be cheap. For some buffers this may
@@ -1523,6 +1542,7 @@ panfrost_create_sampler_view_bo(struct panfrost_sampler_view *so,
    unsigned buf_offset = is_buffer ? so->base.u.buf.offset : 0;
    unsigned buf_size =
       (is_buffer ? so->base.u.buf.size : 0) / util_format_get_blocksize(format);
+   buf_size = MIN2(buf_size, PAN_MAX_TEXEL_BUFFER_ELEMENTS);
 
    if (so->base.target == PIPE_TEXTURE_3D) {
       first_layer /= prsrc->image.layout.depth;
@@ -2518,7 +2538,7 @@ emit_fbd(struct panfrost_batch *batch, struct pan_fb_info *fb)
 #endif
 
    batch->framebuffer.gpu |=
-      GENX(pan_emit_fbd)(fb, &tls, &batch->tiler_ctx, batch->framebuffer.cpu);
+      GENX(pan_emit_fbd)(fb, 0, &tls, &batch->tiler_ctx, batch->framebuffer.cpu);
 }
 
 /* Mark a surface as written */
@@ -2530,6 +2550,8 @@ panfrost_initialize_surface(struct panfrost_batch *batch,
    if (surf) {
       struct panfrost_resource *rsrc = pan_resource(surf->texture);
       BITSET_SET(rsrc->valid.data, surf->u.tex.level);
+      if (rsrc->separate_stencil)
+         BITSET_SET(rsrc->separate_stencil->valid.data, surf->u.tex.level);
    }
 }
 
@@ -2739,12 +2761,11 @@ panfrost_launch_xfb(struct panfrost_batch *batch,
 
    /* TODO: XFB with index buffers */
    // assert(info->index_size == 0);
-   u_trim_pipe_prim(info->mode, &count);
 
-   if (count == 0)
+   if (!u_trim_pipe_prim(info->mode, &count))
       return;
 
-   perf_debug_ctx(batch->ctx, "Emulating transform feedback");
+   perf_debug(batch->ctx, "Emulating transform feedback");
 
    struct panfrost_uncompiled_shader *vs_uncompiled =
       ctx->uncompiled[PIPE_SHADER_VERTEX];
@@ -2844,7 +2865,7 @@ panfrost_draw_get_vertex_count(struct panfrost_batch *batch,
       panfrost_increase_vertex_count(batch, vertex_count);
    }
 
-   if (info->instance_count > 1) {
+   if (PAN_ARCH <= 9 && info->instance_count > 1) {
       unsigned count = vertex_count;
 
       /* Index-Driven Vertex Shading requires different instances to
@@ -2965,8 +2986,8 @@ panfrost_draw_vbo(struct pipe_context *pipe, const struct pipe_draw_info *info,
    /* Emulate indirect draws on JM */
    if (indirect && indirect->buffer) {
       assert(num_draws == 1);
-      util_draw_indirect(pipe, info, indirect);
-      perf_debug(dev, "Emulating indirect draw on the CPU");
+      util_draw_indirect(pipe, info, drawid_offset, indirect);
+      perf_debug(ctx, "Emulating indirect draw on the CPU");
       return;
    }
 
@@ -3062,6 +3083,11 @@ panfrost_launch_grid_on_batch(struct pipe_context *pipe,
    mali_ptr saved_tls = batch->tls.gpu;
    batch->tls.gpu = panfrost_emit_shared_memory(batch, info);
 
+   /* if indirect, mark the indirect buffer as being read */
+   if (info->indirect)
+      panfrost_batch_read_rsrc(batch, pan_resource(info->indirect), PIPE_SHADER_COMPUTE);
+
+   /* launch it */
    JOBX(launch_grid)(batch, info);
    batch->compute_count++;
    batch->tls.gpu = saved_tls;
@@ -3673,6 +3699,16 @@ context_populate_vtbl(struct pipe_context *pipe)
    pipe->get_sample_position = u_default_get_sample_position;
 }
 
+static void
+context_init(struct panfrost_context *ctx)
+{
+}
+
+static void
+context_cleanup(struct panfrost_context *ctx)
+{
+}
+
 #if PAN_ARCH <= 5
 
 /* Returns the polygon list's GPU address if available, or otherwise allocates
@@ -3764,7 +3800,10 @@ GENX(panfrost_cmdstream_screen_init)(struct panfrost_screen *screen)
    screen->vtbl.prepare_shader = prepare_shader;
    screen->vtbl.screen_destroy = screen_destroy;
    screen->vtbl.context_populate_vtbl = context_populate_vtbl;
+   screen->vtbl.context_init = JOBX(init_context);
+   screen->vtbl.context_cleanup = JOBX(cleanup_context);
    screen->vtbl.init_batch = JOBX(init_batch);
+   screen->vtbl.cleanup_batch = JOBX(cleanup_batch);
    screen->vtbl.submit_batch = submit_batch;
    screen->vtbl.get_blend_shader = GENX(pan_blend_get_shader_locked);
    screen->vtbl.get_compiler_options = GENX(pan_shader_get_compiler_options);

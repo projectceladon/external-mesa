@@ -1,25 +1,7 @@
 /*
  * Copyright © 2018 Valve Corporation
  *
- * Permission is hereby granted, free of charge, to any person obtaining a
- * copy of this software and associated documentation files (the "Software"),
- * to deal in the Software without restriction, including without limitation
- * the rights to use, copy, modify, merge, publish, distribute, sublicense,
- * and/or sell copies of the Software, and to permit persons to whom the
- * Software is furnished to do so, subject to the following conditions:
- *
- * The above copyright notice and this permission notice (including the next
- * paragraph) shall be included in all copies or substantial portions of the
- * Software.
- *
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
- * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
- * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL
- * THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
- * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
- * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS
- * IN THE SOFTWARE.
- *
+ * SPDX-License-Identifier: MIT
  */
 
 #include "aco_ir.h"
@@ -55,16 +37,6 @@ aco_log(Program* program, enum aco_compiler_debug_level level, const char* prefi
    fprintf(program->debug.output, "%s\n", msg);
 
    ralloc_free(msg);
-}
-
-void
-_aco_perfwarn(Program* program, const char* file, unsigned line, const char* fmt, ...)
-{
-   va_list args;
-
-   va_start(args, fmt);
-   aco_log(program, ACO_COMPILER_DEBUG_LEVEL_PERFWARN, "ACO PERFWARN:\n", file, line, fmt, args);
-   va_end(args);
 }
 
 void
@@ -213,7 +185,8 @@ validate_ir(Program* program)
             if (instr->opcode == aco_opcode::v_interp_p1ll_f16 ||
                 instr->opcode == aco_opcode::v_interp_p1lv_f16 ||
                 instr->opcode == aco_opcode::v_interp_p2_legacy_f16 ||
-                instr->opcode == aco_opcode::v_interp_p2_f16) {
+                instr->opcode == aco_opcode::v_interp_p2_f16 ||
+                instr->opcode == aco_opcode::v_interp_p2_hi_f16) {
                /* v_interp_*_fp16 are considered VINTRP by the compiler but
                 * they are emitted as VOP3.
                 */
@@ -366,6 +339,7 @@ validate_ir(Program* program)
                bool flat = instr->isFlatLike();
                bool can_be_undef = is_phi(instr) || instr->isEXP() || instr->isReduction() ||
                                    instr->opcode == aco_opcode::p_create_vector ||
+                                   instr->opcode == aco_opcode::p_start_linear_vgpr ||
                                    instr->opcode == aco_opcode::p_jump_to_epilog ||
                                    instr->opcode == aco_opcode::p_dual_src_export_gfx11 ||
                                    instr->opcode == aco_opcode::p_end_with_regs ||
@@ -380,6 +354,24 @@ validate_ir(Program* program)
                check(instr->operands[i].isFixed() || instr->operands[i].isTemp() ||
                         instr->operands[i].isConstant(),
                      "Uninitialized Operand", instr.get());
+            }
+         }
+
+         for (Operand& op : instr->operands) {
+            if (op.isFixed() || !op.hasRegClass() || !op.regClass().is_linear_vgpr() ||
+                op.isUndefined())
+               continue;
+
+            /* Check that linear vgprs are late kill: this is to ensure linear VGPR operands and
+             * normal VGPR definitions don't try to use the same register, which is problematic
+             * because of assignment restrictions. */
+            check(op.isLateKill(), "Linear VGPR operands must be late kill", instr.get());
+
+            /* Only kill linear VGPRs in top-level blocks. Otherwise, we might have to move linear
+             * VGPRs to make space for normal ones and that isn't possible inside control flow. */
+            if (op.isKill()) {
+               check(block.kind & block_kind_top_level,
+                     "Linear VGPR operands must only be killed at top-level blocks", instr.get());
             }
          }
 
@@ -416,7 +408,8 @@ validate_ir(Program* program)
 
             /* check num sgprs for VALU */
             if (instr->isVALU()) {
-               bool is_shift64 = instr->opcode == aco_opcode::v_lshlrev_b64 ||
+               bool is_shift64 = instr->opcode == aco_opcode::v_lshlrev_b64_e64 ||
+                                 instr->opcode == aco_opcode::v_lshlrev_b64 ||
                                  instr->opcode == aco_opcode::v_lshrrev_b64 ||
                                  instr->opcode == aco_opcode::v_ashrrev_i64;
                unsigned const_bus_limit = 1;
@@ -527,20 +520,26 @@ validate_ir(Program* program)
 
          switch (instr->format) {
          case Format::PSEUDO: {
-            if (instr->opcode == aco_opcode::p_create_vector) {
+            if (instr->opcode == aco_opcode::p_create_vector ||
+                instr->opcode == aco_opcode::p_start_linear_vgpr) {
                unsigned size = 0;
                for (const Operand& op : instr->operands) {
                   check(op.bytes() < 4 || size % 4 == 0, "Operand is not aligned", instr.get());
                   size += op.bytes();
                }
-               check(size == instr->definitions[0].bytes(),
-                     "Definition size does not match operand sizes", instr.get());
+               if (!instr->operands.empty() || instr->opcode == aco_opcode::p_create_vector) {
+                  check(size == instr->definitions[0].bytes(),
+                        "Definition size does not match operand sizes", instr.get());
+               }
                if (instr->definitions[0].regClass().type() == RegType::sgpr) {
                   for (const Operand& op : instr->operands) {
                      check(op.isConstant() || op.regClass().type() == RegType::sgpr,
                            "Wrong Operand type for scalar vector", instr.get());
                   }
                }
+               if (instr->opcode == aco_opcode::p_start_linear_vgpr)
+                  check(instr->definitions[0].regClass().is_linear_vgpr(),
+                        "Definition must be linear VGPR", instr.get());
             } else if (instr->opcode == aco_opcode::p_extract_vector) {
                check(!instr->operands[0].isConstant() && instr->operands[1].isConstant(),
                      "Wrong Operand types", instr.get());
@@ -680,15 +679,6 @@ validate_ir(Program* program)
                      instr->operands[i].isOfType(RegType::vgpr) || instr->operands[i].isUndefined(),
                      "Operands of p_dual_src_export_gfx11 must be VGPRs or undef", instr.get());
                }
-            } else if (instr->opcode == aco_opcode::p_start_linear_vgpr) {
-               check(instr->definitions.size() == 1, "Must have one definition", instr.get());
-               check(instr->operands.size() <= 1, "Must have one or zero operands", instr.get());
-               if (!instr->definitions.empty())
-                  check(instr->definitions[0].regClass().is_linear_vgpr(),
-                        "Definition must be linear VGPR", instr.get());
-               if (!instr->definitions.empty() && !instr->operands.empty())
-                  check(instr->definitions[0].bytes() == instr->operands[0].bytes(),
-                        "Operand size must match definition", instr.get());
             }
             break;
          }
@@ -732,6 +722,9 @@ validate_ir(Program* program)
                   instr.get());
             check(instr->operands.size() < 4 || instr->operands[3].isOfType(RegType::vgpr),
                   "VMEM write data must be vgpr", instr.get());
+            if (instr->operands.size() >= 3 && instr->operands[2].isConstant())
+               check(program->gfx_level < GFX12 || instr->operands[2].constantValue() == 0,
+                     "VMEM SOFFSET must not be non-zero constant on GFX12+", instr.get());
 
             const bool d16 =
                instr->opcode ==
@@ -810,8 +803,11 @@ validate_ir(Program* program)
                         check(instr->operands[i].regClass() == v1,
                               "GFX10 MIMG VADDR must be v1 if NSA is used", instr.get());
                      } else {
+                        unsigned num_scalar =
+                           program->gfx_level >= GFX12 ? (instr->operands.size() - 4) : 4;
                         if (instr->opcode != aco_opcode::image_bvh_intersect_ray &&
-                            instr->opcode != aco_opcode::image_bvh64_intersect_ray && i < 7) {
+                            instr->opcode != aco_opcode::image_bvh64_intersect_ray &&
+                            i < 3 + num_scalar) {
                            check(instr->operands[i].regClass() == v1,
                                  "first 4 GFX11 MIMG VADDR must be v1 if NSA is used", instr.get());
                         }
@@ -1069,6 +1065,7 @@ validate_subdword_definition(amd_gfx_level gfx_level, const aco_ptr<Instruction>
       return true;
 
    switch (instr->opcode) {
+   case aco_opcode::v_interp_p2_hi_f16:
    case aco_opcode::v_fma_mixhi_f16:
    case aco_opcode::buffer_load_ubyte_d16_hi:
    case aco_opcode::buffer_load_sbyte_d16_hi:
@@ -1096,7 +1093,7 @@ get_subdword_bytes_written(Program* program, const aco_ptr<Instruction>& instr, 
 
    if (instr->isPseudo())
       return gfx_level >= GFX8 ? def.bytes() : def.size() * 4u;
-   if (instr->isVALU()) {
+   if (instr->isVALU() || instr->isVINTRP()) {
       assert(def.bytes() <= 2);
       if (instr->isSDWA())
          return instr->sdwa().dst_sel.size();
@@ -1201,7 +1198,7 @@ validate_ra(Program* program)
       return false;
 
    bool err = false;
-   aco::live live_vars = aco::live_var_analysis(program);
+   aco::live_var_analysis(program);
    std::vector<std::vector<Temp>> phi_sgpr_ops(program->blocks.size());
    uint16_t sgpr_limit = get_addr_sgpr_from_waves(program, program->num_waves);
 
@@ -1290,7 +1287,7 @@ validate_ra(Program* program)
       std::array<unsigned, 2048> regs; /* register file in bytes */
       regs.fill(0);
 
-      IDSet live = live_vars.live_out[block.index];
+      IDSet live = program->live.live_out[block.index];
       /* remove killed p_phi sgpr operands */
       for (Temp tmp : phi_sgpr_ops[block.index])
          live.erase(tmp.id());

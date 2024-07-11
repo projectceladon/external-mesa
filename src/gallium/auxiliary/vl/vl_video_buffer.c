@@ -79,6 +79,7 @@ vl_video_buffer_plane_order(enum pipe_format format)
    case PIPE_FORMAT_NV12:
    case PIPE_FORMAT_NV21:
    case PIPE_FORMAT_Y8_U8_V8_444_UNORM:
+   case PIPE_FORMAT_Y8_U8_V8_440_UNORM:
    case PIPE_FORMAT_R8G8B8A8_UNORM:
    case PIPE_FORMAT_R8G8B8X8_UNORM:
    case PIPE_FORMAT_B8G8R8A8_UNORM:
@@ -535,5 +536,6 @@ vl_video_buffer_create_as_resource(struct pipe_context *pipe,
    struct pipe_video_buffer vidtemplate = *tmpl;
    vidtemplate.width = templ.width0;
    vidtemplate.height = templ.height0 * array_size;
+   vidtemplate.contiguous_planes = true;
    return vl_video_buffer_create_ex2(pipe, &vidtemplate, resources);
 }

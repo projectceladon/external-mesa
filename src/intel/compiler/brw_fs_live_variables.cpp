@@ -54,7 +54,7 @@ using namespace brw;
 
 void
 fs_live_variables::setup_one_read(struct block_data *bd,
-                                  int ip, const fs_reg &reg)
+                                  int ip, const brw_reg &reg)
 {
    int var = var_from_reg(reg);
    assert(var < num_vars);
@@ -72,7 +72,7 @@ fs_live_variables::setup_one_read(struct block_data *bd,
 
 void
 fs_live_variables::setup_one_write(struct block_data *bd, fs_inst *inst,
-                                   int ip, const fs_reg &reg)
+                                   int ip, const brw_reg &reg)
 {
    int var = var_from_reg(reg);
    assert(var < num_vars);
@@ -115,7 +115,7 @@ fs_live_variables::setup_def_use()
       foreach_inst_in_block(fs_inst, inst, block) {
          /* Set use[] for this instruction */
          for (unsigned int i = 0; i < inst->sources; i++) {
-            fs_reg reg = inst->src[i];
+            brw_reg reg = inst->src[i];
 
             if (reg.file != VGRF)
                continue;
@@ -130,7 +130,7 @@ fs_live_variables::setup_def_use()
 
          /* Set def[] for this instruction */
          if (inst->dst.file == VGRF) {
-            fs_reg reg = inst->dst;
+            brw_reg reg = inst->dst;
             for (unsigned j = 0; j < regs_written(inst); j++) {
                setup_one_write(bd, inst, ip, reg);
                reg.offset += REG_SIZE;
@@ -246,7 +246,7 @@ fs_live_variables::compute_start_end()
    }
 }
 
-fs_live_variables::fs_live_variables(const backend_shader *s)
+fs_live_variables::fs_live_variables(const fs_visitor *s)
    : devinfo(s->devinfo), cfg(s->cfg)
 {
    mem_ctx = ralloc_context(NULL);
@@ -317,7 +317,7 @@ fs_live_variables::~fs_live_variables()
 
 static bool
 check_register_live_range(const fs_live_variables *live, int ip,
-                          const fs_reg &reg, unsigned n)
+                          const brw_reg &reg, unsigned n)
 {
    const unsigned var = live->var_from_reg(reg);
 
@@ -334,7 +334,7 @@ check_register_live_range(const fs_live_variables *live, int ip,
 }
 
 bool
-fs_live_variables::validate(const backend_shader *s) const
+fs_live_variables::validate(const fs_visitor *s) const
 {
    int ip = 0;
 

@@ -9,6 +9,7 @@
 #include "sid_tables.h"
 
 #include "util/compiler.h"
+#include "util/hash_table.h"
 #include "util/u_debug.h"
 #include "util/u_math.h"
 #include "util/memstream.h"
@@ -41,20 +42,6 @@ DEBUG_GET_ONCE_BOOL_OPTION(color, "AMD_COLOR", true);
 #define O_COLOR_PURPLE (debug_get_option_color() ? COLOR_PURPLE : "")
 
 #define INDENT_PKT 8
-
-struct ac_ib_parser {
-   FILE *f;
-   uint32_t *ib;
-   unsigned num_dw;
-   const int *trace_ids;
-   unsigned trace_id_count;
-   enum amd_gfx_level gfx_level;
-   enum radeon_family family;
-   ac_debug_addr_callback addr_callback;
-   void *addr_callback_data;
-
-   unsigned cur_dw;
-};
 
 static void parse_gfx_compute_ib(FILE *f, struct ac_ib_parser *ib);
 
@@ -113,17 +100,13 @@ void ac_dump_reg(FILE *file, enum amd_gfx_level gfx_level, enum radeon_family fa
 
    if (reg) {
       const char *reg_name = sid_strings + reg->name_offset;
-      bool first_field = true;
 
       print_spaces(file, INDENT_PKT);
       fprintf(file, "%s%s%s <- ",
               O_COLOR_YELLOW, reg_name,
               O_COLOR_RESET);
 
-      if (!reg->num_fields) {
-         print_value(file, value, 32);
-         return;
-      }
+      print_value(file, value, 32);
 
       for (unsigned f = 0; f < reg->num_fields; f++) {
          const struct si_field *field = sid_fields_table + reg->fields_offset + f;
@@ -134,8 +117,7 @@ void ac_dump_reg(FILE *file, enum amd_gfx_level gfx_level, enum radeon_family fa
             continue;
 
          /* Indent the field. */
-         if (!first_field)
-            print_spaces(file, INDENT_PKT + strlen(reg_name) + 4);
+         print_spaces(file, INDENT_PKT + strlen(reg_name) + 4);
 
          /* Print the field. */
          fprintf(file, "%s = ", sid_strings + field->name_offset);
@@ -144,8 +126,6 @@ void ac_dump_reg(FILE *file, enum amd_gfx_level gfx_level, enum radeon_family fa
             fprintf(file, "%s\n", sid_strings + values_offsets[val]);
          else
             print_value(file, val, util_bitcount(field->mask));
-
-         first_field = false;
       }
       return;
    }
@@ -331,6 +311,9 @@ static void ac_parse_packet3(FILE *f, uint32_t header, struct ac_ib_parser *ib,
    case PKT3_SET_SH_REG:
    case PKT3_SET_SH_REG_INDEX:
       ac_parse_set_reg_packet(f, count, SI_SH_REG_OFFSET, ib);
+      break;
+   case PKT3_SET_UCONFIG_REG_PAIRS:
+      ac_parse_set_reg_pairs_packet(f, count, CIK_UCONFIG_REG_OFFSET, ib);
       break;
    case PKT3_SET_CONTEXT_REG_PAIRS:
       ac_parse_set_reg_pairs_packet(f, count, SI_CONTEXT_REG_OFFSET, ib);
@@ -640,6 +623,7 @@ static void ac_parse_packet3(FILE *f, uint32_t header, struct ac_ib_parser *ib,
       }
       break;
    case PKT3_DISPATCH_DIRECT:
+   case PKT3_DISPATCH_DIRECT_INTERLEAVED:
       ac_dump_reg(f, ib->gfx_level, ib->family, R_00B804_COMPUTE_DIM_X, ac_ib_get(ib), ~0);
       ac_dump_reg(f, ib->gfx_level, ib->family, R_00B808_COMPUTE_DIM_Y, ac_ib_get(ib), ~0);
       ac_dump_reg(f, ib->gfx_level, ib->family, R_00B80C_COMPUTE_DIM_Z, ac_ib_get(ib), ~0);
@@ -647,6 +631,7 @@ static void ac_parse_packet3(FILE *f, uint32_t header, struct ac_ib_parser *ib,
                   ac_ib_get(ib), ~0);
       break;
    case PKT3_DISPATCH_INDIRECT:
+   case PKT3_DISPATCH_INDIRECT_INTERLEAVED:
       if (count > 1)
          print_addr(ib, "ADDR", ac_ib_get64(ib), 12);
       else
@@ -690,6 +675,27 @@ static void ac_parse_packet3(FILE *f, uint32_t header, struct ac_ib_parser *ib,
       print_named_value(f, "SIZE", size, 32);
       break;
    }
+   case PKT3_DISPATCH_TASKMESH_GFX:
+      tmp = ac_ib_get(ib);
+      print_named_value(f, "RING_ENTRY_REG", (tmp >> 16) & 0xffff, 16);
+      print_named_value(f, "XYZ_DIM_REG", (tmp & 0xffff), 16);
+      tmp = ac_ib_get(ib);
+      print_named_value(f, "THREAD_TRACE_MARKER_ENABLE", (tmp >> 31) & 0x1, 1);
+      if (ib->gfx_level >= GFX11) {
+         print_named_value(f, "XYZ_DIM_ENABLE", (tmp >> 30) & 0x1, 1);
+         print_named_value(f, "MODE1_ENABLE", (tmp >> 29) & 0x1, 1);
+         print_named_value(f, "LINEAR_DISPATCH_ENABLED", (tmp >> 28) & 0x1, 1);
+      }
+      print_named_value(f, "DI_SRC_SEL_AUTO_INDEX", ac_ib_get(ib), ~0);
+      break;
+   case PKT3_DISPATCH_TASKMESH_DIRECT_ACE:
+      print_named_value(f, "X_DIM", ac_ib_get(ib), ~0);
+      print_named_value(f, "Y_DIM", ac_ib_get(ib), ~0);
+      print_named_value(f, "Z_DIM", ac_ib_get(ib), ~0);
+      ac_dump_reg(f, ib->gfx_level, ib->family, R_00B800_COMPUTE_DISPATCH_INITIATOR,
+                  ac_ib_get(ib), ~0);
+      print_named_value(f, "RING_ENTRY_REG", ac_ib_get(ib), 16);
+      break;
    }
 
    /* print additional dwords */
@@ -709,6 +715,12 @@ static void parse_gfx_compute_ib(FILE *f, struct ac_ib_parser *ib)
    int current_trace_id = -1;
 
    while (ib->cur_dw < ib->num_dw) {
+      if (ib->annotations) {
+         struct hash_entry *marker = _mesa_hash_table_search(ib->annotations, ib->ib + ib->cur_dw);
+         if (marker)
+            fprintf(f, "\n%s:", (char *)marker->data);
+      }
+
       uint32_t header = ac_ib_get(ib);
       unsigned type = PKT_TYPE_G(header);
 
@@ -949,59 +961,34 @@ static void parse_sdma_ib(FILE *f, struct ac_ib_parser *ib)
  *                      be NULL.
  * \param addr_callback_data user data for addr_callback
  */
-void ac_parse_ib_chunk(FILE *f, uint32_t *ib_ptr, int num_dw, const int *trace_ids,
-                       unsigned trace_id_count, enum amd_gfx_level gfx_level,
-                       enum radeon_family family, enum amd_ip_type ip_type,
-                       ac_debug_addr_callback addr_callback, void *addr_callback_data)
+void ac_parse_ib_chunk(struct ac_ib_parser *ib)
 {
-   struct ac_ib_parser ib = {0};
-   ib.ib = ib_ptr;
-   ib.num_dw = num_dw;
-   ib.trace_ids = trace_ids;
-   ib.trace_id_count = trace_id_count;
-   ib.gfx_level = gfx_level;
-   ib.family = family;
-   ib.addr_callback = addr_callback;
-   ib.addr_callback_data = addr_callback_data;
+   struct ac_ib_parser tmp_ib = *ib;
 
    char *out;
    size_t outsize;
    struct u_memstream mem;
    u_memstream_open(&mem, &out, &outsize);
    FILE *const memf = u_memstream_get(&mem);
-   ib.f = memf;
+   tmp_ib.f = memf;
 
-   if (ip_type == AMD_IP_GFX || ip_type == AMD_IP_COMPUTE)
-      parse_gfx_compute_ib(memf, &ib);
-   else if (ip_type == AMD_IP_SDMA)
-      parse_sdma_ib(memf, &ib);
+   if (ib->ip_type == AMD_IP_GFX || ib->ip_type == AMD_IP_COMPUTE)
+      parse_gfx_compute_ib(memf, &tmp_ib);
+   else if (ib->ip_type == AMD_IP_SDMA)
+      parse_sdma_ib(memf, &tmp_ib);
    else
       unreachable("unsupported IP type");
 
    u_memstream_close(&mem);
 
    if (out) {
-      format_ib_output(f, out);
+      format_ib_output(ib->f, out);
       free(out);
    }
 
-   if (ib.cur_dw > ib.num_dw) {
+   if (tmp_ib.cur_dw > tmp_ib.num_dw) {
       printf("\nPacket ends after the end of IB.\n");
       exit(1);
-   }
-}
-
-static const char *ip_name(const enum amd_ip_type ip)
-{
-   switch (ip) {
-   case AMD_IP_GFX:
-      return "GFX";
-   case AMD_IP_COMPUTE:
-      return "COMPUTE";
-   case AMD_IP_SDMA:
-      return "SDMA";
-   default:
-      return "Unknown";
    }
 }
 
@@ -1021,14 +1008,13 @@ static const char *ip_name(const enum amd_ip_type ip)
  *                      be NULL.
  * \param addr_callback_data user data for addr_callback
  */
-void ac_parse_ib(FILE *f, uint32_t *ib, int num_dw, const int *trace_ids, unsigned trace_id_count,
-                 const char *name, enum amd_gfx_level gfx_level, enum radeon_family family,
-                 enum amd_ip_type ip_type, ac_debug_addr_callback addr_callback, void *addr_callback_data)
+void ac_parse_ib(struct ac_ib_parser *ib, const char *name)
 {
-   fprintf(f, "------------------ %s begin - %s ------------------\n", name, ip_name(ip_type));
+   fprintf(ib->f, "------------------ %s begin - %s ------------------\n", name,
+           ac_get_ip_type_string(NULL, ib->ip_type));
 
-   ac_parse_ib_chunk(f, ib, num_dw, trace_ids, trace_id_count, gfx_level, family, ip_type,
-                     addr_callback, addr_callback_data);
+   ac_parse_ib_chunk(ib);
 
-   fprintf(f, "------------------- %s end - %s -------------------\n\n", name, ip_name(ip_type));
+   fprintf(ib->f, "------------------- %s end - %s -------------------\n\n", name,
+           ac_get_ip_type_string(NULL, ib->ip_type));
 }

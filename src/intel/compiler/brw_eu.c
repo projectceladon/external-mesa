@@ -35,7 +35,7 @@
 #include "brw_disasm.h"
 #include "brw_eu_defines.h"
 #include "brw_eu.h"
-#include "brw_shader.h"
+#include "brw_private.h"
 #include "intel_gfx_ver_enum.h"
 #include "dev/intel_debug.h"
 
@@ -96,10 +96,10 @@ brw_swap_cmod(enum brw_conditional_mod cmod)
 static unsigned
 imm_shift(enum brw_reg_type type, unsigned i)
 {
-   assert(type != BRW_REGISTER_TYPE_UV && type != BRW_REGISTER_TYPE_V &&
+   assert(type != BRW_TYPE_UV && type != BRW_TYPE_V &&
           "Not implemented.");
 
-   if (type == BRW_REGISTER_TYPE_VF)
+   if (type == BRW_TYPE_VF)
       return 8 * (i & 3);
    else
       return 0;
@@ -180,32 +180,6 @@ void brw_set_default_flag_reg(struct brw_codegen *p, int reg, int subreg)
 void brw_set_default_access_mode( struct brw_codegen *p, unsigned access_mode )
 {
    p->current->access_mode = access_mode;
-}
-
-void
-brw_set_default_compression_control(struct brw_codegen *p,
-			    enum brw_compression compression_control)
-{
-   switch (compression_control) {
-   case BRW_COMPRESSION_NONE:
-      /* This is the "use the first set of bits of dmask/vmask/arf
-       * according to execsize" option.
-       */
-      p->current->group = 0;
-      break;
-   case BRW_COMPRESSION_2NDHALF:
-      /* For SIMD8, this is "use the second set of 8 bits." */
-      p->current->group = 8;
-      break;
-   case BRW_COMPRESSION_COMPRESSED:
-      /* For SIMD16 instruction compression, use the first set of 16 bits
-       * since we don't do SIMD32 dispatch.
-       */
-      p->current->group = 0;
-      break;
-   default:
-      unreachable("not reached");
-   }
 }
 
 /**
@@ -296,7 +270,6 @@ brw_init_codegen(const struct brw_isa_info *isa,
    brw_set_default_exec_size(p, BRW_EXECUTE_8);
    brw_set_default_mask_control(p, BRW_MASK_ENABLE); /* what does this do? */
    brw_set_default_saturate(p, 0);
-   brw_set_default_compression_control(p, BRW_COMPRESSION_NONE);
 
    /* Set up control flow stack */
    p->if_stack_depth = 0;
@@ -306,7 +279,6 @@ brw_init_codegen(const struct brw_isa_info *isa,
    p->loop_stack_depth = 0;
    p->loop_stack_array_size = 16;
    p->loop_stack = rzalloc_array(mem_ctx, int, p->loop_stack_array_size);
-   p->if_depth_in_loop = rzalloc_array(mem_ctx, int, p->loop_stack_array_size);
 }
 
 
@@ -669,8 +641,6 @@ static const struct opcode_desc opcode_descs[] = {
    { BRW_OPCODE_CBIT,     77,  "cbit",    1,    1,    GFX_ALL },
    { BRW_OPCODE_ADDC,     78,  "addc",    2,    1,    GFX_ALL },
    { BRW_OPCODE_SUBB,     79,  "subb",    2,    1,    GFX_ALL },
-   { BRW_OPCODE_SAD2,     80,  "sad2",    2,    1,    GFX_ALL },
-   { BRW_OPCODE_SADA2,    81,  "sada2",   2,    1,    GFX_ALL },
    { BRW_OPCODE_ADD3,     82,  "add3",    3,    1,    GFX_GE(GFX125) },
    { BRW_OPCODE_DP4,      84,  "dp4",     2,    1,    GFX_LT(GFX11) },
    { BRW_OPCODE_DPH,      85,  "dph",     2,    1,    GFX_LT(GFX11) },
@@ -756,7 +726,6 @@ brw_num_sources_from_inst(const struct brw_isa_info *isa,
    case BRW_MATH_FUNCTION_RSQ:
    case BRW_MATH_FUNCTION_SIN:
    case BRW_MATH_FUNCTION_COS:
-   case BRW_MATH_FUNCTION_SINCOS:
    case GFX8_MATH_FUNCTION_INVM:
    case GFX8_MATH_FUNCTION_RSQRTM:
       return 1;

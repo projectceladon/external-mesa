@@ -112,6 +112,40 @@ nvk_get_nir_options(struct vk_physical_device *vk_pdev,
       return nvk_cg_nir_options(pdev, stage);
 }
 
+nir_address_format
+nvk_ubo_addr_format(const struct nvk_physical_device *pdev,
+                    VkPipelineRobustnessBufferBehaviorEXT robustness)
+{
+   if (nvk_use_bindless_cbuf(&pdev->info)) {
+      return nir_address_format_vec2_index_32bit_offset;
+   } else {
+      switch (robustness) {
+      case VK_PIPELINE_ROBUSTNESS_BUFFER_BEHAVIOR_DISABLED_EXT:
+         return nir_address_format_64bit_global_32bit_offset;
+      case VK_PIPELINE_ROBUSTNESS_BUFFER_BEHAVIOR_ROBUST_BUFFER_ACCESS_EXT:
+      case VK_PIPELINE_ROBUSTNESS_BUFFER_BEHAVIOR_ROBUST_BUFFER_ACCESS_2_EXT:
+         return nir_address_format_64bit_bounded_global;
+      default:
+         unreachable("Invalid robust buffer access behavior");
+      }
+   }
+}
+
+nir_address_format
+nvk_ssbo_addr_format(const struct nvk_physical_device *pdev,
+                     VkPipelineRobustnessBufferBehaviorEXT robustness)
+{
+   switch (robustness) {
+   case VK_PIPELINE_ROBUSTNESS_BUFFER_BEHAVIOR_DISABLED_EXT:
+      return nir_address_format_64bit_global_32bit_offset;
+   case VK_PIPELINE_ROBUSTNESS_BUFFER_BEHAVIOR_ROBUST_BUFFER_ACCESS_EXT:
+   case VK_PIPELINE_ROBUSTNESS_BUFFER_BEHAVIOR_ROBUST_BUFFER_ACCESS_2_EXT:
+      return nir_address_format_64bit_bounded_global;
+   default:
+      unreachable("Invalid robust buffer access behavior");
+   }
+}
+
 static struct spirv_to_nir_options
 nvk_get_spirv_options(struct vk_physical_device *vk_pdev,
                       UNUSED gl_shader_stage stage,
@@ -121,49 +155,9 @@ nvk_get_spirv_options(struct vk_physical_device *vk_pdev,
       container_of(vk_pdev, struct nvk_physical_device, vk);
 
    return (struct spirv_to_nir_options) {
-      .caps = {
-         .demote_to_helper_invocation = true,
-         .descriptor_array_dynamic_indexing = true,
-         .descriptor_array_non_uniform_indexing = true,
-         .descriptor_indexing = true,
-         .device_group = true,
-         .draw_parameters = true,
-         .float_controls = true,
-         .float64 = true,
-         .fragment_barycentric = true,
-         .geometry_streams = true,
-         .image_atomic_int64 = true,
-         .image_read_without_format = true,
-         .image_write_without_format = true,
-         .int8 = true,
-         .int16 = true,
-         .int64 = true,
-         .int64_atomics = true,
-         .min_lod = true,
-         .multiview = true,
-         .physical_storage_buffer_address = true,
-         .runtime_descriptor_array = true,
-         .shader_clock = true,
-         .shader_sm_builtins_nv = true,
-         .shader_viewport_index_layer = true,
-         .storage_8bit = true,
-         .storage_16bit = true,
-         .subgroup_arithmetic = true,
-         .subgroup_ballot = true,
-         .subgroup_basic = true,
-         .subgroup_quad = true,
-         .subgroup_shuffle = true,
-         .subgroup_vote = true,
-         .tessellation = true,
-         .transform_feedback = true,
-         .variable_pointers = true,
-         .vk_memory_model_device_scope = true,
-         .vk_memory_model = true,
-         .workgroup_memory_explicit_layout = true,
-      },
-      .ssbo_addr_format = nvk_buffer_addr_format(rs->storage_buffers),
+      .ssbo_addr_format = nvk_ssbo_addr_format(pdev, rs->storage_buffers),
       .phys_ssbo_addr_format = nir_address_format_64bit_global,
-      .ubo_addr_format = nvk_buffer_addr_format(rs->uniform_buffers),
+      .ubo_addr_format = nvk_ubo_addr_format(pdev, rs->uniform_buffers),
       .shared_addr_format = nir_address_format_32bit_offset,
       .min_ssbo_alignment = NVK_MIN_SSBO_ALIGNMENT,
       .min_ubo_alignment = nvk_min_cbuf_alignment(&pdev->info),
@@ -194,6 +188,11 @@ nvk_populate_fs_key(struct nak_fs_key *key,
    key->sample_locations_cb = 0;
    key->sample_locations_offset = nvk_root_descriptor_offset(draw.sample_locations);
 
+   /* Turn underestimate on when no state is availaible or if explicitly set */
+   if (state == NULL || state->rs == NULL ||
+       state->rs->conservative_mode == VK_CONSERVATIVE_RASTERIZATION_MODE_UNDERESTIMATE_EXT)
+      key->uses_underestimate = true;
+
    if (state == NULL)
       return;
 
@@ -201,12 +200,32 @@ nvk_populate_fs_key(struct nak_fs_key *key,
        VK_PIPELINE_CREATE_2_DEPTH_STENCIL_ATTACHMENT_FEEDBACK_LOOP_BIT_EXT)
       key->zs_self_dep = true;
 
+   /* We force per-sample interpolation whenever sampleShadingEnable is set
+    * regardless of minSampleShading or rasterizationSamples.
+    *
+    * When sampleShadingEnable is set, few guarantees are made about the
+    * location of interpolation of the inputs.  The only real guarantees are
+    * that the inputs are interpolated within the pixel and that you get at
+    * least `rasterizationSamples * minSampleShading` unique positions.
+    * Importantly, it does not require that when `rasterizationSamples *
+    * minSampleShading <= 1.0` that those positions are at the fragment
+    * center.  Therefore, it's valid to just always do per-sample (which maps
+    * to CENTROID on NVIDIA hardware) all the time and let the hardware sort
+    * it out based on what we set in HYBRID_ANTI_ALIAS_CONTROL::passes.
+    *
+    * Also, we set HYBRID_ANTI_ALIAS_CONTROL::centroid at draw time based on
+    * `rasterizationSamples * minSampleShading` so it should be per-pixel
+    * whenever we're running only a single pass.  However, this would still be
+    * correct even if it got interpolated at some other sample.
+    *
+    * The one caveat here is that we have to be careful about gl_SampleMaskIn.
+    * When `nak_fs_key::force_sample_shading = true` we also turn any reads of
+    * gl_SampleMaskIn into `1 << gl_SampleID` because the hardware sample mask
+    * is actually per-fragment, not per-pass.  We handle this by smashing
+    * minSampleShading to 1.0 whenever gl_SampleMaskIn is read.
+    */
    const struct vk_multisample_state *ms = state->ms;
-   if (ms == NULL || ms->rasterization_samples <= 1)
-      return;
-
-   if (ms->sample_shading_enable &&
-       (ms->rasterization_samples * ms->min_sample_shading) > 1.0)
+   if (ms != NULL && ms->sample_shading_enable)
       key->force_sample_shading = true;
 }
 
@@ -230,54 +249,84 @@ nvk_hash_graphics_state(struct vk_physical_device *device,
 }
 
 static bool
-lower_load_global_constant_offset_instr(nir_builder *b,
-                                        nir_intrinsic_instr *intrin,
-                                        UNUSED void *_data)
+lower_load_intrinsic(nir_builder *b, nir_intrinsic_instr *load,
+                     UNUSED void *_data)
 {
-   if (intrin->intrinsic != nir_intrinsic_load_global_constant_offset &&
-       intrin->intrinsic != nir_intrinsic_load_global_constant_bounded)
+   switch (load->intrinsic) {
+   case nir_intrinsic_load_ubo: {
+      b->cursor = nir_before_instr(&load->instr);
+
+      nir_def *index = load->src[0].ssa;
+      nir_def *offset = load->src[1].ssa;
+      const enum gl_access_qualifier access = nir_intrinsic_access(load);
+      const uint32_t align_mul = nir_intrinsic_align_mul(load);
+      const uint32_t align_offset = nir_intrinsic_align_offset(load);
+
+      nir_def *val;
+      if (load->src[0].ssa->num_components == 1) {
+         val = nir_ldc_nv(b, load->num_components, load->def.bit_size,
+                           index, offset, .access = access,
+                           .align_mul = align_mul,
+                           .align_offset = align_offset);
+      } else if (load->src[0].ssa->num_components == 2) {
+         nir_def *handle = nir_pack_64_2x32(b, load->src[0].ssa);
+         val = nir_ldcx_nv(b, load->num_components, load->def.bit_size,
+                           handle, offset, .access = access,
+                           .align_mul = align_mul,
+                           .align_offset = align_offset);
+      } else {
+         unreachable("Invalid UBO index");
+      }
+      nir_def_rewrite_uses(&load->def, val);
+      return true;
+   }
+
+   case nir_intrinsic_load_global_constant_offset:
+   case nir_intrinsic_load_global_constant_bounded: {
+      b->cursor = nir_before_instr(&load->instr);
+
+      nir_def *base_addr = load->src[0].ssa;
+      nir_def *offset = load->src[1].ssa;
+
+      nir_def *zero = NULL;
+      if (load->intrinsic == nir_intrinsic_load_global_constant_bounded) {
+         nir_def *bound = load->src[2].ssa;
+
+         unsigned bit_size = load->def.bit_size;
+         assert(bit_size >= 8 && bit_size % 8 == 0);
+         unsigned byte_size = bit_size / 8;
+
+         zero = nir_imm_zero(b, load->num_components, bit_size);
+
+         unsigned load_size = byte_size * load->num_components;
+
+         nir_def *sat_offset =
+            nir_umin(b, offset, nir_imm_int(b, UINT32_MAX - (load_size - 1)));
+         nir_def *in_bounds =
+            nir_ilt(b, nir_iadd_imm(b, sat_offset, load_size - 1), bound);
+
+         nir_push_if(b, in_bounds);
+      }
+
+      nir_def *val =
+         nir_build_load_global_constant(b, load->def.num_components,
+                                        load->def.bit_size,
+                                        nir_iadd(b, base_addr, nir_u2u64(b, offset)),
+                                        .align_mul = nir_intrinsic_align_mul(load),
+                                        .align_offset = nir_intrinsic_align_offset(load));
+
+      if (load->intrinsic == nir_intrinsic_load_global_constant_bounded) {
+         nir_pop_if(b, NULL);
+         val = nir_if_phi(b, val, zero);
+      }
+
+      nir_def_rewrite_uses(&load->def, val);
+      return true;
+   }
+
+   default:
       return false;
-
-   b->cursor = nir_before_instr(&intrin->instr);
-
-   nir_def *base_addr = intrin->src[0].ssa;
-   nir_def *offset = intrin->src[1].ssa;
-
-   nir_def *zero = NULL;
-   if (intrin->intrinsic == nir_intrinsic_load_global_constant_bounded) {
-      nir_def *bound = intrin->src[2].ssa;
-
-      unsigned bit_size = intrin->def.bit_size;
-      assert(bit_size >= 8 && bit_size % 8 == 0);
-      unsigned byte_size = bit_size / 8;
-
-      zero = nir_imm_zero(b, intrin->num_components, bit_size);
-
-      unsigned load_size = byte_size * intrin->num_components;
-
-      nir_def *sat_offset =
-         nir_umin(b, offset, nir_imm_int(b, UINT32_MAX - (load_size - 1)));
-      nir_def *in_bounds =
-         nir_ilt(b, nir_iadd_imm(b, sat_offset, load_size - 1), bound);
-
-      nir_push_if(b, in_bounds);
    }
-
-   nir_def *val =
-      nir_build_load_global_constant(b, intrin->def.num_components,
-                                     intrin->def.bit_size,
-                                     nir_iadd(b, base_addr, nir_u2u64(b, offset)),
-                                     .align_mul = nir_intrinsic_align_mul(intrin),
-                                     .align_offset = nir_intrinsic_align_offset(intrin));
-
-   if (intrin->intrinsic == nir_intrinsic_load_global_constant_bounded) {
-      nir_pop_if(b, NULL);
-      val = nir_if_phi(b, val, zero);
-   }
-
-   nir_def_rewrite_uses(&intrin->def, val);
-
-   return true;
 }
 
 struct lower_ycbcr_state {
@@ -385,7 +434,7 @@ nvk_lower_nir(struct nvk_device *dev, nir_shader *nir,
    /* TODO: Kepler image lowering requires image params to be loaded from the
     * descriptor set which we don't currently support.
     */
-   assert(dev->pdev->info.cls_eng3d >= MAXWELL_A || !nir_has_image_var(nir));
+   assert(pdev->info.cls_eng3d >= MAXWELL_A || !nir_has_image_var(nir));
 
    struct nvk_cbuf_map *cbuf_map = NULL;
    if (use_nak(pdev, nir->info.stage) &&
@@ -408,16 +457,16 @@ nvk_lower_nir(struct nvk_device *dev, nir_shader *nir,
       };
    }
 
-   NIR_PASS(_, nir, nvk_nir_lower_descriptors, rs,
+   NIR_PASS(_, nir, nvk_nir_lower_descriptors, pdev, rs,
             set_layout_count, set_layouts, cbuf_map);
    NIR_PASS(_, nir, nir_lower_explicit_io, nir_var_mem_global,
             nir_address_format_64bit_global);
    NIR_PASS(_, nir, nir_lower_explicit_io, nir_var_mem_ssbo,
-            nvk_buffer_addr_format(rs->storage_buffers));
+            nvk_ssbo_addr_format(pdev, rs->storage_buffers));
    NIR_PASS(_, nir, nir_lower_explicit_io, nir_var_mem_ubo,
-            nvk_buffer_addr_format(rs->uniform_buffers));
+            nvk_ubo_addr_format(pdev, rs->uniform_buffers));
    NIR_PASS(_, nir, nir_shader_intrinsics_pass,
-            lower_load_global_constant_offset_instr, nir_metadata_none, NULL);
+            lower_load_intrinsic, nir_metadata_none, NULL);
 
    if (!nir->info.shared_memory_explicit_layout) {
       NIR_PASS(_, nir, nir_lower_vars_to_explicit_types,
@@ -533,9 +582,11 @@ nvk_compile_nir(struct nvk_device *dev, nir_shader *nir,
 VkResult
 nvk_shader_upload(struct nvk_device *dev, struct nvk_shader *shader)
 {
+   struct nvk_physical_device *pdev = nvk_device_physical(dev);
+
    uint32_t hdr_size = 0;
    if (shader->info.stage != MESA_SHADER_COMPUTE) {
-      if (dev->pdev->info.cls_eng3d >= TURING_A)
+      if (pdev->info.cls_eng3d >= TURING_A)
          hdr_size = TU102_SHADER_HEADER_SIZE;
       else
          hdr_size = GF100_SHADER_HEADER_SIZE;
@@ -544,11 +595,11 @@ nvk_shader_upload(struct nvk_device *dev, struct nvk_shader *shader)
    /* Fermi   needs 0x40 alignment
     * Kepler+ needs the first instruction to be 0x80 aligned, so we waste 0x30 bytes
     */
-   int alignment = dev->pdev->info.cls_eng3d >= KEPLER_A ? 0x80 : 0x40;
+   int alignment = pdev->info.cls_eng3d >= KEPLER_A ? 0x80 : 0x40;
 
    uint32_t total_size = 0;
-   if (dev->pdev->info.cls_eng3d >= KEPLER_A &&
-       dev->pdev->info.cls_eng3d < TURING_A &&
+   if (pdev->info.cls_eng3d >= KEPLER_A &&
+       pdev->info.cls_eng3d < TURING_A &&
        hdr_size > 0) {
       /* The instructions are what has to be aligned so we need to start at a
        * small offset (0x30 B) into the upload area.
@@ -565,7 +616,7 @@ nvk_shader_upload(struct nvk_device *dev, struct nvk_shader *shader)
 
    uint32_t data_offset = 0;
    if (shader->data_size > 0) {
-      total_size = align(total_size, nvk_min_cbuf_alignment(&dev->pdev->info));
+      total_size = align(total_size, nvk_min_cbuf_alignment(&pdev->info));
       data_offset = total_size;
       total_size += shader->data_size;
    }
@@ -592,7 +643,7 @@ nvk_shader_upload(struct nvk_device *dev, struct nvk_shader *shader)
       shader->upload_size = total_size;
 
       shader->hdr_addr = shader->upload_addr + hdr_offset;
-      if (dev->pdev->info.cls_eng3d < VOLTA_A) {
+      if (pdev->info.cls_eng3d < VOLTA_A) {
          const uint64_t heap_base_addr =
             nvk_heap_contiguous_base_address(&dev->shader_heap);
          assert(shader->upload_addr - heap_base_addr < UINT32_MAX);

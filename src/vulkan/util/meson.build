@@ -1,22 +1,5 @@
 # Copyright © 2017 Intel Corporation
-
-# Permission is hereby granted, free of charge, to any person obtaining a copy
-# of this software and associated documentation files (the "Software"), to deal
-# in the Software without restriction, including without limitation the rights
-# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-# copies of the Software, and to permit persons to whom the Software is
-# furnished to do so, subject to the following conditions:
-
-# The above copyright notice and this permission notice shall be included in
-# all copies or substantial portions of the Software.
-
-# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-# SOFTWARE.
+# SPDX-License-Identifier: MIT
 
 # Mesa-local imports in the Python files must be declared here for correct
 # dependency tracking.
@@ -52,13 +35,11 @@ vk_physical_device_features_gen_depend_files = [
 vk_physical_device_properties_gen_depend_files = [
   files('vk_extensions.py'),
 ]
+vk_physical_device_spirv_caps_gen_depend_files = [
+  files('vk_extensions.py'),
+  files('vk_physical_device_features_gen.py'),
+]
 vk_synchronization_helpers_gen_depend_files = [
-  files('vk_extensions.py'),
-]
-vk_enum_to_str_depend_files = [
-  files('vk_extensions.py'),
-]
-vk_struct_type_cast_depend_files = [
   files('vk_extensions.py'),
 ]
 
@@ -69,19 +50,13 @@ vk_cmd_queue_gen = files('vk_cmd_queue_gen.py')
 vk_dispatch_trampolines_gen = files('vk_dispatch_trampolines_gen.py')
 vk_physical_device_features_gen = files('vk_physical_device_features_gen.py')
 vk_physical_device_properties_gen = files('vk_physical_device_properties_gen.py')
+vk_physical_device_spirv_caps_gen = files('vk_physical_device_spirv_caps_gen.py')
 vk_synchronization_helpers_gen = files('vk_synchronization_helpers_gen.py')
 
 files_vulkan_util = files(
   'vk_alloc.c',
-  'vk_alloc.h',
   'vk_format.c',
   'vk_util.c',
-  'vk_util.h',
-)
-
-files_vulkan_util_compiler = files(
-  'vk_util_compiler.c',
-  'vk_util_compiler.h',
 )
 
 vk_dispatch_table = custom_target(
@@ -105,7 +80,6 @@ vk_enum_to_str = custom_target(
     '--outdir', meson.current_build_dir(),
     '--beta', with_vulkan_beta.to_string()
   ],
-  depend_files : vk_enum_to_str_depend_files,
 )
 
 vk_struct_type_cast = custom_target(
@@ -117,7 +91,6 @@ vk_struct_type_cast = custom_target(
     '--outdir', meson.current_build_dir(),
     '--beta', with_vulkan_beta.to_string()
   ],
-  depend_files : vk_enum_to_str_depend_files,
 )
 
 vk_extensions = custom_target(
@@ -131,18 +104,12 @@ vk_extensions = custom_target(
   depend_files : vk_extensions_gen_depend_files,
 )
 
-vulkan_util_deps = [vulkan_wsi_deps, idep_mesautil]
-if with_vk_compiler
-  files_vulkan_util += files_vulkan_util_compiler
-  vulkan_util_deps += [idep_nir_headers]
-endif
-
 libvulkan_util = static_library(
   'vulkan_util',
   [files_vulkan_util, vk_dispatch_table, vk_enum_to_str,
    vk_struct_type_cast, vk_extensions],
   include_directories : [inc_include, inc_src],
-  dependencies : [vulkan_util_deps],
+  dependencies : [vulkan_wsi_deps, idep_mesautil, idep_nir_headers],
   c_args : [c_msvc_compat_args],
   gnu_symbol_visibility : 'hidden',
   build_by_default : false,

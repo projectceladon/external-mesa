@@ -1,22 +1,5 @@
 # Copyright © 2017 Intel Corporation
-
-# Permission is hereby granted, free of charge, to any person obtaining a copy
-# of this software and associated documentation files (the "Software"), to deal
-# in the Software without restriction, including without limitation the rights
-# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-# copies of the Software, and to permit persons to whom the Software is
-# furnished to do so, subject to the following conditions:
-
-# The above copyright notice and this permission notice shall be included in
-# all copies or substantial portions of the Software.
-
-# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-# SOFTWARE.
+# SPDX-License-Identifier: MIT
 
 libintel_compiler_elk_files = files(
   'elk_cfg.cpp',
@@ -152,6 +135,13 @@ libintel_compiler_elk = static_library(
   build_by_default : false,
 )
 
+idep_intel_compiler_elk = declare_dependency(
+  link_with : [libintel_compiler_elk],
+  dependencies : [
+    idep_nir,
+  ],
+)
+
 if with_tests
   test(
     'intel_compiler_elk_tests',
@@ -175,9 +165,10 @@ if with_tests
       ir_expression_operation_h,
       include_directories : [inc_include, inc_src, inc_intel],
       link_with : [
-        libintel_compiler_elk, libintel_common, libisl
+        libintel_common, libisl
       ],
-      dependencies : [idep_gtest, idep_nir, idep_mesautil, idep_intel_dev],
+      dependencies : [idep_gtest, idep_nir, idep_mesautil, idep_intel_dev,
+                      idep_intel_compiler_elk],
     ),
     suite : ['intel'],
     protocol : 'gtest',
@@ -203,9 +194,9 @@ elk_lex_yy_c = custom_target(
 elk_asm_tool = executable(
   'elk_asm',
   ['elk_asm_tool.c', elk_gram_tab[0], elk_gram_tab[1], elk_lex_yy_c],
-  dependencies : [idep_mesautil, dep_thread, idep_intel_dev],
+  dependencies : [idep_mesautil, dep_thread, idep_intel_dev, idep_intel_compiler_elk],
   include_directories : [inc_include, inc_src, inc_intel],
-  link_with : [libintel_common, libintel_compiler_elk],
+  link_with : [libintel_common],
   c_args : [no_override_init_args],
   gnu_symbol_visibility : 'hidden',
   install : true
@@ -241,9 +232,9 @@ endforeach
 elk_disasm_tool = executable(
   'elk_disasm',
   files('elk_disasm_tool.c'),
-  dependencies : [idep_mesautil, dep_thread, idep_intel_dev],
+  dependencies : [idep_mesautil, dep_thread, idep_intel_dev, idep_intel_compiler_elk],
   include_directories : [inc_include, inc_src, inc_intel],
-  link_with : [libintel_common, libintel_compiler_elk],
+  link_with : [libintel_common],
   c_args : [no_override_init_args],
   gnu_symbol_visibility : 'hidden',
   install : true

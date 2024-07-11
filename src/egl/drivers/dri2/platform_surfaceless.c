@@ -29,7 +29,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
-#include <xf86drm.h>
+#include "util/libdrm.h"
 #include <sys/stat.h>
 #include <sys/types.h>
 
@@ -189,6 +189,8 @@ surfaceless_get_capability(void *loaderPrivate, enum dri_loader_cap cap)
    /* Note: loaderPrivate is _EGLDisplay* */
    switch (cap) {
    case DRI_LOADER_CAP_FP16:
+      return 1;
+   case DRI_LOADER_CAP_RGBA_ORDERING:
       return 1;
    default:
       return 0;

@@ -1,23 +1,6 @@
 # Copyright © 2017 Dylan Baker
 # Copyright © 2018 Intel Corporation
-
-# Permission is hereby granted, free of charge, to any person obtaining a copy
-# of this software and associated documentation files (the "Software"), to deal
-# in the Software without restriction, including without limitation the rights
-# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-# copies of the Software, and to permit persons to whom the Software is
-# furnished to do so, subject to the following conditions:
-
-# The above copyright notice and this permission notice shall be included in
-# all copies or substantial portions of the Software.
-
-# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-# SOFTWARE.
+# SPDX-License-Identifier: MIT
 
 # TODO: support non-static targets
 # Static targets are always enabled in autotools (unless you modify
@@ -103,6 +86,7 @@ foreach d : [[with_gallium_kmsro, [
                'stm_dri.so',
                'sun4i-drm_dri.so',
                'udl_dri.so',
+               'vkms_dri.so',
                'zynqmp-dpsub_dri.so',
              ]],
              [with_gallium_radeonsi, 'radeonsi_dri.so'],
@@ -112,7 +96,7 @@ foreach d : [[with_gallium_kmsro, [
              [with_gallium_softpipe and with_gallium_drisw_kms, 'kms_swrast_dri.so'],
              [with_gallium_v3d, 'v3d_dri.so'],
              [with_gallium_vc4, 'vc4_dri.so'],
-             [with_gallium_panfrost, 'panfrost_dri.so'],
+             [with_gallium_panfrost, ['panfrost_dri.so', 'panthor_dri.so']],
              [with_gallium_etnaviv, 'etnaviv_dri.so'],
              [with_gallium_tegra, 'tegra_dri.so'],
              [with_gallium_crocus, 'crocus_dri.so'],

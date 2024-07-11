@@ -33,6 +33,7 @@
 #include "util/enum_operators.h"
 #include "util/ralloc.h"
 #include "util/u_math.h"
+#include "util/u_printf.h"
 #include "brw_isa_info.h"
 #include "intel_shader_enums.h"
 
@@ -78,18 +79,6 @@ struct brw_compiler {
     * This can negatively impact performance.
     */
    bool precise_trig;
-
-   /**
-    * Is 3DSTATE_CONSTANT_*'s Constant Buffer 0 relative to Dynamic State
-    * Base Address?  (If not, it's a normal GPU address.)
-    */
-   bool constant_buffer_0_is_relative;
-
-   /**
-    * Whether or not the driver supports NIR shader constants.  This controls
-    * whether nir_opt_large_constants will be run.
-    */
-   bool supports_shader_constants;
 
    /**
     * Whether indirect UBO loads should use the sampler or go through the
@@ -190,12 +179,6 @@ brw_shader_stage_requires_bindless_resources(gl_shader_stage stage)
  *
  *  @{
  */
-
-enum PACKED gfx6_gather_sampler_wa {
-   WA_SIGN = 1,      /* whether we need to sign extend */
-   WA_8BIT = 2,      /* if we have an 8bit format needing wa */
-   WA_16BIT = 4,     /* if we have a 16bit format needing wa */
-};
 
 #define BRW_MAX_SAMPLERS 32
 
@@ -342,8 +325,6 @@ struct brw_wm_prog_key {
    /* Whether or not we are running on a multisampled framebuffer */
    enum brw_sometimes multisample_fbo:2;
 
-   enum brw_sometimes line_aa:2;
-
    /* Whether the preceding shader stage is mesh */
    enum brw_sometimes mesh_input:2;
 
@@ -351,7 +332,7 @@ struct brw_wm_prog_key {
    bool ignore_sample_mask_out:1;
    bool coarse_pixel:1;
 
-   uint64_t padding:34;
+   uint64_t padding:36;
 };
 
 struct brw_cs_prog_key {
@@ -467,6 +448,8 @@ enum brw_param_builtin {
 #define BRW_PARAM_BUILTIN_CLIP_PLANE_COMP(param) \
    (((param) - BRW_PARAM_BUILTIN_CLIP_PLANE_0_X) & 0x3)
 
+#define BRW_MAX_EMBEDDED_SAMPLERS (4096)
+
 enum brw_shader_reloc_id {
    BRW_SHADER_RELOC_CONST_DATA_ADDR_LOW,
    BRW_SHADER_RELOC_CONST_DATA_ADDR_HIGH,
@@ -474,6 +457,13 @@ enum brw_shader_reloc_id {
    BRW_SHADER_RELOC_RESUME_SBT_ADDR_LOW,
    BRW_SHADER_RELOC_RESUME_SBT_ADDR_HIGH,
    BRW_SHADER_RELOC_DESCRIPTORS_ADDR_HIGH,
+   BRW_SHADER_RELOC_DESCRIPTORS_BUFFER_ADDR_HIGH,
+   BRW_SHADER_RELOC_EMBEDDED_SAMPLER_HANDLE,
+   BRW_SHADER_RELOC_LAST_EMBEDDED_SAMPLER_HANDLE =
+   BRW_SHADER_RELOC_EMBEDDED_SAMPLER_HANDLE + BRW_MAX_EMBEDDED_SAMPLERS - 1,
+   BRW_SHADER_RELOC_PRINTF_BUFFER_ADDR_LOW,
+   BRW_SHADER_RELOC_PRINTF_BUFFER_ADDR_HIGH,
+   BRW_SHADER_RELOC_PRINTF_BASE_IDENTIFIER,
 };
 
 enum brw_shader_reloc_type {
@@ -571,6 +561,10 @@ struct brw_stage_prog_data {
 
    /* Whether shader uses atomic operations. */
    bool uses_atomic_load_store;
+
+   /* Printf descriptions contained by the shader */
+   uint32_t printf_info_count;
+   u_printf_info *printf_info;
 };
 
 static inline uint32_t *
@@ -584,6 +578,11 @@ brw_stage_prog_data_add_params(struct brw_stage_prog_data *prog_data,
                                prog_data->nr_params);
    return prog_data->param + old_nr_params;
 }
+
+void
+brw_stage_prog_data_add_printf(struct brw_stage_prog_data *prog_data,
+                               void *mem_ctx,
+                               const u_printf_info *print);
 
 enum brw_barycentric_mode {
    BRW_BARYCENTRIC_PERSPECTIVE_PIXEL       = 0,
@@ -621,24 +620,11 @@ struct brw_wm_prog_data {
    unsigned num_per_primitive_inputs;
    unsigned num_varying_inputs;
 
-   uint8_t reg_blocks_8;
-   uint8_t reg_blocks_16;
-   uint8_t reg_blocks_32;
-
    uint8_t dispatch_grf_start_reg_16;
    uint8_t dispatch_grf_start_reg_32;
    uint32_t prog_offset_16;
    uint32_t prog_offset_32;
 
-   struct {
-      /** @{
-       * surface indices the WM-specific surfaces
-       */
-      uint32_t render_target_read_start;
-      /** @} */
-   } binding_table;
-
-   uint8_t color_outputs_written;
    uint8_t computed_depth_mode;
 
    /**
@@ -667,6 +653,9 @@ struct brw_wm_prog_data {
    bool uses_src_depth;
    bool uses_src_w;
    bool uses_depth_w_coefficients;
+   bool uses_pc_bary_coefficients;
+   bool uses_npc_bary_coefficients;
+   bool uses_sample_offsets;
    bool uses_sample_mask;
    bool uses_vmask;
    bool has_side_effects;
@@ -682,6 +671,13 @@ struct brw_wm_prog_data {
     * GL_MIN_SAMPLE_SHADING_VALUE in GL or minSampleShading in Vulkan.
     */
    bool sample_shading;
+
+   /** Min sample shading value
+    *
+    * Not used by the compiler, but useful for restore from the cache. The
+    * driver is expected to write the value it wants.
+    */
+   float min_sample_shading;
 
    /** Should this shader be dispatched per-sample */
    enum brw_sometimes persample_dispatch;
@@ -722,11 +718,6 @@ struct brw_wm_prog_data {
     * The FS inputs
     */
    uint64_t inputs;
-
-   /* Mapping of VUE slots to interpolation modes.
-    * Used by the Gfx4-5 clip/sf/wm stages.
-    */
-   unsigned char interp_mode[65]; /* BRW_VARYING_SLOT_COUNT */
 
    /**
     * Map from gl_varying_slot to the position within the FS setup data
@@ -853,22 +844,6 @@ _brw_wm_prog_data_dispatch_grf_start_reg(const struct brw_wm_prog_data *prog_dat
    _brw_wm_prog_data_dispatch_grf_start_reg(prog_data, \
       brw_wm_state_simd_width_for_ksp(wm_state, ksp_idx))
 
-static inline uint8_t
-_brw_wm_prog_data_reg_blocks(const struct brw_wm_prog_data *prog_data,
-                             unsigned simd_width)
-{
-   switch (simd_width) {
-   case 8: return prog_data->reg_blocks_8;
-   case 16: return prog_data->reg_blocks_16;
-   case 32: return prog_data->reg_blocks_32;
-   default: return 0;
-   }
-}
-
-#define brw_wm_prog_data_reg_blocks(prog_data, wm_state, ksp_idx) \
-   _brw_wm_prog_data_reg_blocks(prog_data, \
-      brw_wm_state_simd_width_for_ksp(wm_state, ksp_idx))
-
 static inline bool
 brw_wm_prog_data_is_persample(const struct brw_wm_prog_data *prog_data,
                               enum intel_msaa_flags pushed_msaa_flags)
@@ -953,8 +928,34 @@ wm_prog_data_barycentric_modes(const struct brw_wm_prog_data *prog_data,
        *    "MSDISPMODE_PERSAMPLE is required in order to select Perspective
        *     Sample or Non-perspective Sample barycentric coordinates."
        */
-      modes &= ~(BITFIELD_BIT(BRW_BARYCENTRIC_PERSPECTIVE_SAMPLE) |
-                 BITFIELD_BIT(BRW_BARYCENTRIC_NONPERSPECTIVE_SAMPLE));
+      uint32_t sample_bits = (BITFIELD_BIT(BRW_BARYCENTRIC_PERSPECTIVE_SAMPLE) |
+                              BITFIELD_BIT(BRW_BARYCENTRIC_NONPERSPECTIVE_SAMPLE));
+      uint32_t requested_sample = modes & sample_bits;
+      modes &= ~sample_bits;
+      /*
+       * If the shader requested some sample modes and we have to disable
+       * them, make sure we add back the pixel variant back to not mess up the
+       * thread payload.
+       *
+       * Why does this works out? Because of the ordering in the thread payload :
+       *
+       *   R7:10  Perspective Centroid Barycentric
+       *   R11:14 Perspective Sample Barycentric
+       *   R15:18 Linear Pixel Location Barycentric
+       *
+       * In the backend when persample dispatch is dynamic, we always select
+       * the sample barycentric and turn off the pixel location (even if
+       * requested through intrinsics). That way when we dynamically select
+       * pixel or sample dispatch, the barycentric always match, since the
+       * pixel location barycentric register offset will align with the sample
+       * barycentric.
+       */
+      if (requested_sample) {
+         if (requested_sample & BITFIELD_BIT(BRW_BARYCENTRIC_PERSPECTIVE_SAMPLE))
+            modes |= BITFIELD_BIT(BRW_BARYCENTRIC_PERSPECTIVE_PIXEL);
+         if (requested_sample & BITFIELD_BIT(BRW_BARYCENTRIC_NONPERSPECTIVE_SAMPLE))
+            modes |= BITFIELD_BIT(BRW_BARYCENTRIC_NONPERSPECTIVE_PIXEL);
+      }
    }
 
    return modes;
@@ -1252,6 +1253,7 @@ struct brw_mesh_prog_data {
    enum brw_mesh_index_format index_format;
 
    bool uses_drawid;
+   bool autostrip_enable;
 };
 
 /* brw_any_prog_data is prog_data for any stage that maps to an API stage */
@@ -1555,52 +1557,6 @@ void brw_debug_key_recompile(const struct brw_compiler *c, void *log,
                              const struct brw_base_prog_key *old_key,
                              const struct brw_base_prog_key *key);
 
-/* Shared Local Memory Size is specified as powers of two,
- * and also have a Gen-dependent minimum value if not zero.
- */
-static inline uint32_t
-intel_calculate_slm_size(unsigned gen, uint32_t bytes)
-{
-   assert(bytes <= 64 * 1024);
-   if (bytes > 0)
-      return MAX2(util_next_power_of_two(bytes), gen >= 9 ? 1024 : 4096);
-   else
-      return 0;
-}
-
-static inline uint32_t
-encode_slm_size(unsigned gen, uint32_t bytes)
-{
-   uint32_t slm_size = 0;
-
-   /* Shared Local Memory is specified as powers of two, and encoded in
-    * INTERFACE_DESCRIPTOR_DATA with the following representations:
-    *
-    * Size   | 0 kB | 1 kB | 2 kB | 4 kB | 8 kB | 16 kB | 32 kB | 64 kB |
-    * -------------------------------------------------------------------
-    * Gfx7-8 |    0 | none | none |    1 |    2 |     4 |     8 |    16 |
-    * -------------------------------------------------------------------
-    * Gfx9+  |    0 |    1 |    2 |    3 |    4 |     5 |     6 |     7 |
-    */
-
-   if (bytes > 0) {
-      slm_size = intel_calculate_slm_size(gen, bytes);
-      assert(util_is_power_of_two_nonzero(slm_size));
-
-      if (gen >= 9) {
-         /* Turn an exponent of 10 (1024 kB) into 1. */
-         assert(slm_size >= 1024);
-         slm_size = ffs(slm_size) - 10;
-      } else {
-         assert(slm_size >= 4096);
-         /* Convert to the pre-Gfx9 representation. */
-         slm_size = slm_size / 4096;
-      }
-   }
-
-   return slm_size;
-}
-
 unsigned
 brw_cs_push_const_total_size(const struct brw_cs_prog_data *cs_prog_data,
                              unsigned threads);
@@ -1640,9 +1596,11 @@ brw_stage_has_packed_dispatch(ASSERTED const struct intel_device_info *devinfo,
    /* The code below makes assumptions about the hardware's thread dispatch
     * behavior that could be proven wrong in future generations -- Make sure
     * to do a full test run with brw_fs_test_dispatch_packing() hooked up to
-    * the NIR front-end before changing this assertion.
+    * the NIR front-end before changing this assertion. It can be temporarily
+    * enabled by setting the macro below to true.
     */
-   assert(devinfo->ver <= 12);
+   #define ENABLE_FS_TEST_DISPATCH_PACKING false
+   assert(devinfo->ver <= 20);
 
    switch (stage) {
    case MESA_SHADER_FRAGMENT: {

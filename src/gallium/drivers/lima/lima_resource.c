@@ -708,7 +708,7 @@ lima_transfer_map(struct pipe_context *pctx,
       ptrans->layer_stride = res->levels[level].layer_stride;
 
       if ((usage & PIPE_MAP_WRITE) && (usage & PIPE_MAP_DIRECTLY))
-         panfrost_minmax_cache_invalidate(res->index_cache, ptrans);
+         panfrost_minmax_cache_invalidate(res->index_cache, ptrans->box.x, ptrans->box.width);
 
       return bo->map + res->levels[level].offset +
          box->z * res->levels[level].layer_stride +
@@ -816,7 +816,9 @@ lima_transfer_unmap(struct pipe_context *pctx,
    lima_transfer_flush_region(pctx, ptrans, &box);
    if (trans->staging)
       free(trans->staging);
-   panfrost_minmax_cache_invalidate(res->index_cache, ptrans);
+   if (ptrans->usage & PIPE_MAP_WRITE) {
+      panfrost_minmax_cache_invalidate(res->index_cache, ptrans->box.x, ptrans->box.width);
+   }
 
    pipe_resource_reference(&ptrans->resource, NULL);
    slab_free(&ctx->transfer_pool, trans);
@@ -877,7 +879,7 @@ lima_blit(struct pipe_context *pctx, const struct pipe_blit_info *blit_info)
 
    lima_util_blitter_save_states(ctx);
 
-   util_blitter_blit(ctx->blitter, &info);
+   util_blitter_blit(ctx->blitter, &info, NULL);
 }
 
 static void

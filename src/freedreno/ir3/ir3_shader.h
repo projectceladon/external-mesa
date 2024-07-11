@@ -358,6 +358,11 @@ struct ir3_shader_key {
           * the limit:
           */
          unsigned safe_constlen : 1;
+
+         /* Whether driconf "dual_color_blend_by_location" workaround is
+          * enabled
+          */
+         unsigned force_dual_color_blend : 1;
       };
       uint32_t global;
    };
@@ -627,6 +632,9 @@ struct ir3_shader_variant {
 
    /* Whether dual-source blending is enabled. */
    bool dual_src_blend;
+
+   /* Whether early preamble is enabled. */
+   bool early_preamble;
 
    /* Size in bytes of required shared memory */
    unsigned shared_size;

@@ -108,8 +108,6 @@ rndu 		{ yylval.integer = BRW_OPCODE_RNDU; return RNDU; }
 rndz 		{ yylval.integer = BRW_OPCODE_RNDZ; return RNDZ; }
 rol 		{ yylval.integer = BRW_OPCODE_ROL; return ROL; }
 ror 		{ yylval.integer = BRW_OPCODE_ROR; return ROR; }
-sad2 		{ yylval.integer = BRW_OPCODE_SAD2; return SAD2; }
-sada2 		{ yylval.integer = BRW_OPCODE_SADA2; return SADA2; }
 sel 		{ yylval.integer = BRW_OPCODE_SEL; return SEL; }
 send 		{
 			yylval.integer = BRW_OPCODE_SEND;
@@ -129,6 +127,7 @@ wait 		{ yylval.integer = BRW_OPCODE_WAIT; return WAIT; }
 while 		{ yylval.integer = BRW_OPCODE_WHILE; return WHILE; }
 xor 		{ yylval.integer = BRW_OPCODE_XOR; return XOR; }
 sync		{ yylval.integer = BRW_OPCODE_SYNC; return SYNC; }
+math		{ yylval.integer = BRW_OPCODE_MATH; return MATH; }
 
  /* extended math functions */
 cos 		{ yylval.integer = BRW_MATH_FUNCTION_COS; return COS; }
@@ -155,7 +154,6 @@ rsq 		{ yylval.integer = BRW_MATH_FUNCTION_RSQ; return RSQ; }
 rsqrtm       	{ yylval.integer = GFX8_MATH_FUNCTION_RSQRTM; return RSQRTM; }
 sin 		{ yylval.integer = BRW_MATH_FUNCTION_SIN; return SIN; }
 sqrt 		{ yylval.integer = BRW_MATH_FUNCTION_SQRT; return SQRT; }
-sincos       	{ yylval.integer = BRW_MATH_FUNCTION_SINCOS; return SINCOS; }
 
  /* sync instruction */
 allrd		{ yylval.integer = TGL_SYNC_ALLRD; return ALLRD; }
@@ -174,9 +172,6 @@ render            	{ return RENDER; }
 const 			{ return CONST; }
 data 			{ return DATA; }
 cre 			{ return CRE; }
-math 			{ return MATH; }
-read 			{ return READ; }
-write 			{ return WRITE; }
 vme 			{ return VME; }
 "pixel interp"		{ return PIXEL_INTERP; }
 "dp data 1" 		{ return DP_DATA_1; }
@@ -306,7 +301,6 @@ switch       	{ return SWITCH; }
 :?DF 	{ return TYPE_DF; }
 :?F 	{ return TYPE_F; }
 :?HF 	{ return TYPE_HF; }
-:?NF 	{ return TYPE_NF; }
 :?Q 	{ return TYPE_Q; }
 :?UB 	{ return TYPE_UB; }
 :?UD 	{ return TYPE_UD; }

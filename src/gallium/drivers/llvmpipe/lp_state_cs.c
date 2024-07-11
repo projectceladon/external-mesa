@@ -444,6 +444,11 @@ generate_compute(struct llvmpipe_context *lp,
    lp_build_nir_prepasses(nir);
    struct hash_table *fns = _mesa_pointer_hash_table_create(NULL);
 
+   sampler = lp_llvm_sampler_soa_create(lp_cs_variant_key_samplers(key),
+                                        MAX2(key->nr_samplers,
+                                             key->nr_sampler_views));
+   image = lp_bld_llvm_image_soa_create(lp_cs_variant_key_images(key), key->nr_images);
+
    if (exec_list_length(&nir->functions) > 1) {
       LLVMTypeRef call_context_type = lp_build_cs_func_call_context(gallivm, cs_type.length,
                                                                     variant->jit_cs_context_type,
@@ -531,9 +536,15 @@ generate_compute(struct llvmpipe_context *lp,
          params.consts_ptr = lp_jit_resources_constants(gallivm,
                                                         variant->jit_resources_type,
                                                         params.resources_ptr);
+         params.sampler = sampler;
          params.ssbo_ptr = lp_jit_resources_ssbos(gallivm,
                                                   variant->jit_resources_type,
                                                   params.resources_ptr);
+         params.image = image;
+         params.aniso_filter_table = lp_jit_resources_aniso_filter_table(gallivm,
+                                                                         variant->jit_resources_type,
+                                                                         params.resources_ptr);
+
          lp_build_nir_soa_func(gallivm, shader->base.ir.nir,
                                func->impl,
                                &params,
@@ -550,10 +561,6 @@ generate_compute(struct llvmpipe_context *lp,
    builder = gallivm->builder;
    assert(builder);
    LLVMPositionBuilderAtEnd(builder, block);
-   sampler = lp_llvm_sampler_soa_create(lp_cs_variant_key_samplers(key),
-                                        MAX2(key->nr_samplers,
-                                             key->nr_sampler_views));
-   image = lp_bld_llvm_image_soa_create(lp_cs_variant_key_images(key), key->nr_images);
 
    if (is_mesh) {
       LLVMTypeRef output_type = create_mesh_jit_output_type_deref(gallivm);
@@ -1234,7 +1241,7 @@ generate_variant(struct llvmpipe_context *lp,
    if (!cached.data_size)
       needs_caching = true;
 
-   variant->gallivm = gallivm_create(module_name, lp->context, &cached);
+   variant->gallivm = gallivm_create(module_name, &lp->context, &cached);
    if (!variant->gallivm) {
       FREE(variant);
       return NULL;
@@ -2052,6 +2059,7 @@ lp_mesh_call_draw(struct llvmpipe_context *lp,
 
 static void
 llvmpipe_draw_mesh_tasks(struct pipe_context *pipe,
+                         unsigned drawid_offset,
                          const struct pipe_grid_info *info)
 {
    struct llvmpipe_context *lp = llvmpipe_context(pipe);
@@ -2135,7 +2143,7 @@ llvmpipe_draw_mesh_tasks(struct pipe_context *pipe,
          job_info.payload = payload;
          job_info.payload_stride = payload_stride;
          job_info.work_dim = info->work_dim;
-         job_info.draw_id = dr;
+         job_info.draw_id = dr + drawid_offset;
          job_info.req_local_mem = lp->tss->req_local_mem + info->variable_shared_mem;
          job_info.current = &lp->task_ctx->cs.current;
 
@@ -2169,7 +2177,7 @@ llvmpipe_draw_mesh_tasks(struct pipe_context *pipe,
          job_info.req_local_mem = lp->mhs->req_local_mem + info->variable_shared_mem;
          job_info.current = &lp->mesh_ctx->cs.current;
          job_info.payload_stride = 0;
-         job_info.draw_id = dr;
+         job_info.draw_id = dr + drawid_offset;
          job_info.io_stride = task_out_size;
 
          uint32_t job_strides[3] = { job_info.grid_size[0], job_info.grid_size[1], job_info.grid_size[2] };
