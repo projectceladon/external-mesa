@@ -83,7 +83,7 @@ tes_thread_payload::tes_thread_payload(const fs_visitor &v)
    unsigned r = 0;
 
    /* R0: Thread Header. */
-   patch_urb_input = retype(brw_vec1_grf(0, 0), BRW_REGISTER_TYPE_UD);
+   patch_urb_input = retype(brw_vec1_grf(0, 0), BRW_TYPE_UD);
    primitive_id = brw_vec1_grf(0, 1);
    r += reg_unit(v.devinfo);
 
@@ -110,12 +110,12 @@ gs_thread_payload::gs_thread_payload(fs_visitor &v)
    unsigned r = reg_unit(v.devinfo);
 
    /* R1: output URB handles. */
-   urb_handles = bld.vgrf(BRW_REGISTER_TYPE_UD);
+   urb_handles = bld.vgrf(BRW_TYPE_UD);
    bld.AND(urb_handles, brw_ud8_grf(r, 0),
          v.devinfo->ver >= 20 ? brw_imm_ud(0xFFFFFF) : brw_imm_ud(0xFFFF));
 
    /* R1: Instance ID stored in bits 31:27 */
-   instance_id = bld.vgrf(BRW_REGISTER_TYPE_UD);
+   instance_id = bld.vgrf(BRW_TYPE_UD);
    bld.SHR(instance_id, brw_ud8_grf(r, 0), brw_imm_ud(27u));
 
    r += reg_unit(v.devinfo);
@@ -216,12 +216,27 @@ setup_fs_payload_gfx20(fs_thread_payload &payload,
             payload.num_regs++;
          }
       }
+
+      /* R22: Sample offsets. */
+      if (prog_data->uses_sample_offsets && j == 0) {
+         payload.sample_offsets_reg = payload.num_regs;
+         payload.num_regs += 2;
+      }
    }
 
-   if (prog_data->uses_depth_w_coefficients) {
-      assert(v.max_polygons == 1);
-      payload.depth_w_coef_reg = payload.num_regs;
-      payload.num_regs += 2;
+   /* RP0: Source Depth and/or W Attribute Vertex Deltas and/or
+    * Perspective Bary Planes.
+    */
+   if (prog_data->uses_depth_w_coefficients ||
+       prog_data->uses_pc_bary_coefficients) {
+      payload.depth_w_coef_reg = payload.pc_bary_coef_reg = payload.num_regs;
+      payload.num_regs += 2 * v.max_polygons;
+   }
+
+   /* RP4: Non-Perspective Bary planes. */
+   if (prog_data->uses_npc_bary_coefficients) {
+      payload.npc_bary_coef_reg = payload.num_regs;
+      payload.num_regs += 2 * v.max_polygons;
    }
 
    if (v.nir->info.outputs_written & BITFIELD64_BIT(FRAG_RESULT_DEPTH)) {
@@ -290,10 +305,27 @@ setup_fs_payload_gfx9(fs_thread_payload &payload,
       }
    }
 
-   /* R66: Source Depth and/or W Attribute Vertex Deltas */
+   /* R66: Source Depth and/or W Attribute Vertex Deltas. */
    if (prog_data->uses_depth_w_coefficients) {
-      assert(v.max_polygons == 1);
       payload.depth_w_coef_reg = payload.num_regs;
+      payload.num_regs += v.max_polygons;
+   }
+
+   /* R68: Perspective bary planes. */
+   if (prog_data->uses_pc_bary_coefficients) {
+      payload.pc_bary_coef_reg = payload.num_regs;
+      payload.num_regs += v.max_polygons;
+   }
+
+   /* R70: Non-perspective bary planes. */
+   if (prog_data->uses_npc_bary_coefficients) {
+      payload.npc_bary_coef_reg = payload.num_regs;
+      payload.num_regs += v.max_polygons;
+   }
+
+   /* R72: Sample offsets. */
+   if (prog_data->uses_sample_offsets) {
+      payload.sample_offsets_reg = payload.num_regs;
       payload.num_regs++;
    }
 
@@ -311,8 +343,11 @@ fs_thread_payload::fs_thread_payload(const fs_visitor &v,
     dest_depth_reg(),
     sample_pos_reg(),
     sample_mask_in_reg(),
+    barycentric_coord_reg(),
     depth_w_coef_reg(),
-    barycentric_coord_reg()
+    pc_bary_coef_reg(),
+    npc_bary_coef_reg(),
+    sample_offsets_reg()
 {
    if (v.devinfo->ver >= 20)
       setup_fs_payload_gfx20(*this, v, source_depth_to_render_target);
@@ -351,10 +386,10 @@ cs_thread_payload::cs_thread_payload(const fs_visitor &v)
 
 void
 cs_thread_payload::load_subgroup_id(const fs_builder &bld,
-                                    fs_reg &dest) const
+                                    brw_reg &dest) const
 {
    auto devinfo = bld.shader->devinfo;
-   dest = retype(dest, BRW_REGISTER_TYPE_UD);
+   dest = retype(dest, BRW_TYPE_UD);
 
    if (subgroup_id_.file != BAD_FILE) {
       assert(devinfo->verx10 >= 125);
@@ -363,8 +398,8 @@ cs_thread_payload::load_subgroup_id(const fs_builder &bld,
       assert(devinfo->verx10 < 125);
       assert(gl_shader_stage_is_compute(bld.shader->stage));
       int index = brw_get_subgroup_id_param_index(devinfo,
-                                                  bld.shader->stage_prog_data);
-      bld.MOV(dest, fs_reg(UNIFORM, index, BRW_REGISTER_TYPE_UD));
+                                                  bld.shader->prog_data);
+      bld.MOV(dest, brw_uniform_reg(index, BRW_TYPE_UD));
    }
 }
 
@@ -394,12 +429,12 @@ task_mesh_thread_payload::task_mesh_thread_payload(fs_visitor &v)
 
    unsigned r = 0;
    assert(subgroup_id_.file != BAD_FILE);
-   extended_parameter_0 = retype(brw_vec1_grf(0, 3), BRW_REGISTER_TYPE_UD);
+   extended_parameter_0 = retype(brw_vec1_grf(0, 3), BRW_TYPE_UD);
 
    if (v.devinfo->ver >= 20) {
       urb_output = brw_ud1_grf(1, 0);
    } else {
-      urb_output = bld.vgrf(BRW_REGISTER_TYPE_UD);
+      urb_output = bld.vgrf(BRW_TYPE_UD);
       /* In both mesh and task shader payload, lower 16 bits of g0.6 is
        * an offset within Slice's Local URB, which says where shader is
        * supposed to output its data.
@@ -448,9 +483,9 @@ bs_thread_payload::bs_thread_payload(const fs_visitor &v)
 }
 
 void
-bs_thread_payload::load_shader_type(const fs_builder &bld, fs_reg &dest) const
+bs_thread_payload::load_shader_type(const fs_builder &bld, brw_reg &dest) const
 {
-   fs_reg ud_dest = retype(dest, BRW_REGISTER_TYPE_UD);
+   brw_reg ud_dest = retype(dest, BRW_TYPE_UD);
    bld.MOV(ud_dest, retype(brw_vec1_grf(0, 3), ud_dest.type));
    bld.AND(ud_dest, ud_dest, brw_imm_ud(0xf));
 }

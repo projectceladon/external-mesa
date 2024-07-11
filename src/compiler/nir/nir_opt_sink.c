@@ -112,7 +112,10 @@ nir_can_move_instr(nir_instr *instr, nir_move_options options)
       case nir_intrinsic_load_pixel_coord:
          return options & nir_move_load_input;
       case nir_intrinsic_load_uniform:
+      case nir_intrinsic_load_kernel_input:
          return options & nir_move_load_uniform;
+      case nir_intrinsic_inverse_ballot:
+         return options & nir_move_copies;
       case nir_intrinsic_load_constant_agx:
       case nir_intrinsic_load_local_pixel_agx:
          return true;
@@ -255,7 +258,7 @@ nir_opt_sink(nir_shader *shader, nir_move_options options)
 
    nir_foreach_function_impl(impl, shader) {
       nir_metadata_require(impl,
-                           nir_metadata_block_index | nir_metadata_dominance);
+                           nir_metadata_control_flow);
 
       nir_foreach_block_reverse(block, impl) {
          nir_foreach_instr_reverse_safe(instr, block) {
@@ -281,7 +284,7 @@ nir_opt_sink(nir_shader *shader, nir_move_options options)
       }
 
       nir_metadata_preserve(impl,
-                            nir_metadata_block_index | nir_metadata_dominance);
+                            nir_metadata_control_flow);
    }
 
    return progress;

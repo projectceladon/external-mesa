@@ -103,6 +103,7 @@ dzn_physical_device_get_extensions(struct dzn_physical_device *pdev)
    pdev->vk.supported_extensions = (struct vk_device_extension_table) {
       .KHR_16bit_storage                     = pdev->options4.Native16BitShaderOpsSupported,
       .KHR_bind_memory2                      = true,
+      .KHR_buffer_device_address             = pdev->shader_model >= D3D_SHADER_MODEL_6_6,
       .KHR_create_renderpass2                = true,
       .KHR_dedicated_allocation              = true,
       .KHR_depth_stencil_resolve             = true,
@@ -143,12 +144,14 @@ dzn_physical_device_get_extensions(struct dzn_physical_device *pdev)
       .KHR_synchronization2                  = true,
       .KHR_timeline_semaphore                = true,
       .KHR_uniform_buffer_standard_layout    = true,
+      .EXT_buffer_device_address             = pdev->shader_model >= D3D_SHADER_MODEL_6_6,
       .EXT_descriptor_indexing               = pdev->shader_model >= D3D_SHADER_MODEL_6_6,
 #if defined(_WIN32)
       .EXT_external_memory_host              = pdev->dev13,
 #endif
       .EXT_scalar_block_layout               = true,
       .EXT_separate_stencil_usage            = true,
+      .EXT_shader_replicated_composites      = true,
       .EXT_shader_subgroup_ballot            = true,
       .EXT_shader_subgroup_vote              = true,
       .EXT_subgroup_size_control             = true,
@@ -346,8 +349,9 @@ dzn_physical_device_init_uuids(struct dzn_physical_device *pdev)
    _mesa_sha1_init(&sha1_ctx);
    _mesa_sha1_update(&sha1_ctx,  mesa_version, strlen(mesa_version));
    disk_cache_get_function_identifier(dzn_physical_device_init_uuids, &sha1_ctx);
-   _mesa_sha1_update(&sha1_ctx,  &pdev->options, sizeof(pdev->options));
-   _mesa_sha1_update(&sha1_ctx,  &pdev->options2, sizeof(pdev->options2));
+   _mesa_sha1_update(&sha1_ctx, &pdev->options,
+      offsetof(struct dzn_physical_device, options21) + sizeof(pdev->options21) -
+                     offsetof(struct dzn_physical_device, options));
    _mesa_sha1_final(&sha1_ctx, sha1);
    memcpy(pdev->pipeline_cache_uuid, sha1, VK_UUID_SIZE);
 
@@ -433,6 +437,9 @@ dzn_physical_device_cache_caps(struct dzn_physical_device *pdev)
       pdev->options19.MaxSamplerDescriptorHeapSize = D3D12_MAX_SHADER_VISIBLE_SAMPLER_HEAP_SIZE;
       pdev->options19.MaxSamplerDescriptorHeapSizeWithStaticSamplers = pdev->options19.MaxSamplerDescriptorHeapSize;
       pdev->options19.MaxViewDescriptorHeapSize = D3D12_MAX_SHADER_VISIBLE_DESCRIPTOR_HEAP_SIZE_TIER_1;
+   }
+   if (FAILED(ID3D12Device1_CheckFeatureSupport(pdev->dev, D3D12_FEATURE_D3D12_OPTIONS21, &pdev->options21, sizeof(pdev->options21)))) {
+      pdev->options21.ExecuteIndirectTier = D3D12_EXECUTE_INDIRECT_TIER_1_0;
    }
    {
       D3D12_FEATURE_DATA_FORMAT_SUPPORT a4b4g4r4_support = {
@@ -758,7 +765,7 @@ dzn_physical_device_get_features(const struct dzn_physical_device *pdev,
       .separateDepthStencilLayouts        = true,
       .hostQueryReset                     = true,
       .timelineSemaphore                  = true,
-      .bufferDeviceAddress                = false,
+      .bufferDeviceAddress                = pdev->shader_model >= D3D_SHADER_MODEL_6_6,
       .bufferDeviceAddressCaptureReplay   = false,
       .bufferDeviceAddressMultiDevice     = false,
       .vulkanMemoryModel                  = false,
@@ -787,6 +794,7 @@ dzn_physical_device_get_features(const struct dzn_physical_device *pdev,
 
       .vertexAttributeInstanceRateDivisor = true,
       .vertexAttributeInstanceRateZeroDivisor = true,
+      .shaderReplicatedComposites         = true,
    };
 }
 
@@ -1258,7 +1266,7 @@ dzn_physical_device_get_format_properties(struct dzn_physical_device *pdev,
    VkFormatProperties *base_props = &properties->formatProperties;
 
    vk_foreach_struct(ext, properties->pNext) {
-      dzn_debug_ignored_stype(ext->sType);
+      vk_debug_ignored_stype(ext->sType);
    }
 
    if (dfmt_info.Format == DXGI_FORMAT_UNKNOWN) {
@@ -1385,7 +1393,7 @@ dzn_physical_device_get_image_format_properties(struct dzn_physical_device *pdev
          usage |= ((const VkImageStencilUsageCreateInfo *)s)->stencilUsage;
          break;
       default:
-         dzn_debug_ignored_stype(s->sType);
+         vk_debug_ignored_stype(s->sType);
          break;
       }
    }
@@ -1400,7 +1408,7 @@ dzn_physical_device_get_image_format_properties(struct dzn_physical_device *pdev
          external_props->externalMemoryProperties = (VkExternalMemoryProperties) { 0 };
          break;
       default:
-         dzn_debug_ignored_stype(s->sType);
+         vk_debug_ignored_stype(s->sType);
          break;
       }
    }
@@ -1906,7 +1914,7 @@ dzn_GetPhysicalDeviceQueueFamilyProperties2(VkPhysicalDevice physicalDevice,
          p->queueFamilyProperties = pdev->queue_families[i].props;
 
          vk_foreach_struct(ext, pQueueFamilyProperties->pNext) {
-            dzn_debug_ignored_stype(ext->sType);
+            vk_debug_ignored_stype(ext->sType);
          }
       }
    }
@@ -1929,7 +1937,7 @@ dzn_GetPhysicalDeviceMemoryProperties2(VkPhysicalDevice physicalDevice,
                                          &pMemoryProperties->memoryProperties);
 
    vk_foreach_struct(ext, pMemoryProperties->pNext) {
-      dzn_debug_ignored_stype(ext->sType);
+      vk_debug_ignored_stype(ext->sType);
    }
 }
 
@@ -2393,7 +2401,9 @@ dzn_device_create(struct dzn_physical_device *pdev,
    device->support_static_samplers = true;
    device->bindless = (instance->debug_flags & DZN_DEBUG_BINDLESS) != 0 ||
       device->vk.enabled_features.descriptorIndexing ||
-      device->vk.enabled_extensions.EXT_descriptor_indexing;
+      device->vk.enabled_extensions.EXT_descriptor_indexing ||
+      device->vk.enabled_features.bufferDeviceAddress ||
+      device->vk.enabled_extensions.EXT_buffer_device_address;
 
    if (device->bindless) {
       uint32_t sampler_count = MIN2(pdev->options19.MaxSamplerDescriptorHeapSize, 4000);
@@ -2642,7 +2652,7 @@ dzn_device_memory_create(struct dzn_device *device,
          break;
       }
       default:
-         dzn_debug_ignored_stype(ext->sType);
+         vk_debug_ignored_stype(ext->sType);
          break;
       }
    }
@@ -3074,7 +3084,8 @@ dzn_buffer_create(struct dzn_device *device,
 
    if (buf->usage &
        (VK_BUFFER_USAGE_STORAGE_BUFFER_BIT |
-        VK_BUFFER_USAGE_STORAGE_TEXEL_BUFFER_BIT)) {
+        VK_BUFFER_USAGE_STORAGE_TEXEL_BUFFER_BIT |
+        VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT)) {
       buf->desc.Flags |= D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS;
       buf->valid_access |= D3D12_BARRIER_ACCESS_UNORDERED_ACCESS;
    }
@@ -3088,7 +3099,7 @@ dzn_buffer_create(struct dzn_device *device,
             return vk_error(device, VK_ERROR_OUT_OF_DEVICE_MEMORY);
          }
       }
-      if (buf->usage & VK_BUFFER_USAGE_STORAGE_BUFFER_BIT) {
+      if (buf->usage & (VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT)) {
          buf->uav_bindless_slot = dzn_device_descriptor_heap_alloc_slot(device, D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
          if (buf->uav_bindless_slot < 0) {
             dzn_buffer_destroy(buf, pAllocator);
@@ -3268,7 +3279,7 @@ dzn_GetBufferMemoryRequirements2(VkDevice dev,
       }
 
       default:
-         dzn_debug_ignored_stype(ext->sType);
+         vk_debug_ignored_stype(ext->sType);
          break;
       }
    }
@@ -3689,7 +3700,8 @@ dzn_GetBufferDeviceAddress(VkDevice device,
 {
    struct dzn_buffer *buffer = dzn_buffer_from_handle(pInfo->buffer);
 
-   return buffer->gpuva;
+   /* Insert a pointer tag so we never return null */
+   return ((uint64_t)buffer->uav_bindless_slot << 32ull) | (0xD3ull << 56);
 }
 
 VKAPI_ATTR uint64_t VKAPI_CALL
@@ -3804,6 +3816,7 @@ dzn_GetMemoryFdPropertiesKHR(VkDevice _device,
    if (heap_desc.Properties.Type != D3D12_HEAP_TYPE_CUSTOM)
       heap_desc.Properties = dzn_ID3D12Device4_GetCustomHeapProperties(device->dev, 0, heap_desc.Properties.Type);
 
+   pProperties->memoryTypeBits = 0;
    for (uint32_t i = 0; i < pdev->memory.memoryTypeCount; ++i) {
       const VkMemoryType *mem_type = &pdev->memory.memoryTypes[i];
       D3D12_HEAP_PROPERTIES required_props = deduce_heap_properties_from_memory(pdev, mem_type);
@@ -3846,6 +3859,7 @@ dzn_GetMemoryHostPointerPropertiesEXT(VkDevice _device,
 
    struct dzn_physical_device *pdev = container_of(device->vk.physical, struct dzn_physical_device, vk);
    D3D12_HEAP_DESC heap_desc = dzn_ID3D12Heap_GetDesc(heap);
+   pMemoryHostPointerProperties->memoryTypeBits = 0;
    for (uint32_t i = 0; i < pdev->memory.memoryTypeCount; ++i) {
       const VkMemoryType *mem_type = &pdev->memory.memoryTypes[i];
       D3D12_HEAP_PROPERTIES required_props = deduce_heap_properties_from_memory(pdev, mem_type);

@@ -78,7 +78,7 @@ panfrost_clear(struct pipe_context *pipe, unsigned buffers,
    /* Once there is content, clear with a fullscreen quad */
    panfrost_blitter_save(ctx, PAN_RENDER_CLEAR);
 
-   perf_debug_ctx(ctx, "Clearing with quad");
+   perf_debug(ctx, "Clearing with quad");
    util_blitter_clear(
       ctx->blitter, ctx->pipe_framebuffer.width, ctx->pipe_framebuffer.height,
       util_framebuffer_get_num_layers(&ctx->pipe_framebuffer), buffers, color,
@@ -440,16 +440,6 @@ panfrost_set_shader_buffers(struct pipe_context *pctx,
 }
 
 static void
-panfrost_set_shader_images(
-        struct pipe_context *pctx,
-        enum pipe_shader_type shader,
-        unsigned start, unsigned count,
-        const struct pipe_image_view *images)
-{
-        /* TODO */
-}
-
-static void
 panfrost_set_framebuffer_state(struct pipe_context *pctx,
                                const struct pipe_framebuffer_state *fb)
 {
@@ -557,6 +547,8 @@ panfrost_destroy(struct pipe_context *pipe)
 {
    struct panfrost_context *panfrost = pan_context(pipe);
    struct panfrost_device *dev = pan_device(pipe->screen);
+
+   pan_screen(pipe->screen)->vtbl.context_cleanup(panfrost);
 
    _mesa_hash_table_destroy(panfrost->writers, NULL);
 
@@ -742,7 +734,7 @@ panfrost_render_condition_check(struct panfrost_context *ctx)
    if (!ctx->cond_query)
       return true;
 
-   perf_debug_ctx(ctx, "Implementing conditional rendering on the CPU");
+   perf_debug(ctx, "Implementing conditional rendering on the CPU");
 
    union pipe_query_result res = {0};
    bool wait = ctx->cond_mode != PIPE_RENDER_COND_NO_WAIT &&
@@ -990,5 +982,14 @@ panfrost_create_context(struct pipe_screen *screen, void *priv, unsigned flags)
    ret = drmSyncobjCreate(panfrost_device_fd(dev), 0, &ctx->in_sync_obj);
    assert(!ret);
 
+   pan_screen(screen)->vtbl.context_init(ctx);
+
    return gallium;
+}
+
+void
+panfrost_context_reinit(struct panfrost_context *ctx)
+{
+   pan_screen(ctx->base.screen)->vtbl.context_cleanup(ctx);
+   pan_screen(ctx->base.screen)->vtbl.context_init(ctx);
 }

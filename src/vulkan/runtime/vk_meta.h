@@ -27,6 +27,7 @@
 #include "vk_object.h"
 
 #include "util/simple_mtx.h"
+#include "util/u_dynarray.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -77,7 +78,7 @@ void vk_meta_device_finish(struct vk_device *device,
 
 /** Keys should start with one of these to ensure uniqueness */
 enum vk_meta_object_key_type {
-   VK_META_OBJECT_KEY_TYPE_INVALD = 0,
+   VK_META_OBJECT_KEY_TYPE_INVALID = 0,
    VK_META_OBJECT_KEY_CLEAR_PIPELINE,
    VK_META_OBJECT_KEY_BLIT_PIPELINE,
    VK_META_OBJECT_KEY_BLIT_SAMPLER,
@@ -179,6 +180,32 @@ vk_meta_create_sampler(struct vk_device *device,
                        const VkSamplerCreateInfo *info,
                        const void *key_data, size_t key_size,
                        VkSampler *sampler_out);
+
+struct vk_meta_object_list {
+   struct util_dynarray arr;
+};
+
+void vk_meta_object_list_init(struct vk_meta_object_list *mol);
+void vk_meta_object_list_reset(struct vk_device *device,
+                               struct vk_meta_object_list *mol);
+void vk_meta_object_list_finish(struct vk_device *device,
+                                struct vk_meta_object_list *mol);
+
+static inline void
+vk_meta_object_list_add_obj(struct vk_meta_object_list *mol,
+                            struct vk_object_base *obj)
+{
+   util_dynarray_append(&mol->arr, struct vk_object_base *, obj);
+}
+
+static inline void
+vk_meta_object_list_add_handle(struct vk_meta_object_list *mol,
+                               VkObjectType obj_type,
+                               uint64_t handle)
+{
+   vk_meta_object_list_add_obj(mol,
+      vk_object_base_from_u64_handle(handle, obj_type));
+}
 
 VkResult vk_meta_create_buffer(struct vk_command_buffer *cmd,
                                struct vk_meta_device *meta,

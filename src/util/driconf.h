@@ -317,7 +317,7 @@
    DRI_CONF_OPT_B(ignore_discard_framebuffer, def, \
                   "Ignore glDiscardFramebuffer/glInvalidateFramebuffer, workaround for games that use it incorrectly")
 
-#define DRI_CONF_FORCE_VK_VENDOR(def) \
+#define DRI_CONF_FORCE_VK_VENDOR() \
    DRI_CONF_OPT_I(force_vk_vendor, 0, -1, 2147483647, "Override GPU vendor id")
 
 #define DRI_CONF_FAKE_SPARSE(def) \
@@ -327,6 +327,10 @@
 #define DRI_CONF_INTEL_ENABLE_WA_14018912822(def) \
    DRI_CONF_OPT_B(intel_enable_wa_14018912822, def, \
                   "Intel workaround for using zero blend constants")
+
+#define DRI_CONF_INTEL_SAMPLER_ROUTE_TO_LSC(def) \
+   DRI_CONF_OPT_B(intel_sampler_route_to_lsc, def, \
+                  "Intel specific toggle to enable sampler route to LSC")
 
 #define DRI_CONF_VK_REQUIRE_ETC2(def) \
   DRI_CONF_OPT_B(vk_require_etc2, def, \
@@ -637,10 +641,6 @@
    DRI_CONF_OPT_B(radv_zero_vram, def, \
                   "Initialize to zero all VRAM allocations")
 
-#define DRI_CONF_RADV_LOWER_DISCARD_TO_DEMOTE(def) \
-   DRI_CONF_OPT_B(radv_lower_discard_to_demote, def, \
-                  "Lower discard instructions to demote")
-
 #define DRI_CONF_RADV_INVARIANT_GEOM(def) \
    DRI_CONF_OPT_B(radv_invariant_geom, def, \
                   "Mark geometry-affecting outputs as invariant")
@@ -702,6 +702,10 @@
    DRI_CONF_OPT_B(radv_legacy_sparse_binding, def, \
                   "Enable legacy sparse binding (with implicit synchronization) on the graphics and compute queue")
 
+#define DRI_CONF_RADV_FORCE_PSTATE_PEAK_GFX11_DGPU(def) \
+   DRI_CONF_OPT_B(radv_force_pstate_peak_gfx11_dgpu, def, \
+                  "Force the performance level to profile_peak (all clocks to the highest levels) for RDNA3 dGPUs")
+
 /**
  * Overrides for forcing re-compilation of pipelines when RADV_BUILD_ID_OVERRIDE is enabled.
  * These need to be bumped every time a compiler bugfix is backported (up to 8 shader
@@ -723,10 +727,6 @@
 
 #define DRI_CONF_RADV_CLEAR_LDS(def) \
    DRI_CONF_OPT_B(radv_clear_lds, def, "Clear LDS at the end of shaders. Might decrease performance.")
-
-#define DRI_CONF_RADV_FORCE_ACTIVE_ACCEL_STRUCT_LEAVES(def) \
-   DRI_CONF_OPT_B(radv_force_active_accel_struct_leaves, def, \
-                  "Force leaf nodes of acceleration structures to be marked active.")
 
 #define DRI_CONF_RADV_DISABLE_NGG_GS(def) \
    DRI_CONF_OPT_B(radv_disable_ngg_gs, def, "Disable NGG GS on GFX10/GFX10.3.")
@@ -787,9 +787,24 @@
 #define DRI_CONF_ANV_EXTERNAL_MEMORY_IMPLICIT_SYNC(def) \
    DRI_CONF_OPT_B(anv_external_memory_implicit_sync, def, "Implicit sync on external BOs")
 
-#define DRI_CONF_ANV_HASVK_OVERRIDE_API_VERSION(def) \
+#define DRI_CONF_ANV_COMPRESSION_CONTROL_ENABLED(def) \
+   DRI_CONF_OPT_B(compression_control_enabled, def, "Enable VK_EXT_image_compression_control support")
+
+#define DRI_CONF_ANV_FAKE_NONLOCAL_MEMORY(def) \
+   DRI_CONF_OPT_B(anv_fake_nonlocal_memory, def, \
+                  "Present host-visible device-local memory types as non device-local")
+
+/**
+ * \brief HASVK specific configuration options
+ */
+
+#define DRI_CONF_HASVK_OVERRIDE_API_VERSION(def) \
    DRI_CONF_OPT_B(hasvk_report_vk_1_3_version, def, \
                   "Override intel_hasvk API version")
+
+#define DRI_CONF_ANV_FORCE_GUC_LOW_LATENCY(def) \
+   DRI_CONF_OPT_B(force_guc_low_latency, def, \
+                  "Enable low latency GuC strategy. Only supported on i915.")
 
 /**
  * \brief DZN specific configuration options

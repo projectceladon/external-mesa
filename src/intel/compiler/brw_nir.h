@@ -165,10 +165,6 @@ void brw_nir_lower_fs_outputs(nir_shader *nir);
 
 bool brw_nir_lower_cmat(nir_shader *nir, unsigned subgroup_size);
 
-bool brw_nir_lower_shading_rate_output(nir_shader *nir);
-
-bool brw_nir_lower_sparse_intrinsics(nir_shader *nir);
-
 struct brw_nir_lower_storage_image_opts {
    const struct intel_device_info *devinfo;
 
@@ -194,6 +190,8 @@ bool brw_nir_apply_attribute_workarounds(nir_shader *nir,
 bool brw_nir_apply_trig_workarounds(nir_shader *nir);
 
 bool brw_nir_limit_trig_input_range_workaround(nir_shader *nir);
+
+bool brw_nir_lower_fsign(nir_shader *nir);
 
 void brw_nir_apply_key(nir_shader *nir,
                        const struct brw_compiler *compiler,
@@ -241,6 +239,34 @@ const struct glsl_type *brw_nir_get_var_type(const struct nir_shader *nir,
                                              nir_variable *var);
 
 void brw_nir_adjust_payload(nir_shader *shader);
+
+static inline nir_variable_mode
+brw_nir_no_indirect_mask(const struct brw_compiler *compiler,
+                         gl_shader_stage stage)
+{
+   nir_variable_mode indirect_mask = (nir_variable_mode) 0;
+
+   switch (stage) {
+   case MESA_SHADER_VERTEX:
+   case MESA_SHADER_FRAGMENT:
+      indirect_mask |= nir_var_shader_in;
+      break;
+
+   default:
+      /* Everything else can handle indirect inputs */
+      break;
+   }
+
+   if (stage != MESA_SHADER_TESS_CTRL &&
+       stage != MESA_SHADER_TASK &&
+       stage != MESA_SHADER_MESH)
+      indirect_mask |= nir_var_shader_out;
+
+   return indirect_mask;
+}
+
+void
+brw_nir_printf(nir_builder *b, const char *fmt, ...);
 
 #ifdef __cplusplus
 }

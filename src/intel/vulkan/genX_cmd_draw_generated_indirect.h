@@ -135,6 +135,17 @@ genX(cmd_buffer_emit_indirect_generated_draws_init)(struct anv_cmd_buffer *cmd_b
 
    trace_intel_end_generate_draws(&cmd_buffer->trace);
 
+   struct anv_shader_bin *gen_kernel;
+   VkResult ret =
+      anv_device_get_internal_shader(
+         cmd_buffer->device,
+         ANV_INTERNAL_KERNEL_GENERATED_DRAWS,
+         &gen_kernel);
+   if (ret != VK_SUCCESS) {
+      anv_batch_set_error(&cmd_buffer->batch, ret);
+      return;
+   }
+
    struct anv_device *device = cmd_buffer->device;
    struct anv_simple_shader *state = &cmd_buffer->generation.shader_state;
    *state = (struct anv_simple_shader) {
@@ -143,8 +154,7 @@ genX(cmd_buffer_emit_indirect_generated_draws_init)(struct anv_cmd_buffer *cmd_b
       .dynamic_state_stream = &cmd_buffer->dynamic_state_stream,
       .general_state_stream = &cmd_buffer->general_state_stream,
       .batch                = &cmd_buffer->generation.batch,
-      .kernel               = device->internal_kernels[
-         ANV_INTERNAL_KERNEL_GENERATED_DRAWS],
+      .kernel               = gen_kernel,
       .l3_config            = device->internal_kernels_l3_config,
       .urb_cfg              = &cmd_buffer->state.gfx.urb_cfg,
    };
@@ -166,9 +176,8 @@ genX(cmd_buffer_get_draw_id_addr)(struct anv_cmd_buffer *cmd_buffer,
       return ANV_NULL_ADDRESS;
 
    struct anv_state draw_id_state =
-      anv_cmd_buffer_alloc_dynamic_state(cmd_buffer, 4 * draw_id_count, 4);
-   return anv_state_pool_state_address(&cmd_buffer->device->dynamic_state_pool,
-                                       draw_id_state);
+      anv_cmd_buffer_alloc_temporary_state(cmd_buffer, 4 * draw_id_count, 4);
+   return anv_cmd_buffer_temporary_state_address(cmd_buffer, draw_id_state);
 #endif
 }
 
@@ -465,14 +474,24 @@ genX(cmd_buffer_emit_indirect_generated_draws_inring)(struct anv_cmd_buffer *cmd
     */
    struct anv_address gen_addr = anv_batch_current_address(&cmd_buffer->batch);
 
+   struct anv_shader_bin *gen_kernel;
+   VkResult ret =
+      anv_device_get_internal_shader(
+         cmd_buffer->device,
+         ANV_INTERNAL_KERNEL_GENERATED_DRAWS,
+         &gen_kernel);
+   if (ret != VK_SUCCESS) {
+      anv_batch_set_error(&cmd_buffer->batch, ret);
+      return;
+   }
+
    struct anv_simple_shader simple_state = (struct anv_simple_shader) {
       .device               = device,
       .cmd_buffer           = cmd_buffer,
       .dynamic_state_stream = &cmd_buffer->dynamic_state_stream,
       .general_state_stream = &cmd_buffer->general_state_stream,
       .batch                = &cmd_buffer->batch,
-      .kernel               = device->internal_kernels[
-         ANV_INTERNAL_KERNEL_GENERATED_DRAWS],
+      .kernel               = gen_kernel,
       .l3_config            = device->internal_kernels_l3_config,
       .urb_cfg              = &cmd_buffer->state.gfx.urb_cfg,
    };
@@ -561,10 +580,14 @@ genX(cmd_buffer_emit_indirect_generated_draws_inring)(struct anv_cmd_buffer *cmd
       const uint32_t mocs = anv_mocs_for_address(cmd_buffer->device,
                                                  &draw_base_addr);
       mi_builder_set_mocs(&b, mocs);
+      mi_builder_set_write_check(&b, true);
 
       mi_store(&b, mi_mem32(draw_base_addr),
                    mi_iadd(&b, mi_mem32(draw_base_addr),
                                mi_imm(ring_count)));
+
+      /* Make sure the MI writes are globally observable */
+      mi_ensure_write_fence(&b);
 
       anv_add_pending_pipe_bits(cmd_buffer,
                                 ANV_PIPE_CONSTANT_CACHE_INVALIDATE_BIT,
@@ -584,6 +607,9 @@ genX(cmd_buffer_emit_indirect_generated_draws_inring)(struct anv_cmd_buffer *cmd
 
       /* Reset the draw_base field in case we ever replay the command buffer. */
       mi_store(&b, mi_mem32(draw_base_addr), mi_imm(0));
+
+      /* Make sure the MI writes are globally observable */
+      mi_ensure_write_fence(&b);
 
       anv_add_pending_pipe_bits(cmd_buffer,
                                 ANV_PIPE_CONSTANT_CACHE_INVALIDATE_BIT,

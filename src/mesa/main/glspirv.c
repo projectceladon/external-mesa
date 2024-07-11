@@ -24,10 +24,12 @@
 #include "glspirv.h"
 #include "errors.h"
 #include "shaderobj.h"
+#include "spirv_capabilities.h"
 #include "mtypes.h"
 
 #include "compiler/nir/nir.h"
 #include "compiler/spirv/nir_spirv.h"
+#include "compiler/spirv/spirv_info.h"
 
 #include "program/program.h"
 
@@ -260,10 +262,14 @@ _mesa_spirv_to_nir(struct gl_context *ctx,
       spec_entries[i].defined_on_module = false;
    }
 
-   const struct spirv_to_nir_options spirv_options = {
+   struct spirv_capabilities spirv_caps;
+   _mesa_fill_supported_spirv_capabilities(&spirv_caps, &ctx->Const,
+                                           &ctx->Extensions);
+
+   struct spirv_to_nir_options spirv_options = {
       .environment = NIR_SPIRV_OPENGL,
+      .capabilities = &spirv_caps,
       .subgroup_size = SUBGROUP_SIZE_UNIFORM,
-      .caps = ctx->Const.SpirVCapabilities,
       .ubo_addr_format = nir_address_format_32bit_index_offset,
       .ssbo_addr_format = nir_address_format_32bit_index_offset,
 
@@ -331,7 +337,9 @@ _mesa_spirv_to_nir(struct gl_context *ctx,
    NIR_PASS(_, nir, nir_split_var_copies);
    NIR_PASS(_, nir, nir_split_per_member_structs);
 
-   if (nir->info.stage == MESA_SHADER_VERTEX)
+   if (nir->info.stage == MESA_SHADER_VERTEX &&
+       (!(nir->options->io_options & nir_io_glsl_lower_derefs) ||
+        !(nir->options->io_options & nir_io_glsl_opt_varyings)))
       nir_remap_dual_slot_attributes(nir, &linked_shader->Program->DualSlotInputs);
 
    NIR_PASS(_, nir, nir_lower_frexp);

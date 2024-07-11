@@ -404,6 +404,16 @@ enum pipe_flush_flags
 #define PIPE_CONTEXT_NO_LOD_BIAS (1 << 8)
 
 /**
+ * Create a media-only context. Use in pipe_screen::context_create.
+ * This disables draw, blit, and clear*, render_condition, and other graphics.
+ * This also disabled all compute related functions
+ * functions. Interop with other media contexts is still allowed.
+ * This allows scheduling jobs on a media-only hardware command queue that
+ * can run in parallel with media without stalling it.
+ */
+#define PIPE_CONTEXT_MEDIA_ONLY      (1 << 9)
+
+/**
  * Flags for pipe_context::memory_barrier.
  */
 #define PIPE_BARRIER_MAPPED_BUFFER     (1 << 0)
@@ -497,6 +507,12 @@ enum pipe_flush_flags
 #define PIPE_RESOURCE_FLAG_UNMAPPABLE            (1 << 8) /* implies staging transfers due to VK interop */
 #define PIPE_RESOURCE_FLAG_DRV_PRIV              (1 << 9) /* driver/winsys private */
 #define PIPE_RESOURCE_FLAG_FRONTEND_PRIV         (1 << 24) /* gallium frontend private */
+
+/**
+ * Fixed-rate compression
+ */
+#define PIPE_COMPRESSION_FIXED_RATE_NONE    0x0
+#define PIPE_COMPRESSION_FIXED_RATE_DEFAULT 0xF
 
 /**
  * Hint about the expected lifecycle of a resource.
@@ -803,7 +819,6 @@ enum pipe_cap
    PIPE_CAP_MIXED_COLOR_DEPTH_BITS,
    PIPE_CAP_SHADER_ARRAY_COMPONENTS,
    PIPE_CAP_STREAM_OUTPUT_INTERLEAVE_BUFFERS,
-   PIPE_CAP_SHADER_CAN_READ_OUTPUTS,
    PIPE_CAP_NATIVE_FENCE_FD,
    PIPE_CAP_GLSL_TESS_LEVELS_AS_INPUTS,
    PIPE_CAP_FBFETCH,
@@ -853,7 +868,6 @@ enum pipe_cap
    PIPE_CAP_IMAGE_ATOMIC_FLOAT_ADD,
    PIPE_CAP_QUERY_PIPELINE_STATISTICS_SINGLE,
    PIPE_CAP_DEST_SURFACE_SRGB_CONTROL,
-   PIPE_CAP_NIR_COMPACT_ARRAYS,
    PIPE_CAP_MAX_VARYINGS,
    PIPE_CAP_COMPUTE_GRID_INFO_LAST_BLOCK,
    PIPE_CAP_COMPUTE_SHADER_DERIVATIVES,
@@ -938,8 +952,15 @@ enum pipe_cap
    PIPE_CAP_VALIDATE_ALL_DIRTY_STATES,
    PIPE_CAP_HAS_CONST_BW,
    PIPE_CAP_PERFORMANCE_MONITOR,
+   PIPE_CAP_TEXTURE_SAMPLER_INDEPENDENT,
    PIPE_CAP_LAST,
    /* XXX do not add caps after PIPE_CAP_LAST! */
+};
+
+enum pipe_point_size_lower_mode {
+   PIPE_POINT_SIZE_LOWER_ALWAYS,
+   PIPE_POINT_SIZE_LOWER_NEVER,
+   PIPE_POINT_SIZE_LOWER_USER_ONLY,
 };
 
 enum pipe_texture_transfer_mode {
@@ -1310,7 +1331,7 @@ enum pipe_perf_counter_data_type
 #define PIPE_UUID_SIZE 16
 #define PIPE_LUID_SIZE 8
 
-#if DETECT_OS_UNIX
+#if DETECT_OS_POSIX
 #define PIPE_MEMORY_FD
 #endif
 

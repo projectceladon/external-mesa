@@ -172,7 +172,7 @@ driCreateConfigs(enum pipe_format format,
       if (is_float || color_bits[i] == 0)
          masks[i] = 0;
       else
-         masks[i] = ((1 << color_bits[i]) - 1) << shifts[i];
+         masks[i] = ((1u << color_bits[i]) - 1) << shifts[i];
    }
 
    num_modes = num_zs_formats * num_db_modes * num_accum_bits * num_msaa_modes;
@@ -387,15 +387,14 @@ dri_fill_in_modes(struct dri_screen *screen)
 
       /* Expose only BGRA ordering if the loader doesn't support RGBA ordering. */
       if (!allow_rgba_ordering &&
-          util_format_get_component_shift(pipe_formats[f],
-                                          UTIL_FORMAT_COLORSPACE_RGB, 0)
-#if UTIL_ARCH_BIG_ENDIAN
-         >
-#else
-         <
-#endif
-          util_format_get_component_shift(pipe_formats[f],
-                                          UTIL_FORMAT_COLORSPACE_RGB, 2))
+          (pipe_formats[f] == PIPE_FORMAT_RGBA8888_UNORM ||
+           pipe_formats[f] == PIPE_FORMAT_RGBX8888_UNORM ||
+           pipe_formats[f] == PIPE_FORMAT_RGBA8888_SRGB  ||
+           pipe_formats[f] == PIPE_FORMAT_RGBX8888_SRGB  ||
+           pipe_formats[f] == PIPE_FORMAT_R5G5B5A1_UNORM ||
+           pipe_formats[f] == PIPE_FORMAT_R5G5B5X1_UNORM ||
+           pipe_formats[f] == PIPE_FORMAT_R4G4B4A4_UNORM ||
+           pipe_formats[f] == PIPE_FORMAT_R4G4B4X4_UNORM))
          continue;
 
       if (!allow_rgb10 &&

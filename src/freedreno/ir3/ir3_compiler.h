@@ -65,13 +65,18 @@ struct ir3_compiler_options {
    int bindless_fb_read_descriptor;
    int bindless_fb_read_slot;
 
-   /* True if 16-bit descriptors are used for both 16-bit and 32-bit access. */
+   /* True if 16-bit descriptors are available. */
    bool storage_16bit;
+   /* True if 8-bit descriptors are available. */
+   bool storage_8bit;
 
   /* If base_vertex should be lowered in nir */
   bool lower_base_vertex;
 
   bool shared_push_consts;
+
+   /* "dual_color_blend_by_location" workaround is enabled: */
+   bool dual_color_blend_by_location;
 };
 
 struct ir3_compiler {
@@ -205,14 +210,29 @@ struct ir3_compiler {
    /* Whether SSBOs have descriptors for sampling with ISAM */
    bool has_isam_ssbo;
 
-   /* True if 16-bit descriptors are used for both 16-bit and 32-bit access. */
-   bool storage_16bit;
+   /* Whether isam.v is supported to sample multiple components from SSBOs */
+   bool has_isam_v;
+
+   /* Whether isam/stib/ldib have immediate offsets. */
+   bool has_ssbo_imm_offsets;
 
    /* True if getfiberid, getlast.w8, brcst.active, and quad_shuffle
     * instructions are supported which are necessary to support
     * subgroup quad and arithmetic operations.
     */
    bool has_getfiberid;
+
+   /* Number of available predicate registers (p0.c) */
+   uint32_t num_predicates;
+
+   /* True if bitops (and.b, or.b, xor.b, not.b) can write to p0.c */
+   bool bitops_can_write_predicates;
+
+   /* True if braa/brao are available. */
+   bool has_branch_and_or;
+
+   /* True if predt/predf/prede are supported. */
+   bool has_predication;
 
    /* MAX_COMPUTE_VARIABLE_GROUP_INVOCATIONS_ARB */
    uint32_t max_variable_workgroup_size;
@@ -252,6 +272,24 @@ struct ir3_compiler {
 
    bool load_shader_consts_via_preamble;
    bool load_inline_uniforms_via_preamble_ldgk;
+
+   /* True if there is a scalar ALU capable of executing a subset of
+    * cat2-cat4 instructions with a shared register destination. This also
+    * implies expanded MOV/COV capability when writing to shared registers,
+    * as MOV/COV is now executed on the scalar ALU except when reading from a
+    * normal register, as well as the ability for ldc to write to a shared
+    * register.
+    */
+   bool has_scalar_alu;
+
+   bool fs_must_have_non_zero_constlen_quirk;
+
+   /* On all generations that support scalar ALU, there is also a copy of the
+    * scalar ALU and some other HW units in HLSQ that can execute preambles
+    * before work is dispatched to the SPs, called "early preamble". We detect
+    * whether the shader can use early preamble in ir3.
+    */
+   bool has_early_preamble;
 };
 
 void ir3_compiler_destroy(struct ir3_compiler *compiler);
@@ -304,8 +342,10 @@ enum ir3_shader_debug {
    IR3_DBG_SHADER_INTERNAL = BITFIELD_BIT(14),
    IR3_DBG_FULLSYNC = BITFIELD_BIT(15),
    IR3_DBG_FULLNOP = BITFIELD_BIT(16),
+   IR3_DBG_NOEARLYPREAMBLE = BITFIELD_BIT(17),
+   IR3_DBG_NODESCPREFETCH = BITFIELD_BIT(18),
 
-   /* DEBUG-only options: */
+   /* MESA_DEBUG-only options: */
    IR3_DBG_SCHEDMSGS = BITFIELD_BIT(20),
    IR3_DBG_RAMSGS = BITFIELD_BIT(21),
 

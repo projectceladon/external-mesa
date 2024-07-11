@@ -65,13 +65,16 @@ class Enum:
 
 class Member:
     """Stores details needed to declare and serialize the member of a struct."""
-    def __init__(self, member_type, name, array=None, compiler_field=False, comment=None):
+    def __init__(self, member_type, name, array=None,
+                 compiler_field=False, ray_tracing_field=False,
+                 comment=None):
         self.member_type = member_type
         self.name = name
         self.array = array
         # indicates whether this field is used by the compiler, and whether it
         # should be included in the shader compiler cache hash function.
         self.compiler_field = compiler_field
+        self.ray_tracing_field = ray_tracing_field
         self.comment=comment
 
 class Struct:
@@ -84,6 +87,7 @@ class Struct:
 
 INT_TYPES = set(["uint8_t",
                  "uint16_t",
+                 "uint32_t",
                  "uint64_t",
                  "unsigned",
                  "int"])
@@ -128,7 +132,8 @@ Enum("intel_platform",
       EnumValue("INTEL_PLATFORM_MTL_H", group_end="MTL"),
       EnumValue("INTEL_PLATFORM_ARL_U", group_begin="ARL"),
       EnumValue("INTEL_PLATFORM_ARL_H", group_end="ARL"),
-      "INTEL_PLATFORM_LNL"
+      "INTEL_PLATFORM_LNL",
+      "INTEL_PLATFORM_BMG",
       ])
 
 Struct("intel_memory_class_instance",
@@ -224,6 +229,9 @@ Struct("intel_device_info_pat_desc",
         Member("intel_device_info_pat_entry", "scanout",
                comment="scanout and external BOs"),
 
+        Member("intel_device_info_pat_entry", "compressed",
+               comment="Only supported in Xe2, compressed + WC"),
+
         Member("intel_device_info_pat_entry", "writeback_incoherent",
                comment=("BOs without special needs, can be WB not coherent "
                         "or WC it depends on the platforms and KMD")),
@@ -237,13 +245,21 @@ Struct("intel_device_info",
                comment="Driver internal numbers used to differentiate platforms."),
 
         Member("int", "verx10", compiler_field=True),
-        Member("int", "display_ver"),
 
-        Member("int", "revision", compiler_field=True,
+        Member("uint32_t", "gfx_ip_ver", compiler_field=True,
                comment=dedent("""\
-               This revision is from ioctl (I915_PARAM_REVISION) unlike
+               This is the run-time hardware GFX IP version that may be more specific
+               than ver/verx10. ver/verx10 may be more useful for comparing a class
+               of devices whereas gfx_ip_ver may be more useful for precisely
+               checking for a graphics ip type. GFX_IP_VER(major, minor) should be
+               used to compare IP versions.""")),
+
+        Member("int", "revision",
+               comment=dedent("""\
+               This revision is queried from KMD unlike
                pci_revision_id from drm device. Its value is not always
-               same as the pci_revision_id.""")),
+               same as the pci_revision_id.
+               For LNL+ this is the stepping of GT IP/GMD RevId.""")),
 
         Member("int", "gt"),
         Member("uint16_t", "pci_domain", comment="PCI info"),
@@ -357,12 +373,16 @@ Struct("intel_device_info",
         Member("unsigned", "num_thread_per_eu", compiler_field=True,
                comment="Number of threads per eu, varies between 4 and 8 between generations."),
 
+        Member("uint8_t", "grf_size",
+               comment="Size of a register from the EU GRF file in bytes."),
+
         Member("uint8_t", "slice_masks",
                comment="A bit mask of the slices available."),
 
         Member("uint8_t", "subslice_masks",
                array="INTEL_DEVICE_MAX_SLICES * DIV_ROUND_UP(INTEL_DEVICE_MAX_SUBSLICES, 8)",
                compiler_field=True,
+               ray_tracing_field=True,
                comment=dedent("""\
                An array of bit mask of the subslices available, use subslice_slice_stride
                to access this array.""")),
@@ -444,7 +464,8 @@ Struct("intel_device_info",
         Member("intel_device_info_urb_desc", "urb"),
         Member("unsigned", "max_constant_urb_size_kb"),
         Member("unsigned", "mesh_max_constant_urb_size_kb"),
-        Member("unsigned", "engine_class_prefetch", array="INTEL_ENGINE_CLASS_COMPUTE + 1"),
+        Member("unsigned", "engine_class_prefetch", array="INTEL_ENGINE_CLASS_INVALID"),
+        Member("unsigned", "engine_class_supported_count", array="INTEL_ENGINE_CLASS_INVALID"),
         Member("unsigned", "mem_alignment"),
         Member("uint64_t", "timestamp_frequency"),
         Member("uint64_t", "aperture_bytes"),
@@ -452,7 +473,6 @@ Struct("intel_device_info",
         Member("int", "simulator_id"),
         Member("char", "name", array="INTEL_DEVICE_MAX_NAME_SIZE"),
         Member("bool", "no_hw"),
-        Member("bool", "apply_hwconfig"),
         Member("intel_device_info_mem_desc", "mem"),
         Member("intel_device_info_pat_desc", "pat"),
         Member("intel_cooperative_matrix_configuration",

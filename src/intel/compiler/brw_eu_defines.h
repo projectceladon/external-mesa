@@ -59,13 +59,6 @@
 #define GET_BITS(data, high, low) ((data & INTEL_MASK((high), (low))) >> (low))
 #define GET_FIELD(word, field) (((word)  & field ## _MASK) >> field ## _SHIFT)
 
-/* Bitfields for the URB_WRITE message, DW2 of message header: */
-#define URB_WRITE_PRIM_END		0x1
-#define URB_WRITE_PRIM_START		0x2
-#define URB_WRITE_PRIM_TYPE_SHIFT	2
-
-#define BRW_SPRITE_POINT_ENABLE  16
-
 # define GFX7_GS_CONTROL_DATA_FORMAT_GSCTL_CUT		0
 # define GFX7_GS_CONTROL_DATA_FORMAT_GSCTL_SID		1
 
@@ -113,11 +106,6 @@ enum ENUM_PACKED brw_conditional_mod {
 
 #define BRW_DEBUG_NONE        0
 #define BRW_DEBUG_BREAKPOINT  1
-
-#define BRW_DEPENDENCY_NORMAL         0
-#define BRW_DEPENDENCY_NOTCLEARED     1
-#define BRW_DEPENDENCY_NOTCHECKED     2
-#define BRW_DEPENDENCY_DISABLE        3
 
 enum ENUM_PACKED brw_execution_size {
    BRW_EXECUTE_1  = 0,
@@ -235,8 +223,6 @@ enum opcode {
    BRW_OPCODE_CBIT,
    BRW_OPCODE_ADDC,
    BRW_OPCODE_SUBB,
-   BRW_OPCODE_SAD2,
-   BRW_OPCODE_SADA2,
    BRW_OPCODE_ADD3, /* Gen12+ only */
    BRW_OPCODE_DP4,
    BRW_OPCODE_DPH,
@@ -259,7 +245,6 @@ enum opcode {
     */
    FS_OPCODE_FB_WRITE_LOGICAL = NUM_BRW_OPCODES,
 
-   FS_OPCODE_FB_READ,
    FS_OPCODE_FB_READ_LOGICAL,
 
    SHADER_OPCODE_RCP,
@@ -291,51 +276,26 @@ enum opcode {
    /**
     * Texture sampling opcodes.
     *
-    * LOGICAL opcodes are eventually translated to the matching non-LOGICAL
-    * opcode but instead of taking a single payload blob they expect their
-    * arguments separately as individual sources. The position/ordering of the
-    * arguments are defined by the enum tex_logical_srcs.
+    * LOGICAL opcodes are eventually translated to SHADER_OPCODE_SEND but
+    * take parameters as individual sources.  See enum tex_logical_srcs.
     */
-   SHADER_OPCODE_TEX,
    SHADER_OPCODE_TEX_LOGICAL,
-   SHADER_OPCODE_TXD,
    SHADER_OPCODE_TXD_LOGICAL,
-   SHADER_OPCODE_TXF,
    SHADER_OPCODE_TXF_LOGICAL,
-   SHADER_OPCODE_TXF_LZ,
-   SHADER_OPCODE_TXL,
    SHADER_OPCODE_TXL_LOGICAL,
-   SHADER_OPCODE_TXL_LZ,
-   SHADER_OPCODE_TXS,
    SHADER_OPCODE_TXS_LOGICAL,
-   FS_OPCODE_TXB,
    FS_OPCODE_TXB_LOGICAL,
-   SHADER_OPCODE_TXF_CMS,
-   SHADER_OPCODE_TXF_CMS_LOGICAL,
-   SHADER_OPCODE_TXF_CMS_W,
    SHADER_OPCODE_TXF_CMS_W_LOGICAL,
    SHADER_OPCODE_TXF_CMS_W_GFX12_LOGICAL,
-   SHADER_OPCODE_TXF_UMS,
-   SHADER_OPCODE_TXF_UMS_LOGICAL,
-   SHADER_OPCODE_TXF_MCS,
    SHADER_OPCODE_TXF_MCS_LOGICAL,
-   SHADER_OPCODE_LOD,
    SHADER_OPCODE_LOD_LOGICAL,
-   SHADER_OPCODE_TG4,
    SHADER_OPCODE_TG4_LOGICAL,
-   SHADER_OPCODE_TG4_IMPLICIT_LOD,
    SHADER_OPCODE_TG4_IMPLICIT_LOD_LOGICAL,
-   SHADER_OPCODE_TG4_EXPLICIT_LOD,
    SHADER_OPCODE_TG4_EXPLICIT_LOD_LOGICAL,
-   SHADER_OPCODE_TG4_BIAS,
    SHADER_OPCODE_TG4_BIAS_LOGICAL,
-   SHADER_OPCODE_TG4_OFFSET,
    SHADER_OPCODE_TG4_OFFSET_LOGICAL,
-   SHADER_OPCODE_TG4_OFFSET_LOD,
    SHADER_OPCODE_TG4_OFFSET_LOD_LOGICAL,
-   SHADER_OPCODE_TG4_OFFSET_BIAS,
    SHADER_OPCODE_TG4_OFFSET_BIAS_LOGICAL,
-   SHADER_OPCODE_SAMPLEINFO,
    SHADER_OPCODE_SAMPLEINFO_LOGICAL,
 
    SHADER_OPCODE_IMAGE_SIZE_LOGICAL,
@@ -533,7 +493,6 @@ enum opcode {
     */
    FS_OPCODE_DDY_COARSE,
    FS_OPCODE_DDY_FINE,
-   FS_OPCODE_LINTERP,
    FS_OPCODE_PIXEL_X,
    FS_OPCODE_PIXEL_Y,
    FS_OPCODE_UNIFORM_PULL_CONSTANT_LOAD,
@@ -542,11 +501,6 @@ enum opcode {
    FS_OPCODE_INTERPOLATE_AT_SAMPLE,
    FS_OPCODE_INTERPOLATE_AT_SHARED_OFFSET,
    FS_OPCODE_INTERPOLATE_AT_PER_SLOT_OFFSET,
-
-   /**
-    * Terminate the compute shader.
-    */
-   CS_OPCODE_CS_TERMINATE,
 
    /**
     * GLSL barrier()
@@ -580,68 +534,11 @@ enum opcode {
    SHADER_OPCODE_BTD_SPAWN_LOGICAL,
    SHADER_OPCODE_BTD_RETIRE_LOGICAL,
 
-   SHADER_OPCODE_READ_SR_REG,
+   SHADER_OPCODE_READ_ARCH_REG,
+
+   SHADER_OPCODE_LOAD_SUBGROUP_INVOCATION,
 
    RT_OPCODE_TRACE_RAY_LOGICAL,
-};
-
-enum brw_urb_write_flags {
-   BRW_URB_WRITE_NO_FLAGS = 0,
-
-   /**
-    * Causes a new URB entry to be allocated, and its address stored in the
-    * destination register (gen < 7).
-    */
-   BRW_URB_WRITE_ALLOCATE = 0x1,
-
-   /**
-    * Causes the current URB entry to be deallocated (gen < 7).
-    */
-   BRW_URB_WRITE_UNUSED = 0x2,
-
-   /**
-    * Causes the thread to terminate.
-    */
-   BRW_URB_WRITE_EOT = 0x4,
-
-   /**
-    * Indicates that the given URB entry is complete, and may be sent further
-    * down the 3D pipeline (gen < 7).
-    */
-   BRW_URB_WRITE_COMPLETE = 0x8,
-
-   /**
-    * Indicates that an additional offset (which may be different for the two
-    * vec4 slots) is stored in the message header (gen == 7).
-    */
-   BRW_URB_WRITE_PER_SLOT_OFFSET = 0x10,
-
-   /**
-    * Indicates that the channel masks in the URB_WRITE message header should
-    * not be overridden to 0xff (gen == 7).
-    */
-   BRW_URB_WRITE_USE_CHANNEL_MASKS = 0x20,
-
-   /**
-    * Indicates that the data should be sent to the URB using the
-    * URB_WRITE_OWORD message rather than URB_WRITE_HWORD (gen == 7).  This
-    * causes offsets to be interpreted as multiples of an OWORD instead of an
-    * HWORD, and only allows one OWORD to be written.
-    */
-   BRW_URB_WRITE_OWORD = 0x40,
-
-   /**
-    * Convenient combination of flags: end the thread while simultaneously
-    * marking the given URB entry as complete.
-    */
-   BRW_URB_WRITE_EOT_COMPLETE = BRW_URB_WRITE_EOT | BRW_URB_WRITE_COMPLETE,
-
-   /**
-    * Convenient combination of flags: mark the given URB entry as complete
-    * and simultaneously allocate a new one.
-    */
-   BRW_URB_WRITE_ALLOCATE_COMPLETE =
-      BRW_URB_WRITE_ALLOCATE | BRW_URB_WRITE_COMPLETE,
 };
 
 enum fb_write_logical_srcs {
@@ -780,6 +677,7 @@ enum rt_logical_srcs {
 
 enum urb_logical_srcs {
    URB_LOGICAL_SRC_HANDLE,
+   /** Offset in bytes on Xe2+ or OWords on older platforms */
    URB_LOGICAL_SRC_PER_SLOT_OFFSETS,
    URB_LOGICAL_SRC_CHANNEL_MASK,
    /** Data to be written.  BAD_FILE for reads. */
@@ -798,19 +696,6 @@ enum interpolator_logical_srcs {
 
    INTERP_NUM_SRCS
 };
-
-
-#ifdef __cplusplus
-/**
- * Allow brw_urb_write_flags enums to be ORed together.
- */
-inline brw_urb_write_flags
-operator|(brw_urb_write_flags x, brw_urb_write_flags y)
-{
-   return static_cast<brw_urb_write_flags>(static_cast<int>(x) |
-                                           static_cast<int>(y));
-}
-#endif
 
 enum ENUM_PACKED brw_predicate {
    BRW_PREDICATE_NONE                =  0,
@@ -882,13 +767,6 @@ enum ENUM_PACKED gfx10_align1_3src_exec_type {
 #define BRW_ARF_IP                    0xA0
 #define BRW_ARF_TDR                   0xB0
 #define BRW_ARF_TIMESTAMP             0xC0
-
-#define BRW_AMASK   0
-#define BRW_IMASK   1
-#define BRW_LMASK   2
-#define BRW_CMASK   3
-
-
 
 #define BRW_THREAD_NORMAL     0
 #define BRW_THREAD_ATOMIC     1
@@ -1211,11 +1089,8 @@ enum tgl_sync_function {
  */
 enum brw_message_target {
    BRW_SFID_NULL                     = 0,
-   BRW_SFID_MATH                     = 1, /* Only valid on Gfx4-5 */
    BRW_SFID_SAMPLER                  = 2,
    BRW_SFID_MESSAGE_GATEWAY          = 3,
-   BRW_SFID_DATAPORT_READ            = 4,
-   BRW_SFID_DATAPORT_WRITE           = 5,
    BRW_SFID_URB                      = 6,
    BRW_SFID_THREAD_SPAWNER           = 7,
    BRW_SFID_VME                      = 8,
@@ -1245,25 +1120,6 @@ enum brw_message_target {
 
 #define GFX8_SAMPLER_RETURN_FORMAT_32BITS    0
 #define GFX8_SAMPLER_RETURN_FORMAT_16BITS    1
-
-#define BRW_SAMPLER_MESSAGE_SIMD8_SAMPLE              0
-#define BRW_SAMPLER_MESSAGE_SIMD16_SAMPLE             0
-#define BRW_SAMPLER_MESSAGE_SIMD16_SAMPLE_BIAS        0
-#define BRW_SAMPLER_MESSAGE_SIMD8_KILLPIX             1
-#define BRW_SAMPLER_MESSAGE_SIMD4X2_SAMPLE_LOD        1
-#define BRW_SAMPLER_MESSAGE_SIMD16_SAMPLE_LOD         1
-#define BRW_SAMPLER_MESSAGE_SIMD4X2_SAMPLE_GRADIENTS  2
-#define BRW_SAMPLER_MESSAGE_SIMD8_SAMPLE_GRADIENTS    2
-#define BRW_SAMPLER_MESSAGE_SIMD4X2_SAMPLE_COMPARE    0
-#define BRW_SAMPLER_MESSAGE_SIMD16_SAMPLE_COMPARE     2
-#define BRW_SAMPLER_MESSAGE_SIMD8_SAMPLE_BIAS_COMPARE 0
-#define BRW_SAMPLER_MESSAGE_SIMD4X2_SAMPLE_LOD_COMPARE 1
-#define BRW_SAMPLER_MESSAGE_SIMD8_SAMPLE_LOD_COMPARE  1
-#define BRW_SAMPLER_MESSAGE_SIMD4X2_RESINFO           2
-#define BRW_SAMPLER_MESSAGE_SIMD16_RESINFO            2
-#define BRW_SAMPLER_MESSAGE_SIMD4X2_LD                3
-#define BRW_SAMPLER_MESSAGE_SIMD8_LD                  3
-#define BRW_SAMPLER_MESSAGE_SIMD16_LD                 3
 
 #define GFX5_SAMPLER_MESSAGE_SAMPLE              0
 #define GFX5_SAMPLER_MESSAGE_SAMPLE_BIAS         1
@@ -1346,16 +1202,6 @@ enum brw_message_target {
 
 /* This one stays the same across generations. */
 #define BRW_DATAPORT_READ_MESSAGE_OWORD_BLOCK_READ          0
-/* GFX4 */
-#define BRW_DATAPORT_READ_MESSAGE_OWORD_DUAL_BLOCK_READ     1
-#define BRW_DATAPORT_READ_MESSAGE_MEDIA_BLOCK_READ          2
-#define BRW_DATAPORT_READ_MESSAGE_DWORD_SCATTERED_READ      3
-/* G45, GFX5 */
-#define G45_DATAPORT_READ_MESSAGE_RENDER_UNORM_READ	    1
-#define G45_DATAPORT_READ_MESSAGE_OWORD_DUAL_BLOCK_READ     2
-#define G45_DATAPORT_READ_MESSAGE_AVC_LOOP_FILTER_READ	    3
-#define G45_DATAPORT_READ_MESSAGE_MEDIA_BLOCK_READ          4
-#define G45_DATAPORT_READ_MESSAGE_DWORD_SCATTERED_READ      6
 /* GFX6 */
 #define GFX6_DATAPORT_READ_MESSAGE_RENDER_UNORM_READ	    1
 #define GFX6_DATAPORT_READ_MESSAGE_OWORD_DUAL_BLOCK_READ     2
@@ -1363,23 +1209,14 @@ enum brw_message_target {
 #define GFX6_DATAPORT_READ_MESSAGE_OWORD_UNALIGN_BLOCK_READ  5
 #define GFX6_DATAPORT_READ_MESSAGE_DWORD_SCATTERED_READ      6
 
-#define BRW_DATAPORT_READ_TARGET_DATA_CACHE      0
-#define BRW_DATAPORT_READ_TARGET_RENDER_CACHE    1
-#define BRW_DATAPORT_READ_TARGET_SAMPLER_CACHE   2
-
 #define BRW_DATAPORT_RENDER_TARGET_WRITE_SIMD16_SINGLE_SOURCE                0
 #define BRW_DATAPORT_RENDER_TARGET_WRITE_SIMD16_SINGLE_SOURCE_REPLICATED     1
 #define BRW_DATAPORT_RENDER_TARGET_WRITE_SIMD8_DUAL_SOURCE_SUBSPAN01         2
 #define BRW_DATAPORT_RENDER_TARGET_WRITE_SIMD8_DUAL_SOURCE_SUBSPAN23         3
 #define BRW_DATAPORT_RENDER_TARGET_WRITE_SIMD8_SINGLE_SOURCE_SUBSPAN01       4
 
-#define BRW_DATAPORT_WRITE_MESSAGE_OWORD_BLOCK_WRITE                0
-#define BRW_DATAPORT_WRITE_MESSAGE_OWORD_DUAL_BLOCK_WRITE           1
-#define BRW_DATAPORT_WRITE_MESSAGE_MEDIA_BLOCK_WRITE                2
-#define BRW_DATAPORT_WRITE_MESSAGE_DWORD_SCATTERED_WRITE            3
-#define BRW_DATAPORT_WRITE_MESSAGE_RENDER_TARGET_WRITE              4
-#define BRW_DATAPORT_WRITE_MESSAGE_STREAMED_VERTEX_BUFFER_WRITE     5
-#define BRW_DATAPORT_WRITE_MESSAGE_FLUSH_RENDER_CACHE               7
+#define XE2_DATAPORT_RENDER_TARGET_WRITE_SIMD32_SINGLE_SOURCE                1
+#define XE2_DATAPORT_RENDER_TARGET_WRITE_SIMD16_DUAL_SOURCE                  2
 
 /* GFX6 */
 #define GFX6_DATAPORT_WRITE_MESSAGE_DWORD_ATOMIC_WRITE              7
@@ -1474,12 +1311,6 @@ enum brw_message_target {
 #define BRW_BTI_STATELESS                255
 #define GFX7_BTI_SLM                     254
 
-#define HSW_BTI_STATELESS_LOCALLY_COHERENT 255
-#define HSW_BTI_STATELESS_NON_COHERENT 253
-#define HSW_BTI_STATELESS_GLOBALLY_COHERENT 252
-#define HSW_BTI_STATELESS_LLC_COHERENT 251
-#define HSW_BTI_STATELESS_L3_UNCACHED 250
-
 /* The hardware docs are a bit contradictory here.  On Haswell, where they
  * first added cache ability control, there were 5 different cache modes (see
  * HSW_BTI_STATELESS_* above).  On Broadwell, they reduced to two:
@@ -1546,7 +1377,6 @@ enum brw_message_target {
 #define BRW_MATH_FUNCTION_RSQ                              5
 #define BRW_MATH_FUNCTION_SIN                              6
 #define BRW_MATH_FUNCTION_COS                              7
-#define BRW_MATH_FUNCTION_SINCOS                           8 /* gfx4, gfx5 */
 #define BRW_MATH_FUNCTION_FDIV                             9 /* gfx6+ */
 #define BRW_MATH_FUNCTION_POW                              10
 #define BRW_MATH_FUNCTION_INT_DIV_QUOTIENT_AND_REMAINDER   11
@@ -1555,22 +1385,6 @@ enum brw_message_target {
 #define GFX8_MATH_FUNCTION_INVM                            14
 #define GFX8_MATH_FUNCTION_RSQRTM                          15
 
-#define BRW_MATH_INTEGER_UNSIGNED     0
-#define BRW_MATH_INTEGER_SIGNED       1
-
-#define BRW_MATH_PRECISION_FULL        0
-#define BRW_MATH_PRECISION_PARTIAL     1
-
-#define BRW_MATH_SATURATE_NONE         0
-#define BRW_MATH_SATURATE_SATURATE     1
-
-#define BRW_MATH_DATA_VECTOR  0
-#define BRW_MATH_DATA_SCALAR  1
-
-#define BRW_URB_OPCODE_WRITE_HWORD  0
-#define BRW_URB_OPCODE_WRITE_OWORD  1
-#define BRW_URB_OPCODE_READ_HWORD   2
-#define BRW_URB_OPCODE_READ_OWORD   3
 #define GFX7_URB_OPCODE_ATOMIC_MOV  4
 #define GFX7_URB_OPCODE_ATOMIC_INC  5
 #define GFX8_URB_OPCODE_ATOMIC_ADD  6
@@ -1581,19 +1395,6 @@ enum brw_message_target {
 #define BRW_URB_SWIZZLE_NONE          0
 #define BRW_URB_SWIZZLE_INTERLEAVE    1
 #define BRW_URB_SWIZZLE_TRANSPOSE     2
-
-#define BRW_SCRATCH_SPACE_SIZE_1K     0
-#define BRW_SCRATCH_SPACE_SIZE_2K     1
-#define BRW_SCRATCH_SPACE_SIZE_4K     2
-#define BRW_SCRATCH_SPACE_SIZE_8K     3
-#define BRW_SCRATCH_SPACE_SIZE_16K    4
-#define BRW_SCRATCH_SPACE_SIZE_32K    5
-#define BRW_SCRATCH_SPACE_SIZE_64K    6
-#define BRW_SCRATCH_SPACE_SIZE_128K   7
-#define BRW_SCRATCH_SPACE_SIZE_256K   8
-#define BRW_SCRATCH_SPACE_SIZE_512K   9
-#define BRW_SCRATCH_SPACE_SIZE_1M     10
-#define BRW_SCRATCH_SPACE_SIZE_2M     11
 
 #define BRW_MESSAGE_GATEWAY_SFID_OPEN_GATEWAY         0
 #define BRW_MESSAGE_GATEWAY_SFID_CLOSE_GATEWAY        1
@@ -1614,14 +1415,6 @@ enum brw_message_target {
 #define GFX7_MAX_HS_URB_ENTRY_SIZE_BYTES                (512*64)
 #define GFX7_MAX_VS_URB_ENTRY_SIZE_BYTES                (512*64)
 
-#define BRW_GS_EDGE_INDICATOR_0			(1 << 8)
-#define BRW_GS_EDGE_INDICATOR_1			(1 << 9)
-
-/* Gfx6 "GS URB Entry Allocation Size" is defined as a number of 1024-bit
- * (128 bytes) URB rows and the maximum allowed value is 5 rows.
- */
-#define GFX6_MAX_GS_URB_ENTRY_SIZE_BYTES                (5*128)
-
 /* GS Thread Payload
  */
 
@@ -1630,9 +1423,6 @@ enum brw_message_target {
  */
 #define GFX7_MAX_GS_OUTPUT_VERTEX_SIZE_BYTES            (62*16)
 
-
-/* R0 */
-# define GFX7_GS_PAYLOAD_INSTANCE_ID_SHIFT		27
 
 /* CR0.0[5:4] Floating-Point Rounding Modes
  *  Skylake PRM, Volume 7 Part 1, "Control Register", page 756

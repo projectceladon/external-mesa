@@ -815,7 +815,7 @@ loader_open_driver_lib(const char *driver_name,
    search_paths = NULL;
    if (__normal_user() && search_path_vars) {
       for (int i = 0; search_path_vars[i] != NULL; i++) {
-         search_paths = getenv(search_path_vars[i]);
+         search_paths = os_get_option(search_path_vars[i]);
          if (search_paths)
             break;
       }
@@ -877,13 +877,15 @@ loader_open_driver_lib(const char *driver_name,
 const struct __DRIextensionRec **
 loader_open_driver(const char *driver_name,
                    void **out_driver_handle,
-                   const char **search_path_vars)
+                   const char **search_path_vars,
+                   bool driver_name_is_inferred)
 {
    char *get_extensions_name;
    const struct __DRIextensionRec **extensions = NULL;
    const struct __DRIextensionRec **(*get_extensions)(void);
+
    void *driver = loader_open_driver_lib(driver_name, "_dri", search_path_vars,
-                                         DEFAULT_DRIVER_DIR, true);
+                                         DEFAULT_DRIVER_DIR, !driver_name_is_inferred);
 
    if (!driver)
       goto failed;

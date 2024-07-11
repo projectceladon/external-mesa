@@ -36,6 +36,7 @@ anv_nir_compute_push_layout(nir_shader *nir,
                             struct brw_stage_prog_data *prog_data,
                             struct anv_pipeline_bind_map *map,
                             const struct anv_pipeline_push_map *push_map,
+                            enum anv_descriptor_set_layout_type desc_type,
                             void *mem_ctx)
 {
    const struct brw_compiler *compiler = pdevice->compiler;
@@ -74,6 +75,16 @@ anv_nir_compute_push_layout(nir_shader *nir,
                push_end = MAX2(push_end, base +
                   sizeof_field(struct anv_push_constants,
                                desc_surface_offsets));
+
+               if (desc_type == ANV_PIPELINE_DESCRIPTOR_SET_LAYOUT_TYPE_BUFFER &&
+                   !pdevice->uses_ex_bso) {
+                  base = offsetof(struct anv_push_constants,
+                                  surfaces_base_offset);
+                  push_start = MIN2(push_start, base);
+                  push_end = MAX2(push_end, base +
+                                  sizeof_field(struct anv_push_constants,
+                                               surfaces_base_offset));
+               }
                break;
             }
 
@@ -139,7 +150,7 @@ anv_nir_compute_push_layout(nir_shader *nir,
    struct anv_push_range push_constant_range = {
       .set = ANV_DESCRIPTOR_SET_PUSH_CONSTANTS,
       .start = push_start / 32,
-      .length = DIV_ROUND_UP(push_end - push_start, 32),
+      .length = ALIGN(push_end - push_start, devinfo->grf_size) / 32,
    };
 
    if (has_push_intrinsic) {
@@ -173,19 +184,34 @@ anv_nir_compute_push_layout(nir_shader *nir,
                case nir_intrinsic_load_desc_set_address_intel: {
                   assert(brw_shader_stage_requires_bindless_resources(nir->info.stage));
                   b->cursor = nir_before_instr(&intrin->instr);
-                  nir_def *pc_load = nir_load_uniform(b, 1, 32,
+                  nir_def *desc_offset = nir_load_uniform(b, 1, 32,
                      nir_imul_imm(b, intrin->src[0].ssa, sizeof(uint32_t)),
                      .base = offsetof(struct anv_push_constants,
                                       desc_surface_offsets),
                      .range = sizeof_field(struct anv_push_constants,
                                            desc_surface_offsets),
                      .dest_type = nir_type_uint32);
-                  pc_load = nir_iand_imm(b, pc_load, ANV_DESCRIPTOR_SET_OFFSET_MASK);
+                  desc_offset = nir_iand_imm(b, desc_offset, ANV_DESCRIPTOR_SET_OFFSET_MASK);
+                  if (desc_type == ANV_PIPELINE_DESCRIPTOR_SET_LAYOUT_TYPE_BUFFER &&
+                      !pdevice->uses_ex_bso) {
+                     nir_def *bindless_base_offset = nir_load_uniform(
+                        b, 1, 32,
+                        nir_imm_int(b, 0),
+                        .base = offsetof(struct anv_push_constants,
+                                         surfaces_base_offset),
+                        .range = sizeof_field(struct anv_push_constants,
+                                              surfaces_base_offset),
+                        .dest_type = nir_type_uint32);
+                     desc_offset = nir_iadd(b, bindless_base_offset, desc_offset);
+                  }
                   nir_def *desc_addr =
                      nir_pack_64_2x32_split(
-                        b, pc_load,
+                        b, desc_offset,
                         nir_load_reloc_const_intel(
-                           b, BRW_SHADER_RELOC_DESCRIPTORS_ADDR_HIGH));
+                           b,
+                           desc_type == ANV_PIPELINE_DESCRIPTOR_SET_LAYOUT_TYPE_BUFFER ?
+                           BRW_SHADER_RELOC_DESCRIPTORS_BUFFER_ADDR_HIGH :
+                           BRW_SHADER_RELOC_DESCRIPTORS_ADDR_HIGH));
                   nir_def_rewrite_uses(&intrin->def, desc_addr);
                   break;
                }
@@ -315,11 +341,13 @@ anv_nir_compute_push_layout(nir_shader *nir,
 }
 
 void
-anv_nir_validate_push_layout(struct brw_stage_prog_data *prog_data,
+anv_nir_validate_push_layout(const struct anv_physical_device *pdevice,
+                             struct brw_stage_prog_data *prog_data,
                              struct anv_pipeline_bind_map *map)
 {
 #ifndef NDEBUG
-   unsigned prog_data_push_size = DIV_ROUND_UP(prog_data->nr_params, 8);
+   unsigned prog_data_push_size = ALIGN(prog_data->nr_params, pdevice->info.grf_size / 4) / 8;
+
    for (unsigned i = 0; i < 4; i++)
       prog_data_push_size += prog_data->ubo_ranges[i].length;
 

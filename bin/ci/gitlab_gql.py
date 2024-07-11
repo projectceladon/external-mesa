@@ -229,7 +229,7 @@ def traverse_dag_needs(jobs_metadata: Dag) -> None:
         partial = True
 
         while partial:
-            next_depth: set[str] = {n for dn in final_needs for n in jobs_metadata[dn]["needs"]}
+            next_depth: set[str] = {n for dn in final_needs if dn in jobs_metadata for n in jobs_metadata[dn]["needs"]}
             partial: bool = not final_needs.issuperset(next_depth)
             final_needs = final_needs.union(next_depth)
 
@@ -331,10 +331,8 @@ def filter_dag(dag: Dag, regex: Pattern) -> Dag:
 
 
 def print_dag(dag: Dag) -> None:
-    for job, data in dag.items():
-        print(f"{job}:")
-        print(f"\t{' '.join(data['needs'])}")
-        print()
+    for job, data in sorted(dag.items()):
+        print(f"{job}:\n\t{' '.join(data['needs'])}\n")
 
 
 def fetch_merged_yaml(gl_gql: GitlabGQL, params) -> dict[str, Any]:

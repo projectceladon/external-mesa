@@ -108,6 +108,8 @@ dri_get_capability(void *loaderPrivate, enum dri_loader_cap cap)
    switch (cap) {
    case DRI_LOADER_CAP_FP16:
       return 1;
+   case DRI_LOADER_CAP_RGBA_ORDERING:
+      return 1;
    default:
       return 0;
    }
@@ -250,19 +252,19 @@ static struct dri_extension_match dri_core_extensions[] = {
 
 static struct dri_extension_match gbm_dri_device_extensions[] = {
    { __DRI_CORE, 1, offsetof(struct gbm_dri_device, core), false },
-   { __DRI_MESA, 1, offsetof(struct gbm_dri_device, mesa), false },
-   { __DRI_IMAGE_DRIVER, 1, offsetof(struct gbm_dri_device, image_driver), false },
+   { __DRI_MESA, 2, offsetof(struct gbm_dri_device, mesa), false },
+   { __DRI_IMAGE_DRIVER, 2, offsetof(struct gbm_dri_device, image_driver), false },
 };
 
 static struct dri_extension_match gbm_swrast_device_extensions[] = {
    { __DRI_CORE, 1, offsetof(struct gbm_dri_device, core), false },
-   { __DRI_MESA, 1, offsetof(struct gbm_dri_device, mesa), false },
-   { __DRI_SWRAST, 4, offsetof(struct gbm_dri_device, swrast), false },
+   { __DRI_MESA, 2, offsetof(struct gbm_dri_device, mesa), false },
+   { __DRI_SWRAST, 5, offsetof(struct gbm_dri_device, swrast), false },
    { __DRI_KOPPER, 1, offsetof(struct gbm_dri_device, kopper), true },
 };
 
 static const __DRIextension **
-dri_open_driver(struct gbm_dri_device *dri)
+dri_open_driver(struct gbm_dri_device *dri, bool driver_name_is_inferred)
 {
    /* Temporarily work around dri driver libs that need symbols in libglapi
     * but don't automatically link it in.
@@ -283,17 +285,18 @@ dri_open_driver(struct gbm_dri_device *dri)
       "LIBGL_DRIVERS_PATH",
       NULL
    };
-   return loader_open_driver(dri->driver_name, &dri->driver, search_path_vars);
+   return loader_open_driver(dri->driver_name, &dri->driver, search_path_vars,
+                             driver_name_is_inferred);
 }
 
 static int
-dri_screen_create_for_driver(struct gbm_dri_device *dri, char *driver_name)
+dri_screen_create_for_driver(struct gbm_dri_device *dri, char *driver_name, bool driver_name_is_inferred)
 {
    bool swrast = driver_name == NULL; /* If it's pure swrast, not just swkms. */
 
    dri->driver_name = swrast ? strdup("swrast") : driver_name;
 
-   const __DRIextension **extensions = dri_open_driver(dri);
+   const __DRIextension **extensions = dri_open_driver(dri, driver_name_is_inferred);
    if (!extensions)
       goto fail;
 
@@ -315,10 +318,10 @@ dri_screen_create_for_driver(struct gbm_dri_device *dri, char *driver_name)
 
    dri->driver_extensions = extensions;
    dri->loader_extensions = gbm_dri_screen_extensions;
-   dri->screen = dri->mesa->createNewScreen(0, swrast ? -1 : dri->base.v0.fd,
-                                            dri->loader_extensions,
-                                            dri->driver_extensions,
-                                            &dri->driver_configs, dri);
+   dri->screen = dri->mesa->createNewScreen3(0, swrast ? -1 : dri->base.v0.fd,
+                                             dri->loader_extensions,
+                                             dri->driver_extensions,
+                                             &dri->driver_configs, driver_name_is_inferred, dri);
    if (dri->screen == NULL)
       goto close_driver;
 
@@ -348,7 +351,7 @@ fail:
 }
 
 static int
-dri_screen_create(struct gbm_dri_device *dri)
+dri_screen_create(struct gbm_dri_device *dri, bool driver_name_is_inferred)
 {
    char *driver_name;
 
@@ -356,11 +359,11 @@ dri_screen_create(struct gbm_dri_device *dri)
    if (!driver_name)
       return -1;
 
-   return dri_screen_create_for_driver(dri, driver_name);
+   return dri_screen_create_for_driver(dri, driver_name, driver_name_is_inferred);
 }
 
 static int
-dri_screen_create_sw(struct gbm_dri_device *dri)
+dri_screen_create_sw(struct gbm_dri_device *dri, bool driver_name_is_inferred)
 {
    char *driver_name;
    int ret;
@@ -369,9 +372,9 @@ dri_screen_create_sw(struct gbm_dri_device *dri)
    if (!driver_name)
       return -errno;
 
-   ret = dri_screen_create_for_driver(dri, driver_name);
+   ret = dri_screen_create_for_driver(dri, driver_name, driver_name_is_inferred);
    if (ret != 0)
-      ret = dri_screen_create_for_driver(dri, NULL);
+      ret = dri_screen_create_for_driver(dri, NULL, driver_name_is_inferred);
    if (ret != 0)
       return ret;
 
@@ -941,6 +944,9 @@ gbm_dri_bo_create(struct gbm_device *gbm,
    struct gbm_dri_bo *bo;
    int dri_format;
    unsigned dri_use = 0;
+   uint64_t *mods_comp = NULL;
+   uint64_t *mods_filtered = NULL;
+   unsigned int count_filtered = 0;
 
    format = gbm_core.v0.format_canonicalize(format);
 
@@ -981,11 +987,97 @@ gbm_dri_bo_create(struct gbm_device *gbm,
       goto failed;
    }
 
+   /* If the driver supports fixed-rate compression, filter the acceptable
+    * modifiers by the compression rate. */
+   if (modifiers && dri->image->queryCompressionModifiers) {
+      enum __DRIFixedRateCompression comp = __DRI_FIXED_RATE_COMPRESSION_NONE;
+
+      switch (usage & GBM_BO_FIXED_COMPRESSION_MASK) {
+#define CASE(x) case GBM_BO_FIXED_COMPRESSION_ ## x: comp = __DRI_FIXED_RATE_COMPRESSION_ ## x; break;
+      CASE(DEFAULT);
+      CASE(1BPC);
+      CASE(2BPC);
+      CASE(3BPC);
+      CASE(4BPC);
+      CASE(5BPC);
+      CASE(6BPC);
+      CASE(7BPC);
+      CASE(8BPC);
+      CASE(9BPC);
+      CASE(10BPC);
+      CASE(11BPC);
+      CASE(12BPC);
+#undef CASE
+      default:
+         break;
+      }
+
+      int count_comp = 0;
+
+      /* Find how many acceptable modifiers there are for our rate. If there
+       * are none, fall back to no compression, as it is not mandatory to use
+       * the specified compression rate. */
+      if (!dri->image->queryCompressionModifiers(dri->screen, format, comp,
+                                                 0, NULL, &count_comp) ||
+         count_comp == 0) {
+         if (comp == __DRI_FIXED_RATE_COMPRESSION_NONE) {
+            errno = EINVAL;
+            goto failed;
+         }
+
+         comp = __DRI_FIXED_RATE_COMPRESSION_NONE;
+         if (!dri->image->queryCompressionModifiers(dri->screen, format, comp,
+                                                    0, NULL, &count_comp)) {
+            errno = EINVAL;
+            goto failed;
+         }
+      }
+
+      if (count_comp == 0) {
+         errno = EINVAL;
+         goto failed;
+      }
+
+      mods_comp = malloc(count_comp * sizeof(uint64_t));
+      mods_filtered = malloc(count_comp * sizeof(uint64_t));
+      if (!mods_comp || !mods_filtered) {
+         errno = ENOMEM;
+         goto failed;
+      }
+
+      if (!dri->image->queryCompressionModifiers(dri->screen, format, comp,
+                                                 count_comp, mods_comp,
+                                                 &count_comp)) {
+         errno = ENOMEM;
+         goto failed;
+      }
+
+
+      /* Intersect the list of user-supplied acceptable modifiers with the set
+       * of modifiers acceptable for this compression rate. */
+      for (unsigned int i = 0; i < count_comp; i++) {
+         for (unsigned int j = 0; j < count; j++) {
+            if (mods_comp[i] == modifiers[j]) {
+               mods_filtered[count_filtered++] = mods_comp[i];
+               break;
+            }
+         }
+      }
+
+      free(mods_comp);
+      mods_comp = NULL;
+   }
+
    bo->image = loader_dri_create_image(dri->screen, dri->image, width, height,
-                                       dri_format, dri_use, modifiers, count,
+                                       dri_format, dri_use,
+                                       mods_filtered ? mods_filtered : modifiers,
+                                       mods_filtered ? count_filtered : count,
                                        bo);
    if (bo->image == NULL)
       goto failed;
+
+   free(mods_filtered);
+   mods_filtered = NULL;
 
    if (modifiers)
       assert(gbm_dri_bo_get_modifier(&bo->base) != DRM_FORMAT_MOD_INVALID);
@@ -998,6 +1090,8 @@ gbm_dri_bo_create(struct gbm_device *gbm,
    return &bo->base;
 
 failed:
+   free(mods_comp);
+   free(mods_filtered);
    free(bo);
    return NULL;
 }
@@ -1202,11 +1296,11 @@ dri_device_create(int fd, uint32_t gbm_backend_version)
 
    force_sw = debug_get_bool_option("GBM_ALWAYS_SOFTWARE", false);
    if (!force_sw) {
-      ret = dri_screen_create(dri);
+      ret = dri_screen_create(dri, false);
       if (ret)
-         ret = dri_screen_create_sw(dri);
+         ret = dri_screen_create_sw(dri, true);
    } else {
-      ret = dri_screen_create_sw(dri);
+      ret = dri_screen_create_sw(dri, false);
    }
 
    if (ret)

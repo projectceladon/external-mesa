@@ -49,10 +49,12 @@
 #include "iris_context.h"
 #include "iris_defines.h"
 #include "iris_fence.h"
+#include "iris_perf.h"
 #include "iris_pipe.h"
 #include "iris_resource.h"
 #include "iris_screen.h"
 #include "compiler/glsl_types.h"
+#include "intel/common/intel_debug_identifier.h"
 #include "intel/common/intel_gem.h"
 #include "intel/common/intel_l3_config.h"
 #include "intel/common/intel_uuid.h"
@@ -278,7 +280,6 @@ iris_get_param(struct pipe_screen *pscreen, enum pipe_cap param)
    case PIPE_CAP_SHADER_ARRAY_COMPONENTS:
    case PIPE_CAP_GLSL_TESS_LEVELS_AS_INPUTS:
    case PIPE_CAP_LOAD_CONSTBUF:
-   case PIPE_CAP_NIR_COMPACT_ARRAYS:
    case PIPE_CAP_DRAW_PARAMETERS:
    case PIPE_CAP_FS_POSITION_IS_SYSVAL:
    case PIPE_CAP_FS_FACE_IS_INTEGER_SYSVAL:
@@ -310,6 +311,7 @@ iris_get_param(struct pipe_screen *pscreen, enum pipe_cap param)
    case PIPE_CAP_FBFETCH:
       return IRIS_MAX_DRAW_BUFFERS;
    case PIPE_CAP_FBFETCH_COHERENT:
+      return devinfo->ver >= 9 && devinfo->ver < 20;
    case PIPE_CAP_CONSERVATIVE_RASTER_INNER_COVERAGE:
    case PIPE_CAP_POST_DEPTH_COVERAGE:
    case PIPE_CAP_SHADER_STENCIL_EXPORT:
@@ -662,6 +664,7 @@ iris_get_timestamp(struct pipe_screen *pscreen)
 void
 iris_screen_destroy(struct iris_screen *screen)
 {
+   intel_perf_free(screen->perf_cfg);
    iris_destroy_screen_measure(screen);
    util_queue_destroy(&screen->shader_compiler_queue);
    glsl_type_singleton_decref();
@@ -847,6 +850,10 @@ iris_screen_create(int fd, const struct pipe_screen_config *config)
    screen->precompile = debug_get_bool_option("shader_precompile", true);
 
    isl_device_init(&screen->isl_dev, screen->devinfo);
+   screen->isl_dev.dummy_aux_address = iris_bufmgr_get_dummy_aux_address(screen->bufmgr);
+
+   screen->isl_dev.sampler_route_to_lsc =
+      driQueryOptionb(config->options, "intel_sampler_route_to_lsc");
 
    iris_compiler_init(screen);
 
@@ -890,8 +897,6 @@ iris_screen_create(int fd, const struct pipe_screen_config *config)
 
    genX_call(screen->devinfo, init_screen_state, screen);
    genX_call(screen->devinfo, init_screen_gen_state, screen);
-
-   genX_call(screen->devinfo, init_screen_state, screen);
 
    glsl_type_singleton_init_or_ref();
 

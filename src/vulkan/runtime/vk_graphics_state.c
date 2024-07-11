@@ -80,6 +80,7 @@ get_dynamic_state_groups(BITSET_WORD *dynamic,
       BITSET_SET(dynamic, MESA_VK_DYNAMIC_RS_CULL_MODE);
       BITSET_SET(dynamic, MESA_VK_DYNAMIC_RS_FRONT_FACE);
       BITSET_SET(dynamic, MESA_VK_DYNAMIC_RS_CONSERVATIVE_MODE);
+      BITSET_SET(dynamic, MESA_VK_DYNAMIC_RS_EXTRA_PRIMITIVE_OVERESTIMATION_SIZE);
       BITSET_SET(dynamic, MESA_VK_DYNAMIC_RS_RASTERIZATION_ORDER_AMD);
       BITSET_SET(dynamic, MESA_VK_DYNAMIC_RS_PROVOKING_VERTEX);
       BITSET_SET(dynamic, MESA_VK_DYNAMIC_RS_RASTERIZATION_STREAM);
@@ -284,6 +285,7 @@ vk_get_dynamic_graphics_states(BITSET_WORD *dynamic,
       CASE( COLOR_WRITE_MASK_EXT,         CB_WRITE_MASKS)
       CASE( RASTERIZATION_STREAM_EXT,     RS_RASTERIZATION_STREAM)
       CASE( CONSERVATIVE_RASTERIZATION_MODE_EXT, RS_CONSERVATIVE_MODE)
+      CASE( EXTRA_PRIMITIVE_OVERESTIMATION_SIZE_EXT, RS_EXTRA_PRIMITIVE_OVERESTIMATION_SIZE)
       CASE( DEPTH_CLIP_ENABLE_EXT,        RS_DEPTH_CLIP_ENABLE)
       CASE( SAMPLE_LOCATIONS_ENABLE_EXT,  MS_SAMPLE_LOCATIONS_ENABLE)
       CASE( PROVOKING_VERTEX_MODE_EXT,    RS_PROVOKING_VERTEX)
@@ -1043,9 +1045,13 @@ vk_input_attachment_location_state_init(struct vk_input_attachment_location_stat
 
    for (uint32_t a = 0; a < MIN2(ial_info->colorAttachmentCount,
                                  MESA_VK_MAX_COLOR_ATTACHMENTS); a++) {
-      ial->color_map[a] =
-         ial_info->pColorAttachmentInputIndices[a] == VK_ATTACHMENT_UNUSED ?
-         MESA_VK_ATTACHMENT_UNUSED : ial_info->pColorAttachmentInputIndices[a];
+      if (!ial_info->pColorAttachmentInputIndices) {
+         ial->color_map[a] = a;
+      } else if (ial_info->pColorAttachmentInputIndices[a] == VK_ATTACHMENT_UNUSED) {
+         ial->color_map[a] = MESA_VK_ATTACHMENT_UNUSED;
+      } else {
+         ial->color_map[a] = ial_info->pColorAttachmentInputIndices[a];
+      }
    }
    ial->depth_att = ial_info->pDepthInputAttachmentIndex != NULL ?
       *ial_info->pDepthInputAttachmentIndex : MESA_VK_ATTACHMENT_UNUSED;
@@ -1367,9 +1373,11 @@ vk_graphics_pipeline_state_fill(const struct vk_device *device,
       vk_find_struct_const(info->pNext, GRAPHICS_PIPELINE_LIBRARY_CREATE_INFO_EXT);
    const VkPipelineLibraryCreateInfoKHR *lib_info =
       vk_find_struct_const(info->pNext, PIPELINE_LIBRARY_CREATE_INFO_KHR);
+   
+   VkPipelineCreateFlags2KHR pipeline_flags = vk_graphics_pipeline_create_flags(info);
 
    VkShaderStageFlagBits allowed_stages;
-   if (!(info->flags & VK_PIPELINE_CREATE_LIBRARY_BIT_KHR)) {
+   if (!(pipeline_flags & VK_PIPELINE_CREATE_2_LIBRARY_BIT_KHR)) {
       allowed_stages = VK_SHADER_STAGE_ALL_GRAPHICS |
                        VK_SHADER_STAGE_TASK_BIT_EXT |
                        VK_SHADER_STAGE_MESH_BIT_EXT;
@@ -1414,7 +1422,7 @@ vk_graphics_pipeline_state_fill(const struct vk_device *device,
    if (gpl_info) {
       lib = gpl_info->flags;
    } else if ((lib_info && lib_info->libraryCount > 0) ||
-              (info->flags & VK_PIPELINE_CREATE_LIBRARY_BIT_KHR)) {
+              (pipeline_flags & VK_PIPELINE_CREATE_2_LIBRARY_BIT_KHR)) {
      /*
       * From the Vulkan 1.3.210 spec:
       *    "If this structure is omitted, and either VkGraphicsPipelineCreateInfo::flags
@@ -1851,7 +1859,7 @@ vk_graphics_pipeline_state_copy(const struct vk_device *device,
    return VK_SUCCESS;
 }
 
-const struct vk_dynamic_graphics_state vk_default_dynamic_graphics_state = {
+static const struct vk_dynamic_graphics_state vk_default_dynamic_graphics_state = {
    .rs = {
       .line = {
          .width = 1.0f,
@@ -3111,9 +3119,16 @@ vk_common_CmdSetRenderingInputAttachmentIndicesKHR(
 
    assert(pLocationInfo->colorAttachmentCount <= MESA_VK_MAX_COLOR_ATTACHMENTS);
    for (uint32_t i = 0; i < pLocationInfo->colorAttachmentCount; i++) {
-      uint8_t val =
-         pLocationInfo->pColorAttachmentInputIndices[i] == VK_ATTACHMENT_UNUSED ?
-         MESA_VK_ATTACHMENT_UNUSED : pLocationInfo->pColorAttachmentInputIndices[i];
+      uint8_t val;
+
+      if (!pLocationInfo->pColorAttachmentInputIndices) {
+         val = i;
+      } else if (pLocationInfo->pColorAttachmentInputIndices[i] == VK_ATTACHMENT_UNUSED) {
+         val = MESA_VK_ATTACHMENT_UNUSED;
+      } else {
+         val = pLocationInfo->pColorAttachmentInputIndices[i];
+      }
+
       SET_DYN_VALUE(dyn, INPUT_ATTACHMENT_MAP,
                     ial.color_map[i], val);
    }
