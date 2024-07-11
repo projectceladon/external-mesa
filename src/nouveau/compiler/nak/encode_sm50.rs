@@ -488,7 +488,15 @@ impl SM50Instr {
         self.set_reg_src(8..16, op.offset);
         self.set_field(20..36, cb.offset);
         self.set_field(36..41, cb_idx);
-        self.set_field(44..46, 0_u8); // TODO: subop
+        self.set_field(
+            44..46,
+            match op.mode {
+                LdcMode::Indexed => 0_u8,
+                LdcMode::IndexedLinear => 1_u8,
+                LdcMode::IndexedSegmented => 2_u8,
+                LdcMode::IndexedSegmentedLinear => 3_u8,
+            },
+        );
         self.set_mem_type(48..51, op.mem_type);
     }
 
@@ -1087,7 +1095,7 @@ impl SM50Instr {
 
         self.set_dst(op.dsts[0]);
         assert!(op.dsts[1].is_none());
-        assert!(op.resident.is_none());
+        assert!(op.fault.is_none());
         self.set_reg_src(8..16, op.srcs[0]);
         self.set_reg_src(20..28, op.srcs[1]);
 
@@ -1105,7 +1113,7 @@ impl SM50Instr {
 
         self.set_dst(op.dsts[0]);
         assert!(op.dsts[1].is_none());
-        assert!(op.resident.is_none());
+        assert!(op.fault.is_none());
         self.set_reg_src(8..16, op.srcs[0]);
         self.set_reg_src(20..28, op.srcs[1]);
 
@@ -1126,7 +1134,7 @@ impl SM50Instr {
 
         self.set_dst(op.dsts[0]);
         assert!(op.dsts[1].is_none());
-        assert!(op.resident.is_none());
+        assert!(op.fault.is_none());
         self.set_reg_src(8..16, op.srcs[0]);
         self.set_reg_src(20..28, op.srcs[1]);
 
@@ -1165,7 +1173,7 @@ impl SM50Instr {
 
         self.set_dst(op.dsts[0]);
         assert!(op.dsts[1].is_none());
-        assert!(op.resident.is_none());
+        assert!(op.fault.is_none());
         self.set_reg_src(8..16, op.srcs[0]);
         self.set_reg_src(20..28, op.srcs[1]);
 
@@ -1491,9 +1499,6 @@ impl SM50Instr {
     }
 
     fn encode_ffma(&mut self, op: &OpFFma) {
-        // TODO: FFMA in the 32 bits immediate form use the dest as source 2
-        assert!(op.srcs[1].as_imm_not_i20().is_none());
-
         // FFMA doesn't have any abs flags.
         assert!(!op.srcs[0].src_mod.has_fabs());
         assert!(!op.srcs[1].src_mod.has_fabs());
@@ -1506,7 +1511,7 @@ impl SM50Instr {
             }
             SrcRef::Imm32(i) => {
                 self.set_opcode(0x3280);
-                self.set_src_imm_i20(20..39, 56, *i);
+                self.set_src_imm_f20(20..39, 56, *i);
             }
             SrcRef::CBuf(cb) => {
                 self.set_opcode(0x4980);

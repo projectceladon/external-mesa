@@ -25,6 +25,10 @@ if dep_android_mapper4.found()
   deps_for_u_gralloc += dep_android_mapper4
 endif
 
+if with_freedreno_vk or with_gallium_freedreno
+  c_args_for_u_gralloc += '-DHAS_FREEDRENO'
+endif
+
 _libmesa_u_gralloc = static_library(
   '_mesa_u_gralloc',
   [files_u_gralloc],

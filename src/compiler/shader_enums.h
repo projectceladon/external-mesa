@@ -817,6 +817,7 @@ typedef enum
    SYSTEM_VALUE_BASE_GLOBAL_INVOCATION_ID,
    SYSTEM_VALUE_GLOBAL_INVOCATION_INDEX,
    SYSTEM_VALUE_WORKGROUP_ID,
+   SYSTEM_VALUE_BASE_WORKGROUP_ID,
    SYSTEM_VALUE_WORKGROUP_INDEX,
    SYSTEM_VALUE_NUM_WORKGROUPS,
    SYSTEM_VALUE_WORKGROUP_SIZE,
@@ -1133,6 +1134,17 @@ enum gl_access_qualifier
     * if MMU faults are suppressed for the load.
     */
    ACCESS_CAN_SPECULATE = (1 << 12),
+
+   /**
+    * Whether coherency with CP (command processor) or GE (geometry engine)
+    * is required.
+    */
+   ACCESS_CP_GE_COHERENT_AMD = (1 << 13),
+
+   /* Guarantee that an image_load is in bounds so we can skip robustness code
+    * on AGX, used for some internal shaders.
+    */
+   ACCESS_IN_BOUNDS_AGX = (1 << 14),
 };
 
 /**
@@ -1173,6 +1185,27 @@ enum tess_primitive_mode
    TESS_PRIMITIVE_QUADS,
    TESS_PRIMITIVE_ISOLINES,
 };
+
+static inline void
+mesa_count_tess_level_components(const enum tess_primitive_mode mode,
+                                 unsigned *outer, unsigned *inner)
+{
+   switch (mode) {
+   case TESS_PRIMITIVE_ISOLINES:
+      *outer = 2;
+      *inner = 0;
+      break;
+   case TESS_PRIMITIVE_TRIANGLES:
+      *outer = 3;
+      *inner = 1;
+      break;
+   case TESS_PRIMITIVE_QUADS:
+   default:
+      *outer = 4;
+      *inner = 2;
+      break;
+   }
+}
 
 /**
  * Mesa primitive types for both GL and Vulkan:
@@ -1245,7 +1278,7 @@ mesa_vertices_per_prim(enum mesa_prim prim)
  * vertex count.
  * Parts of the pipline are invoked once for each triangle in
  * triangle strip, triangle fans and triangles and once
- * for each line in line strip, line loop, lines. Also 
+ * for each line in line strip, line loop, lines. Also
  * statistics depend on knowing the exact number of decomposed
  * primitives for a set of vertices.
  */
@@ -1317,6 +1350,27 @@ u_decomposed_prim(enum mesa_prim prim)
 }
 
 /**
+ * Reduce a primitive to one of MESA_PRIM_POINTS, MESA_PRIM_LINES, and
+ * MESA_PRIM_TRIANGLES.
+ */
+static inline enum mesa_prim
+u_reduced_prim(enum mesa_prim prim)
+{
+   switch (prim) {
+   case MESA_PRIM_POINTS:
+      return MESA_PRIM_POINTS;
+   case MESA_PRIM_LINES:
+   case MESA_PRIM_LINE_LOOP:
+   case MESA_PRIM_LINE_STRIP:
+   case MESA_PRIM_LINES_ADJACENCY:
+   case MESA_PRIM_LINE_STRIP_ADJACENCY:
+      return MESA_PRIM_LINES;
+   default:
+      return MESA_PRIM_TRIANGLES;
+   }
+}
+
+/**
  * A compare function enum for use in compiler lowering passes.  This is in
  * the same order as GL's compare functions (shifted down by GL_NEVER), and is
  * exactly the same as gallium's PIPE_FUNC_*.
@@ -1376,22 +1430,26 @@ enum gl_derivative_group {
 
 enum float_controls
 {
+   /* The order of these matters. For float_controls2, only the first 9 bits
+    * are used and stored per-instruction in nir_alu_instr::fp_fast_math.
+    * Any changes in this enum need to be synchronized with that.
+    */
    FLOAT_CONTROLS_DEFAULT_FLOAT_CONTROL_MODE = 0,
-   FLOAT_CONTROLS_DENORM_PRESERVE_FP16       = BITFIELD_BIT(0),
-   FLOAT_CONTROLS_DENORM_PRESERVE_FP32       = BITFIELD_BIT(1),
-   FLOAT_CONTROLS_DENORM_PRESERVE_FP64       = BITFIELD_BIT(2),
-   FLOAT_CONTROLS_DENORM_FLUSH_TO_ZERO_FP16  = BITFIELD_BIT(3),
-   FLOAT_CONTROLS_DENORM_FLUSH_TO_ZERO_FP32  = BITFIELD_BIT(4),
-   FLOAT_CONTROLS_DENORM_FLUSH_TO_ZERO_FP64  = BITFIELD_BIT(5),
-   FLOAT_CONTROLS_SIGNED_ZERO_PRESERVE_FP16  = BITFIELD_BIT(6),
-   FLOAT_CONTROLS_SIGNED_ZERO_PRESERVE_FP32  = BITFIELD_BIT(7),
-   FLOAT_CONTROLS_SIGNED_ZERO_PRESERVE_FP64  = BITFIELD_BIT(8),
-   FLOAT_CONTROLS_INF_PRESERVE_FP16          = BITFIELD_BIT(9),
-   FLOAT_CONTROLS_INF_PRESERVE_FP32          = BITFIELD_BIT(10),
-   FLOAT_CONTROLS_INF_PRESERVE_FP64          = BITFIELD_BIT(11),
-   FLOAT_CONTROLS_NAN_PRESERVE_FP16          = BITFIELD_BIT(12),
-   FLOAT_CONTROLS_NAN_PRESERVE_FP32          = BITFIELD_BIT(13),
-   FLOAT_CONTROLS_NAN_PRESERVE_FP64          = BITFIELD_BIT(14),
+   FLOAT_CONTROLS_SIGNED_ZERO_PRESERVE_FP16  = BITFIELD_BIT(0),
+   FLOAT_CONTROLS_SIGNED_ZERO_PRESERVE_FP32  = BITFIELD_BIT(1),
+   FLOAT_CONTROLS_SIGNED_ZERO_PRESERVE_FP64  = BITFIELD_BIT(2),
+   FLOAT_CONTROLS_INF_PRESERVE_FP16          = BITFIELD_BIT(3),
+   FLOAT_CONTROLS_INF_PRESERVE_FP32          = BITFIELD_BIT(4),
+   FLOAT_CONTROLS_INF_PRESERVE_FP64          = BITFIELD_BIT(5),
+   FLOAT_CONTROLS_NAN_PRESERVE_FP16          = BITFIELD_BIT(6),
+   FLOAT_CONTROLS_NAN_PRESERVE_FP32          = BITFIELD_BIT(7),
+   FLOAT_CONTROLS_NAN_PRESERVE_FP64          = BITFIELD_BIT(8),
+   FLOAT_CONTROLS_DENORM_PRESERVE_FP16       = BITFIELD_BIT(9),
+   FLOAT_CONTROLS_DENORM_PRESERVE_FP32       = BITFIELD_BIT(10),
+   FLOAT_CONTROLS_DENORM_PRESERVE_FP64       = BITFIELD_BIT(11),
+   FLOAT_CONTROLS_DENORM_FLUSH_TO_ZERO_FP16  = BITFIELD_BIT(12),
+   FLOAT_CONTROLS_DENORM_FLUSH_TO_ZERO_FP32  = BITFIELD_BIT(13),
+   FLOAT_CONTROLS_DENORM_FLUSH_TO_ZERO_FP64  = BITFIELD_BIT(14),
    FLOAT_CONTROLS_ROUNDING_MODE_RTE_FP16     = BITFIELD_BIT(15),
    FLOAT_CONTROLS_ROUNDING_MODE_RTE_FP32     = BITFIELD_BIT(16),
    FLOAT_CONTROLS_ROUNDING_MODE_RTE_FP64     = BITFIELD_BIT(17),

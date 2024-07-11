@@ -21,7 +21,7 @@ use std::ptr;
 use std::slice;
 use std::sync::Arc;
 
-#[cl_info_entrypoint(cl_get_kernel_info)]
+#[cl_info_entrypoint(clGetKernelInfo)]
 impl CLInfo<cl_kernel_info> for cl_kernel {
     fn query(&self, q: cl_kernel_info, _: &[u8]) -> CLResult<Vec<MaybeUninit<u8>>> {
         let kernel = Kernel::ref_from_raw(*self)?;
@@ -44,7 +44,7 @@ impl CLInfo<cl_kernel_info> for cl_kernel {
     }
 }
 
-#[cl_info_entrypoint(cl_get_kernel_arg_info)]
+#[cl_info_entrypoint(clGetKernelArgInfo)]
 impl CLInfoObj<cl_kernel_arg_info, cl_uint> for cl_kernel {
     fn query(&self, idx: cl_uint, q: cl_kernel_arg_info) -> CLResult<Vec<MaybeUninit<u8>>> {
         let kernel = Kernel::ref_from_raw(*self)?;
@@ -72,7 +72,7 @@ impl CLInfoObj<cl_kernel_arg_info, cl_uint> for cl_kernel {
     }
 }
 
-#[cl_info_entrypoint(cl_get_kernel_work_group_info)]
+#[cl_info_entrypoint(clGetKernelWorkGroupInfo)]
 impl CLInfoObj<cl_kernel_work_group_info, cl_device_id> for cl_kernel {
     fn query(
         &self,
@@ -236,7 +236,18 @@ unsafe fn kernel_work_arr_or_default<'a>(arr: *const usize, work_dim: cl_uint) -
     }
 }
 
-#[cl_entrypoint]
+/// # Safety
+///
+/// This function is only safe when called on an array of `work_dim` length
+unsafe fn kernel_work_arr_mut<'a>(arr: *mut usize, work_dim: cl_uint) -> Option<&'a mut [usize]> {
+    if !arr.is_null() {
+        unsafe { Some(slice::from_raw_parts_mut(arr, work_dim as usize)) }
+    } else {
+        None
+    }
+}
+
+#[cl_entrypoint(clCreateKernel)]
 fn create_kernel(
     program: cl_program,
     kernel_name: *const ::std::os::raw::c_char,
@@ -249,37 +260,38 @@ fn create_kernel(
         return Err(CL_INVALID_VALUE);
     }
 
+    let build = p.build_info();
     // CL_INVALID_PROGRAM_EXECUTABLE if there is no successfully built executable for program.
-    if p.kernels().is_empty() {
+    if build.kernels().is_empty() {
         return Err(CL_INVALID_PROGRAM_EXECUTABLE);
     }
 
     // CL_INVALID_KERNEL_NAME if kernel_name is not found in program.
-    if !p.kernels().contains(&name) {
+    if !build.kernels().contains(&name) {
         return Err(CL_INVALID_KERNEL_NAME);
     }
 
     // CL_INVALID_KERNEL_DEFINITION if the function definition for __kernel function given by
     // kernel_name such as the number of arguments, the argument types are not the same for all
     // devices for which the program executable has been built.
-    if p.kernel_signatures(&name).len() != 1 {
+    if !p.has_unique_kernel_signatures(&name) {
         return Err(CL_INVALID_KERNEL_DEFINITION);
     }
 
-    Ok(Kernel::new(name, p).into_cl())
+    Ok(Kernel::new(name, Arc::clone(&p), &build).into_cl())
 }
 
-#[cl_entrypoint]
+#[cl_entrypoint(clRetainKernel)]
 fn retain_kernel(kernel: cl_kernel) -> CLResult<()> {
     Kernel::retain(kernel)
 }
 
-#[cl_entrypoint]
+#[cl_entrypoint(clReleaseKernel)]
 fn release_kernel(kernel: cl_kernel) -> CLResult<()> {
     Kernel::release(kernel)
 }
 
-#[cl_entrypoint]
+#[cl_entrypoint(clCreateKernelsInProgram)]
 fn create_kernels_in_program(
     program: cl_program,
     num_kernels: cl_uint,
@@ -287,25 +299,26 @@ fn create_kernels_in_program(
     num_kernels_ret: *mut cl_uint,
 ) -> CLResult<()> {
     let p = Program::arc_from_raw(program)?;
+    let build = p.build_info();
 
     // CL_INVALID_PROGRAM_EXECUTABLE if there is no successfully built executable for any device in
     // program.
-    if p.kernels().is_empty() {
+    if build.kernels().is_empty() {
         return Err(CL_INVALID_PROGRAM_EXECUTABLE);
     }
 
     // CL_INVALID_VALUE if kernels is not NULL and num_kernels is less than the number of kernels
     // in program.
-    if !kernels.is_null() && p.kernels().len() > num_kernels as usize {
+    if !kernels.is_null() && build.kernels().len() > num_kernels as usize {
         return Err(CL_INVALID_VALUE);
     }
 
     let mut num_kernels = 0;
-    for name in p.kernels() {
+    for name in build.kernels() {
         // Kernel objects are not created for any __kernel functions in program that do not have the
         // same function definition across all devices for which a program executable has been
         // successfully built.
-        if p.kernel_signatures(&name).len() != 1 {
+        if !p.has_unique_kernel_signatures(name) {
             continue;
         }
 
@@ -314,7 +327,7 @@ fn create_kernels_in_program(
             unsafe {
                 kernels
                     .add(num_kernels as usize)
-                    .write(Kernel::new(name, p.clone()).into_cl());
+                    .write(Kernel::new(name.clone(), p.clone(), &build).into_cl());
             }
         }
         num_kernels += 1;
@@ -323,7 +336,7 @@ fn create_kernels_in_program(
     Ok(())
 }
 
-#[cl_entrypoint]
+#[cl_entrypoint(clSetKernelArg)]
 fn set_kernel_arg(
     kernel: cl_kernel,
     arg_index: cl_uint,
@@ -419,7 +432,7 @@ fn set_kernel_arg(
     //• CL_MAX_SIZE_RESTRICTION_EXCEEDED if the size in bytes of the memory object (if the argument is a memory object) or arg_size (if the argument is declared with local qualifier) exceeds a language- specified maximum size restriction for this argument, such as the MaxByteOffset SPIR-V decoration. This error code is missing before version 2.2.
 }
 
-#[cl_entrypoint]
+#[cl_entrypoint(clSetKernelArgSVMPointer)]
 fn set_kernel_arg_svm_pointer(
     kernel: cl_kernel,
     arg_index: cl_uint,
@@ -450,7 +463,7 @@ fn set_kernel_arg_svm_pointer(
     // CL_INVALID_ARG_VALUE if arg_value specified is not a valid value.
 }
 
-#[cl_entrypoint]
+#[cl_entrypoint(clSetKernelExecInfo)]
 fn set_kernel_exec_info(
     kernel: cl_kernel,
     param_name: cl_kernel_exec_info,
@@ -492,7 +505,7 @@ fn set_kernel_exec_info(
     // CL_INVALID_OPERATION if param_name is CL_KERNEL_EXEC_INFO_SVM_FINE_GRAIN_SYSTEM and param_value is CL_TRUE but no devices in context associated with kernel support fine-grain system SVM allocations.
 }
 
-#[cl_entrypoint]
+#[cl_entrypoint(clEnqueueNDRangeKernel)]
 fn enqueue_ndrange_kernel(
     command_queue: cl_command_queue,
     kernel: cl_kernel,
@@ -620,7 +633,7 @@ fn enqueue_ndrange_kernel(
     //• CL_INVALID_OPERATION if SVM pointers are passed as arguments to a kernel and the device does not support SVM or if system pointers are passed as arguments to a kernel and/or stored inside SVM allocations passed as kernel arguments and the device does not support fine grain system SVM allocations.
 }
 
-#[cl_entrypoint]
+#[cl_entrypoint(clEnqueueTask)]
 fn enqueue_task(
     command_queue: cl_command_queue,
     kernel: cl_kernel,
@@ -644,8 +657,114 @@ fn enqueue_task(
     )
 }
 
-#[cl_entrypoint]
+#[cl_entrypoint(clCloneKernel)]
 fn clone_kernel(source_kernel: cl_kernel) -> CLResult<cl_kernel> {
     let k = Kernel::ref_from_raw(source_kernel)?;
     Ok(Arc::new(k.clone()).into_cl())
+}
+
+#[cl_entrypoint(clGetKernelSuggestedLocalWorkSizeKHR)]
+fn get_kernel_suggested_local_work_size_khr(
+    command_queue: cl_command_queue,
+    kernel: cl_kernel,
+    work_dim: cl_uint,
+    global_work_offset: *const usize,
+    global_work_size: *const usize,
+    suggested_local_work_size: *mut usize,
+) -> CLResult<()> {
+    // CL_INVALID_GLOBAL_WORK_SIZE if global_work_size is NULL or if any of the values specified in
+    // global_work_size are 0.
+    if global_work_size.is_null() {
+        return Err(CL_INVALID_GLOBAL_WORK_SIZE);
+    }
+
+    if global_work_offset.is_null() {
+        return Err(CL_INVALID_GLOBAL_OFFSET);
+    }
+
+    // CL_INVALID_VALUE if suggested_local_work_size is NULL.
+    if suggested_local_work_size.is_null() {
+        return Err(CL_INVALID_VALUE);
+    }
+
+    // CL_INVALID_COMMAND_QUEUE if command_queue is not a valid host command-queue.
+    let queue = Queue::ref_from_raw(command_queue)?;
+
+    // CL_INVALID_KERNEL if kernel is not a valid kernel object.
+    let kernel = Kernel::ref_from_raw(kernel)?;
+
+    // CL_INVALID_CONTEXT if the context associated with kernel is not the same as the context
+    // associated with command_queue.
+    if queue.context != kernel.prog.context {
+        return Err(CL_INVALID_CONTEXT);
+    }
+
+    // CL_INVALID_PROGRAM_EXECUTABLE if there is no successfully built program executable available
+    // for kernel for the device associated with command_queue.
+    if kernel.prog.status(queue.device) != CL_BUILD_SUCCESS as cl_build_status {
+        return Err(CL_INVALID_PROGRAM_EXECUTABLE);
+    }
+
+    // CL_INVALID_KERNEL_ARGS if all argument values for kernel have not been set.
+    if kernel.arg_values().iter().any(|v| v.is_none()) {
+        return Err(CL_INVALID_KERNEL_ARGS);
+    }
+
+    // CL_INVALID_WORK_DIMENSION if work_dim is not a valid value (i.e. a value between 1 and
+    // CL_DEVICE_MAX_WORK_ITEM_DIMENSIONS).
+    if work_dim == 0 || work_dim > queue.device.max_grid_dimensions() {
+        return Err(CL_INVALID_WORK_DIMENSION);
+    }
+
+    let mut global_work_size =
+        unsafe { kernel_work_arr_or_default(global_work_size, work_dim).to_vec() };
+
+    let suggested_local_work_size = unsafe {
+        kernel_work_arr_mut(suggested_local_work_size, work_dim).ok_or(CL_INVALID_VALUE)?
+    };
+
+    let global_work_offset = unsafe { kernel_work_arr_or_default(global_work_offset, work_dim) };
+
+    let device_bits = queue.device.address_bits();
+    let device_max = u64::MAX >> (u64::BITS - device_bits);
+    for i in 0..work_dim as usize {
+        let gws = global_work_size[i];
+        let gwo = global_work_offset[i];
+
+        // CL_INVALID_GLOBAL_WORK_SIZE if global_work_size is NULL or if any of the values specified
+        // in global_work_size are 0.
+        if gws == 0 {
+            return Err(CL_INVALID_GLOBAL_WORK_SIZE);
+        }
+        // CL_INVALID_GLOBAL_WORK_SIZE if any of the values specified in global_work_size exceed the
+        // maximum value representable by size_t on the device associated with command_queue.
+        if gws as u64 > device_max {
+            return Err(CL_INVALID_GLOBAL_WORK_SIZE);
+        }
+        // CL_INVALID_GLOBAL_OFFSET if the value specified in global_work_size plus the
+        // corresponding value in global_work_offset for dimension exceeds the maximum value
+        // representable by size_t on the device associated with command_queue.
+        if u64::checked_add(gws as u64, gwo as u64)
+            .filter(|&x| x <= device_max)
+            .is_none()
+        {
+            return Err(CL_INVALID_GLOBAL_OFFSET);
+        }
+    }
+
+    kernel.suggest_local_size(
+        queue.device,
+        work_dim as usize,
+        &mut global_work_size,
+        suggested_local_work_size,
+    );
+
+    Ok(())
+
+    // CL_MISALIGNED_SUB_BUFFER_OFFSET if a sub-buffer object is set as an argument to kernel and the offset specified when the sub-buffer object was created is not aligned to CL_DEVICE_MEM_BASE_ADDR_ALIGN for the device associated with command_queue.
+    // CL_INVALID_IMAGE_SIZE if an image object is set as an argument to kernel and the image dimensions are not supported by device associated with command_queue.
+    // CL_IMAGE_FORMAT_NOT_SUPPORTED if an image object is set as an argument to kernel and the image format is not supported by the device associated with command_queue.
+    // CL_INVALID_OPERATION if an SVM pointer is set as an argument to kernel and the device associated with command_queue does not support SVM or the required SVM capabilities for the SVM pointer.
+    // CL_OUT_OF_RESOURCES if there is a failure to allocate resources required by the OpenCL implementation on the device.
+    // CL_OUT_OF_HOST_MEMORY if there is a failure to allocate resources required by the OpenCL implementation on the host.
 }

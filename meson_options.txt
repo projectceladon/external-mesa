@@ -2,6 +2,12 @@
 # SPDX-License-Identifier: MIT
 
 option(
+  'split-debug',
+  type : 'feature',
+  value : 'disabled',
+  description : 'split debug information (-gsplit-dwarf compile flag) and debug information in the gdb index format (--gdb-index)',
+)
+option(
   'platforms',
   type : 'array',
   value : ['auto'],
@@ -221,8 +227,7 @@ option(
   value : ['auto'],
   choices : ['auto', 'amd', 'broadcom', 'freedreno', 'intel', 'intel_hasvk',
              'panfrost', 'swrast', 'virtio', 'imagination-experimental',
-             'microsoft-experimental', 'nouveau-experimental',
-             'gfxstream-experimental', 'all'],
+             'microsoft-experimental', 'nouveau', 'all'],
   description : 'List of vulkan drivers to build. If this is set to auto ' +
                 'all drivers applicable to the target OS/architecture ' +
                 'will be built'
@@ -362,8 +367,8 @@ option(
 
 option(
   'glvnd',
-  type : 'boolean',
-  value : false,
+  type : 'feature',
+  deprecated: {'true': 'enabled', 'false': 'disabled'},
   description : 'Enable GLVND support.'
 )
 
@@ -419,6 +424,14 @@ option(
 )
 
 option(
+  'amd-use-llvm',
+  type : 'boolean',
+  value : true,
+  description : 'Whether to use LLVM for the AMD drivers, if LLVM ' +
+                'is included.'
+)
+
+option(
   'valgrind',
   type : 'feature',
   deprecated: {'true': 'enabled', 'false': 'disabled'},
@@ -468,6 +481,20 @@ option(
   value : false,
   description : 'Build and install Intel unit tests which require the GPU. ' +
                 'This option is for developers and the Intel CI system only.'
+)
+
+option(
+  'html-docs',
+  type : 'feature',
+  value : 'disabled',
+  description : 'Build HTML documentation.'
+)
+
+option(
+  'html-docs-path',
+  type : 'string',
+  value : '',
+  description : 'Location to install HTML documentation. Default: $datadir/doc/mesa.'
 )
 
 option(
@@ -680,6 +707,13 @@ option(
 )
 
 option(
+  'gallium-d3d12-graphics',
+  type : 'feature',
+  value : 'auto',
+  description : 'build gallium d3d12 with graphics pipeline support.',
+)
+
+option(
   'radv-build-id',
   type : 'string',
   value : '',
@@ -704,17 +738,4 @@ option(
   description : 'Build custom xmlconfig (driconf) support. If disabled, ' +
                 'the default driconf file is hardcoded into Mesa. ' +
                 'Requires expat.'
-)
-
-option (
-  'intel-xe-kmd',
-  type : 'feature',
-  value : 'disabled',
-  description: 'Enable Intel Xe KMD support.'
-)
-option(
-  'gfxstream-backend',
-  type : 'boolean',
-  value : 'false',
-  description : 'Build gfxstream backend'
 )

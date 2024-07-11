@@ -970,6 +970,9 @@ struct gl_texture_object
    GLint VirtualPageSizeIndex;
    GLint NumSparseLevels;
 
+   /** GL_EXT_texture_storage_compression */
+   GLint CompressionRate; /**< Fixed-rate compression bitrate */
+
    /* The texture must include at levels [0..lastLevel] once validated:
     */
    GLuint lastLevel;
@@ -1474,28 +1477,6 @@ struct gl_buffer_object
 
    struct gl_buffer_mapping Mappings[MAP_COUNT];
    struct pipe_transfer *transfer[MAP_COUNT];
-};
-
-
-/**
- * Client pixel packing/unpacking attributes
- */
-struct gl_pixelstore_attrib
-{
-   GLint Alignment;
-   GLint RowLength;
-   GLint SkipPixels;
-   GLint SkipRows;
-   GLint ImageHeight;
-   GLint SkipImages;
-   GLboolean SwapBytes;
-   GLboolean LsbFirst;
-   GLboolean Invert;        /**< GL_MESA_pack_invert */
-   GLint CompressedBlockWidth;   /**< GL_ARB_compressed_texture_pixel_storage */
-   GLint CompressedBlockHeight;
-   GLint CompressedBlockDepth;
-   GLint CompressedBlockSize;
-   struct gl_buffer_object *BufferObj; /**< GL_ARB_pixel_buffer_object */
 };
 
 

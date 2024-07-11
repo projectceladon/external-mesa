@@ -24,6 +24,7 @@
 
 #include <sys/mman.h>
 
+#include "common/intel_debug_identifier.h"
 #include "common/intel_gem.h"
 #include "dev/intel_debug.h"
 #include "iris/iris_bufmgr.h"
@@ -54,7 +55,8 @@ xe_gem_create(struct iris_bufmgr *bufmgr,
    if (alloc_flags & BO_ALLOC_SCANOUT)
       flags |= DRM_XE_GEM_CREATE_FLAG_SCANOUT;
    if (!intel_vram_all_mappable(iris_bufmgr_get_device_info(bufmgr)) &&
-       heap_flags == IRIS_HEAP_DEVICE_LOCAL_PREFERRED)
+       (heap_flags == IRIS_HEAP_DEVICE_LOCAL_PREFERRED ||
+        heap_flags == IRIS_HEAP_DEVICE_LOCAL_CPU_VISIBLE_SMALL_BAR))
       flags |= DRM_XE_GEM_CREATE_FLAG_NEEDS_VISIBLE_VRAM;
 
    struct drm_xe_gem_create gem_create = {
@@ -131,10 +133,6 @@ xe_gem_vm_bind_op(struct iris_bo *bo, uint32_t op)
          op = DRM_XE_VM_BIND_OP_MAP_USERPTR;
    }
 
-   uint16_t pat_index = 0;
-   if (op != DRM_XE_VM_BIND_OP_UNMAP)
-      pat_index = iris_heap_to_pat_entry(devinfo, bo->real.heap)->index;
-
    if (bo->real.capture)
       flags |= DRM_XE_VM_BIND_FLAG_DUMPABLE;
 
@@ -148,7 +146,7 @@ xe_gem_vm_bind_op(struct iris_bo *bo, uint32_t op)
       .bind.range = range,
       .bind.addr = intel_48b_address(bo->address),
       .bind.op = op,
-      .bind.pat_index = pat_index,
+      .bind.pat_index = iris_heap_to_pat_entry(devinfo, bo->real.heap)->index,
       .bind.flags = flags,
    };
 

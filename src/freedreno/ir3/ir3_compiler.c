@@ -49,8 +49,10 @@ static const struct debug_named_value shader_debug_options[] = {
    {"nopreamble", IR3_DBG_NOPREAMBLE, "Disable the preamble pass"},
    {"fullsync",   IR3_DBG_FULLSYNC,   "Add (sy) + (ss) after each cat5/cat6"},
    {"fullnop",    IR3_DBG_FULLNOP,    "Add nops before each instruction"},
-#ifdef DEBUG
-   /* DEBUG-only options: */
+   {"noearlypreamble", IR3_DBG_NOEARLYPREAMBLE, "Disable early preambles"},
+   {"nodescprefetch", IR3_DBG_NODESCPREFETCH, "Disable descriptor prefetch optimization"},
+#if MESA_DEBUG
+   /* MESA_DEBUG-only options: */
    {"schedmsgs",  IR3_DBG_SCHEDMSGS,  "Enable scheduler debug messages"},
    {"ramsgs",     IR3_DBG_RAMSGS,     "Enable register-allocation debug messages"},
 #endif
@@ -74,6 +76,7 @@ ir3_compiler_destroy(struct ir3_compiler *compiler)
 }
 
 static const nir_shader_compiler_options ir3_base_options = {
+   .compact_arrays = true,
    .lower_fpow = true,
    .lower_scmp = true,
    .lower_flrp16 = true,
@@ -124,6 +127,8 @@ static const nir_shader_compiler_options ir3_base_options = {
 
    .lower_int64_options = (nir_lower_int64_options)~0,
    .lower_doubles_options = (nir_lower_doubles_options)~0,
+
+   .divergence_analysis_options = nir_divergence_uniform_load_tears,
 };
 
 struct ir3_compiler *
@@ -155,6 +160,10 @@ ir3_compiler_create(struct fd_device *dev, const struct fd_dev_id *dev_id,
    compiler->max_variable_workgroup_size = 1024;
 
    compiler->local_mem_size = dev_info->cs_shared_mem_size;
+
+   compiler->num_predicates = 1;
+   compiler->bitops_can_write_predicates = false;
+   compiler->has_branch_and_or = false;
 
    if (compiler->gen >= 6) {
       compiler->samgq_workaround = true;
@@ -212,6 +221,15 @@ ir3_compiler_create(struct fd_device *dev, const struct fd_dev_id *dev_id,
       compiler->stsc_duplication_quirk = dev_info->a7xx.stsc_duplication_quirk;
       compiler->load_shader_consts_via_preamble = dev_info->a7xx.load_shader_consts_via_preamble;
       compiler->load_inline_uniforms_via_preamble_ldgk = dev_info->a7xx.load_inline_uniforms_via_preamble_ldgk;
+      compiler->num_predicates = 4;
+      compiler->bitops_can_write_predicates = true;
+      compiler->has_branch_and_or = true;
+      compiler->has_predication = true;
+      compiler->has_scalar_alu = dev_info->a6xx.has_scalar_alu;
+      compiler->has_isam_v = dev_info->a6xx.has_isam_v;
+      compiler->has_ssbo_imm_offsets = dev_info->a6xx.has_ssbo_imm_offsets;
+      compiler->fs_must_have_non_zero_constlen_quirk = dev_info->a7xx.fs_must_have_non_zero_constlen_quirk;
+      compiler->has_early_preamble = dev_info->a6xx.has_early_preamble;
    } else {
       compiler->max_const_pipeline = 512;
       compiler->max_const_geom = 512;
@@ -222,6 +240,11 @@ ir3_compiler_create(struct fd_device *dev, const struct fd_dev_id *dev_id,
        * earlier gen's.
        */
       compiler->max_const_safe = 256;
+
+      compiler->has_scalar_alu = false;
+      compiler->has_isam_v = false;
+      compiler->has_ssbo_imm_offsets = false;
+      compiler->has_early_preamble = false;
    }
 
    /* This is just a guess for a4xx. */

@@ -927,7 +927,7 @@ static void virgl_flush_frontbuffer(struct pipe_screen *screen,
                                     struct pipe_context *ctx,
                                       struct pipe_resource *res,
                                       unsigned level, unsigned layer,
-                                    void *winsys_drawable_handle, struct pipe_box *sub_box)
+                                    void *winsys_drawable_handle, unsigned nboxes, struct pipe_box *sub_box)
 {
    struct virgl_screen *vscreen = virgl_screen(screen);
    struct virgl_winsys *vws = vscreen->vws;
@@ -937,7 +937,7 @@ static void virgl_flush_frontbuffer(struct pipe_screen *screen,
    if (vws->flush_frontbuffer) {
       virgl_flush_eq(vctx, vctx, NULL);
       vws->flush_frontbuffer(vws, vctx->cbuf, vres->hw_res, level, layer, winsys_drawable_handle,
-                             sub_box);
+                             nboxes == 1 ? sub_box : NULL);
    }
 }
 
@@ -1214,9 +1214,7 @@ virgl_create_screen(struct virgl_winsys *vws, const struct pipe_screen_config *c
    fixup_renderer(&screen->caps.caps);
 
    union virgl_caps *caps = &screen->caps.caps;
-   bool may_emulate_bgra = (caps->v2.capability_bits & VIRGL_CAP_APP_TWEAK_SUPPORT);
-   screen->tweak_gles_emulate_bgra &= !virgl_format_check_bitmask(
-       PIPE_FORMAT_B8G8R8A8_SRGB, caps->v1.render.bitmask, may_emulate_bgra);
+   screen->tweak_gles_emulate_bgra &= !virgl_format_check_bitmask(PIPE_FORMAT_B8G8R8A8_SRGB, caps->v1.render.bitmask, false);
    screen->refcnt = 1;
 
    /* Set up the NIR shader compiler options now that we've figured out the caps. */

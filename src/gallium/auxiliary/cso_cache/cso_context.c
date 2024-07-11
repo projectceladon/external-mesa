@@ -424,15 +424,6 @@ cso_unbind_context(struct cso_context *cso)
             for (int i = 0; i < maxcb; i++) {
                ctx->base.pipe->set_constant_buffer(ctx->base.pipe, sh, i, false, NULL);
             }
-            if (maxssbo > 0) {
-               ctx->pipe->set_shader_buffers(ctx->pipe, sh, 0, maxssbo, ssbos, 0);
-            }
-            if (maximg > 0) {
-               ctx->pipe->set_shader_images(ctx->pipe, sh, 0, maximg, NULL);
-            }
-            for (int i = 0; i < maxcb; i++) {
-               ctx->pipe->set_constant_buffer(ctx->pipe, sh, i, NULL);
-            }
          }
       }
 

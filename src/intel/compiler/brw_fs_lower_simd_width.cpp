@@ -11,11 +11,11 @@ using namespace brw;
 static bool
 is_mixed_float_with_fp32_dst(const fs_inst *inst)
 {
-   if (inst->dst.type != BRW_REGISTER_TYPE_F)
+   if (inst->dst.type != BRW_TYPE_F)
       return false;
 
    for (int i = 0; i < inst->sources; i++) {
-      if (inst->src[i].type == BRW_REGISTER_TYPE_HF)
+      if (inst->src[i].type == BRW_TYPE_HF)
          return true;
    }
 
@@ -25,12 +25,11 @@ is_mixed_float_with_fp32_dst(const fs_inst *inst)
 static bool
 is_mixed_float_with_packed_fp16_dst(const fs_inst *inst)
 {
-   if (inst->dst.type != BRW_REGISTER_TYPE_HF ||
-       inst->dst.stride != 1)
+   if (inst->dst.type != BRW_TYPE_HF || inst->dst.stride != 1)
       return false;
 
    for (int i = 0; i < inst->sources; i++) {
-      if (inst->src[i].type == BRW_REGISTER_TYPE_F)
+      if (inst->src[i].type == BRW_TYPE_F)
          return true;
    }
 
@@ -113,34 +112,27 @@ get_fpu_lowered_simd_width(const fs_visitor *shader,
    if (inst->is_3src(compiler) && !devinfo->supports_simd16_3src)
       max_width = MIN2(max_width, inst->exec_size / reg_count);
 
-   /* From the SKL PRM, Special Restrictions for Handling Mixed Mode
-    * Float Operations:
-    *
-    *    "No SIMD16 in mixed mode when destination is f32. Instruction
-    *     execution size must be no more than 8."
-    *
-    * FIXME: the simulator doesn't seem to complain if we don't do this and
-    * empirical testing with existing CTS tests show that they pass just fine
-    * without implementing this, however, since our interpretation of the PRM
-    * is that conversion MOVs between HF and F are still mixed-float
-    * instructions (and therefore subject to this restriction) we decided to
-    * split them to be safe. Might be useful to do additional investigation to
-    * lift the restriction if we can ensure that it is safe though, since these
-    * conversions are common when half-float types are involved since many
-    * instructions do not support HF types and conversions from/to F are
-    * required.
-    */
-   if (is_mixed_float_with_fp32_dst(inst) && devinfo->ver < 20)
-      max_width = MIN2(max_width, 8);
+   if (inst->opcode != BRW_OPCODE_MOV) {
+      /* From the SKL PRM, Special Restrictions for Handling Mixed Mode
+       * Float Operations:
+       *
+       *    "No SIMD16 in mixed mode when destination is f32. Instruction
+       *     execution size must be no more than 8."
+       *
+       * Testing indicates that this restriction does not apply to MOVs.
+       */
+      if (is_mixed_float_with_fp32_dst(inst) && devinfo->ver < 20)
+         max_width = MIN2(max_width, 8);
 
-   /* From the SKL PRM, Special Restrictions for Handling Mixed Mode
-    * Float Operations:
-    *
-    *    "No SIMD16 in mixed mode when destination is packed f16 for both
-    *     Align1 and Align16."
-    */
-   if (is_mixed_float_with_packed_fp16_dst(inst) && devinfo->ver < 20)
-      max_width = MIN2(max_width, 8);
+      /* From the SKL PRM, Special Restrictions for Handling Mixed Mode
+       * Float Operations:
+       *
+       *    "No SIMD16 in mixed mode when destination is packed f16 for both
+       *     Align1 and Align16."
+       */
+      if (is_mixed_float_with_packed_fp16_dst(inst) && devinfo->ver < 20)
+         max_width = MIN2(max_width, 8);
+   }
 
    /* Only power-of-two execution sizes are representable in the instruction
     * control fields.
@@ -173,29 +165,51 @@ get_sampler_lowered_simd_width(const struct intel_device_info *devinfo,
     * message, it will push it over 5 arguments and we have to fall back to
     * SIMD8.
     */
-   if (inst->opcode != SHADER_OPCODE_TEX &&
+   if (inst->opcode != SHADER_OPCODE_TEX_LOGICAL &&
        inst->components_read(TEX_LOGICAL_SRC_MIN_LOD))
       return devinfo->ver < 20 ? 8 : 16;
 
    /* On Gfx9+ the LOD argument is for free if we're able to use the LZ
     * variant of the TXL or TXF message.
     */
-   const bool implicit_lod = (inst->opcode == SHADER_OPCODE_TXL ||
-                              inst->opcode == SHADER_OPCODE_TXF) &&
+   const bool implicit_lod = (inst->opcode == SHADER_OPCODE_TXL_LOGICAL ||
+                              inst->opcode == SHADER_OPCODE_TXF_LOGICAL) &&
                              inst->src[TEX_LOGICAL_SRC_LOD].is_zero();
 
    /* Calculate the total number of argument components that need to be passed
     * to the sampler unit.
     */
-   const unsigned num_payload_components =
-      inst->components_read(TEX_LOGICAL_SRC_COORDINATE) +
+   assert(inst->src[TEX_LOGICAL_SRC_GRAD_COMPONENTS].file == IMM);
+   const unsigned grad_components =
+      inst->src[TEX_LOGICAL_SRC_GRAD_COMPONENTS].ud;
+   assert(inst->src[TEX_LOGICAL_SRC_COORD_COMPONENTS].file == IMM);
+   const unsigned coord_components =
+      inst->src[TEX_LOGICAL_SRC_COORD_COMPONENTS].ud;
+
+   unsigned num_payload_components =
+      coord_components +
       inst->components_read(TEX_LOGICAL_SRC_SHADOW_C) +
       (implicit_lod ? 0 : inst->components_read(TEX_LOGICAL_SRC_LOD)) +
       inst->components_read(TEX_LOGICAL_SRC_LOD2) +
       inst->components_read(TEX_LOGICAL_SRC_SAMPLE_INDEX) +
       (inst->opcode == SHADER_OPCODE_TG4_OFFSET_LOGICAL ?
        inst->components_read(TEX_LOGICAL_SRC_TG4_OFFSET) : 0) +
-      inst->components_read(TEX_LOGICAL_SRC_MCS);
+      inst->components_read(TEX_LOGICAL_SRC_MCS) +
+      inst->components_read(TEX_LOGICAL_SRC_MIN_LOD);
+
+
+   if (inst->opcode == FS_OPCODE_TXB_LOGICAL && devinfo->ver >= 20) {
+      num_payload_components += 3 - coord_components;
+   } else if (inst->opcode == SHADER_OPCODE_TXD_LOGICAL &&
+            devinfo->verx10 >= 125 && devinfo->ver < 20) {
+      num_payload_components +=
+         3 - coord_components + (2 - grad_components) * 2;
+   } else {
+      num_payload_components += 4 - coord_components;
+      if (inst->opcode == SHADER_OPCODE_TXD_LOGICAL)
+         num_payload_components += (3 - grad_components) * 2;
+   }
+
 
    const unsigned simd_limit = reg_unit(devinfo) *
       (num_payload_components > MAX_SAMPLER_MESSAGE_SIZE / 2 ? 8 : 16);
@@ -205,6 +219,20 @@ get_sampler_lowered_simd_width(const struct intel_device_info *devinfo,
     * header is provided or not.
     */
    return MIN2(inst->exec_size, simd_limit);
+}
+
+static bool
+is_half_float_src_dst(const fs_inst *inst)
+{
+   if (inst->dst.type == BRW_TYPE_HF)
+      return true;
+
+   for (int i = 0; i < inst->sources; i++) {
+      if (inst->src[i].type == BRW_TYPE_HF)
+         return true;
+   }
+
+   return false;
 }
 
 /**
@@ -248,7 +276,6 @@ brw_fs_get_lowered_simd_width(const fs_visitor *shader, const fs_inst *inst)
    case BRW_OPCODE_FBH:
    case BRW_OPCODE_FBL:
    case BRW_OPCODE_CBIT:
-   case BRW_OPCODE_SAD2:
    case BRW_OPCODE_MAD:
    case BRW_OPCODE_LRP:
    case BRW_OPCODE_ADD3:
@@ -261,10 +288,6 @@ brw_fs_get_lowered_simd_width(const fs_visitor *shader, const fs_inst *inst)
    case BRW_OPCODE_BFI2:
       return get_fpu_lowered_simd_width(shader, inst);
 
-   case BRW_OPCODE_IF:
-      assert(inst->src[0].file == BAD_FILE || inst->exec_size <= 16);
-      return inst->exec_size;
-
    case SHADER_OPCODE_RCP:
    case SHADER_OPCODE_RSQ:
    case SHADER_OPCODE_SQRT:
@@ -272,8 +295,16 @@ brw_fs_get_lowered_simd_width(const fs_visitor *shader, const fs_inst *inst)
    case SHADER_OPCODE_LOG2:
    case SHADER_OPCODE_SIN:
    case SHADER_OPCODE_COS: {
-      if (inst->dst.type == BRW_REGISTER_TYPE_HF)
-         return MIN2(8, inst->exec_size);
+      /* Xe2+: BSpec 56797
+       *
+       * Math operation rules when half-floats are used on both source and
+       * destination operands and both source and destinations are packed.
+       *
+       * The execution size must be 16.
+       */
+      if (is_half_float_src_dst(inst))
+         return devinfo->ver < 20 ? MIN2(8,  inst->exec_size) :
+                                    MIN2(16, inst->exec_size);
       return MIN2(16, inst->exec_size);
    }
 
@@ -281,8 +312,8 @@ brw_fs_get_lowered_simd_width(const fs_visitor *shader, const fs_inst *inst)
       /* SIMD16 is only allowed on Gfx7+. Extended Math Function is limited
        * to SIMD8 with half-float
        */
-      if (inst->dst.type == BRW_REGISTER_TYPE_HF)
-         return MIN2(8, inst->exec_size);
+      if (is_half_float_src_dst(inst))
+        return MIN2(8,  inst->exec_size);
       return MIN2(16, inst->exec_size);
    }
 
@@ -295,7 +326,7 @@ brw_fs_get_lowered_simd_width(const fs_visitor *shader, const fs_inst *inst)
       /* Integer division is limited to SIMD8 on all generations. */
       return MIN2(8, inst->exec_size);
 
-   case FS_OPCODE_LINTERP:
+   case BRW_OPCODE_PLN:
    case FS_OPCODE_UNIFORM_PULL_CONSTANT_LOAD:
    case FS_OPCODE_PACK_HALF_2x16_SPLIT:
    case FS_OPCODE_INTERPOLATE_AT_SAMPLE:
@@ -315,16 +346,20 @@ brw_fs_get_lowered_simd_width(const fs_visitor *shader, const fs_inst *inst)
       return devinfo->ver >= 20 ? 16 : 8;
 
    case FS_OPCODE_FB_WRITE_LOGICAL:
-      /* Dual-source FB writes are unsupported in SIMD16 mode. */
-      return (inst->src[FB_WRITE_LOGICAL_SRC_COLOR1].file != BAD_FILE ?
-              8 : MIN2(16, inst->exec_size));
+      if (devinfo->ver >= 20) {
+         /* Dual-source FB writes are unsupported in SIMD32 mode. */
+         return (inst->src[FB_WRITE_LOGICAL_SRC_COLOR1].file != BAD_FILE ?
+                 16 : MIN2(32, inst->exec_size));
+      } else {
+         /* Dual-source FB writes are unsupported in SIMD16 mode. */
+         return (inst->src[FB_WRITE_LOGICAL_SRC_COLOR1].file != BAD_FILE ?
+                 8 : MIN2(16, inst->exec_size));
+      }
 
    case FS_OPCODE_FB_READ_LOGICAL:
       return MIN2(16, inst->exec_size);
 
    case SHADER_OPCODE_TEX_LOGICAL:
-   case SHADER_OPCODE_TXF_CMS_LOGICAL:
-   case SHADER_OPCODE_TXF_UMS_LOGICAL:
    case SHADER_OPCODE_TXF_MCS_LOGICAL:
    case SHADER_OPCODE_LOD_LOGICAL:
    case SHADER_OPCODE_TG4_LOGICAL:
@@ -357,7 +392,7 @@ brw_fs_get_lowered_simd_width(const fs_visitor *shader, const fs_inst *inst)
    case SHADER_OPCODE_TYPED_ATOMIC_LOGICAL:
    case SHADER_OPCODE_TYPED_SURFACE_READ_LOGICAL:
    case SHADER_OPCODE_TYPED_SURFACE_WRITE_LOGICAL:
-      return 8;
+      return devinfo->ver < 20 ? 8 : inst->exec_size;
 
    case SHADER_OPCODE_UNTYPED_ATOMIC_LOGICAL:
    case SHADER_OPCODE_UNTYPED_SURFACE_READ_LOGICAL:
@@ -370,16 +405,21 @@ brw_fs_get_lowered_simd_width(const fs_visitor *shader, const fs_inst *inst)
    case SHADER_OPCODE_A64_UNTYPED_READ_LOGICAL:
    case SHADER_OPCODE_A64_BYTE_SCATTERED_WRITE_LOGICAL:
    case SHADER_OPCODE_A64_BYTE_SCATTERED_READ_LOGICAL:
-      return MIN2(16, inst->exec_size);
+      return devinfo->ver < 20 ?
+             MIN2(16, inst->exec_size) :
+             inst->exec_size;
 
    case SHADER_OPCODE_A64_OWORD_BLOCK_READ_LOGICAL:
    case SHADER_OPCODE_A64_UNALIGNED_OWORD_BLOCK_READ_LOGICAL:
    case SHADER_OPCODE_A64_OWORD_BLOCK_WRITE_LOGICAL:
-      assert(inst->exec_size <= 16);
-      return inst->exec_size;
+      return devinfo->ver < 20 ?
+             MIN2(16, inst->exec_size) :
+             inst->exec_size;
 
    case SHADER_OPCODE_A64_UNTYPED_ATOMIC_LOGICAL:
-      return devinfo->has_lsc ? MIN2(16, inst->exec_size) : 8;
+      return devinfo->ver < 20 ?
+             devinfo->has_lsc ? MIN2(16, inst->exec_size) : 8 :
+             inst->exec_size;
 
    case SHADER_OPCODE_URB_READ_LOGICAL:
    case SHADER_OPCODE_URB_WRITE_LOGICAL:
@@ -389,7 +429,7 @@ brw_fs_get_lowered_simd_width(const fs_visitor *shader, const fs_inst *inst)
       const unsigned swiz = inst->src[1].ud;
       return (is_uniform(inst->src[0]) ?
                  get_fpu_lowered_simd_width(shader, inst) :
-              devinfo->ver < 11 && type_sz(inst->src[0].type) == 4 ? 8 :
+              devinfo->ver < 11 && brw_type_size_bytes(inst->src[0].type) == 4 ? 8 :
               swiz == BRW_SWIZZLE_XYXY || swiz == BRW_SWIZZLE_ZWZW ? 4 :
               get_fpu_lowered_simd_width(shader, inst));
    }
@@ -406,7 +446,7 @@ brw_fs_get_lowered_simd_width(const fs_visitor *shader, const fs_inst *inst)
       const unsigned max_size = 2 * REG_SIZE;
       /* Prior to Broadwell, we only have 8 address subregisters. */
       return MIN3(16,
-                  max_size / (inst->dst.stride * type_sz(inst->dst.type)),
+                  max_size / (inst->dst.stride * brw_type_size_bytes(inst->dst.type)),
                   inst->exec_size);
    }
 
@@ -421,7 +461,7 @@ brw_fs_get_lowered_simd_width(const fs_visitor *shader, const fs_inst *inst)
           */
          assert(!inst->header_size);
          for (unsigned i = 0; i < inst->sources; i++)
-            assert(type_sz(inst->dst.type) == type_sz(inst->src[i].type) ||
+            assert(brw_type_size_bits(inst->dst.type) == brw_type_size_bits(inst->src[i].type) ||
                    inst->src[i].file == BAD_FILE);
 
          return inst->exec_size / DIV_ROUND_UP(reg_count, 2);
@@ -442,11 +482,17 @@ brw_fs_get_lowered_simd_width(const fs_visitor *shader, const fs_inst *inst)
 static inline bool
 needs_src_copy(const fs_builder &lbld, const fs_inst *inst, unsigned i)
 {
+   /* The indirectly indexed register stays the same even if we split the
+    * instruction.
+    */
+   if (inst->opcode == SHADER_OPCODE_MOV_INDIRECT && i == 0)
+      return false;
+
    return !(is_periodic(inst->src[i], lbld.dispatch_width()) ||
             (inst->components_read(i) == 1 &&
              lbld.dispatch_width() <= inst->exec_size)) ||
           (inst->flags_written(lbld.shader->devinfo) &
-           brw_fs_flag_mask(inst->src[i], type_sz(inst->src[i].type)));
+           brw_fs_flag_mask(inst->src[i], brw_type_size_bytes(inst->src[i].type)));
 }
 
 /**
@@ -454,31 +500,31 @@ needs_src_copy(const fs_builder &lbld, const fs_inst *inst, unsigned i)
  * lbld.group() from the i-th source region of instruction \p inst and return
  * it as result in packed form.
  */
-static fs_reg
+static brw_reg
 emit_unzip(const fs_builder &lbld, fs_inst *inst, unsigned i)
 {
    assert(lbld.group() >= inst->group);
 
    /* Specified channel group from the source region. */
-   const fs_reg src = horiz_offset(inst->src[i], lbld.group() - inst->group);
+   const brw_reg src = horiz_offset(inst->src[i], lbld.group() - inst->group);
 
    if (needs_src_copy(lbld, inst, i)) {
-      /* Builder of the right width to perform the copy avoiding uninitialized
-       * data if the lowered execution size is greater than the original
-       * execution size of the instruction.
-       */
-      const fs_builder cbld = lbld.group(MIN2(lbld.dispatch_width(),
-                                              inst->exec_size), 0);
-      const fs_reg tmp = lbld.vgrf(inst->src[i].type, inst->components_read(i));
+      const unsigned num_components = inst->components_read(i);
+      const brw_reg tmp = lbld.vgrf(inst->src[i].type, num_components);
 
-      for (unsigned k = 0; k < inst->components_read(i); ++k)
-         cbld.MOV(offset(tmp, lbld, k), offset(src, inst->exec_size, k));
+      brw_reg comps[num_components];
+      for (unsigned k = 0; k < num_components; ++k)
+         comps[k] = offset(src, inst->exec_size, k);
+      lbld.VEC(tmp, comps, num_components);
 
       return tmp;
-
-   } else if (is_periodic(inst->src[i], lbld.dispatch_width())) {
+   } else if (is_periodic(inst->src[i], lbld.dispatch_width()) ||
+              (inst->opcode == SHADER_OPCODE_MOV_INDIRECT && i == 0)) {
       /* The source is invariant for all dispatch_width-wide groups of the
        * original region.
+       *
+       * The src[0] of MOV_INDIRECT is invariant regardless of the execution
+       * size.
        */
       return inst->src[i];
 
@@ -507,13 +553,6 @@ needs_dst_copy(const fs_builder &lbld, const fs_inst *inst)
     * they end up arranged correctly in the original destination region.
     */
    if (inst->size_written > inst->dst.component_size(inst->exec_size))
-      return true;
-
-   /* If the lowered execution size is larger than the original the result of
-    * the instruction won't fit in the original destination, so we'll have to
-    * allocate a temporary in any case.
-    */
-   if (lbld.dispatch_width() > inst->exec_size)
       return true;
 
    for (unsigned i = 0; i < inst->sources; i++) {
@@ -546,7 +585,7 @@ needs_dst_copy(const fs_builder &lbld, const fs_inst *inst)
  * inserted using \p lbld_before and any copy instructions required for
  * zipping up the destination of \p inst will be inserted using \p lbld_after.
  */
-static fs_reg
+static brw_reg
 emit_zip(const fs_builder &lbld_before, const fs_builder &lbld_after,
          fs_inst *inst)
 {
@@ -557,7 +596,7 @@ emit_zip(const fs_builder &lbld_before, const fs_builder &lbld_after,
    const struct intel_device_info *devinfo = lbld_before.shader->devinfo;
 
    /* Specified channel group from the destination region. */
-   const fs_reg dst = horiz_offset(inst->dst, lbld_after.group() - inst->group);
+   const brw_reg dst = horiz_offset(inst->dst, lbld_after.group() - inst->group);
 
    if (!needs_dst_copy(lbld_after, inst)) {
       /* No need to allocate a temporary for the lowered instruction, just
@@ -572,7 +611,7 @@ emit_zip(const fs_builder &lbld_before, const fs_builder &lbld_after,
    const unsigned dst_size = (inst->size_written - residency_size) /
       inst->dst.component_size(inst->exec_size);
 
-   const fs_reg tmp = lbld_after.vgrf(inst->dst.type,
+   const brw_reg tmp = lbld_after.vgrf(inst->dst.type,
                                       dst_size + inst->has_sampler_residency());
 
    if (inst->predicate) {
@@ -580,24 +619,15 @@ emit_zip(const fs_builder &lbld_before, const fs_builder &lbld_after,
        * destination into the temporary before emitting the lowered
        * instruction.
        */
-      const fs_builder gbld_before =
-         lbld_before.group(MIN2(lbld_before.dispatch_width(),
-                                inst->exec_size), 0);
       for (unsigned k = 0; k < dst_size; ++k) {
-         gbld_before.MOV(offset(tmp, lbld_before, k),
+         lbld_before.MOV(offset(tmp, lbld_before, k),
                          offset(dst, inst->exec_size, k));
       }
    }
 
-   const fs_builder gbld_after =
-      lbld_after.group(MIN2(lbld_after.dispatch_width(),
-                            inst->exec_size), 0);
    for (unsigned k = 0; k < dst_size; ++k) {
-      /* Use a builder of the right width to perform the copy avoiding
-       * uninitialized data if the lowered execution size is greater than the
-       * original execution size of the instruction.
-       */
-      gbld_after.MOV(offset(dst, inst->exec_size, k),
+      /* Copy the (split) temp into the original (larger) destination */
+      lbld_after.MOV(offset(dst, inst->exec_size, k),
                      offset(tmp, lbld_after, k));
    }
 
@@ -608,15 +638,13 @@ emit_zip(const fs_builder &lbld_before, const fs_builder &lbld_after,
        * have to build a single 32bit value for the SIMD32 message out of 2
        * SIMD16 16 bit values.
        */
-      const fs_builder rbld = gbld_after.exec_all().group(1, 0);
-      fs_reg local_res_reg = component(
-         retype(offset(tmp, lbld_before, dst_size),
-                BRW_REGISTER_TYPE_UW), 0);
-      fs_reg final_res_reg =
+      const fs_builder rbld = lbld_after.exec_all().group(1, 0);
+      brw_reg local_res_reg = component(
+         retype(offset(tmp, lbld_before, dst_size), BRW_TYPE_UW), 0);
+      brw_reg final_res_reg =
          retype(byte_offset(inst->dst,
                             inst->size_written - residency_size +
-                            gbld_after.group() / 8),
-                BRW_REGISTER_TYPE_UW);
+                            lbld_after.group() / 8), BRW_TYPE_UW);
       rbld.MOV(final_res_reg, local_res_reg);
    }
 
@@ -631,108 +659,106 @@ brw_fs_lower_simd_width(fs_visitor &s)
    foreach_block_and_inst_safe(block, fs_inst, inst, s.cfg) {
       const unsigned lower_width = brw_fs_get_lowered_simd_width(&s, inst);
 
-      if (lower_width != inst->exec_size) {
-         /* Builder matching the original instruction.  We may also need to
-          * emit an instruction of width larger than the original, set the
-          * execution size of the builder to the highest of both for now so
-          * we're sure that both cases can be handled.
+      /* No splitting required */
+      if (lower_width == inst->exec_size)
+         continue;
+
+      assert(lower_width < inst->exec_size);
+
+      /* Builder matching the original instruction. */
+      const fs_builder bld = fs_builder(&s).at_end();
+      const fs_builder ibld =
+         bld.at(block, inst).exec_all(inst->force_writemask_all)
+            .group(inst->exec_size, inst->group / inst->exec_size);
+
+      /* Split the copies in chunks of the execution width of either the
+       * original or the lowered instruction, whichever is lower.
+       */
+      const unsigned n = DIV_ROUND_UP(inst->exec_size, lower_width);
+      const unsigned residency_size = inst->has_sampler_residency() ?
+         (reg_unit(s.devinfo) * REG_SIZE) : 0;
+      const unsigned dst_size =
+         (inst->size_written - residency_size) /
+         inst->dst.component_size(inst->exec_size);
+
+      assert(!inst->writes_accumulator && !inst->mlen);
+
+      /* Inserting the zip, unzip, and duplicated instructions in all of
+       * the right spots is somewhat tricky.  All of the unzip and any
+       * instructions from the zip which unzip the destination prior to
+       * writing need to happen before all of the per-group instructions
+       * and the zip instructions need to happen after.  In order to sort
+       * this all out, we insert the unzip instructions before \p inst,
+       * insert the per-group instructions after \p inst (i.e. before
+       * inst->next), and insert the zip instructions before the
+       * instruction after \p inst.  Since we are inserting instructions
+       * after \p inst, inst->next is a moving target and we need to save
+       * it off here so that we insert the zip instructions in the right
+       * place.
+       *
+       * Since we're inserting split instructions after after_inst, the
+       * instructions will end up in the reverse order that we insert them.
+       * However, certain render target writes require that the low group
+       * instructions come before the high group.  From the Ivy Bridge PRM
+       * Vol. 4, Pt. 1, Section 3.9.11:
+       *
+       *    "If multiple SIMD8 Dual Source messages are delivered by the
+       *    pixel shader thread, each SIMD8_DUALSRC_LO message must be
+       *    issued before the SIMD8_DUALSRC_HI message with the same Slot
+       *    Group Select setting."
+       *
+       * And, from Section 3.9.11.1 of the same PRM:
+       *
+       *    "When SIMD32 or SIMD16 PS threads send render target writes
+       *    with multiple SIMD8 and SIMD16 messages, the following must
+       *    hold:
+       *
+       *    All the slots (as described above) must have a corresponding
+       *    render target write irrespective of the slot's validity. A slot
+       *    is considered valid when at least one sample is enabled. For
+       *    example, a SIMD16 PS thread must send two SIMD8 render target
+       *    writes to cover all the slots.
+       *
+       *    PS thread must send SIMD render target write messages with
+       *    increasing slot numbers. For example, SIMD16 thread has
+       *    Slot[15:0] and if two SIMD8 render target writes are used, the
+       *    first SIMD8 render target write must send Slot[7:0] and the
+       *    next one must send Slot[15:8]."
+       *
+       * In order to make low group instructions come before high group
+       * instructions (this is required for some render target writes), we
+       * split from the highest group to lowest.
+       */
+      exec_node *const after_inst = inst->next;
+      for (int i = n - 1; i >= 0; i--) {
+         /* Emit a copy of the original instruction with the lowered width.
+          * If the EOT flag was set throw it away except for the last
+          * instruction to avoid killing the thread prematurely.
           */
-         const unsigned max_width = MAX2(inst->exec_size, lower_width);
+         fs_inst split_inst = *inst;
+         split_inst.exec_size = lower_width;
+         split_inst.eot = inst->eot && i == int(n - 1);
 
-         const fs_builder bld = fs_builder(&s).at_end();
-         const fs_builder ibld = bld.at(block, inst)
-                                    .exec_all(inst->force_writemask_all)
-                                    .group(max_width, inst->group / max_width);
-
-         /* Split the copies in chunks of the execution width of either the
-          * original or the lowered instruction, whichever is lower.
+         /* Select the correct channel enables for the i-th group, then
+          * transform the sources and destination and emit the lowered
+          * instruction.
           */
-         const unsigned n = DIV_ROUND_UP(inst->exec_size, lower_width);
-         const unsigned residency_size = inst->has_sampler_residency() ?
-            (reg_unit(s.devinfo) * REG_SIZE) : 0;
-         const unsigned dst_size =
-            (inst->size_written - residency_size) /
-            inst->dst.component_size(inst->exec_size);
+         const fs_builder lbld = ibld.group(lower_width, i);
 
-         assert(!inst->writes_accumulator && !inst->mlen);
+         for (unsigned j = 0; j < inst->sources; j++)
+            split_inst.src[j] = emit_unzip(lbld.at(block, inst), inst, j);
 
-         /* Inserting the zip, unzip, and duplicated instructions in all of
-          * the right spots is somewhat tricky.  All of the unzip and any
-          * instructions from the zip which unzip the destination prior to
-          * writing need to happen before all of the per-group instructions
-          * and the zip instructions need to happen after.  In order to sort
-          * this all out, we insert the unzip instructions before \p inst,
-          * insert the per-group instructions after \p inst (i.e. before
-          * inst->next), and insert the zip instructions before the
-          * instruction after \p inst.  Since we are inserting instructions
-          * after \p inst, inst->next is a moving target and we need to save
-          * it off here so that we insert the zip instructions in the right
-          * place.
-          *
-          * Since we're inserting split instructions after after_inst, the
-          * instructions will end up in the reverse order that we insert them.
-          * However, certain render target writes require that the low group
-          * instructions come before the high group.  From the Ivy Bridge PRM
-          * Vol. 4, Pt. 1, Section 3.9.11:
-          *
-          *    "If multiple SIMD8 Dual Source messages are delivered by the
-          *    pixel shader thread, each SIMD8_DUALSRC_LO message must be
-          *    issued before the SIMD8_DUALSRC_HI message with the same Slot
-          *    Group Select setting."
-          *
-          * And, from Section 3.9.11.1 of the same PRM:
-          *
-          *    "When SIMD32 or SIMD16 PS threads send render target writes
-          *    with multiple SIMD8 and SIMD16 messages, the following must
-          *    hold:
-          *
-          *    All the slots (as described above) must have a corresponding
-          *    render target write irrespective of the slot's validity. A slot
-          *    is considered valid when at least one sample is enabled. For
-          *    example, a SIMD16 PS thread must send two SIMD8 render target
-          *    writes to cover all the slots.
-          *
-          *    PS thread must send SIMD render target write messages with
-          *    increasing slot numbers. For example, SIMD16 thread has
-          *    Slot[15:0] and if two SIMD8 render target writes are used, the
-          *    first SIMD8 render target write must send Slot[7:0] and the
-          *    next one must send Slot[15:8]."
-          *
-          * In order to make low group instructions come before high group
-          * instructions (this is required for some render target writes), we
-          * split from the highest group to lowest.
-          */
-         exec_node *const after_inst = inst->next;
-         for (int i = n - 1; i >= 0; i--) {
-            /* Emit a copy of the original instruction with the lowered width.
-             * If the EOT flag was set throw it away except for the last
-             * instruction to avoid killing the thread prematurely.
-             */
-            fs_inst split_inst = *inst;
-            split_inst.exec_size = lower_width;
-            split_inst.eot = inst->eot && i == int(n - 1);
+         split_inst.dst = emit_zip(lbld.at(block, inst),
+                                   lbld.at(block, after_inst), inst);
+         split_inst.size_written =
+            split_inst.dst.component_size(lower_width) * dst_size +
+            residency_size;
 
-            /* Select the correct channel enables for the i-th group, then
-             * transform the sources and destination and emit the lowered
-             * instruction.
-             */
-            const fs_builder lbld = ibld.group(lower_width, i);
-
-            for (unsigned j = 0; j < inst->sources; j++)
-               split_inst.src[j] = emit_unzip(lbld.at(block, inst), inst, j);
-
-            split_inst.dst = emit_zip(lbld.at(block, inst),
-                                      lbld.at(block, after_inst), inst);
-            split_inst.size_written =
-               split_inst.dst.component_size(lower_width) * dst_size +
-               residency_size;
-
-            lbld.at(block, inst->next).emit(split_inst);
-         }
-
-         inst->remove(block);
-         progress = true;
+         lbld.at(block, inst->next).emit(split_inst);
       }
+
+      inst->remove(block);
+      progress = true;
    }
 
    if (progress)

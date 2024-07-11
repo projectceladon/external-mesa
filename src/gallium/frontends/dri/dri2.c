@@ -28,7 +28,7 @@
  *    <wallbraker@gmail.com> Chia-I Wu <olv@lunarg.com>
  */
 
-#include <xf86drm.h>
+#include "util/libdrm.h"
 #include "git_sha1.h"
 #include "GL/mesa_glinterop.h"
 #include "GL/internal/mesa_interface.h"
@@ -890,6 +890,56 @@ static const struct dri2_format_mapping g8r8_b8r8_mapping = {
      { 0, 1, 0, __DRI_IMAGE_FORMAT_ABGR8888 } }
 };
 
+static enum __DRIFixedRateCompression
+to_dri_compression_rate(uint32_t rate)
+{
+   switch (rate) {
+   case PIPE_COMPRESSION_FIXED_RATE_NONE:
+      return __DRI_FIXED_RATE_COMPRESSION_NONE;
+   case PIPE_COMPRESSION_FIXED_RATE_DEFAULT:
+      return __DRI_FIXED_RATE_COMPRESSION_DEFAULT;
+   case 1: return __DRI_FIXED_RATE_COMPRESSION_1BPC;
+   case 2: return __DRI_FIXED_RATE_COMPRESSION_2BPC;
+   case 3: return __DRI_FIXED_RATE_COMPRESSION_3BPC;
+   case 4: return __DRI_FIXED_RATE_COMPRESSION_4BPC;
+   case 5: return __DRI_FIXED_RATE_COMPRESSION_5BPC;
+   case 6: return __DRI_FIXED_RATE_COMPRESSION_6BPC;
+   case 7: return __DRI_FIXED_RATE_COMPRESSION_7BPC;
+   case 8: return __DRI_FIXED_RATE_COMPRESSION_8BPC;
+   case 9: return __DRI_FIXED_RATE_COMPRESSION_9BPC;
+   case 10: return __DRI_FIXED_RATE_COMPRESSION_10BPC;
+   case 11: return __DRI_FIXED_RATE_COMPRESSION_11BPC;
+   case 12: return __DRI_FIXED_RATE_COMPRESSION_12BPC;
+   default:
+      unreachable("invalid compression fixed-rate value");
+   }
+}
+
+static uint32_t
+from_dri_compression_rate(enum __DRIFixedRateCompression rate)
+{
+   switch (rate) {
+   case __DRI_FIXED_RATE_COMPRESSION_NONE:
+      return PIPE_COMPRESSION_FIXED_RATE_NONE;
+   case __DRI_FIXED_RATE_COMPRESSION_DEFAULT:
+      return PIPE_COMPRESSION_FIXED_RATE_DEFAULT;
+   case __DRI_FIXED_RATE_COMPRESSION_1BPC: return 1;
+   case __DRI_FIXED_RATE_COMPRESSION_2BPC: return 2;
+   case __DRI_FIXED_RATE_COMPRESSION_3BPC: return 3;
+   case __DRI_FIXED_RATE_COMPRESSION_4BPC: return 4;
+   case __DRI_FIXED_RATE_COMPRESSION_5BPC: return 5;
+   case __DRI_FIXED_RATE_COMPRESSION_6BPC: return 6;
+   case __DRI_FIXED_RATE_COMPRESSION_7BPC: return 7;
+   case __DRI_FIXED_RATE_COMPRESSION_8BPC: return 8;
+   case __DRI_FIXED_RATE_COMPRESSION_9BPC: return 9;
+   case __DRI_FIXED_RATE_COMPRESSION_10BPC: return 10;
+   case __DRI_FIXED_RATE_COMPRESSION_11BPC: return 11;
+   case __DRI_FIXED_RATE_COMPRESSION_12BPC: return 12;
+   default:
+      unreachable("invalid compression fixed-rate value");
+   }
+}
+
 static __DRIimage *
 dri2_create_image_from_winsys(__DRIscreen *_screen,
                               int width, int height, const struct dri2_format_mapping *map,
@@ -912,8 +962,6 @@ dri2_create_image_from_winsys(__DRIscreen *_screen,
    if (pscreen->is_format_supported(pscreen, map->pipe_format, screen->target, 0, 0,
                                     PIPE_BIND_SAMPLER_VIEW))
       tex_usage |= PIPE_BIND_SAMPLER_VIEW;
-   if (is_protected_content)
-      tex_usage |= PIPE_BIND_PROTECTED;
 
    /* For NV12, see if we have support for sampling r8_g8b8 */
    if (!tex_usage && map->pipe_format == PIPE_FORMAT_NV12 &&
@@ -1344,6 +1392,13 @@ dri2_query_image_common(__DRIimage *image, int attrib, int *value)
          *value = map->dri_fourcc;
       }
       return true;
+   case __DRI_IMAGE_ATTRIB_COMPRESSION_RATE:
+      if (!image->texture)
+         *value = __DRI_FIXED_RATE_COMPRESSION_NONE;
+      else
+         *value = to_dri_compression_rate(image->texture->compression_rate);
+      return true;
+
    default:
       return false;
    }
@@ -1833,6 +1888,58 @@ dri2_from_dma_bufs3(__DRIscreen *screen,
    return img;
 }
 
+static bool
+dri2_query_compression_rates(__DRIscreen *_screen, const __DRIconfig *config, int max,
+                             enum __DRIFixedRateCompression *rates, int *count)
+{
+   struct dri_screen *screen = dri_screen(_screen);
+   struct pipe_screen *pscreen = screen->base.screen;
+   struct gl_config *gl_config = (struct gl_config *) config;
+   enum pipe_format format = gl_config->color_format;
+   uint32_t pipe_rates[max];
+
+   if (!pscreen->is_format_supported(pscreen, format, screen->target, 0, 0,
+                                     PIPE_BIND_RENDER_TARGET))
+      return false;
+
+   if (pscreen->query_compression_rates != NULL) {
+      pscreen->query_compression_rates(pscreen, format, max, pipe_rates, count);
+      for (int i = 0; i < *count && i < max; ++i)
+         rates[i] = to_dri_compression_rate(pipe_rates[i]);
+   } else {
+      *count = 0;
+   }
+
+   return true;
+}
+
+static bool
+dri2_query_compression_modifiers(__DRIscreen *_screen, uint32_t fourcc,
+                                 enum __DRIFixedRateCompression rate, int max,
+                                 uint64_t *modifiers, int *count)
+{
+   struct dri_screen *screen = dri_screen(_screen);
+   struct pipe_screen *pscreen = screen->base.screen;
+   const struct dri2_format_mapping *map = dri2_get_mapping_by_fourcc(fourcc);
+   uint32_t pipe_rate = from_dri_compression_rate(rate);
+
+   if (!map)
+      return false;
+
+   if (!pscreen->is_format_supported(pscreen, map->pipe_format, screen->target,
+                                     0, 0, PIPE_BIND_RENDER_TARGET))
+      return false;
+
+   if (pscreen->query_compression_modifiers != NULL) {
+      pscreen->query_compression_modifiers(pscreen, map->pipe_format, pipe_rate,
+                                           max, modifiers, count);
+   } else {
+      *count = 0;
+   }
+
+   return true;
+}
+
 static void
 dri2_blit_image(__DRIcontext *context, __DRIimage *dst, __DRIimage *src,
                 int dstx0, int dsty0, int dstwidth, int dstheight,
@@ -1955,7 +2062,7 @@ dri2_get_capabilities(__DRIscreen *_screen)
 
 /* The extension is modified during runtime if DRI_PRIME is detected */
 static const __DRIimageExtension dri2ImageExtensionTempl = {
-    .base = { __DRI_IMAGE, 21 },
+    .base = { __DRI_IMAGE, 22 },
 
     .createImageFromName          = dri2_create_image_from_name,
     .createImageFromRenderbuffer  = dri2_create_image_from_renderbuffer,
@@ -1982,6 +2089,8 @@ static const __DRIimageExtension dri2ImageExtensionTempl = {
     .queryDmaBufFormatModifierAttribs = NULL,
     .createImageFromRenderbuffer2 = dri2_create_image_from_renderbuffer2,
     .createImageWithModifiers2    = NULL,
+    .queryCompressionRates        = NULL,
+    .queryCompressionModifiers    = NULL,
 };
 
 const __DRIimageExtension driVkImageExtension = {
@@ -2289,6 +2398,15 @@ dri2_init_screen_extensions(struct dri_screen *screen,
             dri2_query_dma_buf_format_modifier_attribs;
       }
    }
+
+   if (pscreen->query_compression_rates &&
+       pscreen->query_compression_modifiers) {
+      screen->image_extension.queryCompressionRates =
+         dri2_query_compression_rates;
+      screen->image_extension.queryCompressionModifiers =
+         dri2_query_compression_modifiers;
+   }
+
    *nExt++ = &screen->image_extension.base;
 
    if (!is_kms_screen) {
@@ -2334,18 +2452,20 @@ dri2_create_drawable(struct dri_screen *screen, const struct gl_config *visual,
  * Returns the struct gl_config supported by this driver.
  */
 static const __DRIconfig **
-dri2_init_screen(struct dri_screen *screen)
+dri2_init_screen(struct dri_screen *screen, bool driver_name_is_inferred)
 {
    const __DRIconfig **configs;
    struct pipe_screen *pscreen = NULL;
 
    (void) mtx_init(&screen->opencl_func_mutex, mtx_plain);
 
+#ifdef HAVE_LIBDRM
    if (pipe_loader_drm_probe_fd(&screen->dev, screen->fd, false))
-      pscreen = pipe_loader_create_screen(screen->dev);
+      pscreen = pipe_loader_create_screen(screen->dev, driver_name_is_inferred);
+#endif
 
    if (!pscreen)
-       goto fail;
+       return NULL;
 
    dri_init_options(screen);
    screen->throttle = pscreen->get_param(pscreen, PIPE_CAP_THROTTLE);
@@ -2379,7 +2499,7 @@ dri2_init_screen(struct dri_screen *screen)
    return configs;
 
 fail:
-   dri_release_screen(screen);
+   pipe_loader_release(&screen->dev, 1);
 
    return NULL;
 }
@@ -2390,7 +2510,7 @@ fail:
  * Returns the struct gl_config supported by this driver.
  */
 static const __DRIconfig **
-dri_swrast_kms_init_screen(struct dri_screen *screen)
+dri_swrast_kms_init_screen(struct dri_screen *screen, bool driver_name_is_inferred)
 {
 #if defined(GALLIUM_SOFTPIPE)
    const __DRIconfig **configs;
@@ -2398,7 +2518,7 @@ dri_swrast_kms_init_screen(struct dri_screen *screen)
 
 #ifdef HAVE_DRISW_KMS
    if (pipe_loader_sw_probe_kms(&screen->dev, screen->fd))
-      pscreen = pipe_loader_create_screen(screen->dev);
+      pscreen = pipe_loader_create_screen(screen->dev, driver_name_is_inferred);
 #endif
 
    if (!pscreen)
@@ -2440,16 +2560,21 @@ fail:
 static int
 dri_query_compatible_render_only_device_fd(int kms_only_fd)
 {
+#ifdef HAVE_LIBDRM
    return pipe_loader_get_compatible_render_capable_device_fd(kms_only_fd);
+#else
+   return -1;
+#endif
 }
 
 static const struct __DRImesaCoreExtensionRec mesaCoreExtension = {
-   .base = { __DRI_MESA, 1 },
+   .base = { __DRI_MESA, 2 },
    .version_string = MESA_INTERFACE_VERSION_STRING,
    .createNewScreen = driCreateNewScreen2,
    .createContext = driCreateContextAttribs,
    .initScreen = dri2_init_screen,
    .queryCompatibleRenderOnlyDeviceFd = dri_query_compatible_render_only_device_fd,
+   .createNewScreen3 = driCreateNewScreen3,
 };
 
 /* This is the table of extensions that the loader will dlsym() for. */
@@ -2463,11 +2588,12 @@ const __DRIextension *galliumdrm_driver_extensions[] = {
 };
 
 static const struct __DRImesaCoreExtensionRec swkmsMesaCoreExtension = {
-   .base = { __DRI_MESA, 1 },
+   .base = { __DRI_MESA, 2 },
    .version_string = MESA_INTERFACE_VERSION_STRING,
    .createNewScreen = driCreateNewScreen2,
    .createContext = driCreateContextAttribs,
    .initScreen = dri_swrast_kms_init_screen,
+   .createNewScreen3 = driCreateNewScreen3,
 };
 
 const __DRIextension *dri_swrast_kms_driver_extensions[] = {

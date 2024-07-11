@@ -56,6 +56,15 @@ vk_pipeline_shader_stage_is_null(const VkPipelineShaderStageCreateInfo *info)
    return true;
 }
 
+bool
+vk_pipeline_shader_stage_has_identifier(const VkPipelineShaderStageCreateInfo *info)
+{
+   const VkPipelineShaderStageModuleIdentifierCreateInfoEXT *id_info =
+      vk_find_struct_const(info->pNext, PIPELINE_SHADER_STAGE_MODULE_IDENTIFIER_CREATE_INFO_EXT);
+
+   return id_info && id_info->identifierSize != 0;
+}
+
 static nir_shader *
 get_builtin_nir(const VkPipelineShaderStageCreateInfo *info)
 {
@@ -511,6 +520,8 @@ vk_shader_unref(struct vk_device *device, struct vk_shader *shader)
    vk_pipeline_cache_object_unref(device, &shader->pipeline.cache_obj);
 }
 
+PRAGMA_DIAGNOSTIC_PUSH
+PRAGMA_DIAGNOSTIC_ERROR(-Wpadded)
 struct vk_pipeline_tess_info {
    unsigned tcs_vertices_out : 8;
    unsigned primitive_mode : 2; /* tess_primitive_mode */
@@ -519,6 +530,7 @@ struct vk_pipeline_tess_info {
    unsigned point_mode : 1;
    unsigned _pad : 18;
 };
+PRAGMA_DIAGNOSTIC_POP
 static_assert(sizeof(struct vk_pipeline_tess_info) == 4,
               "This struct has no holes");
 
@@ -1156,6 +1168,14 @@ vk_graphics_pipeline_compile_shaders(struct vk_device *device,
    for (uint32_t p = 0; p < part_count; p++) {
       const int64_t part_start = os_time_get_nano();
 
+      /* Don't try to re-compile any fast-link shaders */
+      if (!(pipeline->base.flags &
+            VK_PIPELINE_CREATE_2_LINK_TIME_OPTIMIZATION_BIT_EXT)) {
+         assert(partition[p + 1] == partition[p] + 1);
+         if (stages[partition[p]].shader != NULL)
+            continue;
+      }
+
       struct vk_shader_pipeline_cache_key shader_key = { 0 };
 
       _mesa_blake3_init(&blake3_ctx);
@@ -1166,7 +1186,7 @@ vk_graphics_pipeline_compile_shaders(struct vk_device *device,
 
          part_stages |= mesa_to_vk_shader_stage(stage->stage);
          _mesa_blake3_update(&blake3_ctx, stage->precomp->blake3,
-                           sizeof(stage->precomp->blake3));
+                             sizeof(stage->precomp->blake3));
 
          VkShaderCreateFlagsEXT shader_flags =
             vk_pipeline_to_shader_flags(pipeline->base.flags, stage->stage);
@@ -1226,6 +1246,19 @@ vk_graphics_pipeline_compile_shaders(struct vk_device *device,
 
             shader_key.stage = stage->stage;
 
+            if (stage->shader) {
+               /* If we have a shader from some library pipeline and the key
+                * matches, just use that.
+                */
+               if (memcmp(&stage->shader->pipeline.cache_key,
+                          &shader_key, sizeof(shader_key)) == 0)
+                  continue;
+
+               /* Otherwise, throw it away */
+               vk_shader_unref(device, stage->shader);
+               stage->shader = NULL;
+            }
+
             bool cache_hit = false;
             struct vk_pipeline_cache_object *cache_obj =
                vk_pipeline_cache_lookup_object(cache, &shader_key,
@@ -1233,6 +1266,7 @@ vk_graphics_pipeline_compile_shaders(struct vk_device *device,
                                                &pipeline_shader_cache_ops,
                                                &cache_hit);
             if (cache_obj != NULL) {
+               assert(stage->shader == NULL);
                stage->shader = vk_shader_from_cache_obj(cache_obj);
             } else {
                all_shaders_found = false;
@@ -1242,7 +1276,7 @@ vk_graphics_pipeline_compile_shaders(struct vk_device *device,
                all_cache_hits = false;
          }
 
-         if (all_cache_hits) {
+         if (all_cache_hits && cache != device->mem_cache) {
             /* The pipeline cache only really helps if we hit for everything
              * in the partition.  Otherwise, we have to go re-compile it all
              * anyway.
@@ -1353,11 +1387,11 @@ vk_graphics_pipeline_compile_shaders(struct vk_device *device,
       for (uint32_t i = partition[p]; i < partition[p + 1]; i++) {
          struct vk_pipeline_stage *stage = &stages[i];
 
-         if (stage->shader == NULL) {
-            shader_key.stage = stage->stage;
-            vk_shader_init_cache_obj(device, shaders[i], &shader_key,
-                                     sizeof(shader_key));
+         shader_key.stage = stage->stage;
+         vk_shader_init_cache_obj(device, shaders[i], &shader_key,
+                                  sizeof(shader_key));
 
+         if (stage->shader == NULL) {
             struct vk_pipeline_cache_object *cache_obj =
                &shaders[i]->pipeline.cache_obj;
             if (cache != NULL)
@@ -1370,7 +1404,11 @@ vk_graphics_pipeline_compile_shaders(struct vk_device *device,
              * shader as vk_pipeline_cache_add_object() would throw it away
              * for us anyway.
              */
-            vk_shader_destroy(device, shaders[i], &device->alloc);
+            assert(memcmp(&stage->shader->pipeline.cache_key,
+                          &shaders[i]->pipeline.cache_key,
+                          sizeof(shaders[i]->pipeline.cache_key)) == 0);
+
+            vk_shader_unref(device, shaders[i]);
          }
 
          stage_feedbacks[stage->stage].duration += part_end - part_start;
@@ -1769,6 +1807,10 @@ vk_common_CreateGraphicsPipelines(VkDevice _device,
    VK_FROM_HANDLE(vk_pipeline_cache, cache, pipelineCache);
    VkResult first_error_or_success = VK_SUCCESS;
 
+   /* Use implicit pipeline cache if there's no cache set */
+   if (!cache && device->mem_cache)
+      cache = device->mem_cache;
+
    /* From the Vulkan 1.3.274 spec:
     *
     *    "When attempting to create many pipelines in a single command, it is
@@ -2063,7 +2105,7 @@ vk_create_compute_pipeline(struct vk_device *device,
          .flags = VK_PIPELINE_CREATION_FEEDBACK_VALID_BIT,
          .duration = pipeline_end - pipeline_start,
       };
-      if (cache_hit) {
+      if (cache_hit && cache != device->mem_cache) {
          pipeline_feedback.flags |=
             VK_PIPELINE_CREATION_FEEDBACK_APPLICATION_PIPELINE_CACHE_HIT_BIT;
       }
@@ -2098,6 +2140,10 @@ vk_common_CreateComputePipelines(VkDevice _device,
    VK_FROM_HANDLE(vk_device, device, _device);
    VK_FROM_HANDLE(vk_pipeline_cache, cache, pipelineCache);
    VkResult first_error_or_success = VK_SUCCESS;
+
+   /* Use implicit pipeline cache if there's no cache set */
+   if (!cache && device->mem_cache)
+      cache = device->mem_cache;
 
    /* From the Vulkan 1.3.274 spec:
     *

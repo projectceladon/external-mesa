@@ -31,7 +31,7 @@
 #include <util/log.h>
 #include <util/u_debug.h>
 
-#include "isa/isa.h"
+#include "freedreno/isa/ir3-isa.h"
 
 #include "disasm.h"
 #include "instr-a3xx.h"
@@ -153,7 +153,12 @@ static const struct opc_info {
    /* clang-format off */
    /* category 0: */
    OPC(0, OPC_NOP,          nop),
-   OPC(0, OPC_B,            b),
+   OPC(0, OPC_BR,           br),
+   OPC(0, OPC_BRAC,         brac),
+   OPC(0, OPC_BRAA,         braa),
+   OPC(0, OPC_BRAO,         brao),
+   OPC(0, OPC_BALL,         ball),
+   OPC(0, OPC_BANY,         bany),
    OPC(0, OPC_JUMP,         jump),
    OPC(0, OPC_CALL,         call),
    OPC(0, OPC_RET,          ret),
@@ -191,7 +196,6 @@ static const struct opc_info {
    OPC(1, OPC_ELECT_MACRO,  elect.macro),
    OPC(1, OPC_READ_COND_MACRO, read_cond.macro),
    OPC(1, OPC_READ_FIRST_MACRO, read_first.macro),
-   OPC(1, OPC_SWZ_SHARED_MACRO, swz_shared.macro),
    OPC(1, OPC_SCAN_MACRO, scan.macro),
    OPC(1, OPC_SCAN_CLUSTERS_MACRO, scan_clusters.macro),
    OPC(1, OPC_SHPS_MACRO, shps.macro),
@@ -244,6 +248,7 @@ static const struct opc_info {
    OPC(2, OPC_CBITS_B,      cbits.b),
    OPC(2, OPC_SHB,          shb),
    OPC(2, OPC_MSAD,         msad),
+   OPC(2, OPC_FLAT_B,       flat.b),
 
    /* category 3: */
    OPC(3, OPC_MAD_U16,      mad.u16),
@@ -598,7 +603,7 @@ disasm_a3xx_stat(uint32_t *dwords, int sizedwords, int level, FILE *out,
 
    decode_options.cbdata = &ctx;
 
-   isa_disasm(dwords, sizedwords * 4, out, &decode_options);
+   ir3_isa_disasm(dwords, sizedwords * 4, out, &decode_options);
 
    disasm_handle_last(&ctx);
 

@@ -191,6 +191,8 @@ struct pipe_picture_desc
    enum pipe_format input_format;
    bool input_full_range;
    enum pipe_format output_format;
+   /* Flush flags for pipe_video_codec::end_frame */
+   unsigned flush_flags;
    /* A fence used on PIPE_VIDEO_ENTRYPOINT_DECODE/PROCESSING to signal job completion */
    struct pipe_fence_handle **fence;
 };
@@ -410,7 +412,7 @@ struct pipe_h264_picture_desc
    struct
    {
       bool slice_info_present;
-      uint32_t slice_count;
+      uint8_t slice_type[128];
       uint32_t slice_data_size[128];
       uint32_t slice_data_offset[128];
       enum pipe_slice_buffer_placement_type slice_data_flag[128];
@@ -631,6 +633,7 @@ struct pipe_h264_enc_picture_desc
    unsigned intra_idr_period;
    unsigned ip_period;
 
+   unsigned init_qp;
    unsigned quant_i_frames;
    unsigned quant_p_frames;
    unsigned quant_b_frames;
@@ -814,6 +817,7 @@ struct pipe_h265_enc_rate_control
    unsigned peak_bitrate;
    unsigned frame_rate_num;
    unsigned frame_rate_den;
+   unsigned init_qp;
    unsigned quant_i_frames;
    unsigned quant_p_frames;
    unsigned quant_b_frames;
@@ -892,6 +896,7 @@ struct pipe_av1_enc_rate_control
    unsigned enforce_hrd;
    unsigned max_au_size;
    unsigned qp; /* Initial QP */
+   unsigned qp_inter;
    unsigned max_qp;
    unsigned min_qp;
    bool app_requested_qp_range;
@@ -997,11 +1002,11 @@ struct pipe_av1_enc_picture_desc
       uint32_t reduced_tx_set:1;
       uint32_t skip_mode_present:1;
       uint32_t long_term_reference:1;
+      uint32_t uniform_tile_spacing:1;
    };
    struct pipe_enc_quality_modes quality_modes;
    struct pipe_enc_intra_refresh intra_refresh;
    struct pipe_enc_roi roi;
-   uint32_t num_tiles_in_pic; /* [1, 32], */
    uint32_t tile_rows;
    uint32_t tile_cols;
    unsigned num_tile_groups;
@@ -2008,6 +2013,21 @@ union pipe_enc_cap_roi {
       uint32_t roi_rc_qp_delta_support         : 1;
       uint32_t reserved                        : 22;
 
+   } bits;
+   uint32_t value;
+};
+
+union pipe_enc_cap_surface_alignment {
+   struct {
+      /**
+       * log2_width_alignment
+       */
+      uint32_t log2_width_alignment                 : 4;
+      /**
+       * log2_height_alignment
+       */
+      uint32_t log2_height_alignment                : 4;
+      uint32_t reserved                             : 24;
    } bits;
    uint32_t value;
 };

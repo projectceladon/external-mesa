@@ -217,6 +217,31 @@ pub trait SSABuilder: Builder {
         dst
     }
 
+    fn hadd2(&mut self, x: Src, y: Src) -> SSARef {
+        let dst = self.alloc_ssa(RegFile::GPR, 1);
+        self.push_op(OpHAdd2 {
+            dst: dst.into(),
+            srcs: [x, y],
+            saturate: false,
+            ftz: false,
+            f32: false,
+        });
+        dst
+    }
+
+    fn hset2(&mut self, cmp_op: FloatCmpOp, x: Src, y: Src) -> SSARef {
+        let dst = self.alloc_ssa(RegFile::GPR, 1);
+        self.push_op(OpHSet2 {
+            dst: dst.into(),
+            set_op: PredSetOp::And,
+            cmp_op: cmp_op,
+            srcs: [x, y],
+            ftz: false,
+            accum: SrcRef::True.into(),
+        });
+        dst
+    }
+
     fn dsetp(&mut self, cmp_op: FloatCmpOp, x: Src, y: Src) -> SSARef {
         let dst = self.alloc_ssa(RegFile::Pred, 1);
         self.push_op(OpDSetP {
@@ -382,10 +407,20 @@ pub trait SSABuilder: Builder {
 
     fn ineg(&mut self, i: Src) -> SSARef {
         let dst = self.alloc_ssa(RegFile::GPR, 1);
-        self.push_op(OpINeg {
-            dst: dst.into(),
-            src: i,
-        });
+        if self.sm() >= 70 {
+            self.push_op(OpIAdd3 {
+                dst: dst.into(),
+                overflow: [Dst::None; 2],
+                srcs: [0.into(), i.ineg(), 0.into()],
+            });
+        } else {
+            self.push_op(OpIAdd2 {
+                dst: dst.into(),
+                srcs: [0.into(), i.ineg()],
+                carry_in: 0.into(),
+                carry_out: Dst::None,
+            });
+        }
         dst
     }
 
@@ -464,6 +499,26 @@ pub trait SSABuilder: Builder {
             self.alloc_ssa(RegFile::GPR, 1)
         };
         self.lop2_to(dst.into(), op, x, y);
+        dst
+    }
+
+    fn brev(&mut self, x: Src) -> SSARef {
+        let dst = self.alloc_ssa(RegFile::GPR, 1);
+        if self.sm() >= 70 {
+            self.push_op(OpBRev {
+                dst: dst.into(),
+                src: x,
+            });
+        } else {
+            // No BREV in Maxwell
+            self.push_op(OpBfe {
+                dst: dst.into(),
+                base: x,
+                signed: false,
+                range: Src::new_imm_u32(0x2000),
+                reverse: true,
+            });
+        }
         dst
     }
 
@@ -607,6 +662,12 @@ pub trait SSABuilder: Builder {
         }
     }
 
+    fn undef(&mut self) -> SSARef {
+        let dst = self.alloc_ssa(RegFile::GPR, 1);
+        self.push_op(OpUndef { dst: dst.into() });
+        dst
+    }
+
     fn copy(&mut self, src: Src) -> SSARef {
         let dst = if src.is_predicate() {
             self.alloc_ssa(RegFile::Pred, 1)
@@ -618,7 +679,7 @@ pub trait SSABuilder: Builder {
     }
 
     fn bmov_to_bar(&mut self, src: Src) -> SSARef {
-        assert!(src.src_ref.as_ssa().unwrap().file() == RegFile::GPR);
+        assert!(src.src_ref.as_ssa().unwrap().file() == Some(RegFile::GPR));
         let dst = self.alloc_ssa(RegFile::Bar, 1);
         self.push_op(OpBMov {
             dst: dst.into(),
@@ -629,7 +690,7 @@ pub trait SSABuilder: Builder {
     }
 
     fn bmov_to_gpr(&mut self, src: Src) -> SSARef {
-        assert!(src.src_ref.as_ssa().unwrap().file() == RegFile::Bar);
+        assert!(src.src_ref.as_ssa().unwrap().file() == Some(RegFile::Bar));
         let dst = self.alloc_ssa(RegFile::GPR, 1);
         self.push_op(OpBMov {
             dst: dst.into(),
@@ -736,6 +797,38 @@ impl<'a, T: Builder> Builder for PredicatedBuilder<'a, T> {
 
 impl<'a, T: SSABuilder> SSABuilder for PredicatedBuilder<'a, T> {
     fn alloc_ssa(&mut self, file: RegFile, comps: u8) -> SSARef {
+        self.b.alloc_ssa(file, comps)
+    }
+}
+
+pub struct UniformBuilder<'a, T: Builder> {
+    b: &'a mut T,
+    uniform: bool,
+}
+
+impl<'a, T: Builder> UniformBuilder<'a, T> {
+    pub fn new(b: &'a mut T, uniform: bool) -> Self {
+        Self { b, uniform }
+    }
+}
+
+impl<'a, T: Builder> Builder for UniformBuilder<'a, T> {
+    fn push_instr(&mut self, instr: Box<Instr>) -> &mut Instr {
+        self.b.push_instr(instr)
+    }
+
+    fn sm(&self) -> u8 {
+        self.b.sm()
+    }
+}
+
+impl<'a, T: SSABuilder> SSABuilder for UniformBuilder<'a, T> {
+    fn alloc_ssa(&mut self, file: RegFile, comps: u8) -> SSARef {
+        let file = if self.uniform {
+            file.to_uniform().unwrap()
+        } else {
+            file
+        };
         self.b.alloc_ssa(file, comps)
     }
 }

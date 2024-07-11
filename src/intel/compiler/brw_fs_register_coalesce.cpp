@@ -50,14 +50,14 @@ static bool
 is_nop_mov(const fs_inst *inst)
 {
    if (inst->opcode == SHADER_OPCODE_LOAD_PAYLOAD) {
-      fs_reg dst = inst->dst;
+      brw_reg dst = inst->dst;
       for (int i = 0; i < inst->sources; i++) {
          if (!dst.equals(inst->src[i])) {
             return false;
          }
          dst.offset += (i < inst->header_size ? REG_SIZE :
                         inst->exec_size * dst.stride *
-                        type_sz(inst->src[i].type));
+                        brw_type_size_bytes(inst->src[i].type));
       }
       return true;
    } else if (inst->opcode == BRW_OPCODE_MOV) {
@@ -188,6 +188,42 @@ can_coalesce_vars(const fs_live_variables &live, const cfg_t *cfg,
    return true;
 }
 
+/**
+ * Check if coalescing this register would expand the size of the last
+ * SEND instruction's payload to more than would fit in g112-g127.
+ */
+static bool
+would_violate_eot_restriction(const brw::simple_allocator &alloc,
+                              const cfg_t *cfg,
+                              unsigned dst_reg, unsigned src_reg)
+{
+   if (alloc.sizes[dst_reg] > alloc.sizes[src_reg]) {
+      foreach_inst_in_block_reverse(fs_inst, send, cfg->last_block()) {
+         if (send->opcode != SHADER_OPCODE_SEND || !send->eot)
+            continue;
+
+         if ((send->src[2].file == VGRF && send->src[2].nr == src_reg) ||
+             (send->sources >= 4 &&
+              send->src[3].file == VGRF && send->src[3].nr == src_reg)) {
+            const unsigned s2 =
+               send->src[2].file == VGRF ? alloc.sizes[send->src[2].nr] : 0;
+            const unsigned s3 = send->sources >= 4 &&
+               send->src[3].file == VGRF ?
+               alloc.sizes[send->src[3].nr] : 0;
+
+            const unsigned increase =
+               alloc.sizes[dst_reg] - alloc.sizes[src_reg];
+
+            if (s2 + s3 + increase > 15)
+               return true;
+         }
+         break;
+      }
+   }
+
+   return false;
+}
+
 bool
 brw_fs_opt_register_coalesce(fs_visitor &s)
 {
@@ -230,7 +266,7 @@ brw_fs_opt_register_coalesce(fs_visitor &s)
 
       if (inst->opcode == SHADER_OPCODE_LOAD_PAYLOAD) {
          for (int i = 0; i < src_size; i++) {
-            dst_reg_offset[i] = i;
+            dst_reg_offset[i] = inst->dst.offset / REG_SIZE + i;
          }
          mov[0] = inst;
          channels_remaining -= regs_written(inst);
@@ -267,7 +303,8 @@ brw_fs_opt_register_coalesce(fs_visitor &s)
          dst_var[i] = live.var_from_vgrf[dst_reg] + dst_reg_offset[i];
          src_var[i] = live.var_from_vgrf[src_reg] + i;
 
-         if (!can_coalesce_vars(live, s.cfg, block, inst, dst_var[i], src_var[i])) {
+         if (!can_coalesce_vars(live, s.cfg, block, inst, dst_var[i], src_var[i]) ||
+             would_violate_eot_restriction(s.alloc, s.cfg, dst_reg, src_reg)) {
             can_coalesce = false;
             src_reg = ~0u;
             break;
@@ -331,7 +368,7 @@ brw_fs_opt_register_coalesce(fs_visitor &s)
    }
 
    if (progress) {
-      foreach_block_and_inst_safe (block, backend_instruction, inst, s.cfg) {
+      foreach_block_and_inst_safe (block, fs_inst, inst, s.cfg) {
          if (inst->opcode == BRW_OPCODE_NOP) {
             inst->remove(block, true);
          }

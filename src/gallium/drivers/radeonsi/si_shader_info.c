@@ -9,6 +9,7 @@
 #include "util/mesa-sha1.h"
 #include "sid.h"
 #include "nir.h"
+#include "aco_interface.h"
 
 struct si_shader_profile si_shader_profiles[] =
 {
@@ -16,6 +17,11 @@ struct si_shader_profile si_shader_profiles[] =
       /* Plot3D */
       {0x485320cd, 0x87a9ba05, 0x24a60e4f, 0x25aa19f7, 0xf5287451},
       SI_PROFILE_VS_NO_BINNING,
+   },
+   {
+      /* Viewperf/Energy */
+      {0x17118671, 0xd0102e0c, 0x947f3592, 0xb2057e7b, 0x4da5d9b0},
+      SI_PROFILE_NO_OPT_UNIFORM_VARYINGS,    /* Uniform propagation regresses performance. */
    },
    {
       /* Viewperf/Medical */
@@ -315,6 +321,20 @@ static void scan_io_usage(const nir_shader *nir, struct si_shader_info *info,
       for (unsigned i = 0; i < num_slots; i++) {
          unsigned loc = driver_location + i;
 
+         /* Call the translation functions to validate the semantic (call assertions in them). */
+         if (nir->info.stage != MESA_SHADER_FRAGMENT &&
+             semantic != VARYING_SLOT_EDGE) {
+            if (semantic == VARYING_SLOT_TESS_LEVEL_INNER ||
+                semantic == VARYING_SLOT_TESS_LEVEL_OUTER ||
+                (semantic >= VARYING_SLOT_PATCH0 && semantic <= VARYING_SLOT_PATCH31)) {
+               ac_shader_io_get_unique_index_patch(semantic);
+               ac_shader_io_get_unique_index_patch(semantic + i);
+            } else {
+               si_shader_io_get_unique_index(semantic);
+               si_shader_io_get_unique_index(semantic + i);
+            }
+         }
+
          info->output_semantic[loc] = semantic + i;
 
          if (is_output_load) {
@@ -600,10 +620,12 @@ void si_nir_scan_shader(struct si_screen *sscreen, const struct nir_shader *nir,
 {
    memset(info, 0, sizeof(*info));
    info->base = nir->info;
+   info->base.use_aco_amd = aco_is_gpu_supported(&sscreen->info) &&
+                            (sscreen->use_aco || nir->info.use_aco_amd);
 
    /* Get options from shader profiles. */
    for (unsigned i = 0; i < ARRAY_SIZE(si_shader_profiles); i++) {
-      if (_mesa_printed_sha1_equal(info->base.source_sha1, si_shader_profiles[i].sha1)) {
+      if (_mesa_printed_blake3_equal(info->base.source_blake3, si_shader_profiles[i].blake3)) {
          info->options = si_shader_profiles[i].options;
          break;
       }
@@ -649,10 +671,12 @@ void si_nir_scan_shader(struct si_screen *sscreen, const struct nir_shader *nir,
    info->uses_base_instance = BITSET_TEST(nir->info.system_values_read, SYSTEM_VALUE_BASE_INSTANCE);
    info->uses_invocationid = BITSET_TEST(nir->info.system_values_read, SYSTEM_VALUE_INVOCATION_ID);
    info->uses_grid_size = BITSET_TEST(nir->info.system_values_read, SYSTEM_VALUE_NUM_WORKGROUPS);
-   info->uses_tg_size = BITSET_TEST(nir->info.system_values_read, SYSTEM_VALUE_NUM_SUBGROUPS) ||
-                        BITSET_TEST(nir->info.system_values_read, SYSTEM_VALUE_LOCAL_INVOCATION_INDEX) ||
-                        BITSET_TEST(nir->info.system_values_read, SYSTEM_VALUE_SUBGROUP_ID) ||
-                        si_should_clear_lds(sscreen, nir);
+   info->uses_tg_size = BITSET_TEST(nir->info.system_values_read, SYSTEM_VALUE_NUM_SUBGROUPS);
+   if (sscreen->info.gfx_level < GFX12) {
+      info->uses_tg_size |= BITSET_TEST(nir->info.system_values_read, SYSTEM_VALUE_LOCAL_INVOCATION_INDEX) ||
+                            BITSET_TEST(nir->info.system_values_read, SYSTEM_VALUE_SUBGROUP_ID) ||
+                            si_should_clear_lds(sscreen, nir);
+   }
    info->uses_variable_block_size = BITSET_TEST(nir->info.system_values_read, SYSTEM_VALUE_WORKGROUP_SIZE);
    info->uses_drawid = BITSET_TEST(nir->info.system_values_read, SYSTEM_VALUE_DRAW_ID);
    info->uses_primid = BITSET_TEST(nir->info.system_values_read, SYSTEM_VALUE_PRIMITIVE_ID) ||
