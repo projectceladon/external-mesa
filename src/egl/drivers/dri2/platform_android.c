@@ -801,6 +801,7 @@ droid_add_configs_for_visuals(_EGLDisplay *disp)
       {HAL_PIXEL_FORMAT_RGBA_8888, {0, 8, 16, 24}, {8, 8, 8, 8}},
       {HAL_PIXEL_FORMAT_RGBX_8888, {0, 8, 16, -1}, {8, 8, 8, 0}},
       {HAL_PIXEL_FORMAT_RGB_565, {11, 5, 0, -1}, {5, 6, 5, 0}},
+      {HAL_PIXEL_FORMAT_RGBA_1010102, {0, 10, 20, 30}, {10, 10, 10, 2}},
       /* This must be after HAL_PIXEL_FORMAT_RGBA_8888, we only keep BGRA
        * visual if it turns out RGBA visual is not available.
        */
@@ -829,38 +830,42 @@ droid_add_configs_for_visuals(_EGLDisplay *disp)
     * the buggy clients.
     */
    bool has_rgba = false;
-   for (int i = 0; i < ARRAY_SIZE(visuals); i++) {
-      /* Only enable BGRA configs when RGBA is not available. BGRA configs are
-       * buggy on stock Android.
-       */
-      if (visuals[i].format == HAL_PIXEL_FORMAT_BGRA_8888 && has_rgba)
-         continue;
-      for (int j = 0; dri2_dpy->driver_configs[j]; j++) {
-         const EGLint surface_type = EGL_WINDOW_BIT | EGL_PBUFFER_BIT;
+   EGLint recordable_android[] = {EGL_TRUE, EGL_FALSE};
 
-         const EGLint config_attrs[] = {
-            EGL_NATIVE_VISUAL_ID,
-            visuals[i].format,
-            EGL_NATIVE_VISUAL_TYPE,
-            visuals[i].format,
-            EGL_FRAMEBUFFER_TARGET_ANDROID,
-            EGL_TRUE,
-            EGL_RECORDABLE_ANDROID,
-            EGL_TRUE,
-            EGL_NONE,
-         };
+   for (int recordable_android_idx = 0; recordable_android_idx < ARRAY_SIZE(recordable_android); recordable_android_idx++) {
+      for (int i = 0; i < ARRAY_SIZE(visuals); i++) {
+         /* Only enable BGRA configs when RGBA is not available. BGRA configs are
+         * buggy on stock Android.
+         */
+         if (visuals[i].format == HAL_PIXEL_FORMAT_BGRA_8888 && has_rgba)
+            continue;
+         for (int j = 0; dri2_dpy->driver_configs[j]; j++) {
+            const EGLint surface_type = EGL_WINDOW_BIT | EGL_PBUFFER_BIT;
 
-         struct dri2_egl_config *dri2_conf = dri2_add_config(
-            disp, dri2_dpy->driver_configs[j], config_count + 1, surface_type,
-            config_attrs, visuals[i].rgba_shifts, visuals[i].rgba_sizes);
-         if (dri2_conf) {
-            if (dri2_conf->base.ConfigID == config_count + 1)
-               config_count++;
-            format_count[i]++;
+            const EGLint config_attrs[] = {
+               EGL_NATIVE_VISUAL_ID,
+               visuals[i].format,
+               EGL_NATIVE_VISUAL_TYPE,
+               visuals[i].format,
+               EGL_FRAMEBUFFER_TARGET_ANDROID,
+               EGL_TRUE,
+               EGL_RECORDABLE_ANDROID,
+               recordable_android[recordable_android_idx],
+               EGL_NONE,
+            };
+
+            struct dri2_egl_config *dri2_conf = dri2_add_config(
+               disp, dri2_dpy->driver_configs[j], config_count + 1, surface_type,
+               config_attrs, visuals[i].rgba_shifts, visuals[i].rgba_sizes);
+            if (dri2_conf) {
+               if (dri2_conf->base.ConfigID == config_count + 1)
+                  config_count++;
+               format_count[i]++;
+            }
          }
+         if (visuals[i].format == HAL_PIXEL_FORMAT_RGBA_8888 && format_count[i])
+            has_rgba = true;
       }
-      if (visuals[i].format == HAL_PIXEL_FORMAT_RGBA_8888 && format_count[i])
-         has_rgba = true;
    }
 
    for (int i = 0; i < ARRAY_SIZE(format_count); i++) {
