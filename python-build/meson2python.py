@@ -334,7 +334,8 @@ class TreeToCode(Interpreter):
 def meson2python(file_name):
   meson_parser = Lark(meson_grammar, parser='earley')
   with open(file_name) as f:
-    tree = meson_parser.parse(f.read())
+    # Ensure newline before end of file
+    tree = meson_parser.parse(f.read() + '\n')
     code = TreeToCode().visit(tree)
     return code
 
