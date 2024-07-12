@@ -322,6 +322,13 @@ class CustomTarget:
       return self._name + '.c'
     return self._name
 
+  def header_outputs(self):
+    hdrs = []
+    for out in self._outputs:
+      if out.endswith('.h'):
+        hdrs.append(out)
+    return hdrs
+
   def __iter__(self):
     return iter([self])
 

@@ -375,6 +375,7 @@ def _emit_builtin_target(
   srcs = set()
   generated_sources = set()
   generated_headers = set()
+  generated_header_files = []
   for source_arg in source:
     assert type(source_arg) is list
     _get_sources(source_arg, srcs, generated_sources, generated_headers)
@@ -389,8 +390,10 @@ def _emit_builtin_target(
     for src in impl.get_linear_list([dep.sources]):
       if type(src) == impl.CustomTargetItem:
         generated_headers.add(src.target.target_name_h())
+        generated_header_files.extend(src.target.header_outputs())
       elif type(src) == impl.CustomTarget:
         generated_headers.add(src.target_name_h())
+        generated_header_files.extend(src.header_outputs())
       else:
         exit('Unhandled source dependency: ' + str(type(src)))
     include_directories.extend(
@@ -459,7 +462,10 @@ def _emit_builtin_target(
       '  # hdrs are our files that might be included; listed here so Bazel will'
       ' allow them to be included'
   )
-  impl.fprint('  hdrs = []')
+  impl.fprint('  hdrs = [')
+  for hdr in set(generated_header_files):
+    impl.fprint('    "%s",' % hdr)
+  impl.fprint('   ]')
   for hdr in local_include_dirs:
     impl.fprint(
         '    + glob(["%s"])' % os.path.normpath(os.path.join(hdr, '*.h'))
