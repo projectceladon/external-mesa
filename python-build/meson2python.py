@@ -102,8 +102,8 @@ meson_grammar = r"""
     NEWLINE: ( / *\r?\n/ | COMMENT )+
     COMMENT: / *\#.*\n/
     SLASH: /\//
-    STRING_SIMPLE_VALUE: /'(.*\\')*.*?'/
-    STRING_MULTILINE_VALUE: /'''.*?'''/s
+    STRING_SIMPLE_VALUE: /f?'(.*\\')*.*?'/
+    STRING_MULTILINE_VALUE: /f?'''.*?'''/s
     TRUE: /true/
 
     %import common.WS
@@ -316,6 +316,8 @@ class TreeToCode(Interpreter):
     assert len(tree.children) == 1
     string = tree.children[0]
     string = re.sub(r'(@[0-9]@)', r'{}', string)
+    if string.startswith('f'):
+      string = re.sub(r'(@(.+)@)', r'{\g<2>}', string)
     return string
 
   def __default__(self, tree):
