@@ -89,6 +89,13 @@ def load_config_file():
   impl.load_config_file('python-build/generate_fuchsia_build.config')
 
 
+def add_subdirs_to_set(dir, dir_set):
+  subdirs = os.listdir(dir)
+  for subdir in subdirs:
+    subdir = os.path.join(dir, subdir)
+    if os.path.isdir(subdir):
+      dir_set.add(subdir)
+
 def include_directories(*paths, is_system=False):
   dirs = impl.get_include_dirs(paths)
   name = dirs[0].replace('/', '_')
@@ -99,17 +106,19 @@ def include_directories(*paths, is_system=False):
   if name not in _gIncludeDirectories:
     # Mesa likes to include files at a level down from the include path,
     # so ensure Bazel allows this by including all of the possibilities.
-    # Hopefully we don't need to go two or more levels down.
     # Can't repeat entries so use a set.
     dir_set = set()
     for dir in dirs:
       dir = os.path.normpath(dir)
       dir_set.add(dir)
-      subdirs = os.listdir(dir)
-      for subdir in subdirs:
-        subdir = os.path.join(dir, subdir)
-        if os.path.isdir(subdir):
-          dir_set.add(subdir)
+      add_subdirs_to_set(dir, dir_set)
+
+    # HACK: For special cases we go down two levels:
+    # - Mesa vulkan runtime does #include "vulkan/wsi/..."
+    paths_needing_two_levels = [ 'src/vulkan' ]
+    for dir in list(dir_set):
+      if dir in paths_needing_two_levels:
+        add_subdirs_to_set(dir, dir_set)
 
     impl.fprint('# header library')
     impl.fprint('cc_library(')
