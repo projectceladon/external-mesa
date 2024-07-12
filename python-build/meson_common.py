@@ -72,6 +72,11 @@ def declare_dependency(
 def find_program(
     name: str, required=False, native=False, disabler=False, version=''
 ):
+  if type(required) is impl.FeatureOption:
+    required = required.state == impl.EnableState.ENABLED
+  if type(required) is not bool:
+    exit('Unhandled required type: ' + str(type(required)))
+
   maybe_filename = impl.get_relative_dir(name)
 
   # may be a script in the current directory
@@ -89,6 +94,7 @@ def find_program(
       or name == 'nm'
       or name == 'python'
       or name == 'symbols-check.py'
+      or name == 'sphinx-build'
   ):
     return impl.Program(name, found=required)
 
