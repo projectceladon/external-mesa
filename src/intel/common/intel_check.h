@@ -4,8 +4,8 @@
 #ifdef __cplusplus
 extern "C" {
 #endif
-bool intel_is_dgpu_render();
-bool intel_lower_ctx_priority();
+bool intel_is_dgpu_render(void);
+bool intel_lower_ctx_priority(void);
 #ifdef __cplusplus
 }
 #endif

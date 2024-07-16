@@ -441,6 +441,9 @@ iris_get_param(struct pipe_screen *pscreen, enum pipe_cap param)
    case PIPE_CAP_ASTC_VOID_EXTENTS_NEED_DENORM_FLUSH:
       return devinfo->ver == 9 && !intel_device_info_is_9lp(devinfo);
 
+   case PIPE_CAP_TRANSCODE_ASTC_WORK_WELL:
+      return !intel_device_info_is_mtl(devinfo);
+
    default:
       return u_pipe_screen_get_param_defaults(pscreen, param);
    }

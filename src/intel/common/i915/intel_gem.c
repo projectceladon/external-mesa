@@ -207,7 +207,11 @@ i915_gem_read_render_timestamp(int fd, uint64_t *value)
    int ret = intel_ioctl(fd, DRM_IOCTL_I915_REG_READ, &reg_read);
    if (ret == 0)
       *value = reg_read.val;
-   return ret == 0;
+
+   /* GPU timestamp register can't be accessed from VF, invalid value 0xffffffffffffffff
+    * is returned in this case, so return false.
+    */
+   return ret == 0 && *value != 0xffffffffffffffff;
 }
 
 bool

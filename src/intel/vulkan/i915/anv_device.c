@@ -27,7 +27,7 @@
 #include "common/i915/intel_gem.h"
 
 #include "drm-uapi/i915_drm.h"
-
+#include "common/intel_check.h"
 static int
 vk_priority_to_i915(VkQueueGlobalPriorityKHR priority)
 {

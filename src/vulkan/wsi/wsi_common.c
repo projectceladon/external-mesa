@@ -1548,6 +1548,11 @@ wsi_GetDeviceGroupSurfacePresentModesKHR(VkDevice device,
 bool
 wsi_common_vk_instance_supports_present_wait(const struct vk_instance *instance)
 {
+   /* Force disable KHR_present_wait on android platform. */
+#if defined(ANDROID) && ANDROID_API_LEVEL >= 34
+   return false;
+#endif
+
    /* We can only expose KHR_present_wait and KHR_present_id
     * if we are guaranteed support on all potential VkSurfaceKHR objects. */
    if (instance->enabled_extensions.KHR_wayland_surface ||
