@@ -20,6 +20,7 @@
 
 inc_egl = include_directories('.', 'main')
 inc_egl_dri2 = include_directories('drivers/dri2')
+inc_intel = include_directories('../intel/')
 
 c_args_for_egl = [asan_c_args]
 cpp_args_for_egl = []
@@ -105,6 +106,7 @@ if with_dri2
   incs_for_egl += inc_gallium_aux
   incs_for_egl += inc_mesa
   incs_for_egl += inc_st_dri
+  incs_for_egl += inc_intel
 
   files_egl += files(
     'drivers/dri2/platform_device.c',
