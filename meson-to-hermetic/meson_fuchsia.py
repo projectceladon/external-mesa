@@ -86,7 +86,7 @@ def close_output_file():
 
 
 def load_config_file():
-  impl.load_config_file('python-build/generate_fuchsia_build.config')
+  impl.load_config_file('meson-to-hermetic/generate_fuchsia_build.config')
 
 
 def add_subdirs_to_set(dir, dir_set):

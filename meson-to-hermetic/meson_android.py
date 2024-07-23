@@ -69,7 +69,7 @@ def close_output_file():
 
 
 def load_config_file():
-  impl.load_config_file('python-build/generate_android_build.config')
+  impl.load_config_file('meson-to-hermetic/generate_android_build.config')
 
 
 def include_directories(*paths, is_system=False):
