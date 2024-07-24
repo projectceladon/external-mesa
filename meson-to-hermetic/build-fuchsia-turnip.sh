@@ -25,9 +25,9 @@ function unwrap_zlib {
     pushd fuchsia-build/third_party/zlib-*
     # Create an empty workspace
     touch WORKSPACE.bazel
-    ln -s ../../../python-build python-build
-    python3 python-build/generate_python_build.py --target fuchsia
-    PYTHONPATH=$PWD/python-build python3 generate_fuchsia_build.py
+    ln -s ../../../meson-to-hermetic meson-to-hermetic
+    python3 meson-to-hermetic/generate_python_build.py --target fuchsia
+    PYTHONPATH=$PWD/meson-to-hermetic python3 generate_fuchsia_build.py
     popd
 }
 
