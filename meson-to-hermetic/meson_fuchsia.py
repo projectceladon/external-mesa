@@ -708,13 +708,13 @@ def custom_target(
     impl.fprint('  name = "%s",' % python_script_target_name)
     impl.fprint('  main = "%s",' % python_script)
     impl.fprint('  srcs = [')
-    for src in srcs:
+    for src in set(srcs):
       if src.endswith('.py'):
         impl.fprint('    "%s",' % src)
     impl.fprint('  ],')
     # So scripts can find other scripts
     impl.fprint('  imports = [')
-    for src in srcs:
+    for src in set(srcs):
       if src.endswith('.py'):
         impl.fprint('    "%s",' % os.path.dirname(src))
     impl.fprint('  ],')
@@ -764,14 +764,14 @@ def custom_target(
   impl.fprint('genrule(')
   impl.fprint('  name = "%s",' % custom_target.target_name())
   impl.fprint('  srcs = [')
-  for src in relative_inputs:
+  for src in set(relative_inputs):
     impl.fprint('    "%s",' % src)
   for dep in depends:
     assert type(dep) is impl.CustomTarget
     impl.fprint('    ":%s",' % dep.target_name())
   impl.fprint('  ],')
   impl.fprint('  outs = [')
-  for out in relative_outputs:
+  for out in set(relative_outputs):
     impl.fprint('    "%s",' % out)
   impl.fprint('  ],')
   if python_script_target_name != '':
