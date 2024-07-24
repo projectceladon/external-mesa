@@ -915,7 +915,6 @@ if with_platform_android
   if get_option('android-strict')
     pre_args += '-DANDROID_STRICT'
   endif
-  pre_args += '-DVK_USE_PLATFORM_ANDROID_KHR=1'
 endif
 
 # On Android, seccomp kills the process on kernels without
