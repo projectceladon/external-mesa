@@ -421,6 +421,8 @@ def _emit_builtin_target(
         static_libs.append(target.target_name)
       elif target.target_type == impl.DependencyTargetType.HEADER_LIBRARY:
         exit('Header library not supported')
+    c_args.append(dep.compile_args)
+    cpp_args.append(dep.compile_args)
 
   for target in impl.get_static_libs(link_with):
     if type(target) == impl.StaticLibrary:
