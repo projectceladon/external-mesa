@@ -29,6 +29,7 @@ fi
 # Always generate Android.bp because it's fast
 PYTHONPATH=$BIN_DIR python3 generate_android_build.py \
     -Dplatforms=android \
+    -Dandroid-libbacktrace=disabled \
     -Dgallium-drivers= \
     -Dvulkan-drivers=freedreno \
     -Dfreedreno-kmds=kgsl \
