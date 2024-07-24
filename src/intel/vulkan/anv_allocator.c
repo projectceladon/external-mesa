@@ -1388,6 +1388,10 @@ anv_bo_vma_alloc_or_close(struct anv_device *device,
 
    uint32_t align = device->physical->info.mem_alignment;
 
+   if (driQueryOptionb(&device->physical->instance->dri_options, "vk_descriptor_pool_64k_alignment") &&
+       alloc_flags & (ANV_BO_ALLOC_DESCRIPTOR_POOL | ANV_BO_ALLOC_SAMPLER_POOL))
+      align = 64 * 1024;
+
    /* If it's big enough to store a tiled resource, we need 64K alignment */
    if (bo->size >= 64 * 1024)
       align = MAX2(64 * 1024, align);
