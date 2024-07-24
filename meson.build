@@ -889,8 +889,7 @@ with_libbacktrace = get_option('android-libbacktrace') \
   .allowed()
 
 if with_libbacktrace
-  # no longer supported in Android
-  #cpp_args += '-DWITH_LIBBACKTRACE'
+  cpp_args += '-DWITH_LIBBACKTRACE'
 endif
 
 if with_platform_android
