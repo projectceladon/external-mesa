@@ -1386,7 +1386,8 @@ anv_bo_vma_alloc_or_close(struct anv_device *device,
    assert(bo->vma_heap == NULL);
    assert(explicit_address == intel_48b_address(explicit_address));
 
-   uint32_t align = device->physical->info.mem_alignment;
+   uint32_t align = (alloc_flags & (ANV_BO_ALLOC_DESCRIPTOR_POOL | ANV_BO_ALLOC_SAMPLER_POOL))
+                     ? 64 * 1024 : device->physical->info.mem_alignment;
 
    /* If it's big enough to store a tiled resource, we need 64K alignment */
    if (bo->size >= 64 * 1024)
