@@ -109,6 +109,7 @@ static const driOptionDescription anv_dri_options[] = {
 #else
       DRI_CONF_VK_REQUIRE_ASTC(false)
 #endif
+      DRI_CONF_VK_DESCRIPTOR_POOL_64K_ALIGNMENT(false)
    DRI_CONF_SECTION_END
 
    DRI_CONF_SECTION_QUALITY

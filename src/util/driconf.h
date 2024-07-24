@@ -336,6 +336,10 @@
    DRI_CONF_OPT_B(vk_require_astc, def, \
                   "Implement emulated ASTC on HW that does not support it")
 
+#define DRI_CONF_VK_DESCRIPTOR_POOL_64K_ALIGNMENT(def) \
+   DRI_CONF_OPT_B(vk_descriptor_pool_64k_alignment, def, \
+                  "Force use 64k alignment when allocate BO for descriptor pool")
+
 /**
  * \brief Image quality-related options
  */
