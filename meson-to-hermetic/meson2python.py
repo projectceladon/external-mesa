@@ -1,8 +1,8 @@
 import re
 import sys
 
-from lark import *
-from lark.visitors import *
+from lark import Lark, Tree
+from lark.visitors import Interpreter
 
 # This grammar derived from:
 # https://mesonbuild.com/Syntax.html#grammar
@@ -118,13 +118,13 @@ class TreeToCode(Interpreter):
     indent = ''
 
     def statement(self, tree):
-        str = ''
+        string = ''
         for child in tree.children:
             if isinstance(child, Tree):
-                str += self.visit(child)
+                string += self.visit(child)
             elif child is not None:
-                str += child
-        return self.indent + str
+                string += child
+        return self.indent + string
 
     def more_indent(self):
         self.indent += '  '
@@ -182,20 +182,22 @@ class TreeToCode(Interpreter):
         # colon = tree.children[2]
         id_expression = self.visit(tree.children[3])
         # newline = tree.children[4]
-        str = 'for ' + identifier_list + ' in ' + id_expression
-        str += '.items():\n' if re.search(r',', identifier_list) is not None else ':\n'
+        string = 'for ' + identifier_list + ' in ' + id_expression
+        string += (
+            '.items():\n' if re.search(r',', identifier_list) is not None else ':\n'
+        )
         self.more_indent()
         lastindex = len(tree.children) - 1
         for child in tree.children[5:lastindex]:
             if isinstance(child, Tree):
-                str += self.visit(child)
+                string += self.visit(child)
             elif child is not None:
-                str += child
+                string += child
         self.less_indent()
-        return str
+        return string
 
     def selection_statement(self, tree):
-        str = ''
+        string = ''
         index = 0
         while index < len(tree.children):
             prefix = tree.children[index]
@@ -209,20 +211,20 @@ class TreeToCode(Interpreter):
 
             if re.match(r'if', prefix) is not None:
                 condition = self.visit(tree.children[index])
-                index = index + 1
+                index += 1
                 # Skip indent here because all statements are prepended with the indentation
-                str += 'if ' + condition + ':\n'
+                string += 'if ' + condition + ':\n'
             elif re.match(r'elif', prefix) is not None:
                 condition = self.visit(tree.children[index])
                 index = index + 1
-                str += self.indent + 'elif ' + condition + ':\n'
+                string += self.indent + 'elif ' + condition + ':\n'
             elif re.match(r'else', prefix) is not None:
-                str += self.indent + 'else:\n'
+                string += self.indent + 'else:\n'
             else:
                 exit('Not a prefix: ' + prefix)
 
             # newline = tree.children[index]
-            index = index + 1
+            index += 1
 
             statement_count = 0
             self.more_indent()
@@ -230,17 +232,17 @@ class TreeToCode(Interpreter):
                 statement = tree.children[index]
                 if not isinstance(statement, Tree):
                     break
-                str += self.visit(statement)
+                string += self.visit(statement)
                 index = index + 1
                 statement_count = statement_count + 1
             if statement_count == 0:
-                str += self.indent + 'noop()\n'
+                string += self.indent + 'noop()\n'
             self.less_indent()
 
-        return str
+        return string
 
     def postfix_expression(self, tree):
-        str = ''
+        string = ''
         for child in tree.children:
             if isinstance(child, Tree):
                 subtree = self.visit(child)
@@ -253,10 +255,10 @@ class TreeToCode(Interpreter):
                     r"\g<1>.replace('.', '_').replace('/', '_')",
                     subtree,
                 )
-                str += subtree
+                string += subtree
             elif child is not None:
-                str += child
-        return str
+                string += child
+        return string
 
     def function_expression(self, tree):
         assert len(tree.children) == 4
@@ -296,9 +298,9 @@ class TreeToCode(Interpreter):
 
     # Switch from colon to equals
     def keyword_item(self, tree):
-        id = self.visit(tree.children[0])
+        id_ = self.visit(tree.children[0])
         args = self.visit(tree.children[1])
-        return id + '=' + args
+        return id_ + '=' + args
 
     def boolean_literal(self, tree):
         assert len(tree.children) == 1
@@ -318,13 +320,13 @@ class TreeToCode(Interpreter):
         return string
 
     def __default__(self, tree):
-        str = ''
+        string = ''
         for child in tree.children:
             if isinstance(child, Tree):
-                str += self.visit(child)
+                string += self.visit(child)
             elif child is not None:
-                str += child
-        return str
+                string += child
+        return string
 
 
 # Converts the given file from meson to python and returns the content as a string
