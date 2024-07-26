@@ -1,6 +1,7 @@
 import os
 import re
 import meson_impl as impl
+from meson_impl import get_relative_gen_dir
 
 
 class Compiler(impl.Compiler):
@@ -752,7 +753,7 @@ def custom_target(
         for src in relative_inputs_set:
             impl.fprint('    "%s",' % src)
         for dep in depends:
-            assert type(dep) is CustomTarget
+            assert type(dep) is impl.CustomTarget
             impl.fprint('    ":%s",' % dep.target_name())
         impl.fprint('  ],')
         impl.fprint('  out: [')
@@ -811,7 +812,7 @@ def custom_target(
         for src in relative_inputs_set:
             impl.fprint('    "%s",' % src)
         for dep in depends:
-            assert type(dep) is CustomTarget
+            assert type(dep) is impl.CustomTarget
             impl.fprint('    ":%s",' % dep.target_name())
         impl.fprint('  ],')
         impl.fprint('  out: [')

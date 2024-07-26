@@ -2,7 +2,7 @@ import getopt
 import os
 import re
 import sys
-from meson2python import *
+from meson2python import meson2python
 
 
 # Converts the given |file_name| from meson to python, and writes the python code
