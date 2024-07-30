@@ -384,6 +384,10 @@ with_platform_x11 = _platforms.contains('x11')
 with_platform_wayland = _platforms.contains('wayland')
 with_platform_haiku = _platforms.contains('haiku')
 with_platform_windows = _platforms.contains('windows')
+with_platform_none = _platforms.contains('none')
+if with_platform_none and _platforms.length() > 1
+  error('Platforms cannot be combined with \'none\'')
+endif
 
 with_glx = get_option('glx')
 if with_glx == 'auto'
