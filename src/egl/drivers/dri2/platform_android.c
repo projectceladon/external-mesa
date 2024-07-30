@@ -1084,10 +1084,10 @@ droid_open_device(_EGLDisplay *disp, bool swrast)
       if (!(device->available_nodes & (1 << node_type)))
          goto next;
 
-      if (intel_is_dgpu_render()) {
+      if (true) {
          assert (node_type == DRM_NODE_RENDER);
          int render_node = atoi(device->nodes[node_type] + 16); // skip "/dev/dri/renderD" prefix
-         if (render_node == 128)
+         if (render_node == 128||render_node == 129)
             goto next;
       }
 
