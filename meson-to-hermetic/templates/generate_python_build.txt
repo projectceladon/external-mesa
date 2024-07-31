@@ -1,0 +1,34 @@
+import sys
+###
+########################################################################################################################
+###
+### Pull in the definitions meson is expecting
+###
+from meson_common import *
+from meson_{{ target }} import *
+###
+########################################################################################################################
+
+### Open the build definition file
+open_output_file()
+{{ meson_options }}
+###
+### Process command line arguments for setting options
+if __name__ == "__main__":
+  for arg in sys.argv[1:]:
+    match = re.match(r"-D([a-zA-Z0-9-]+)=([a-zA-Z0-9-]*)", arg)
+    if not match:
+      exit("Invalid arg: %s should be -Doption=value" % arg)
+    set_option(match.group(1), match.group(2))
+###
+### These definitions must be inside the module
+def get_variable(name: str):
+  return globals()[name]
+
+### Load config
+load_config_file()
+
+{{ meson_build }}
+### Close the build definition file
+close_output_file()
+{# Newline Placeholder #}
