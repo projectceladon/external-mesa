@@ -3,30 +3,29 @@ import os
 import re
 import sys
 from meson2python import meson2python
+from jinja2 import Environment, FileSystemLoader
+from pathlib import Path
+
+environment = Environment(loader=FileSystemLoader(Path(__file__).parent.resolve() / 'templates/'))
+generator_template = environment.get_template("generate_python_build.txt")
 
 
 # Converts the given |file_name| from meson to python, and writes the python code
 # to the given |file|.  Code is indented by |output_indent|.  When a subdir command
 # is found, the meson.build build in that subdir is converted by recursively invoking
 # this function.
-def process_meson(file, file_name: str, output_indent: str):
-    print(
-        output_indent
-        + '########################################################################################################################',
-        file=file,
-    )
-    print(output_indent + '### Begin conversion from: ' + file_name, file=file)
-    print(
-        output_indent
-        + '########################################################################################################################',
-        file=file,
-    )
+def process_meson(file_name: str, output_indent: str = ''):
+    python_code = ''
+    python_code += output_indent + \
+                    '########################################################################################################################'
+    python_code += '\n' + output_indent + f'### Begin conversion from: {file_name}'
+    python_code += '\n' + output_indent + \
+                   '########################################################################################################################'
 
     print('Processing: ' + file_name)
     sys.stdout.flush()
 
     content = meson2python(file_name)
-
     inside_literal = False
 
     for line in content.splitlines():
@@ -67,27 +66,18 @@ def process_meson(file, file_name: str, output_indent: str):
             next_dir = os.path.join(current_dir, match.group(2))
             next_file = os.path.join(next_dir, 'meson.build')
             # Ensure the build definitions are aware of the changing directory
-            print(subdir_output_indent + "set_relative_dir('%s')" % next_dir, file=file)
-            process_meson(file, next_file, subdir_output_indent)
-            print(
-                subdir_output_indent + "set_relative_dir('%s')" % current_dir,
-                file=file,
-            )
+            python_code += f"\n{subdir_output_indent}set_relative_dir('{next_dir}')"
+            python_code += '\n' + process_meson(next_file, subdir_output_indent)
+            python_code += f"\n{subdir_output_indent}set_relative_dir('{current_dir}')"
             continue
 
-        print(output_indent + line_prefix + line + line_suffix, file=file)
-
-    print(
-        output_indent
-        + '########################################################################################################################',
-        file=file,
-    )
-    print(output_indent + '### End conversion from: ' + file_name, file=file)
-    print(
-        output_indent
-        + '########################################################################################################################',
-        file=file,
-    )
+        python_code += f"\n{output_indent + line_prefix + line + line_suffix}"
+    python_code += '\n' + output_indent + \
+                   '########################################################################################################################'
+    python_code += '\n' + output_indent + f'### End conversion from: {file_name}'
+    python_code += '\n' + output_indent + \
+                   '########################################################################################################################'
+    return python_code
 
 
 def generate(target: str):
@@ -97,61 +87,15 @@ def generate(target: str):
     output_file_name = 'generate_%s_build.py' % target
     print('Writing to: ' + output_file_name)
 
+    meson_options = process_meson('meson_options.txt')
+    meson_build = process_meson('meson.build')
+    content = generator_template.render(
+        target=target,
+        meson_options=meson_options,
+        meson_build=meson_build,
+    )
     with open(output_file_name, 'w') as file:
-        print('import sys', file=file)
-        print('###', file=file)
-        print(
-            '########################################################################################################################',
-            file=file,
-        )
-        print('###', file=file)
-        print('### Pull in the definitions meson is expecting', file=file)
-        print('###', file=file)
-        print('from meson_common import *', file=file)
-        print('from meson_%s import *' % target, file=file)
-        print('###', file=file)
-        print(
-            '########################################################################################################################',
-            file=file,
-        )
-        print('', file=file)
-
-        print('### Open the build definition file', file=file)
-        print('open_output_file()', file=file)
-
-        process_meson(file, 'meson_options.txt', output_indent='')
-
-        print('###', file=file)
-        print('### Process command line arguments for setting options', file=file)
-        print('if __name__ == "__main__":', file=file)
-        print('  for arg in sys.argv[1:]:', file=file)
-        print(
-            '    match = re.match(r"-D([a-zA-Z0-9-]+)=([a-zA-Z0-9-]*)", arg)',
-            file=file,
-        )
-        print('    if not match:', file=file)
-        print(
-            '      exit("Invalid arg: %s should be -Doption=value" % arg)',
-            file=file,
-        )
-        print('    set_option(match.group(1), match.group(2))', file=file)
-        print('###', file=file)
-
-        print('### These definitions must be inside the module', file=file)
-        print('def get_variable(name: str):', file=file)
-        print('  return globals()[name]', file=file)
-        print('', file=file)
-
-        print('### Load config', file=file)
-        print('load_config_file()', file=file)
-        print('', file=file)
-
-        process_meson(file, 'meson.build', output_indent='')
-
-        print('### Close the build definition file', file=file)
-        print('close_output_file()', file=file)
-
-        file.close()
+        file.write(content)
 
 
 def usage():
