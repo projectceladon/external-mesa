@@ -149,7 +149,11 @@ vk_device_init(struct vk_device *device,
 
    list_inithead(&device->queues);
 
+#if defined(USE_MAGMA)
+   device->magma_connection = 0;
+#else
    device->drm_fd = -1;
+#endif
    device->mem_cache = NULL;
 
    device->timeline_mode = get_timeline_mode(physical_device);
@@ -201,6 +205,12 @@ vk_device_finish(struct vk_device *device)
       ralloc_free(device->swapchain_private);
    }
 #endif /* DETECT_OS_ANDROID */
+
+#if defined(USE_MAGMA)
+   if (device->magma_connection) {
+      magma_connection_release(device->magma_connection);
+   }
+#endif
 
    simple_mtx_destroy(&device->trace_mtx);
 

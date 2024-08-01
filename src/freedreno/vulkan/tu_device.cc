@@ -13,7 +13,9 @@
 #include "fdl/freedreno_layout.h"
 #include <fcntl.h>
 #include <poll.h>
+#ifndef DETECT_OS_FUCHSIA
 #include <sys/sysinfo.h>
+#endif
 
 #include "git_sha1.h"
 #include "util/u_debug.h"
@@ -156,11 +158,17 @@ get_device_extensions(const struct tu_physical_device *device,
       .KHR_driver_properties = true,
       .KHR_dynamic_rendering = true,
       .KHR_external_fence = true,
+#ifndef DETECT_OS_FUCHSIA
       .KHR_external_fence_fd = true,
+#endif
       .KHR_external_memory = true,
+#ifndef DETECT_OS_FUCHSIA
       .KHR_external_memory_fd = true,
+#endif
       .KHR_external_semaphore = true,
+#ifndef DETECT_OS_FUCHSIA
       .KHR_external_semaphore_fd = true,
+#endif
       .KHR_format_feature_flags2 = true,
       .KHR_get_memory_requirements2 = true,
       .KHR_global_priority = true,
@@ -248,7 +256,9 @@ get_device_extensions(const struct tu_physical_device *device,
       .EXT_graphics_pipeline_library = true,
       .EXT_host_query_reset = true,
       .EXT_image_2d_view_of_3d = true,
+#ifndef DETECT_OS_FUCHSIA
       .EXT_image_drm_format_modifier = true,
+#endif
       .EXT_image_robustness = true,
       .EXT_image_view_min_lod = true,
       .EXT_index_type_uint8 = true,
@@ -262,7 +272,9 @@ get_device_extensions(const struct tu_physical_device *device,
       .EXT_mutable_descriptor_type = true,
       .EXT_nested_command_buffer = true,
       .EXT_non_seamless_cube_map = true,
+#ifndef DETECT_OS_FUCHSIA
       .EXT_physical_device_drm = !is_kgsl(device->instance),
+#endif
       .EXT_pipeline_creation_cache_control = true,
       .EXT_pipeline_creation_feedback = true,
       .EXT_post_depth_coverage = true,
@@ -1545,10 +1557,17 @@ tu_GetPhysicalDeviceQueueFamilyProperties2(
 uint64_t
 tu_get_system_heap_size(struct tu_physical_device *physical_device)
 {
+#ifdef DETECT_OS_FUCHSIA
+   uint64_t total_ram;
+   if (!os_get_total_physical_memory(&total_ram)) {
+      return 0;
+   }
+#else
    struct sysinfo info;
    sysinfo(&info);
 
    uint64_t total_ram = (uint64_t) info.totalram * (uint64_t) info.mem_unit;
+#endif
 
    /* We don't want to burn too much ram with the GPU.  If the user has 4GiB
     * or less, we use at most half.  If they have more than 4GiB, we use 3/4.
@@ -2260,9 +2279,11 @@ tu_CreateDevice(VkPhysicalDevice physicalDevice,
    if (physical_device->instance->vk.trace_mode & VK_TRACE_MODE_RMV)
       tu_memory_trace_init(device);
 
+#ifndef TU_HAS_MAGMA
    /* kgsl is not a drm device: */
    if (!is_kgsl(physical_device->instance))
       vk_device_set_drm_fd(&device->vk, device->fd);
+#endif
 
    struct tu6_global *global = NULL;
    uint32_t global_size = sizeof(struct tu6_global);

@@ -107,6 +107,11 @@ if freedreno_kmds.contains('virtio')
   tu_deps += dep_libdrm
 endif
 
+if freedreno_kmds.contains('magma')
+  tu_flags += '-DTU_HAS_MAGMA'
+  tu_deps += dep_magma
+endif
+
 tu_tracepoints = custom_target(
   'tu_tracepoints.[ch]',
   input: 'tu_tracepoints.py',
