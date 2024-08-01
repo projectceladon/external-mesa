@@ -242,6 +242,9 @@ tu_physical_device_try_create(struct vk_instance *vk_instance,
    struct tu_instance *instance =
       container_of(vk_instance, struct tu_instance, vk);
 
+#ifdef TU_HAS_MAGMA
+   return VK_ERROR_INITIALIZATION_FAILED;
+#else
    /* Note that "msm" is a platform device, but "virtio_gpu" is a pci
     * device.  In general we shouldn't care about the bus type.
     */
@@ -345,4 +348,5 @@ out:
    drmFreeVersion(version);
 
    return result;
+#endif
 }

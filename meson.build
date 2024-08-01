@@ -263,6 +263,11 @@ if freedreno_kmds.length() != 0 and freedreno_kmds != [ 'msm' ] and with_freedre
   endif
 endif
 
+# Magma is a 'kernel mode' driver interface, used by drivers natively on Fuchsia,
+# and by drivers running in virtualized Linux/Android on Fuchsia.  Details on Magma:
+# https://fuchsia.dev/fuchsia-src/development/graphics/magma
+with_vk_magma = freedreno_kmds.contains('magma')
+
 with_dri = false
 if with_gallium and system_has_kms_drm
   _glx = get_option('glx')
@@ -388,6 +393,18 @@ with_platform_none = _platforms.contains('none')
 if with_platform_none and _platforms.length() > 1
   error('Platforms cannot be combined with \'none\'')
 endif
+
+inc_magma_extras=[]
+if host_machine.system() == 'fuchsia'
+  magma_dep = dependency('libmagma', required: with_vk_magma)
+  inc_magma_extras+=include_directories('fuchsia-build/sysroot_extra/include')
+else
+  magma_dep = dependency('libmagma_virt', required: with_vk_magma)
+endif
+
+dep_magma = declare_dependency(compile_args: ['-DUSE_MAGMA=1'],
+  include_directories: [inc_magma_extras],
+  dependencies: magma_dep)
 
 with_glx = get_option('glx')
 if with_glx == 'auto'
