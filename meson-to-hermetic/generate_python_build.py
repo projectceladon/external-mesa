@@ -6,8 +6,10 @@ from meson2python import meson2python
 from jinja2 import Environment, FileSystemLoader
 from pathlib import Path
 
-environment = Environment(loader=FileSystemLoader(Path(__file__).parent.resolve() / 'templates/'))
-generator_template = environment.get_template("generate_python_build.txt")
+environment = Environment(
+    loader=FileSystemLoader(Path(__file__).parent.resolve() / 'templates/')
+)
+generator_template = environment.get_template('generate_python_build.txt')
 
 
 # Converts the given |file_name| from meson to python, and writes the python code
@@ -16,11 +18,16 @@ generator_template = environment.get_template("generate_python_build.txt")
 # this function.
 def process_meson(file_name: str, output_indent: str = ''):
     python_code = ''
-    python_code += output_indent + \
-                    '########################################################################################################################'
+    python_code += (
+        output_indent
+        + '########################################################################################################################'
+    )
     python_code += '\n' + output_indent + f'### Begin conversion from: {file_name}'
-    python_code += '\n' + output_indent + \
-                   '########################################################################################################################'
+    python_code += (
+        '\n'
+        + output_indent
+        + '########################################################################################################################'
+    )
 
     print('Processing: ' + file_name)
     sys.stdout.flush()
@@ -71,12 +78,18 @@ def process_meson(file_name: str, output_indent: str = ''):
             python_code += f"\n{subdir_output_indent}set_relative_dir('{current_dir}')"
             continue
 
-        python_code += f"\n{output_indent + line_prefix + line + line_suffix}"
-    python_code += '\n' + output_indent + \
-                   '########################################################################################################################'
+        python_code += f'\n{output_indent + line_prefix + line + line_suffix}'
+    python_code += (
+        '\n'
+        + output_indent
+        + '########################################################################################################################'
+    )
     python_code += '\n' + output_indent + f'### End conversion from: {file_name}'
-    python_code += '\n' + output_indent + \
-                   '########################################################################################################################'
+    python_code += (
+        '\n'
+        + output_indent
+        + '########################################################################################################################'
+    )
     return python_code
 
 
