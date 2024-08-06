@@ -68,7 +68,8 @@ def close_output_file():
 
 
 def load_config_file():
-    impl.load_config_file('meson-to-hermetic/generate_android_build.config')
+    # TODO(355681915): Fix the hardcoded path to config file
+    impl.load_config_file('meson-to-hermetic/aosp.toml')
 
 
 def include_directories(*paths, is_system=False):

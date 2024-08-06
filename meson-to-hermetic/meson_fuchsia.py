@@ -84,7 +84,8 @@ def close_output_file():
 
 
 def load_config_file():
-    impl.load_config_file('meson-to-hermetic/generate_fuchsia_build.config')
+    # TODO(355681915): Fix the hardcoded path to config file
+    impl.load_config_file('meson-to-hermetic/fuchsia.toml')
 
 
 def add_subdirs_to_set(dir, dir_set):
