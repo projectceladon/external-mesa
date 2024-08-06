@@ -565,6 +565,7 @@ struct pipe_resource
    uint16_t height0; /* Textures: The maximum height/depth/array_size is 16k. */
    uint16_t depth0;
    uint16_t array_size;
+   bool last_operation_is_clear;
 
    enum pipe_format format:16;         /**< PIPE_FORMAT_x */
    enum pipe_texture_target target:8; /**< PIPE_TEXTURE_x */

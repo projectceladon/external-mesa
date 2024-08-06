@@ -561,6 +561,8 @@ fast_clear_depth(struct iris_context *ice,
                                ISL_AUX_STATE_CLEAR);
    ice->state.dirty |= IRIS_DIRTY_DEPTH_BUFFER;
    ice->state.stage_dirty |= IRIS_ALL_STAGE_DIRTY_BINDINGS;
+   struct pipe_resource *p_res = (void *) res;
+   p_res->last_operation_is_clear = true;
 }
 
 static void

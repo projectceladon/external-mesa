@@ -97,7 +97,15 @@ resolve_sampler_views(struct iris_context *ice,
          continue;
 
       struct iris_sampler_view *isv = shs->textures[i];
-
+      if (isv->res->base.b.last_operation_is_clear) {
+         isv->res->base.b.last_operation_is_clear = false;
+         struct iris_screen *screen = (struct iris_screen*)ice->ctx.screen;
+         if (screen->driconf.mht_robot_shadow_shader_elimination &&
+            (*(uint32_t*)ice->shaders.uncompiled[MESA_SHADER_FRAGMENT]->nir->info.source_sha1 == 880113298 ||
+             *(uint32_t*)ice->shaders.uncompiled[MESA_SHADER_FRAGMENT]->nir->info.source_sha1 == 2932317437)) {
+            ice->state.skipManhattanRobotShadowShader = true;
+         }
+      }
       if (isv->res->base.b.target != PIPE_BUFFER) {
          if (consider_framebuffer) {
             disable_rb_aux_buffer(ice, draw_aux_buffer_disabled, isv->res,
@@ -215,6 +223,9 @@ iris_predraw_resolve_framebuffer(struct iris_context *ice,
       if (zs_surf) {
          struct iris_resource *z_res, *s_res;
          iris_get_depth_stencil_resources(zs_surf->texture, &z_res, &s_res);
+         if (z_res->base.b.last_operation_is_clear) {
+            z_res->base.b.last_operation_is_clear = false;
+         }
          unsigned num_layers =
             zs_surf->u.tex.last_layer - zs_surf->u.tex.first_layer + 1;
 

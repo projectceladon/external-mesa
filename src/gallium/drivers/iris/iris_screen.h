@@ -183,6 +183,7 @@ struct iris_screen {
       bool sync_compile;
       bool limit_trig_input_range;
       float lower_depth_range_rate;
+      bool mht_robot_shadow_shader_elimination;
    } driconf;
 
    /** Does the kernel support various features (KERNEL_HAS_* bitfield)? */
