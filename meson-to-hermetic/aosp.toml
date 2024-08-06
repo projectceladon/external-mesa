@@ -1,0 +1,21 @@
+# Copyright 2024 Google LLC
+# SPDX-License-Identifier: Apache-2.0
+build = 'Soong'
+# Start of Android Project Configs ----------------------------
+[[project_config]]
+name = 'android_aarch64_drivers'
+
+[[project_config.host_machine]]
+cpu_family = 'aarch64'
+cpu = 'aarch64'
+
+[[project_config.meson_options]]
+platforms = 'android'
+android-libbacktrace = 'disabled'
+gallium-drivers = ''
+vulkan-drivers = 'freedreno'
+freedreno-kmds = 'kgsl'
+platform-sdk-version = 33
+
+[[project_config.ext_dependencies]]
+# End of Android Project Configs ------------------------------

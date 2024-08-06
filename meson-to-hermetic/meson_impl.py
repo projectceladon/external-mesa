@@ -2,6 +2,7 @@ from enum import Enum
 import os
 import re
 import subprocess
+import tomllib
 
 # The file used to write output build definitions.
 _gOutputFile = ''
@@ -512,19 +513,31 @@ def get_project_options():
 
 
 def load_config_file(filename):
-    with open(filename, 'r') as file:
-        for line in file:
-            key, value = line.strip().split('=')
-            if key == 'cpu_family':
-                global _gCpuFamily
-                _gCpuFamily = value
-                print('Config: cpu_family=%s' % _gCpuFamily)
-            elif key == 'cpu':
-                global _gCpu
-                _gCpu = value
-                print('Config: cpu=%s' % _gCpu)
-            else:
-                exit('Unhandled config key: %s' % key)
+    if not filename.endswith('.toml'):
+        exit('Config file that is not .toml is not supported.')
+
+    with open(filename, 'rb') as f:
+        data = tomllib.load(f)
+        project_configs = data.get('project_config')
+        if project_configs is None:
+            exit(f'meson_options not defined in {filename}.')
+        project_config = project_configs[0]
+        # TODO(bpnguyen): Make so project config isn't hardcoded to pick the first set of configs
+        host_machine_settings = project_config.get('host_machine')[0]
+        for key in host_machine_settings:
+            match key:
+                case 'cpu_family':
+                    cpu_fam = host_machine_settings.get(key)
+                    global _gCpuFamily
+                    _gCpuFamily = cpu_fam
+                    print(f'Config: cpu_family={_gCpuFamily}')
+                case 'cpu':
+                    cpu = host_machine_settings.get(key)
+                    global _gCpu
+                    _gCpu = cpu
+                    print(f'Config: cpu={_gCpu}')
+                case _:  # Default case
+                    exit(f'Unhandled config key: {key}')
 
 
 def add_project_arguments(args, language=[], native=False):

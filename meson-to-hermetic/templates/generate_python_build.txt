@@ -1,4 +1,5 @@
 import sys
+import tomllib
 ###
 ########################################################################################################################
 ###
@@ -16,10 +17,21 @@ open_output_file()
 ### Process command line arguments for setting options
 if __name__ == "__main__":
   for arg in sys.argv[1:]:
-    match = re.match(r"-D([a-zA-Z0-9-]+)=([a-zA-Z0-9-]*)", arg)
-    if not match:
-      exit("Invalid arg: %s should be -Doption=value" % arg)
-    set_option(match.group(1), match.group(2))
+    flag, value = arg.split('=')  # args form follows a: -flag=value
+    match flag:
+      case ('--config' | '-c'):
+        if not value.endswith('.toml'):
+          exit(f'File format for {value} not supported. Please provide a valid file (toml).')
+        with open(value, 'rb') as f:
+          data = tomllib.load(f)
+          project_config = data.get('project_config')
+          for config in project_config:
+            meson_options = config.get('meson_options')
+            for options in meson_options:
+              for key in options:
+                set_option(key, options[key])
+      case _:
+        exit(f'Unhandled arg={flag} with value={value}')
 ###
 ### These definitions must be inside the module
 def get_variable(name: str):

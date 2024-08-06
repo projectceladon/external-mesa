@@ -1,0 +1,20 @@
+# Copyright 2024 Google LLC
+# SPDX-License-Identifier: Apache-2.0
+build = 'bazel'
+
+[[project_config]]
+name = 'fuchsia_aarch64_drivers'
+
+[[project_config.host_machine]]
+cpu_family = 'aarch64'
+cpu = 'aarch64'
+
+[[project_config.meson_options]]
+platforms = 'none'
+gallium-drivers = ''
+vulkan-drivers = 'freedreno'
+freedreno-kmds = 'magma'
+platform-sdk-version = 33
+shader-cache = 'disabled'
+
+[[project_config.ext_dependencies]]
