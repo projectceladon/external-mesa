@@ -40,6 +40,9 @@ def get_variable(name: str):
 ### Load config
 load_config_file()
 
+### Load dependencies
+load_dependencies()
+
 {{ meson_build }}
 ### Close the build definition file
 close_output_file()

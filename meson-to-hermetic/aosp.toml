@@ -1,7 +1,7 @@
 # Copyright 2024 Google LLC
 # SPDX-License-Identifier: Apache-2.0
 build = 'Soong'
-# Start of Android Project Configs ----------------------------
+
 [[project_config]]
 name = 'android_aarch64_drivers'
 
@@ -18,4 +18,34 @@ freedreno-kmds = 'kgsl'
 platform-sdk-version = 33
 
 [[project_config.ext_dependencies]]
-# End of Android Project Configs ------------------------------
+# DependencyTargetType
+#   SHARED_LIBRARY = 1
+#   STATIC_LIBRARY = 2
+#   HEADER_LIBRARY = 3
+# See meson_impl.py
+zlib = [
+    { target_name = 'libz', target_type = 2 }
+]
+hardware = [
+    { target_name = 'libhardware', target_type = 1 },
+    { target_name = 'hwvulkan_headers', target_type = 3 }
+]
+cutils = [
+    { target_name = 'libcutils', target_type = 1 }
+]
+log = [
+    { target_name = 'liblog', target_type = 1 }
+]
+nativewindow = [
+    { target_name = 'libnativewindow', target_type = 1 }
+]
+sync = [
+    { target_name = 'libsync', target_type = 2 }
+]
+'android.hardware.graphics.mapper' = [
+    { target_name = 'libgralloctypes', target_type = 2 },
+    { target_name = 'android.hardware.graphics.mapper@4.0', target_type = 2 },
+    { target_name = 'libhidlbase', target_type = 1 },
+    { target_name = 'libutils', target_type = 1 }
+]
+

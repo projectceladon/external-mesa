@@ -22,6 +22,21 @@ _gCpu = _gCpuFamily
 _gProjectVersion = 'unknown'
 _gProjectOptions = []
 
+# Caches the list of dependencies found in .toml config files
+# Structure:
+# DependencyTargetType
+#   SHARED_LIBRARY = 1
+#   STATIC_LIBRARY = 2
+#   HEADER_LIBRARY = 3
+# See meson_impl.py
+# external_dep = {
+#   'zlib': {
+#       # target_name: target_type
+#       'libz': 2
+#   },
+# }
+external_dep = {}
+
 
 class IncludeDirectories:
     def __init__(self, name: str, dirs: []):
@@ -590,11 +605,37 @@ def get_linear_list(arg_list):
     return args
 
 
+def load_dependencies(config):
+    with open(config, 'rb') as f:
+        data = tomllib.load(f)
+        project_configs = data.get('project_config')
+        for project_config in project_configs:
+            list_of_deps = project_config.get('ext_dependencies')
+            for dependencies in list_of_deps:
+                for dep_name, targets in dependencies.items():
+                    dep_targets = {
+                        t.get('target_name'): t.get('target_type') for t in targets
+                    }
+                    external_dep[dep_name] = dep_targets
+
+
 def dependency(*names, required=True, version=''):
     for name in names:
         print('dependency: %s' % name)
         if name == '':
             return Dependency('null', version, found=False)
+
+        if name in external_dep:
+            targets = external_dep.get(name)
+            return Dependency(
+                name,
+                targets=[
+                    DependencyTarget(t, DependencyTargetType(targets[t]))
+                    for t in targets
+                ],
+                version=version,
+                found=True,
+            )
 
         if (
             name == 'backtrace'
@@ -617,8 +658,7 @@ def dependency(*names, required=True, version=''):
             return Dependency(name, version, found=False)
 
         if (
-            name == ''
-            or name == 'libarchive'
+            name == 'libarchive'
             or name == 'libelf'
             or name == 'threads'
             or name == 'vdpau'
