@@ -84,6 +84,13 @@ def module_import(name: str):
     exit('Unhandled module: ' + name)
 
 
+def load_dependencies():
+    # Reads from the .toml config files and caches all external dependencies
+    # TODO(355681915): Fix the hardcoded path to config file
+    config_file = 'meson-to-hermetic/aosp.toml'
+    impl.load_dependencies(config_file)
+
+
 def dependency(
     *names,
     required=True,
@@ -97,81 +104,6 @@ def dependency(
     include_type='',
     native=False,
 ):
-    for name in names:
-        if name == 'zlib':
-            return impl.Dependency(
-                name,
-                targets=[
-                    impl.DependencyTarget(
-                        'libz', impl.DependencyTargetType.STATIC_LIBRARY
-                    )
-                ],
-                version=version,
-                found=True,
-            )
-
-        if name == 'hardware':
-            return impl.Dependency(
-                name,
-                targets=[
-                    impl.DependencyTarget(
-                        'libhardware', impl.DependencyTargetType.SHARED_LIBRARY
-                    ),
-                    impl.DependencyTarget(
-                        'hwvulkan_headers', impl.DependencyTargetType.HEADER_LIBRARY
-                    ),
-                ],
-                version=version,
-                found=True,
-            )
-
-        if name == 'cutils' or name == 'log' or name == 'nativewindow':
-            return impl.Dependency(
-                name,
-                targets=[
-                    impl.DependencyTarget(
-                        'lib' + name, impl.DependencyTargetType.SHARED_LIBRARY
-                    )
-                ],
-                version=version,
-                found=True,
-            )
-
-        if name == 'sync':
-            return impl.Dependency(
-                name,
-                targets=[
-                    impl.DependencyTarget(
-                        'lib' + name, impl.DependencyTargetType.STATIC_LIBRARY
-                    )
-                ],
-                version=version,
-                found=True,
-            )
-
-        if name == 'android.hardware.graphics.mapper':
-            assert version == '>= 4.0'
-            return impl.Dependency(
-                name,
-                targets=[
-                    impl.DependencyTarget(
-                        'libgralloctypes', impl.DependencyTargetType.STATIC_LIBRARY
-                    ),
-                    impl.DependencyTarget(
-                        'android.hardware.graphics.mapper@4.0',
-                        impl.DependencyTargetType.STATIC_LIBRARY,
-                    ),
-                    impl.DependencyTarget(
-                        'libhidlbase', impl.DependencyTargetType.SHARED_LIBRARY
-                    ),
-                    impl.DependencyTarget(
-                        'libutils', impl.DependencyTargetType.SHARED_LIBRARY
-                    ),
-                ],
-                version=version,
-                found=True,
-            )
-
     return impl.dependency(*names, required=required, version=version)
 
 
