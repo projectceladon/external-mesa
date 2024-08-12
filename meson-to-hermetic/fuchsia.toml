@@ -18,3 +18,17 @@ platform-sdk-version = 33
 shader-cache = 'disabled'
 
 [[project_config.ext_dependencies]]
+# DependencyTargetType
+#   SHARED_LIBRARY = 1
+#   STATIC_LIBRARY = 2
+#   HEADER_LIBRARY = 3
+# See meson_impl.py
+zlib = [
+    { target_name = '@zlib//:zlib', target_type = 2 }
+]
+libmagma = [
+    { target_name = '@fuchsia_sdk//pkg/magma_client', target_type = 2 }
+]
+libmagma_virt = [
+    # No targets
+]
