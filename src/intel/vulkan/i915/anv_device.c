@@ -256,6 +256,7 @@ anv_i915_set_queue_parameters(
       }
    }
 
+#ifdef ANDROID
    if (intel_lower_ctx_priority()) {
       int ret = anv_gem_set_context_param(device->fd, device->context_id,
                                        I915_CONTEXT_PARAM_PRIORITY,
@@ -263,7 +264,8 @@ anv_i915_set_queue_parameters(
       if (ret != 0) {
          return vk_error(device, VK_ERROR_INITIALIZATION_FAILED);
       }
-}
+   }
+#endif
 
    return VK_SUCCESS;
 }

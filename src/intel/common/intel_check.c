@@ -40,14 +40,14 @@ get_pid_name(pid_t pid, char *task_name)
 static bool
 use_dgpu_render(char *target)
 {
-   char dGPU_prop[BUF_SIZE];
-   char vendor_buf[PROPERTY_VALUE_MAX];
-   sprintf(dGPU_prop, "persist.vendor.intel.dGPU.%s",target);
-   if (property_get(dGPU_prop, vendor_buf, NULL) > 0) {
-      if (vendor_buf[0] == '1') {
-         return true;
-      }
-   }
+   char dGPU_prop[BUF_SIZE];
+   char vendor_buf[PROPERTY_VALUE_MAX];
+   sprintf(dGPU_prop, "persist.vendor.intel.dGPU.%s", target);
+   if (property_get(dGPU_prop, vendor_buf, NULL) > 0) {
+      if (vendor_buf[0] == '1') {
+         return true;
+      }
+   }
    return false;
 }
 
@@ -86,18 +86,18 @@ bool intel_lower_ctx_priority(void)
    char process_name[BUF_SIZE];
    get_pid_name(process_id, process_name);
 
-   char lower_pri[BUF_SIZE];
-   char vendor_buf[PROPERTY_VALUE_MAX];
-   sprintf(lower_pri, "persist.vendor.intel.lowPir.%s",process_name);
-   if (property_get(lower_pri, vendor_buf, NULL) > 0) {
-      if (vendor_buf[0] == '1') {
-         return true;
-      }
-   }
+   char lower_pri[BUF_SIZE];
+   char vendor_buf[PROPERTY_VALUE_MAX];
+   sprintf(lower_pri, "persist.vendor.intel.lowPir.%s",process_name);
+   if (property_get(lower_pri, vendor_buf, NULL) > 0) {
+      if (vendor_buf[0] == '1') {
+         return true;
+      }
+   }
    return false;
 }
 
-bool has_local_mem(int fd)
+static bool has_local_mem(int fd)
 {
    struct drm_i915_query_item item = {
       .query_id = DRM_I915_QUERY_MEMORY_REGIONS,
