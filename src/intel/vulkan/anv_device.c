@@ -61,7 +61,9 @@
 #include "common/intel_aux_map.h"
 #include "common/intel_uuid.h"
 #include "common/i915/intel_gem.h"
+#ifdef ANDROID
 #include "common/intel_check.h"
+#endif
 #include "perf/intel_perf.h"
 
 #include "i915/anv_device.h"
@@ -2170,6 +2172,7 @@ anv_physical_device_try_create(struct vk_instance *vk_instance,
       goto fail_fd;
    }
 
+#ifdef ANDROID
    if (get_intel_node_num() > 1) {
       if (!is_dgpu(fd) && intel_is_dgpu_render()) {
          result = VK_ERROR_INCOMPATIBLE_DRIVER;
@@ -2181,6 +2184,7 @@ anv_physical_device_try_create(struct vk_instance *vk_instance,
          goto fail_fd;
       }
    }
+#endif
 
    if (devinfo.ver == 20) {
       mesa_logw("Vulkan not yet supported on %s", devinfo.name);
