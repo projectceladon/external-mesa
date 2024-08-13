@@ -56,8 +56,6 @@ files_libintel_common = files(
   'intel_mem.c',
   'intel_mem.h',
   'intel_pixel_hash.h',
-  'intel_check.c',
-  'intel_check.h',
 )
 
 files_batch_decoder = files(
@@ -85,6 +83,13 @@ batch_decoder_dependencies = []
   batch_decoder_dependencies += dep_expat
   files_libintel_common += files_batch_decoder
 #endif
+
+if with_platform_android
+  files_libintel_common += files(
+    'intel_check.c',
+    'intel_check.h',
+  )
+endif
 
 libintel_common = static_library(
   'intel_common',

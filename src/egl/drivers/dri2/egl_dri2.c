@@ -1557,9 +1557,11 @@ dri2_create_context(_EGLDisplay *disp, _EGLConfig *conf,
    } else
       dri_config = NULL;
 
+#ifdef HAVE_ANDROID_PLATFORM
    if (intel_lower_ctx_priority()) {
       dri2_ctx->base.ContextPriority = EGL_CONTEXT_PRIORITY_LOW_IMG;
    }
+#endif
 
    if (!dri2_fill_context_attribs(dri2_ctx, dri2_dpy, ctx_attribs,
                                   &num_attribs))
