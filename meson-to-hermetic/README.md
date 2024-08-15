@@ -6,10 +6,7 @@ Android (AOSP).
 How: parse the meson build tree into a python build script, which can be used
 together with configuration and options to generate other kinds of build scripts.
 
-Status: useful inside AOSP but very rough, still work in progress really.
-Android is the only supported target build system, but this work can hopefully 
-also support Bazel.  Many meson features are unimplemented and some are probably
-poorly implemented.  Python code needs a thorough cleanup.
+Status: useful, but rough.  Supports Android (Soong) and Fuchsia (Bazel).
 
 ## Python Dependencies
 - Python 3.11+
