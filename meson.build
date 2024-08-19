@@ -869,6 +869,7 @@ endif
 
 if with_platform_android
   dep_android_mapper4 = null_dep
+  dep_android_mapper5 = null_dep
   if not with_android_stub
     dep_android = [
       dependency('cutils'),
@@ -882,8 +883,11 @@ if with_platform_android
     if get_option('platform-sdk-version') >= 26
       dep_android += dependency('nativewindow')
     endif
-    if get_option('platform-sdk-version') >= 30
+    if get_option('platform-sdk-version') >= 30 and get_option('platform-sdk-version') <= 34
       dep_android_mapper4 = dependency('android.hardware.graphics.mapper', version : '>= 4.0', required : false)
+    endif
+    if get_option('platform-sdk-version') >= 35
+      dep_android_mapper5 = dependency('android.hardware.graphics.allocator-V2-ndk', required : false)
     endif
   endif
   pre_args += '-DANDROID_API_LEVEL=' + get_option('platform-sdk-version').to_string()
