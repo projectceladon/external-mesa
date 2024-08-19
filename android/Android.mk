@@ -106,6 +106,20 @@ LOCAL_SHARED_LIBRARIES += \
 MESON_GEN_PKGCONFIGS += android.hardware.graphics.mapper:4.0
 endif
 
+ifeq ($(shell test $(PLATFORM_SDK_VERSION) -ge 35; echo $$?), 0)
+LOCAL_SHARED_LIBRARIES += \
+    libbinder_ndk \
+    libvndksupport \
+    android.hardware.graphics.allocator-V2-ndk \
+
+LOCAL_HEADER_LIBRARIES += \
+    libimapper_stablec \
+    libimapper_providerutils \
+    libui_headers
+
+MESON_GEN_PKGCONFIGS += android.hardware.graphics.allocator-V2-ndk
+endif
+
 __MY_SHARED_LIBRARIES := $(LOCAL_SHARED_LIBRARIES)
 
 ifeq ($(shell test $(PLATFORM_SDK_VERSION) -ge 30; echo $$?), 0)
