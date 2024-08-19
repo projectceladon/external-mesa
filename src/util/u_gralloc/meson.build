@@ -22,6 +22,12 @@ if dep_android_mapper4.found()
   cpp_args_for_u_gralloc += '-DUSE_IMAPPER4_METADATA_API'
   options_for_u_gralloc += 'cpp_std=c++17'
 endif
+if dep_android_mapper5.found()
+  files_u_gralloc += files('u_gralloc_imapper5_api.cpp')
+  c_args_for_u_gralloc += '-DUSE_IMAPPER5_METADATA_API'
+  cpp_args_for_u_gralloc += '-DUSE_IMAPPER5_METADATA_API'
+  options_for_u_gralloc += 'cpp_std=c++17'
+endif
 
 if with_freedreno_vk or with_gallium_freedreno
   c_args_for_u_gralloc += '-DHAS_FREEDRENO'
