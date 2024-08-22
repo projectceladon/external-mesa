@@ -103,7 +103,6 @@ def generate(target: str):
     meson_options = process_meson('meson_options.txt')
     meson_build = process_meson('meson.build')
     content = generator_template.render(
-        target=target,
         meson_options=meson_options,
         meson_build=meson_build,
     )

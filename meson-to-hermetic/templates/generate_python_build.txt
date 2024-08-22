@@ -6,15 +6,14 @@ import tomllib
 ### Pull in the definitions meson is expecting
 ###
 from meson_common import *
-from meson_{{ target }} import *
+from meson_to_hermetic import *
 ###
 ########################################################################################################################
-
-### Open the build definition file
-open_output_file()
 {{ meson_options }}
 ###
 ### Process command line arguments for setting options
+config_path = ''
+
 if __name__ == "__main__":
   for arg in sys.argv[1:]:
     flag, value = arg.split('=')  # args form follows a: -flag=value
@@ -24,24 +23,37 @@ if __name__ == "__main__":
           exit(f'File format for {value} not supported. Please provide a valid file (toml).')
         with open(value, 'rb') as f:
           data = tomllib.load(f)
+          config_path = value
           project_config = data.get('project_config')
           for config in project_config:
             meson_options = config.get('meson_options')
-            for options in meson_options:
-              for key in options:
-                set_option(key, options[key])
+            for key in meson_options:
+              set_option(key, meson_options[key])
       case _:
         exit(f'Unhandled arg={flag} with value={value}')
+
+
 ###
 ### These definitions must be inside the module
 def get_variable(name: str):
   return globals()[name]
 
+
+### Load Metadata
+load_meson_data(config_path)
+
+
+### Open the build definition file
+open_output_file()
+
+
 ### Load config
 load_config_file()
 
+
 ### Load dependencies
 load_dependencies()
+
 
 {{ meson_build }}
 ### Close the build definition file
