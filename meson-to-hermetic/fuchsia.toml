@@ -1,15 +1,17 @@
 # Copyright 2024 Google LLC
 # SPDX-License-Identifier: Apache-2.0
 build = 'bazel'
+host_machine = 'fuchsia'
+build_machine = 'linux'
 
 [[project_config]]
 name = 'fuchsia_aarch64_drivers'
 
-[[project_config.host_machine]]
+[project_config.host_machine]
 cpu_family = 'aarch64'
 cpu = 'aarch64'
 
-[[project_config.meson_options]]
+[project_config.meson_options]
 platforms = 'none'
 gallium-drivers = ''
 vulkan-drivers = 'freedreno'
@@ -17,7 +19,28 @@ freedreno-kmds = 'magma'
 platform-sdk-version = 33
 shader-cache = 'disabled'
 
-[[project_config.ext_dependencies]]
+[project_config.header_not_supported]
+headers = [
+    'sys/sysmacros.h',
+]
+
+[project_config.symbol_not_supported]
+symbols = [
+
+]
+
+[project_config.function_not_supported]
+functions = [
+    'getrandom',
+    'memfd_create',
+]
+
+[project_config.link_not_supported]
+links = [
+    'strtod has locale support',
+]
+
+[project_config.ext_dependencies]
 # DependencyTargetType
 #   SHARED_LIBRARY = 1
 #   STATIC_LIBRARY = 2
@@ -32,3 +55,6 @@ libmagma = [
 libmagma_virt = [
     # No targets
 ]
+
+# Define new project configs
+# [[project_config]]

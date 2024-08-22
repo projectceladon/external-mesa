@@ -27,7 +27,7 @@ function unwrap_zlib {
     touch WORKSPACE.bazel
     ln -s ../../../meson-to-hermetic meson-to-hermetic
     python3 meson-to-hermetic/generate_python_build.py --target fuchsia
-    PYTHONPATH=$PWD/meson-to-hermetic python3 generate_fuchsia_build.py
+    PYTHONPATH=$PWD/meson-to-hermetic python3 generate_fuchsia_build.py --config=meson-to-hermetic/fuchsia.toml
     popd
 }
 
