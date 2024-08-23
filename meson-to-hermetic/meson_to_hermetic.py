@@ -52,7 +52,7 @@ class ProjectConfig:
         # project_config.meson_options
         self._meson_options: dict[str, int | str] = {}
         # project_config.header_not_supported
-        self._header_not_supported: list[str] = []
+        self._headers_not_supported: list[str] = []
         # project_config.symbol_not_supported
         self._symbols_not_supported: list[str] = []
         # project_config.function_not_supported
@@ -118,6 +118,10 @@ class ProjectConfig:
         return self._meson_options
 
     @property
+    def headers_not_supported(self):
+        return self._headers_not_supported
+
+    @property
     def symbols_not_supported(self):
         return self._symbols_not_supported
 
@@ -171,17 +175,19 @@ class SoongGenerator(impl.Compiler):
 
 class BazelGenerator(impl.Compiler):
     def is_symbol_supported(self, header: str, symbol: str):
-        if header == 'sys/sysmacros.h':
+        if header in meson_translator.config.headers_not_supported:
+            return False
+        if symbol in meson_translator.config.symbols_not_supported:
             return False
         return super().is_symbol_supported(header, symbol)
 
     def is_function_supported(self, function):
-        if function == 'getrandom' or function == 'memfd_create':
+        if function in meson_translator.config.functions_not_supported:
             return False
         return super().is_function_supported(function)
 
     def is_link_supported(self, name):
-        if name == 'strtod has locale support':
+        if name in meson_translator.config.links_not_supported:
             return False
         return super().is_link_supported(name)
 
@@ -243,7 +249,7 @@ class BazelPkgConfigModule(impl.PkgConfigModule):
         impl.fprint(')')
 
 
-class MesonAttr(ABC):
+class MesonTranslator:
     """
     Abstract class that defines all common attributes
     between different build systems (Soong, Bazel, etc...)
@@ -252,9 +258,10 @@ class MesonAttr(ABC):
     def __init__(self):
         self._generator = None
         self._config_file = None
-        self._host_machine = ''
-        self._build_machine = ''
         self._build = ''
+        self._configs: list[ProjectConfig] = []
+        # TODO(357080225): Fix the use hardcoded state 0
+        self._state = 0  # index of self._configs
 
     def init_data(self, config_file: str):
         self._config_file: str = config_file
@@ -272,11 +279,11 @@ class MesonAttr(ABC):
 
     @property
     def host_machine(self) -> str:
-        return self._host_machine
+        return self._configs[self._state].host_machine
 
     @property
     def build_machine(self) -> str:
-        return self._build_machine
+        return self._configs[self._state].build_machine
 
     @property
     def generator(self) -> impl.Compiler:
@@ -285,6 +292,13 @@ class MesonAttr(ABC):
     @property
     def build(self) -> str:
         return self._build
+
+    @property
+    def config(self) -> ProjectConfig:
+        """
+        :return:
+        """
+        return self._configs[self._state]
 
     def is_soong(self):
         return self._build.lower() == 'soong'
@@ -299,37 +313,32 @@ class MesonAttr(ABC):
         """
         To be called after self._config_file has alredy been assigned.
         Parses the given config files for common build attributes
+        Fills the list of all project configs
         :return: None
         """
         with open(self._config_file, 'rb') as f:
             data = tomllib.load(f)
             self._build = data.get('build')
-            self._host_machine = data.get('host_machine')
-            self._build_machine = data.get('build_machine')
+            configs = data.get('project_config')
+            for config in configs:
+                self._configs.append(
+                    ProjectConfig.create_project_config(self._build, **config)
+                )
 
 
 # Declares an empty attribute data class
 # metadata is allocated during Generators-runtime (I.E. generate_<host>_build.py)
-meson_attr = MesonAttr()
-meson = impl.Meson(meson_attr.generator)
-host_machine = impl.Machine(meson_attr.host_machine)
-build_machine = impl.Machine(meson_attr.build_machine)
+meson_translator = MesonTranslator()
 
 _gIncludeDirectories = {}
 
 
 def load_meson_data(config_file: str):
-    meson_attr.init_data(config_file)
-    global meson
-    global host_machine
-    global build_machine
-    meson.set_compiler(meson_attr.generator)
-    host_machine.set_system(meson_attr.host_machine)
-    build_machine.set_system(meson_attr.build_machine)
+    meson_translator.init_data(config_file)
 
 
 def open_output_file():
-    impl.open_output_file(meson_attr.get_output_filename())
+    impl.open_output_file(meson_translator.get_output_filename())
 
 
 def close_output_file():
@@ -337,7 +346,7 @@ def close_output_file():
 
 
 def load_config_file():
-    impl.load_config_file(meson_attr.config_file)
+    impl.load_config_file(meson_translator.config_file)
 
 
 def add_subdirs_to_set(dir_, dir_set):
@@ -349,7 +358,7 @@ def add_subdirs_to_set(dir_, dir_set):
 
 
 def include_directories(*paths, is_system=False):
-    if meson_attr.host_machine == 'android':
+    if meson_translator.host_machine == 'android':
         return impl.IncludeDirectories('', impl.get_include_dirs(paths))
     # elif host_machine == 'fuchsia'
     dirs = impl.get_include_dirs(paths)
@@ -398,15 +407,15 @@ def include_directories(*paths, is_system=False):
 def module_import(name: str):
     if name == 'python':
         return impl.PythonModule()
-    if name == 'pkgconfig' and meson_attr.host_machine.lower() == 'fuchsia':
+    if name == 'pkgconfig' and meson_translator.host_machine.lower() == 'fuchsia':
         return BazelPkgConfigModule()
-    if name == 'pkgconfig' and meson_attr.host_machine.lower() == 'android':
+    if name == 'pkgconfig' and meson_translator.host_machine.lower() == 'android':
         return impl.PkgConfigModule()
     exit(f'Unhandled module: {name}')
 
 
 def load_dependencies():
-    impl.load_dependencies(meson_attr.config_file)
+    impl.load_dependencies(meson_translator.config_file)
 
 
 def dependency(
@@ -485,7 +494,7 @@ def static_library(
         link_with=link_with,
         link_whole=link_whole,
         builtin_type_name='cc_library_static',
-        static=meson_attr.is_bazel(),
+        static=meson_translator.is_bazel(),
     )
 
     return impl.StaticLibrary(target_name, link_with=link_with, link_whole=link_whole)
@@ -519,7 +528,7 @@ def _get_sources(input_sources, sources, generated_sources, generated_headers):
         if type(source) is list:
             _get_sources(source, sources, generated_sources, generated_headers)
         elif type(source) is impl.CustomTarget or type(source) is impl.CustomTargetItem:
-            if meson_attr.is_bazel():
+            if meson_translator.is_bazel():
                 generate_sources_fuchsia(source)
             else:  # is_soong
                 generate_sources_android(source)
@@ -851,7 +860,7 @@ def _emit_builtin_target(
     builtin_type_name='',
     static=False,
 ):
-    if meson_attr.is_bazel():
+    if meson_translator.is_bazel():
         _emit_builtin_target_fuchsia(
             target_name,
             *source,
@@ -863,7 +872,7 @@ def _emit_builtin_target(
             link_whole=link_whole,
             static=static,
         )
-    else:  # meson_attr.is_soong()
+    else:  # meson_translator.is_soong()
         _emit_builtin_target_android(
             target_name,
             *source,
@@ -976,7 +985,7 @@ def _get_command_args(
     obfuscate_suffix='',
 ):
     args = []
-    gendir = 'GENDIR' if meson_attr.is_bazel() else 'genDir'
+    gendir = 'GENDIR' if meson_translator.is_bazel() else 'genDir'
     for command_item in command[1:]:
         if isinstance(command_item, list):
             for item in command_item:
@@ -1032,7 +1041,7 @@ def _get_command_args(
             args.append(f'$({gendir})' + '/' + impl.get_relative_dir())
             continue
 
-        if meson_attr.is_bazel():
+        if meson_translator.is_bazel():
             match = re.match(r'@PROJECT_BUILD_ROOT@(.*)', command_item)
             if match is not None:
                 args.append(f'$({gendir}){match.group(1)}')
@@ -1096,7 +1105,7 @@ def _process_wrapped_args_for_python(
     args = impl.replace_wrapped_input_with_target(
         wrapped_args, python_script, python_script_target_name
     )
-    if meson_attr.is_bazel():
+    if meson_translator.is_bazel():
         return args
     # else is_soong():
     python_path = 'PYTHONPATH='
@@ -1165,7 +1174,7 @@ def custom_target(
     if python_script != '':
         python_script_target_name = target_name + '_' + os.path.basename(python_script)
         srcs = [python_script] + impl.get_list_of_relative_inputs(depend_files)
-        if meson_attr.is_soong():
+        if meson_translator.is_soong():
             impl.fprint('python_binary_host {')
             impl.fprint('  name: "%s",' % python_script_target_name)
             impl.fprint('  main: "%s",' % python_script)
@@ -1210,7 +1219,7 @@ def custom_target(
     relative_inputs.extend(impl.get_list_of_relative_inputs(depend_files))
 
     relative_inputs_set = set()
-    if meson_attr.is_soong():
+    if meson_translator.is_soong():
         for src in relative_inputs:
             relative_inputs_set.add(src)
 
@@ -1225,7 +1234,7 @@ def custom_target(
     generates_h = False
     generates_c = False
     custom_target_ = None
-    if meson_attr.is_soong():
+    if meson_translator.is_soong():
         # Soong requires genrule to generate only headers OR non-headers
         for out in relative_outputs:
             if _is_header(out):
@@ -1240,7 +1249,7 @@ def custom_target(
 
     program_command = program.command
 
-    if meson_attr.is_soong():
+    if meson_translator.is_soong():
         if program_command == 'bison':
             program_command_arg = 'M4=$(location m4) $(location bison)'
         elif program_command == 'flex':
