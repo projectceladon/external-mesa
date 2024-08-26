@@ -305,6 +305,18 @@ init_common_queue_state(struct anv_queue *queue, struct anv_batch *batch)
       sba.L1CacheControl = L1CC_WB;
 #endif
    }
+
+   /* Disable the POOL_ALLOC mechanism in HW. We found that this state can get
+    * corrupted (likely due to leaking from another context), the default
+    * value should be disabled. It doesn't cost anything to set it once at
+    * device initialization.
+    */
+#if GFX_VER >= 11 && GFX_VERx10 < 125
+   anv_batch_emit(batch, GENX(3DSTATE_BINDING_TABLE_POOL_ALLOC), btpa) {
+      btpa.MOCS = mocs;
+      btpa.BindingTablePoolEnable = false;
+   }
+#endif
 #endif
 
 #if GFX_VERx10 >= 125
