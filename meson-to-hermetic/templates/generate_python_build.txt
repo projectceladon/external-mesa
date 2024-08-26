@@ -32,7 +32,6 @@ if __name__ == "__main__":
       case _:
         exit(f'Unhandled arg={flag} with value={value}')
 
-
 ###
 ### These definitions must be inside the module
 def get_variable(name: str):
@@ -42,6 +41,9 @@ def get_variable(name: str):
 ### Load Metadata
 load_meson_data(config_path)
 
+meson = impl.Meson(meson_translator.generator)
+host_machine = impl.Machine(meson_translator.host_machine)
+build_machine = impl.Machine(meson_translator.build_machine)
 
 ### Open the build definition file
 open_output_file()

@@ -1,8 +1,6 @@
 # Copyright 2024 Google LLC
 # SPDX-License-Identifier: Apache-2.0
 build = 'Soong'
-host_machine = 'android'
-build_machine = 'linux'
 
 [[project_config]]
 name = 'android_aarch64_drivers'
@@ -10,6 +8,8 @@ name = 'android_aarch64_drivers'
 [project_config.host_machine]
 cpu_family = 'aarch64'
 cpu = 'aarch64'
+host_machine = 'android'
+build_machine = 'linux'
 
 [project_config.meson_options]
 platforms = 'android'
