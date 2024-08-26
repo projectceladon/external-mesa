@@ -596,6 +596,8 @@ def load_config_file(filename):
                     global _gCpu
                     _gCpu = cpu
                     print(f'Config: cpu={_gCpu}')
+                case 'host_machine' | 'build_machine':
+                    continue
                 case _:  # Default case
                     exit(f'Unhandled config key: {key}')
 
