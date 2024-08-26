@@ -15,12 +15,12 @@ Status: useful, but rough.  Supports Android (Soong) and Fuchsia (Bazel).
 
 ## Environment Setup
 
-1. Open a terminal within `mesa3d/meson-to-hermetic`
+1. Open a terminal within `mesa3d/meson_to_hermetic`
 2. Run the `setup-venv.sh` file to automatically create a python3 venv and install dependencies.
 
 ## Linting the code
 1. Before pushing code for review; run `lint.sh` to automatically lint all of the python scripts.
-    - IMPORTANT: Run the lint.sh from the `meson-to-hermetic` directory.
+    - IMPORTANT: Run the lint.sh from the `meson_to_hermetic` directory.
 
 ## 1 - Generate python from meson
 

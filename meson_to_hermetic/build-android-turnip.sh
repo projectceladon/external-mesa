@@ -27,7 +27,7 @@ else
 fi
 
 # Always generate Android.bp because it's fast
-PYTHONPATH=$BIN_DIR python3 generate_android_build.py --config=meson-to-hermetic/aosp.toml
+PYTHONPATH=$BIN_DIR python3 generate_android_build.py --config=meson_to_hermetic/aosp.toml
 
 source $ROOT_DIR/build/envsetup.sh
 lunch aosp_trout_arm64-trunk_staging-userdebug
