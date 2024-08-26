@@ -25,9 +25,9 @@ function unwrap_zlib {
     pushd fuchsia-build/third_party/zlib-*
     # Create an empty workspace
     touch WORKSPACE.bazel
-    ln -s ../../../meson-to-hermetic meson-to-hermetic
-    python3 meson-to-hermetic/generate_python_build.py --target fuchsia
-    PYTHONPATH=$PWD/meson-to-hermetic python3 generate_fuchsia_build.py --config=meson-to-hermetic/fuchsia.toml
+    ln -s ../../../meson_to_hermetic meson_to_hermetic
+    python3 meson_to_hermetic/generate_python_build.py --target fuchsia
+    PYTHONPATH=$PWD/meson_to_hermetic python3 generate_fuchsia_build.py --config=meson_to_hermetic/fuchsia.toml
     popd
 }
 
@@ -50,7 +50,7 @@ else
 fi
 
 # Always generate Android.bp because it's fast
-PYTHONPATH=$BIN_DIR python3 generate_fuchsia_build.py --config=meson-to-hermetic/fuchsia.toml
+PYTHONPATH=$BIN_DIR python3 generate_fuchsia_build.py --config=meson_to_hermetic/fuchsia.toml
 
 $BIN_DIR/../tools/bazel --bazelrc=fuchsia-build/third_party/fuchsia-infra-bazel-rules/config/common_config.bazelrc \
     build --config=fuchsia_arm64 --platforms=@fuchsia_sdk//fuchsia/constraints/platforms:fuchsia_arm64 \
