@@ -26,7 +26,6 @@ import meson_impl as impl
 import tomllib
 import re
 
-from abc import ABC
 from pathlib import Path
 
 # A map that holds the build-system to build file
