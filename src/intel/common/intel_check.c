@@ -1,3 +1,4 @@
+#include <cutils/log.h>
 #include <pthread.h>
 #include <unistd.h>
 #include <stdio.h>
@@ -7,6 +8,7 @@
 #include <sys/types.h>
 #include <sys/syscall.h>
 #include <stdbool.h>
+#include <string.h>
 #include <cutils/properties.h>
 #include "util/macros.h"
 #include "util/log.h"
@@ -42,7 +44,7 @@ use_dgpu_render(char *target)
 {
    char dGPU_prop[BUF_SIZE];
    char vendor_buf[PROPERTY_VALUE_MAX];
-   sprintf(dGPU_prop, "persist.vendor.intel.dGPU.%s",target);
+   sprintf(dGPU_prop, "persist.vendor.intel.dGPU%s",target);
    if (property_get(dGPU_prop, vendor_buf, NULL) > 0) {
       if (vendor_buf[0] == '1') {
          return true;
@@ -77,7 +79,8 @@ bool intel_is_dgpu_render(void) {
    char process_name[BUF_SIZE];
 
    get_pid_name(process_id, process_name);
-   return (use_dgpu_render(process_name) || is_target_process(process_name));
+   char *app_name = strrchr(process_name, '.');
+   return (use_dgpu_render(app_name) || is_target_process(process_name));
 }
 
 bool intel_lower_ctx_priority(void)
@@ -85,10 +88,11 @@ bool intel_lower_ctx_priority(void)
    pid_t process_id = getpid();
    char process_name[BUF_SIZE];
    get_pid_name(process_id, process_name);
+   char *app_name = strrchr(process_name, '.');
 
    char lower_pri[BUF_SIZE];
    char vendor_buf[PROPERTY_VALUE_MAX];
-   sprintf(lower_pri, "persist.vendor.intel.lowPir.%s",process_name);
+   sprintf(lower_pri, "persist.vendor.intel.lowPir%s",app_name);
    if (property_get(lower_pri, vendor_buf, NULL) > 0) {
       if (vendor_buf[0] == '1') {
          return true;
