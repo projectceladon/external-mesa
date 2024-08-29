@@ -64,4 +64,38 @@ sync = [
 ]
 
 # Define new project configs
-# [[project_config]]
+[[project_config]]
+name = 'glibc_x86_64_build'
+
+[project_config.meson_options]
+platforms = 'none'
+gallium-drivers = ''
+vulkan-drivers = 'swrast'
+
+[project_config.host_machine]
+cpu_family = 'x86_64'
+cpu = 'x86_64'
+host_machine = 'linux'
+build_machine = 'linux'
+
+[project_config.header_not_supported]
+headers = []
+
+[project_config.symbol_not_supported]
+symbols = []
+
+[project_config.function_not_supported]
+functions = []
+
+[project_config.link_not_supported]
+links = []
+
+[project_config.ext_dependencies]
+# DependencyTargetType
+#   SHARED_LIBRARY = 1
+#   STATIC_LIBRARY = 2
+#   HEADER_LIBRARY = 3
+# See meson_impl.py
+zlib = [
+    { target_name = 'libz', target_type = 2 }
+]

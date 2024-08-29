@@ -26,7 +26,6 @@ import meson_impl as impl
 import tomllib
 import re
 
-from abc import ABC
 from pathlib import Path
 
 # A map that holds the build-system to build file
@@ -81,11 +80,18 @@ class ProjectConfig:
         project_config._host_machine = kwargs.get('host_machine').get('host_machine')
         project_config._build_machine = kwargs.get('host_machine').get('build_machine')
         project_config._meson_options = kwargs.get('meson_options')
-        project_config._headers_not_supported = kwargs.get('header_not_supported').get('headers')
-        project_config._symbols_not_supported = kwargs.get('symbol_not_supported').get('symbols')
-        project_config._functions_not_supported = (kwargs.get('function_not_supported')
-                                                   .get('functions'))
-        project_config._links_not_supported = kwargs.get('link_not_supported').get('links')
+        project_config._headers_not_supported = kwargs.get('header_not_supported').get(
+            'headers'
+        )
+        project_config._symbols_not_supported = kwargs.get('symbol_not_supported').get(
+            'symbols'
+        )
+        project_config._functions_not_supported = kwargs.get(
+            'function_not_supported'
+        ).get('functions')
+        project_config._links_not_supported = kwargs.get('link_not_supported').get(
+            'links'
+        )
         project_config._ext_dependencies = kwargs.get('ext_dependencies')
         return project_config
 
