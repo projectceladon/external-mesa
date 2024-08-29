@@ -1,4 +1,4 @@
-# meson-to-hermetic: automated build system generation
+# meson_to_hermetic: automated build system generation
 
 Goal: ease the integration of Mesa as a component inside larger projects like
 Android (AOSP).
