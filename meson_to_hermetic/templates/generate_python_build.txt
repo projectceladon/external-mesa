@@ -6,7 +6,7 @@ import tomllib
 ### Pull in the definitions meson is expecting
 ###
 from meson_common import *
-from meson_to_hermetic import *
+from meson_to_hermetic.meson_to_hermetic import *
 ###
 ########################################################################################################################
 {{ meson_options }}
@@ -24,11 +24,11 @@ if __name__ == "__main__":
         with open(value, 'rb') as f:
           data = tomllib.load(f)
           config_path = value
-          project_config = data.get('project_config')
-          for config in project_config:
-            meson_options = config.get('meson_options')
-            for key in meson_options:
-              set_option(key, meson_options[key])
+          # Data entry point of meson_translator global
+          load_meson_data(config_path)
+          meson_options = meson_translator.config.meson_options
+          for key in meson_options:
+            set_option(key, meson_options[key])
       case _:
         exit(f'Unhandled arg={flag} with value={value}')
 
@@ -37,9 +37,6 @@ if __name__ == "__main__":
 def get_variable(name: str):
   return globals()[name]
 
-
-### Load Metadata
-load_meson_data(config_path)
 
 meson = impl.Meson(meson_translator.generator)
 host_machine = impl.Machine(meson_translator.host_machine)
