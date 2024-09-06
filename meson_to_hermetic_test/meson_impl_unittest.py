@@ -35,28 +35,6 @@ class TestConfigParsing(unittest.TestCase):
     I.E. *.toml files
     """
 
-    def test_load_config_file(self):
-        path = abs_toml_path / 'test.toml'
-        impl.load_config_file(str(path))
-
-        self.assertEqual(impl._gCpuFamily, 'cpu_family_test', 'gCpuFamily was not assigned '
-                                                              'correctly after parsing')
-        self.assertEqual(impl._gCpu, 'cpu_test', 'gCpu was not assigned correctly after parsing')
-
-    def test_load_config_file_fails_non_toml(self):
-        with self.assertRaises(SystemExit):
-            impl.load_config_file('non_toml.txt')
-
-    def test_no_project_config_defined(self):
-        with self.assertRaises(SystemExit):
-            path = abs_toml_path / 'empty.toml'
-            impl.load_config_file(str(path))
-
-    def test_invalid_host_setting(self):
-        with self.assertRaises(SystemExit):
-            path = str(abs_toml_path / 'unhandled_host_settings.toml')
-            impl.load_config_file(path)
-
     def test_load_dependencies(self):
         expected = {
             'test_dep': {

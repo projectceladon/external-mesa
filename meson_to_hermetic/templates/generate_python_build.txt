@@ -39,15 +39,11 @@ def get_variable(name: str):
 
 
 meson = impl.Meson(meson_translator.generator)
-host_machine = impl.Machine(meson_translator.host_machine)
-build_machine = impl.Machine(meson_translator.build_machine)
+host_machine = impl.Machine(meson_translator.host_machine, meson_translator.config.cpu, meson_translator.config.cpu_family)
+build_machine = impl.Machine(meson_translator.build_machine, meson_translator.config.cpu, meson_translator.config.cpu_family)
 
 ### Open the build definition file
 open_output_file()
-
-
-### Load config
-load_config_file()
 
 
 ### Load dependencies
