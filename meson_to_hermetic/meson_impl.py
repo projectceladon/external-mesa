@@ -16,10 +16,6 @@ _gRelativeDir = ''
 _gProjectCflags = []
 _gProjectCppflags = []
 
-# Parameters set by config file
-_gCpuFamily = 'unknown'
-_gCpu = _gCpuFamily
-
 _gProjectVersion = 'unknown'
 _gProjectOptions = []
 
@@ -54,8 +50,10 @@ class File:
 
 
 class Machine:
-    def __init__(self, system):
+    def __init__(self, system, cpu, cpu_family):
         self._system = system
+        self._cpu = cpu
+        self._cpu_family = cpu_family
 
     def system(self):
         return self._system
@@ -64,10 +62,10 @@ class Machine:
         self._system = system
 
     def cpu_family(self):
-        return _gCpuFamily
+        return self._cpu_family
 
     def cpu(self):
-        return _gCpuFamily
+        return self._cpu
 
 
 class DependencyTargetType(Enum):
@@ -383,8 +381,9 @@ class Meson:
 
 
 class Compiler(ABC):
-    def __init__(self):
+    def __init__(self, cpu_family):
         self._id = 'clang'
+        self._cpu_family = cpu_family
 
     @abstractmethod
     def has_header_symbol(
@@ -503,7 +502,7 @@ class Compiler(ABC):
         exit('Unhandled library: ' + name)
 
     def sizeof(self, string):
-        table = _get_sizeof_table()
+        table = _get_sizeof_table(self._cpu_family)
 
         if string not in table:
             exit('Unhandled compiler sizeof: ' + string)
@@ -572,36 +571,6 @@ def get_project_options():
     return _gProjectOptions
 
 
-def load_config_file(filename):
-    if not filename.endswith('.toml'):
-        exit('Config file that is not .toml is not supported.')
-
-    with open(filename, 'rb') as f:
-        data = tomllib.load(f)
-        project_configs = data.get('project_config')
-        if project_configs is None:
-            exit(f'meson_options not defined in {filename}.')
-        project_config = project_configs[0]
-        # TODO(bpnguyen): Make so project config isn't hardcoded to pick the first set of configs
-        host_machine_settings = project_config.get('host_machine')
-        for key in host_machine_settings:
-            match key:
-                case 'cpu_family':
-                    cpu_fam = host_machine_settings.get(key)
-                    global _gCpuFamily
-                    _gCpuFamily = cpu_fam
-                    print(f'Config: cpu_family={_gCpuFamily}')
-                case 'cpu':
-                    cpu = host_machine_settings.get(key)
-                    global _gCpu
-                    _gCpu = cpu
-                    print(f'Config: cpu={_gCpu}')
-                case 'host_machine' | 'build_machine':
-                    continue
-                case _:  # Default case
-                    exit(f'Unhandled config key: {key}')
-
-
 def add_project_arguments(args, language=[], native=False):
     global _gProjectCflags, _gProjectCppflags
     if type(args) is not list:
@@ -630,15 +599,15 @@ def get_project_cppflags():
     return _gProjectCppflags
 
 
-def _get_sizeof_table():
+def _get_sizeof_table(cpu_family):
     table_32 = {'void*': 4}
     table_64 = {'void*': 8}
-    if _gCpuFamily == 'arm':
+    if cpu_family == 'arm' or cpu_family == 'x86_64':
         table = table_32
-    elif _gCpuFamily == 'aarch64':
+    elif cpu_family == 'aarch64':
         table = table_64
     else:
-        exit('sizeof unhandled cpu family: %s' % _gCpuFamily)
+        exit('sizeof unhandled cpu family: %s' % cpu_family)
     return table
 
 

@@ -274,7 +274,7 @@ class MesonTranslator:
         print('CONFIG:', self._config_file)
         self._init_metadata()
         _generator = (
-            SoongGenerator() if self._build.lower() == 'soong' else BazelGenerator()
+            SoongGenerator(self.config.cpu_family) if self._build.lower() == 'soong' else BazelGenerator(self.config.cpu_family)
         )
         self._generator: impl.Compiler = _generator
         return self
@@ -417,7 +417,9 @@ def module_import(name: str):
         return BazelPkgConfigModule()
     if name == 'pkgconfig' and meson_translator.host_machine.lower() == 'android':
         return impl.PkgConfigModule()
-    exit(f'Unhandled module: {name}')
+    if name == 'pkgconfig' and meson_translator.host_machine.lower() == 'linux':
+        return impl.PkgConfigModule()
+    exit(f'Unhandled module: "{name}" for host machine: "{meson_translator.host_machine}"')
 
 
 def load_dependencies():
