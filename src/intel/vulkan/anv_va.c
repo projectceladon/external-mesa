@@ -115,7 +115,7 @@ anv_physical_device_init_va_ranges(struct anv_physical_device *device)
    va_at(&device->va.scratch_surface_state_pool,
          device->va.internal_surface_state_pool.addr,
          8 * _1Mb);
-   address = va_add(&device->va.bindless_surface_state_pool, address, 2 * _1Gb);
+   address = va_add(&device->va.bindless_surface_state_pool, address, 3 * _1Gb);
 
 
    /* PRMs & simulation disagrees on the actual size of this heap. Take the
