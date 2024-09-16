@@ -510,7 +510,17 @@ class Compiler(ABC):
 
 
 class PkgConfigModule:
-    def generate(self, lib, name='', description='', extra_cflags=None):
+    def generate(
+        self,
+        lib,
+        name='',
+        description='',
+        extra_cflags=None,
+        filebase='',
+        version='',
+        libraries=None,
+        libraries_private=None,
+    ):
         pass
 
 

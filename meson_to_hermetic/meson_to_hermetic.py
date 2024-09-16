@@ -240,7 +240,17 @@ class BazelGenerator(impl.Compiler):
 
 
 class BazelPkgConfigModule(impl.PkgConfigModule):
-    def generate(self, lib, name='', description='', extra_cflags=None):
+    def generate(
+        self,
+        lib,
+        name='',
+        description='',
+        extra_cflags=None,
+        filebase='',
+        version='',
+        libraries=None,
+        libraries_private=None,
+    ):
         if extra_cflags is None:
             extra_cflags = []
         impl.fprint('# package library')
@@ -274,7 +284,9 @@ class MesonTranslator:
         print('CONFIG:', self._config_file)
         self._init_metadata()
         _generator = (
-            SoongGenerator(self.config.cpu_family) if self._build.lower() == 'soong' else BazelGenerator(self.config.cpu_family)
+            SoongGenerator(self.config.cpu_family)
+            if self._build.lower() == 'soong'
+            else BazelGenerator(self.config.cpu_family)
         )
         self._generator: impl.Compiler = _generator
         return self
@@ -351,10 +363,6 @@ def close_output_file():
     impl.close_output_file()
 
 
-def load_config_file():
-    impl.load_config_file(meson_translator.config_file)
-
-
 def add_subdirs_to_set(dir_, dir_set):
     subdirs = os.listdir(dir_)
     for subdir in subdirs:
@@ -419,7 +427,9 @@ def module_import(name: str):
         return impl.PkgConfigModule()
     if name == 'pkgconfig' and meson_translator.host_machine.lower() == 'linux':
         return impl.PkgConfigModule()
-    exit(f'Unhandled module: "{name}" for host machine: "{meson_translator.host_machine}"')
+    exit(
+        f'Unhandled module: "{name}" for host machine: "{meson_translator.host_machine}"'
+    )
 
 
 def load_dependencies():
@@ -997,10 +1007,12 @@ def _get_command_args(
     for command_item in command[1:]:
         if isinstance(command_item, list):
             for item in command_item:
-                assert type(item) is impl.File
-                args.append(
-                    _location_wrapper(item.name) if location_wrap else item.name
-                )
+                if type(item) is impl.File:
+                    args.append(
+                        _location_wrapper(item.name) if location_wrap else item.name
+                    )
+                elif type(item) is str:
+                    args.append(item)
             continue
 
         assert type(command_item) is str
