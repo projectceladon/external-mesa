@@ -72,6 +72,7 @@ platforms = 'none'
 gallium-drivers = 'swrast'
 vulkan-drivers = ''
 glx = 'disabled'
+shared-glapi = 'disabled'
 
 [project_config.host_machine]
 cpu_family = 'x86_64'

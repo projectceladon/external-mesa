@@ -331,3 +331,7 @@ def install_data(
     sources=[],
 ):
     return
+
+
+def subdir(dir_=''):
+    return
