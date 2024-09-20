@@ -357,17 +357,19 @@ translate_superblock_size(uint64_t modifier)
 }
 
 static void
-panfrost_emit_plane(const struct pan_image_layout *layout,
+panfrost_emit_plane(const struct pan_image_view *iview, int index,
+                    const struct pan_image_layout *layout,
                     enum pipe_format format, mali_ptr pointer, unsigned level,
                     int32_t row_stride, int32_t surface_stride,
                     mali_ptr plane2_ptr, void **payload)
 {
    const struct util_format_description *desc =
-      util_format_description(layout->format);
+      util_format_description(format);
 
    assert(row_stride >= 0 && surface_stride >= 0 && "negative stride");
 
    bool afbc = drm_is_afbc(layout->modifier);
+   bool afrc = drm_is_afrc(layout->modifier);
    // TODO: this isn't technically guaranteed to be YUV, but it is in practice.
    bool is_3_planar_yuv = desc->layout == UTIL_FORMAT_LAYOUT_PLANAR3;
 
@@ -386,6 +388,7 @@ panfrost_emit_plane(const struct pan_image_layout *layout,
 
       if (desc->layout == UTIL_FORMAT_LAYOUT_ASTC) {
          assert(!afbc);
+         assert(!afrc);
 
          if (desc->block.depth > 1) {
             cfg.plane_type = MALI_PLANE_TYPE_ASTC_3D;
@@ -407,12 +410,10 @@ panfrost_emit_plane(const struct pan_image_layout *layout,
 
          /* sRGB formats decode to RGBA8 sRGB, which is narrow.
           *
-          * Non-sRGB formats decode to RGBA16F which is wide.
-          * With a future extension, we could decode non-sRGB
-          * formats narrowly too, but this isn't wired up in Mesa
-          * yet.
+          * Non-sRGB formats decode to RGBA16F which is wide except if decode
+          * precision is set to GL_RGBA8 for that texture.
           */
-         cfg.astc.decode_wide = !srgb;
+         cfg.astc.decode_wide = !srgb && !iview->astc.narrow;
       } else if (afbc) {
          cfg.plane_type = MALI_PLANE_TYPE_AFBC;
          cfg.afbc.superblock_size = translate_superblock_size(layout->modifier);
@@ -421,17 +422,29 @@ panfrost_emit_plane(const struct pan_image_layout *layout,
          cfg.afbc.prefetch = true;
          cfg.afbc.compression_mode = GENX(pan_afbc_compression_mode)(format);
          cfg.afbc.header_stride = layout->slices[level].afbc.header_size;
+      } else if (afrc) {
+#if PAN_ARCH >= 10
+         struct pan_afrc_format_info finfo =
+            panfrost_afrc_get_format_info(format);
+
+         cfg.plane_type = MALI_PLANE_TYPE_AFRC;
+         cfg.afrc.block_size =
+            GENX(pan_afrc_block_size)(layout->modifier, index);
+         cfg.afrc.format =
+            GENX(pan_afrc_format)(finfo, layout->modifier, index);
+#endif
       } else {
          cfg.plane_type = is_3_planar_yuv ? MALI_PLANE_TYPE_CHROMA_2P
                                           : MALI_PLANE_TYPE_GENERIC;
          cfg.clump_format = panfrost_clump_format(format);
       }
 
-      if (!afbc &&
-          layout->modifier == DRM_FORMAT_MOD_ARM_16X16_BLOCK_U_INTERLEAVED)
-         cfg.clump_ordering = MALI_CLUMP_ORDERING_TILED_U_INTERLEAVED;
-      else if (!afbc)
-         cfg.clump_ordering = MALI_CLUMP_ORDERING_LINEAR;
+      if (!afbc && !afrc) {
+         if (layout->modifier == DRM_FORMAT_MOD_ARM_16X16_BLOCK_U_INTERLEAVED)
+            cfg.clump_ordering = MALI_CLUMP_ORDERING_TILED_U_INTERLEAVED;
+         else
+            cfg.clump_ordering = MALI_CLUMP_ORDERING_LINEAR;
+      }
    }
    *payload += pan_size(PLANE);
 }
@@ -498,12 +511,12 @@ panfrost_emit_surface(const struct pan_image_view *iview, unsigned level,
          /* 3-plane YUV requires equal stride for both chroma planes */
          assert(row_strides[2] == 0 || row_strides[1] == row_strides[2]);
 
-         panfrost_emit_plane(layouts[i], format, plane_ptrs[i], level,
+         panfrost_emit_plane(iview, i, layouts[i], format, plane_ptrs[i], level,
                              row_strides[i], surface_strides[i], plane_ptrs[2],
                              payload);
       }
    } else {
-      panfrost_emit_plane(layouts[0], format, plane_ptrs[0], level,
+      panfrost_emit_plane(iview, 0, layouts[0], format, plane_ptrs[0], level,
                           row_strides[0], surface_strides[0], 0, payload);
    }
    return;
@@ -604,8 +617,14 @@ GENX(panfrost_new_texture)(const struct pan_image_view *iview, void *out,
    const struct pan_image *base_image = pan_image_view_get_plane(iview, 0);
    const struct pan_image_layout *layout = &base_image->layout;
    enum pipe_format format = iview->format;
+   const struct util_format_description *desc = util_format_description(format);
    uint32_t mali_format = GENX(panfrost_format_from_pipe_format)(format)->hw;
    unsigned char swizzle[4];
+
+   if (desc->layout == UTIL_FORMAT_LAYOUT_ASTC && iview->astc.narrow &&
+       desc->colorspace != UTIL_FORMAT_COLORSPACE_SRGB) {
+      mali_format = MALI_PACK_FMT(RGBA8_UNORM, RGBA, L);
+   }
 
    if (PAN_ARCH >= 7 && util_format_is_depth_or_stencil(format)) {
       /* v7+ doesn't have an _RRRR component order, combine the
@@ -619,11 +638,13 @@ GENX(panfrost_new_texture)(const struct pan_image_view *iview, void *out,
       };
 
       util_format_compose_swizzles(replicate_x, iview->swizzle, swizzle);
-   } else if (PAN_ARCH == 7 && !panfrost_format_is_yuv(format)) {
-#if PAN_ARCH == 7
+   } else if ((PAN_ARCH == 7 || PAN_ARCH == 10) &&
+              !panfrost_format_is_yuv(format)) {
+#if PAN_ARCH == 7 || PAN_ARCH >= 10
       /* v7 (only) restricts component orders when AFBC is in use.
        * Rather than restrict AFBC, we use an allowed component order
        * with an invertible swizzle composed.
+       * v10 has the same restriction, but on AFRC formats.
        */
       enum mali_rgb_component_order orig = mali_format & BITFIELD_MASK(12);
       struct pan_decomposed_swizzle decomposed =
@@ -657,7 +678,7 @@ GENX(panfrost_new_texture)(const struct pan_image_view *iview, void *out,
        pan_image_view_get_plane(iview, 1) != NULL)
       array_size *= 2;
 
-   unsigned width;
+   unsigned width, height, depth;
 
    if (iview->buf.size) {
       assert(iview->dim == MALI_TEXTURE_DIMENSION_1D);
@@ -667,17 +688,34 @@ GENX(panfrost_new_texture)(const struct pan_image_view *iview, void *out,
       assert(layout->height == 1 && layout->depth == 1);
       assert(iview->buf.offset + iview->buf.size <= layout->width);
       width = iview->buf.size;
+      height = 1;
+      depth = 1;
    } else {
       width = u_minify(layout->width, iview->first_level);
+      height = u_minify(layout->height, iview->first_level);
+      depth = u_minify(layout->depth, iview->first_level);
+      if (util_format_is_compressed(layout->format) &&
+          !util_format_is_compressed(format)) {
+         width =
+            DIV_ROUND_UP(width, util_format_get_blockwidth(layout->format));
+         height =
+            DIV_ROUND_UP(height, util_format_get_blockheight(layout->format));
+         depth =
+            DIV_ROUND_UP(depth, util_format_get_blockdepth(layout->format));
+         assert(util_format_get_blockwidth(format) == 1);
+         assert(util_format_get_blockheight(format) == 1);
+         assert(util_format_get_blockheight(format) == 1);
+         assert(iview->last_level == iview->first_level);
+      }
    }
 
    pan_pack(out, TEXTURE, cfg) {
       cfg.dimension = iview->dim;
       cfg.format = mali_format;
       cfg.width = width;
-      cfg.height = u_minify(layout->height, iview->first_level);
+      cfg.height = height;
       if (iview->dim == MALI_TEXTURE_DIMENSION_3D)
-         cfg.depth = u_minify(layout->depth, iview->first_level);
+         cfg.depth = depth;
       else
          cfg.sample_count = layout->nr_samples;
       cfg.swizzle = panfrost_translate_swizzle_4(swizzle);
@@ -733,5 +771,98 @@ GENX(pan_afbc_compression_mode)(enum pipe_format format)
    /* clang-format on */
 
    unreachable("all AFBC formats handled");
+}
+#endif
+
+#if PAN_ARCH >= 10
+enum mali_afrc_format
+GENX(pan_afrc_format)(struct pan_afrc_format_info info, uint64_t modifier,
+                      unsigned plane)
+{
+   bool scan = panfrost_afrc_is_scan(modifier);
+
+   assert(info.bpc == 8 || info.bpc == 10);
+   assert(info.num_comps > 0 && info.num_comps <= 4);
+
+   switch (info.ichange_fmt) {
+   case PAN_AFRC_ICHANGE_FORMAT_RAW:
+      assert(plane == 0);
+
+      if (info.bpc == 8)
+         return (scan ? MALI_AFRC_FORMAT_R8_SCAN : MALI_AFRC_FORMAT_R8_ROT) +
+                (info.num_comps - 1);
+
+      assert(info.num_comps == 4);
+      return (scan ? MALI_AFRC_FORMAT_R10G10B10A10_SCAN
+                   : MALI_AFRC_FORMAT_R10G10B10A10_ROT);
+
+   case PAN_AFRC_ICHANGE_FORMAT_YUV444:
+      if (info.bpc == 8) {
+         if (plane == 0 || info.num_planes == 3)
+            return (scan ? MALI_AFRC_FORMAT_R8_444_SCAN
+                         : MALI_AFRC_FORMAT_R8_444_ROT);
+
+         return (scan ? MALI_AFRC_FORMAT_R8G8_444_SCAN
+                      : MALI_AFRC_FORMAT_R8G8_444_ROT);
+      }
+
+      assert(info.num_planes == 3);
+      return (scan ? MALI_AFRC_FORMAT_R10_444_SCAN
+                   : MALI_AFRC_FORMAT_R10_444_ROT);
+
+   case PAN_AFRC_ICHANGE_FORMAT_YUV422:
+      if (info.bpc == 8) {
+         if (plane == 0 || info.num_planes == 3)
+            return (scan ? MALI_AFRC_FORMAT_R8_422_SCAN
+                         : MALI_AFRC_FORMAT_R8_422_ROT);
+
+         return (scan ? MALI_AFRC_FORMAT_R8G8_422_SCAN
+                      : MALI_AFRC_FORMAT_R8G8_422_ROT);
+      }
+
+      if (plane == 0 || info.num_planes == 3)
+         return (scan ? MALI_AFRC_FORMAT_R10_422_SCAN
+                      : MALI_AFRC_FORMAT_R10_422_ROT);
+
+      return (scan ? MALI_AFRC_FORMAT_R10G10_422_SCAN
+                   : MALI_AFRC_FORMAT_R10G10_422_ROT);
+
+   case PAN_AFRC_ICHANGE_FORMAT_YUV420:
+      if (info.bpc == 8) {
+         if (plane == 0 || info.num_planes == 3)
+            return (scan ? MALI_AFRC_FORMAT_R8_420_SCAN
+                         : MALI_AFRC_FORMAT_R8_420_ROT);
+
+         return (scan ? MALI_AFRC_FORMAT_R8G8_420_SCAN
+                      : MALI_AFRC_FORMAT_R8G8_420_ROT);
+      }
+
+      if (plane == 0 || info.num_planes == 3)
+         return (scan ? MALI_AFRC_FORMAT_R10_420_SCAN
+                      : MALI_AFRC_FORMAT_R10_420_ROT);
+
+      return (scan ? MALI_AFRC_FORMAT_R10G10_420_SCAN
+                   : MALI_AFRC_FORMAT_R10G10_420_ROT);
+
+   default:
+      return MALI_AFRC_FORMAT_INVALID;
+   }
+}
+
+enum mali_afrc_block_size
+GENX(pan_afrc_block_size)(uint64_t modifier, unsigned index)
+{
+   /* Clump size flag for planes 1 and 2 is shifted by 4 bits */
+   unsigned shift = index == 0 ? 0 : 4;
+   uint64_t flag = (modifier >> shift) & AFRC_FORMAT_MOD_CU_SIZE_MASK;
+
+   /* clang-format off */
+   switch (flag) {
+   case AFRC_FORMAT_MOD_CU_SIZE_16: return MALI_AFRC_BLOCK_SIZE_16;
+   case AFRC_FORMAT_MOD_CU_SIZE_24: return MALI_AFRC_BLOCK_SIZE_24;
+   case AFRC_FORMAT_MOD_CU_SIZE_32: return MALI_AFRC_BLOCK_SIZE_32;
+   default:                         unreachable("invalid code unit size");
+   }
+   /* clang-format on */
 }
 #endif

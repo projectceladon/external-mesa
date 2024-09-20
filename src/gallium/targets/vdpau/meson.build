@@ -31,7 +31,7 @@ endif
 
 libvdpau_gallium = shared_library(
   'vdpau_gallium',
-  'target.c',
+  'vdpau_target.c',
   gnu_symbol_visibility : 'hidden',
   link_args : [vdpau_link_args, ld_args_gc_sections],
   include_directories : [
@@ -45,7 +45,6 @@ libvdpau_gallium = shared_library(
   ],
   link_depends : vdpau_link_depends,
   soversion : '@0@.@1@.0'.format(VDPAU_MAJOR, VDPAU_MINOR),
-  # Will be deleted during installation, see install_megadrivers.py
   install : true,
   install_dir : vdpau_drivers_path,
   name_suffix : 'so',
@@ -60,10 +59,12 @@ foreach d : [[with_gallium_r600, 'r600'],
   endif
 endforeach
 
-meson.add_install_script(
-  install_megadrivers_py.full_path(),
-  libvdpau_gallium.full_path(),
-  vdpau_drivers_path,
-  vdpau_drivers,
-  install_tag : 'runtime',
-)
+if vdpau_drivers.length() > 0
+  meson.add_install_script(
+    install_megadrivers_py.full_path(),
+    libvdpau_gallium.full_path(),
+    vdpau_drivers_path,
+    vdpau_drivers,
+    install_tag : 'runtime',
+  )
+endif

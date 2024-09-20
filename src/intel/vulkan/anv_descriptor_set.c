@@ -781,11 +781,11 @@ VkResult anv_CreateDescriptorSetLayout(
          buffer_view_count += binding->descriptorCount;
       }
 
+      set_layout->binding[b].max_plane_count = 1;
       switch (binding->descriptorType) {
       case VK_DESCRIPTOR_TYPE_SAMPLER:
       case VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER:
       case VK_DESCRIPTOR_TYPE_MUTABLE_EXT:
-         set_layout->binding[b].max_plane_count = 1;
          if (binding->pImmutableSamplers) {
             set_layout->binding[b].immutable_samplers = samplers;
             samplers += binding->descriptorCount;
@@ -799,10 +799,6 @@ VkResult anv_CreateDescriptorSetLayout(
                   set_layout->binding[b].max_plane_count = sampler->n_planes;
             }
          }
-         break;
-
-      case VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE:
-         set_layout->binding[b].max_plane_count = 1;
          break;
 
       default:
@@ -841,10 +837,10 @@ VkResult anv_CreateDescriptorSetLayout(
        * that common and likely won't be in the middle of big arrays.
        */
       set_layout->binding[b].descriptor_surface_stride =
-         MAX2(set_layout->binding[b].max_plane_count, 1) *
+         set_layout->binding[b].max_plane_count *
          set_layout->binding[b].descriptor_data_surface_size;
       set_layout->binding[b].descriptor_sampler_stride =
-         MAX2(set_layout->binding[b].max_plane_count, 1) *
+         set_layout->binding[b].max_plane_count *
          set_layout->binding[b].descriptor_data_sampler_size;
 
       if (binding->descriptorType == VK_DESCRIPTOR_TYPE_SAMPLER) {
@@ -1319,7 +1315,7 @@ anv_descriptor_pool_heap_init(struct anv_device *device,
                                             ANV_BO_ALLOC_MAPPED |
                                             ANV_BO_ALLOC_HOST_CACHED_COHERENT |
                                             (samplers ?
-                                             ANV_BO_ALLOC_SAMPLER_POOL :
+                                             ANV_BO_ALLOC_DYNAMIC_VISIBLE_POOL :
                                              ANV_BO_ALLOC_DESCRIPTOR_POOL),
                                             0 /* explicit_address */,
                                             &heap->bo);
@@ -2133,8 +2129,6 @@ anv_sampler_state_for_descriptor_set(const struct anv_sampler *sampler,
                                      const struct anv_descriptor_set *set,
                                      uint32_t plane)
 {
-   if (set->layout->flags & VK_DESCRIPTOR_SET_LAYOUT_CREATE_DESCRIPTOR_BUFFER_BIT_EXT)
-      return sampler->db_state[plane];
    return sampler->state[plane];
 }
 
@@ -2225,7 +2219,7 @@ anv_descriptor_set_write_image_view(struct anv_device *device,
        */
       assert(bind_layout->max_plane_count <= ARRAY_SIZE(desc_data));
       memcpy(desc_surface_map, desc_data,
-             MAX2(1, bind_layout->max_plane_count) * sizeof(desc_data[0]));
+             bind_layout->max_plane_count * sizeof(desc_data[0]));
    }
 
    if (data & ANV_DESCRIPTOR_INDIRECT_STORAGE_IMAGE) {
@@ -2470,6 +2464,8 @@ anv_descriptor_set_write_buffer(struct anv_device *device,
       enum isl_format format =
          anv_isl_format_for_descriptor_type(device, desc->type);
 
+      if (bind_addr.bo && bind_addr.bo->alloc_flags & ANV_BO_ALLOC_PROTECTED)
+         usage |= ISL_SURF_USAGE_PROTECTED_BIT;
       isl_buffer_fill_state(&device->isl_dev, desc_map,
                             .address = anv_address_physical(bind_addr),
                             .mocs = isl_mocs(&device->isl_dev, usage,
@@ -2899,7 +2895,7 @@ void anv_GetDescriptorEXT(
    case VK_DESCRIPTOR_TYPE_SAMPLER:
       if (pDescriptorInfo->data.pSampler &&
           (sampler = anv_sampler_from_handle(*pDescriptorInfo->data.pSampler))) {
-         memcpy(pDescriptor, sampler->db_state[0], ANV_SAMPLER_STATE_SIZE);
+         memcpy(pDescriptor, sampler->state[0], ANV_SAMPLER_STATE_SIZE);
       } else {
          memset(pDescriptor, 0, ANV_SAMPLER_STATE_SIZE);
       }
@@ -2930,8 +2926,7 @@ void anv_GetDescriptorEXT(
              (sampler = anv_sampler_from_handle(
                 pDescriptorInfo->data.pCombinedImageSampler->sampler))) {
             memcpy(pDescriptor + desc_offset + ANV_SURFACE_STATE_SIZE,
-                   sampler->db_state[i],
-                   ANV_SAMPLER_STATE_SIZE);
+                   sampler->state[i], ANV_SAMPLER_STATE_SIZE);
          } else {
             memset(pDescriptor + desc_offset + ANV_SURFACE_STATE_SIZE,
                    0, ANV_SAMPLER_STATE_SIZE);

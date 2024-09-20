@@ -9,13 +9,13 @@ use crate::core::queue::*;
 use crate::core::util::*;
 use crate::impl_cl_type_trait;
 use crate::impl_cl_type_trait_base;
+use crate::perf_warning;
 
 use mesa_rust::pipe::context::*;
 use mesa_rust::pipe::resource::*;
 use mesa_rust::pipe::screen::ResourceType;
 use mesa_rust::pipe::transfer::*;
 use mesa_rust_gen::*;
-use mesa_rust_util::math::*;
 use mesa_rust_util::properties::Properties;
 use mesa_rust_util::ptr::AllocSize;
 use mesa_rust_util::ptr::TrackedPointers;
@@ -39,6 +39,8 @@ struct Mapping<T> {
     layout: Layout,
     writes: bool,
     ptr: Option<MutMemoryPtr>,
+    /// reference count from the API perspective. Once it reaches 0, we need to write back the
+    /// mappings content to the GPU resource.
     count: u32,
     inner: T,
 }
@@ -152,10 +154,17 @@ impl Mem {
         }
     }
 
-    pub fn unmap(&self, q: &Queue, ctx: &PipeContext, ptr: MutMemoryPtr) -> CLResult<()> {
+    pub fn sync_unmap(&self, q: &Queue, ctx: &PipeContext, ptr: MutMemoryPtr) -> CLResult<()> {
         match self {
-            Self::Buffer(b) => b.unmap(q, ctx, ptr),
-            Self::Image(i) => i.unmap(q, ctx, ptr),
+            Self::Buffer(b) => b.sync_unmap(q, ctx, ptr),
+            Self::Image(i) => i.sync_unmap(q, ctx, ptr),
+        }
+    }
+
+    pub fn unmap(&self, ptr: MutMemoryPtr) -> CLResult<bool> {
+        match self {
+            Self::Buffer(b) => b.unmap(ptr),
+            Self::Image(i) => i.unmap(ptr),
         }
     }
 }
@@ -352,10 +361,10 @@ fn sw_copy(
         if src_row_pitch == dst_row_pitch && region[1] * pixel_size == src_row_pitch {
             unsafe {
                 ptr::copy(
-                    src.add(
+                    src.byte_add(
                         (*src_origin + [0, 0, z]) * [pixel_size, src_row_pitch, src_slice_pitch],
                     ),
-                    dst.add(
+                    dst.byte_add(
                         (*dst_origin + [0, 0, z]) * [pixel_size, dst_row_pitch, dst_slice_pitch],
                     ),
                     region[0] * region[1] * pixel_size,
@@ -365,11 +374,11 @@ fn sw_copy(
             for y in 0..region[1] {
                 unsafe {
                     ptr::copy(
-                        src.add(
+                        src.byte_add(
                             (*src_origin + [0, y, z])
                                 * [pixel_size, src_row_pitch, src_slice_pitch],
                         ),
-                        dst.add(
+                        dst.byte_add(
                             (*dst_origin + [0, y, z])
                                 * [pixel_size, dst_row_pitch, dst_slice_pitch],
                         ),
@@ -436,7 +445,7 @@ impl MemBase {
         let host_ptr = if parent.host_ptr().is_null() {
             0
         } else {
-            unsafe { parent.host_ptr().add(offset) as usize }
+            unsafe { parent.host_ptr().byte_add(offset) as usize }
         };
 
         Arc::new(Buffer {
@@ -712,7 +721,9 @@ impl MemBase {
 
     fn is_pure_user_memory(&self, d: &Device) -> CLResult<bool> {
         let r = self.get_res_of_dev(d)?;
-        Ok(r.is_user())
+        // 1Dbuffer objects are weird. The parent memory object can be a host_ptr thing, but we are
+        // not allowed to actually return a pointer based on the host_ptr when mapping.
+        Ok(r.is_user() && !self.host_ptr().is_null())
     }
 
     fn map<T>(
@@ -726,7 +737,7 @@ impl MemBase {
         let host_ptr = self.host_ptr();
         let ptr = unsafe {
             let ptr = if !host_ptr.is_null() {
-                host_ptr.add(offset)
+                host_ptr.byte_add(offset)
             } else {
                 alloc::alloc(layout).cast()
             };
@@ -788,6 +799,8 @@ impl Buffer {
         let (offset, size) =
             CLVec::calc_offset_size(dst_origin, region, [1, dst_row_pitch, dst_slice_pitch]);
         let tx_dst = dst.tx(q, ctx, offset, size, RWFlags::WR)?;
+
+        perf_warning!("clEnqueueCopyBufferRect stalls the GPU");
 
         // TODO check to use hw accelerated paths (e.g. resource_copy_region or blits)
         sw_copy(
@@ -877,6 +890,8 @@ impl Buffer {
         debug_assert!(src_pitch[0] != 0 && src_pitch[1] != 0 && src_pitch[2] != 0);
         debug_assert!(dst_pitch[0] != 0 && dst_pitch[1] != 0 && dst_pitch[2] != 0);
 
+        perf_warning!("clEnqueueCopyBufferToImage stalls the GPU");
+
         sw_copy(
             tx_src.ptr(),
             tx_dst.ptr(),
@@ -912,7 +927,9 @@ impl Buffer {
     }
 
     fn is_mapped_ptr(&self, ptr: *mut c_void) -> bool {
-        self.maps.lock().unwrap().contains_key(ptr as usize)
+        let mut maps = self.maps.lock().unwrap();
+        let entry = maps.entry(ptr as usize);
+        matches!(entry, Entry::Occupied(entry) if entry.get().count > 0)
     }
 
     pub fn map(&self, size: usize, offset: usize, writes: bool) -> CLResult<MutMemoryPtr> {
@@ -938,6 +955,8 @@ impl Buffer {
         let ptr = ptr.as_ptr();
         let tx = self.tx(q, ctx, offset, size, RWFlags::RD)?;
 
+        perf_warning!("clEnqueueReadBuffer and clEnqueueMapBuffer stall the GPU");
+
         unsafe {
             ptr::copy(tx.ptr(), ptr, size);
         }
@@ -962,6 +981,8 @@ impl Buffer {
         let (offset, size) =
             CLVec::calc_offset_size(src_origin, region, [1, src_row_pitch, src_slice_pitch]);
         let tx = self.tx(q, ctx, offset, size, RWFlags::RD)?;
+
+        perf_warning!("clEnqueueReadBufferRect stalls the GPU");
 
         sw_copy(
             tx.ptr(),
@@ -993,6 +1014,31 @@ impl Buffer {
         self.read(q, ctx, mapping.offset, ptr, mapping.size())
     }
 
+    pub fn sync_unmap(&self, q: &Queue, ctx: &PipeContext, ptr: MutMemoryPtr) -> CLResult<()> {
+        // no need to update
+        if self.is_pure_user_memory(q.device)? {
+            return Ok(());
+        }
+
+        match self.maps.lock().unwrap().entry(ptr.as_ptr() as usize) {
+            Entry::Vacant(_) => Err(CL_INVALID_VALUE),
+            Entry::Occupied(entry) => {
+                let mapping = entry.get();
+
+                if mapping.writes {
+                    self.write(q, ctx, mapping.offset, ptr.into(), mapping.size())?;
+                }
+
+                // only remove if the mapping wasn't reused in the meantime
+                if mapping.count == 0 {
+                    entry.remove();
+                }
+
+                Ok(())
+            }
+        }
+    }
+
     fn tx<'a>(
         &self,
         q: &Queue,
@@ -1013,23 +1059,16 @@ impl Buffer {
         .ok_or(CL_OUT_OF_RESOURCES)
     }
 
-    // TODO: only sync on unmap when the memory is not mapped for writing
-    pub fn unmap(&self, q: &Queue, ctx: &PipeContext, ptr: MutMemoryPtr) -> CLResult<()> {
-        let mapping = match self.maps.lock().unwrap().entry(ptr.as_ptr() as usize) {
-            Entry::Vacant(_) => return Err(CL_INVALID_VALUE),
+    pub fn unmap(&self, ptr: MutMemoryPtr) -> CLResult<bool> {
+        match self.maps.lock().unwrap().entry(ptr.as_ptr() as usize) {
+            Entry::Vacant(_) => Err(CL_INVALID_VALUE),
             Entry::Occupied(mut entry) => {
-                entry.get_mut().count -= 1;
-                (entry.get().count == 0).then(|| entry.remove())
+                let entry = entry.get_mut();
+                debug_assert!(entry.count > 0);
+                entry.count -= 1;
+                Ok(entry.count == 0)
             }
-        };
-
-        if let Some(mapping) = mapping {
-            if mapping.writes && !self.is_pure_user_memory(q.device)? {
-                self.write(q, ctx, mapping.offset, ptr.into(), mapping.size())?;
-            }
-        };
-
-        Ok(())
+        }
     }
 
     pub fn write(
@@ -1043,6 +1082,9 @@ impl Buffer {
         let ptr = ptr.as_ptr();
         let offset = self.apply_offset(offset)?;
         let r = self.get_res_of_dev(q.device)?;
+
+        perf_warning!("clEnqueueWriteBuffer and clEnqueueUnmapMemObject might stall the GPU");
+
         ctx.buffer_subdata(
             r,
             offset.try_into().map_err(|_| CL_OUT_OF_HOST_MEMORY)?,
@@ -1069,6 +1111,8 @@ impl Buffer {
         let (offset, size) =
             CLVec::calc_offset_size(dst_origin, region, [1, dst_row_pitch, dst_slice_pitch]);
         let tx = self.tx(q, ctx, offset, size, RWFlags::WR)?;
+
+        perf_warning!("clEnqueueWriteBufferRect stalls the GPU");
 
         sw_copy(
             src,
@@ -1130,6 +1174,8 @@ impl Image {
         // Those pitch values cannot have 0 value in its coordinates
         debug_assert!(src_pitch[0] != 0 && src_pitch[1] != 0 && src_pitch[2] != 0);
         debug_assert!(dst_pitch[0] != 0 && dst_pitch[1] != 0 && dst_pitch[2] != 0);
+
+        perf_warning!("clEnqueueCopyImageToBuffer stalls the GPU");
 
         sw_copy(
             tx_src.ptr(),
@@ -1214,6 +1260,10 @@ impl Image {
             debug_assert!(src_pitch[0] != 0 && src_pitch[1] != 0 && src_pitch[2] != 0);
             debug_assert!(dst_pitch[0] != 0 && dst_pitch[1] != 0 && dst_pitch[2] != 0);
 
+            perf_warning!(
+                "clEnqueueCopyImage stalls the GPU when src or dst are created from a buffer"
+            );
+
             sw_copy(
                 tx_src.ptr(),
                 tx_dst.ptr(),
@@ -1252,8 +1302,8 @@ impl Image {
         // make sure we allocate multiples of 4 bytes so drivers don't read out of bounds or
         // unaligned.
         // TODO: use div_ceil once it's available
-        let pixel_size = self.image_format.pixel_size().unwrap().into();
-        let mut new_pattern: Vec<u32> = vec![0; div_round_up(pixel_size, size_of::<u32>())];
+        let pixel_size: usize = self.image_format.pixel_size().unwrap().into();
+        let mut new_pattern: Vec<u32> = vec![0; pixel_size.div_ceil(size_of::<u32>())];
 
         // we don't support CL_DEPTH for now
         assert!(pattern.len() == 4);
@@ -1289,7 +1339,9 @@ impl Image {
     }
 
     fn is_mapped_ptr(&self, ptr: *mut c_void) -> bool {
-        self.maps.lock().unwrap().contains_key(ptr as usize)
+        let mut maps = self.maps.lock().unwrap();
+        let entry = maps.entry(ptr as usize);
+        matches!(entry, Entry::Occupied(entry) if entry.get().count > 0)
     }
 
     pub fn is_parent_buffer(&self) -> bool {
@@ -1309,8 +1361,33 @@ impl Image {
         *row_pitch = self.image_desc.row_pitch()? as usize;
         *slice_pitch = self.image_desc.slice_pitch();
 
-        let (offset, size) =
-            CLVec::calc_offset_size(origin, region, [pixel_size, *row_pitch, *slice_pitch]);
+        let offset = CLVec::calc_offset(origin, [pixel_size, *row_pitch, *slice_pitch]);
+
+        // From the CL Spec:
+        //
+        //   The pointer returned maps a 1D, 2D or 3D region starting at origin and is at least
+        //   region[0] pixels in size for a 1D image, 1D image buffer or 1D image array,
+        //   (image_row_pitch × region[1]) pixels in size for a 2D image or 2D image array, and
+        //   (image_slice_pitch × region[2]) pixels in size for a 3D image. The result of a memory
+        //   access outside this region is undefined.
+        //
+        // It's not guaranteed that the row_pitch is taken into account for 1D images, but the CL
+        // CTS relies on this behavior.
+        //
+        // Also note, that the spec wording is wrong in regards to arrays, which need to take the
+        // image_slice_pitch into account.
+        let size = if self.image_desc.is_array() || self.image_desc.dims() == 3 {
+            debug_assert_ne!(*slice_pitch, 0);
+            // the slice count is in region[1] for 1D array images
+            if self.mem_type == CL_MEM_OBJECT_IMAGE1D_ARRAY {
+                region[1] * *slice_pitch
+            } else {
+                region[2] * *slice_pitch
+            }
+        } else {
+            debug_assert_ne!(*row_pitch, 0);
+            region[1] * *row_pitch
+        };
 
         let layout;
         unsafe {
@@ -1376,6 +1453,8 @@ impl Image {
             src_slice_pitch = tx.slice_pitch();
         };
 
+        perf_warning!("clEnqueueReadImage and clEnqueueMapImage stall the GPU");
+
         sw_copy(
             tx.ptr(),
             dst,
@@ -1392,7 +1471,6 @@ impl Image {
         Ok(())
     }
 
-    // TODO: only sync on map when the memory is not mapped with discard
     pub fn sync_map(&self, q: &Queue, ctx: &PipeContext, ptr: MutMemoryPtr) -> CLResult<()> {
         // no need to update
         if self.is_pure_user_memory(q.device)? {
@@ -1418,6 +1496,41 @@ impl Image {
         )
     }
 
+    pub fn sync_unmap(&self, q: &Queue, ctx: &PipeContext, ptr: MutMemoryPtr) -> CLResult<()> {
+        // no need to update
+        if self.is_pure_user_memory(q.device)? {
+            return Ok(());
+        }
+
+        match self.maps.lock().unwrap().entry(ptr.as_ptr() as usize) {
+            Entry::Vacant(_) => Err(CL_INVALID_VALUE),
+            Entry::Occupied(entry) => {
+                let mapping = entry.get();
+                let row_pitch = self.image_desc.row_pitch()? as usize;
+                let slice_pitch = self.image_desc.slice_pitch();
+
+                if mapping.writes {
+                    self.write(
+                        ptr.into(),
+                        q,
+                        ctx,
+                        &mapping.region,
+                        row_pitch,
+                        slice_pitch,
+                        &mapping.origin,
+                    )?;
+                }
+
+                // only remove if the mapping wasn't reused in the meantime
+                if mapping.count == 0 {
+                    entry.remove();
+                }
+
+                Ok(())
+            }
+        }
+    }
+
     fn tx_image<'a>(
         &self,
         q: &Queue,
@@ -1429,34 +1542,16 @@ impl Image {
         ctx.texture_map(r, bx, rw).ok_or(CL_OUT_OF_RESOURCES)
     }
 
-    // TODO: only sync on unmap when the memory is not mapped for writing
-    pub fn unmap(&self, q: &Queue, ctx: &PipeContext, ptr: MutMemoryPtr) -> CLResult<()> {
-        let mapping = match self.maps.lock().unwrap().entry(ptr.as_ptr() as usize) {
-            Entry::Vacant(_) => return Err(CL_INVALID_VALUE),
+    pub fn unmap(&self, ptr: MutMemoryPtr) -> CLResult<bool> {
+        match self.maps.lock().unwrap().entry(ptr.as_ptr() as usize) {
+            Entry::Vacant(_) => Err(CL_INVALID_VALUE),
             Entry::Occupied(mut entry) => {
-                entry.get_mut().count -= 1;
-                (entry.get().count == 0).then(|| entry.remove())
-            }
-        };
-
-        let row_pitch = self.image_desc.row_pitch()? as usize;
-        let slice_pitch = self.image_desc.slice_pitch();
-
-        if let Some(mapping) = mapping {
-            if mapping.writes && !self.is_pure_user_memory(q.device)? {
-                self.write(
-                    ptr.into(),
-                    q,
-                    ctx,
-                    &mapping.region,
-                    row_pitch,
-                    slice_pitch,
-                    &mapping.origin,
-                )?;
+                let entry = entry.get_mut();
+                debug_assert!(entry.count > 0);
+                entry.count -= 1;
+                Ok(entry.count == 0)
             }
         }
-
-        Ok(())
     }
 
     pub fn write(
@@ -1472,6 +1567,9 @@ impl Image {
         let src = src.as_ptr();
         let dst_row_pitch = self.image_desc.image_row_pitch;
         let dst_slice_pitch = self.image_desc.image_slice_pitch;
+
+        // texture_subdata most likely maps the resource anyway
+        perf_warning!("clEnqueueWriteImage and clEnqueueUnmapMemObject stall the GPU");
 
         if let Some(Mem::Buffer(buffer)) = &self.parent {
             let pixel_size = self.image_format.pixel_size().unwrap();

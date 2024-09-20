@@ -1,13 +1,9 @@
 # Copyright © 2017 Intel Corporation
 # SPDX-License-Identifier: MIT
 
-files_vulkan_wsi = []
+files_vulkan_wsi = files('wsi_common.c')
 links_vulkan_wsi = []
 platform_deps = []
-
-if not with_platform_none
-  files_vulkan_wsi += files('wsi_common.c')
-endif
 
 if dep_libdrm.found()
   files_vulkan_wsi += files('wsi_common_drm.c')
@@ -29,8 +25,12 @@ endif
 if with_platform_windows
   files_vulkan_wsi += files('wsi_common_win32.cpp')
   platform_deps += dep_dxheaders
-elif not with_platform_none
+else
   files_vulkan_wsi += files('wsi_common_headless.c')
+endif
+
+if with_platform_macos
+  files_vulkan_wsi += files('wsi_common_metal.c', 'wsi_common_metal_layer.m')
 endif
 
 if system_has_kms_drm and not with_platform_android

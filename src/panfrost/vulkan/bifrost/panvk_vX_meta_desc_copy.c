@@ -15,6 +15,7 @@
 #include "pan_encoder.h"
 #include "pan_shader.h"
 
+#include "panvk_cmd_alloc.h"
 #include "panvk_cmd_buffer.h"
 #include "panvk_device.h"
 #include "panvk_shader.h"
@@ -235,7 +236,7 @@ single_desc_copy(nir_builder *b, nir_def *desc_copy_idx)
    nir_pop_if(b, NULL);
 }
 
-static mali_ptr
+static struct panvk_priv_mem
 panvk_meta_desc_copy_shader(struct panvk_device *dev,
                             struct pan_shader_info *shader_info)
 {
@@ -270,8 +271,8 @@ panvk_meta_desc_copy_shader(struct panvk_device *dev,
    shader_info->push.count =
       DIV_ROUND_UP(sizeof(struct pan_nir_desc_copy_info), 4);
 
-   mali_ptr shader = pan_pool_upload_aligned(&dev->meta.bin_pool.base,
-                                             binary.data, binary.size, 128);
+   struct panvk_priv_mem shader = panvk_pool_upload_aligned(
+      &dev->mempools.exec, binary.data, binary.size, 128);
 
    util_dynarray_fini(&binary);
    return shader;
@@ -282,38 +283,51 @@ panvk_per_arch(meta_desc_copy_init)(struct panvk_device *dev)
 {
    struct pan_shader_info shader_info;
 
-   mali_ptr shader = panvk_meta_desc_copy_shader(dev, &shader_info);
-   struct panfrost_ptr rsd =
-      pan_pool_alloc_desc(&dev->meta.desc_pool.base, RENDERER_STATE);
+   dev->desc_copy.shader = panvk_meta_desc_copy_shader(dev, &shader_info);
 
-   pan_pack(rsd.cpu, RENDERER_STATE, cfg) {
+   mali_ptr shader = panvk_priv_mem_dev_addr(dev->desc_copy.shader);
+   struct panvk_priv_mem rsd =
+      panvk_pool_alloc_desc(&dev->mempools.rw, RENDERER_STATE);
+
+   pan_pack(panvk_priv_mem_host_addr(rsd), RENDERER_STATE, cfg) {
       pan_shader_prepare_rsd(&shader_info, shader, &cfg);
    }
 
-   dev->meta.desc_copy.rsd = rsd.gpu;
+   dev->desc_copy.rsd = rsd;
 }
 
-struct panfrost_ptr
-panvk_per_arch(meta_get_copy_desc_job)(
-   struct panvk_device *dev, struct pan_pool *desc_pool,
-   const struct panvk_shader *shader,
-   const struct panvk_descriptor_state *desc_state,
-   const struct panvk_shader_desc_state *shader_desc_state)
+void
+panvk_per_arch(meta_desc_copy_cleanup)(struct panvk_device *dev)
 {
+   panvk_pool_free_mem(&dev->mempools.rw, dev->desc_copy.rsd);
+   panvk_pool_free_mem(&dev->mempools.exec, dev->desc_copy.shader);
+}
+
+VkResult
+panvk_per_arch(meta_get_copy_desc_job)(
+   struct panvk_cmd_buffer *cmdbuf, const struct panvk_shader *shader,
+   const struct panvk_descriptor_state *desc_state,
+   const struct panvk_shader_desc_state *shader_desc_state,
+   uint32_t attrib_buf_idx_offset, struct panfrost_ptr *job_desc)
+{
+   struct panvk_device *dev = to_panvk_device(cmdbuf->vk.base.device);
+
+   *job_desc = (struct panfrost_ptr){0};
+
    if (!shader)
-      return (struct panfrost_ptr){0};
+      return VK_SUCCESS;
 
    mali_ptr copy_table = panvk_priv_mem_dev_addr(shader->desc_info.others.map);
    if (!copy_table)
-      return (struct panfrost_ptr){0};
+      return VK_SUCCESS;
 
    struct pan_nir_desc_copy_info copy_info = {
       .img_attrib_table = shader_desc_state->img_attrib_table,
-      .desc_copy = {
-         .table = copy_table,
-         .attrib_buf_idx_offset =
-            shader->info.stage == MESA_SHADER_VERTEX ? MAX_VS_ATTRIBS : 0,
-      },
+      .desc_copy =
+         {
+            .table = copy_table,
+            .attrib_buf_idx_offset = attrib_buf_idx_offset,
+         },
    };
 
    for (uint32_t i = 0; i < ARRAY_SIZE(copy_info.desc_copy.limits); i++)
@@ -340,10 +354,17 @@ panvk_per_arch(meta_get_copy_desc_job)(
       copy_info.tables[i] = shader_desc_state->tables[i];
    }
 
-   mali_ptr push_uniforms =
-      pan_pool_upload_aligned(desc_pool, &copy_info, sizeof(copy_info), 16);
+   struct panfrost_ptr push_uniforms =
+      panvk_cmd_alloc_dev_mem(cmdbuf, desc, sizeof(copy_info), 16);
 
-   struct panfrost_ptr job = pan_pool_alloc_desc(desc_pool, COMPUTE_JOB);
+   if (!push_uniforms.gpu)
+      return VK_ERROR_OUT_OF_DEVICE_MEMORY;
+
+   memcpy(push_uniforms.cpu, &copy_info, sizeof(copy_info));
+
+   *job_desc = panvk_cmd_alloc_desc(cmdbuf, COMPUTE_JOB);
+   if (!job_desc->gpu)
+      return VK_ERROR_OUT_OF_DEVICE_MEMORY;
 
    /* Given the per-stage max descriptors limit, we should never
     * reach the workgroup dimension limit. */
@@ -353,25 +374,27 @@ panvk_per_arch(meta_get_copy_desc_job)(
    assert(copy_count - 1 < BITFIELD_MASK(10));
 
    panfrost_pack_work_groups_compute(
-      pan_section_ptr(job.cpu, COMPUTE_JOB, INVOCATION), 1, 1, 1, copy_count, 1,
-      1, false, false);
+      pan_section_ptr(job_desc->cpu, COMPUTE_JOB, INVOCATION), 1, 1, 1,
+      copy_count, 1, 1, false, false);
 
-   pan_section_pack(job.cpu, COMPUTE_JOB, PARAMETERS, cfg) {
+   pan_section_pack(job_desc->cpu, COMPUTE_JOB, PARAMETERS, cfg) {
       cfg.job_task_split = util_logbase2_ceil(copy_count + 1) +
                            util_logbase2_ceil(1 + 1) +
                            util_logbase2_ceil(1 + 1);
    }
 
    struct pan_tls_info tlsinfo = {0};
-   struct panfrost_ptr tls = pan_pool_alloc_desc(desc_pool, LOCAL_STORAGE);
+   struct panfrost_ptr tls = panvk_cmd_alloc_desc(cmdbuf, LOCAL_STORAGE);
+   if (!tls.gpu)
+      return VK_ERROR_OUT_OF_DEVICE_MEMORY;
 
    GENX(pan_emit_tls)(&tlsinfo, tls.cpu);
 
-   pan_section_pack(job.cpu, COMPUTE_JOB, DRAW, cfg) {
-      cfg.state = dev->meta.desc_copy.rsd;
-      cfg.push_uniforms = push_uniforms;
+   pan_section_pack(job_desc->cpu, COMPUTE_JOB, DRAW, cfg) {
+      cfg.state = panvk_priv_mem_dev_addr(dev->desc_copy.rsd);
+      cfg.push_uniforms = push_uniforms.gpu;
       cfg.thread_storage = tls.gpu;
    }
 
-   return job;
+   return VK_SUCCESS;
 }

@@ -1,8 +1,8 @@
 // Copyright © 2023 Mel Henning
 // SPDX-License-Identifier: MIT
 
-use crate::cfg::CFGBuilder;
 use crate::ir::*;
+use compiler::cfg::CFGBuilder;
 use std::collections::HashMap;
 
 fn clone_branch(op: &Op) -> Op {
@@ -143,7 +143,7 @@ impl Function {
     }
 }
 
-impl Shader {
+impl Shader<'_> {
     /// A simple jump threading pass
     ///
     /// Note that this can introduce critical edges, so it cannot be run before RA

@@ -63,8 +63,11 @@ namespace brw {
          _group(inst->group),
          force_writemask_all(inst->force_writemask_all)
       {
+#ifndef NDEBUG
          annotation.str = inst->annotation;
-         annotation.ir = inst->ir;
+#else
+         annotation.str = NULL;
+#endif
       }
 
       /**
@@ -152,11 +155,10 @@ namespace brw {
        * Construct a builder with the given debug annotation info.
        */
       fs_builder
-      annotate(const char *str, const void *ir = NULL) const
+      annotate(const char *str) const
       {
          fs_builder bld = *this;
          bld.annotation.str = str;
-         bld.annotation.ir = ir;
          return bld;
       }
 
@@ -313,9 +315,7 @@ namespace brw {
          /* Use the emit() methods for specific operand counts to ensure that
           * opcode-specific operand fixups occur.
           */
-         if (n == 2) {
-            return emit(opcode, dst, srcs[0], srcs[1]);
-         } else if (n == 3) {
+         if (n == 3) {
             return emit(opcode, dst, srcs[0], srcs[1], srcs[2]);
          } else {
             return emit(fs_inst(opcode, dispatch_width(), dst, srcs, n));
@@ -334,8 +334,9 @@ namespace brw {
 
          inst->group = _group;
          inst->force_writemask_all = force_writemask_all;
+#ifndef NDEBUG
          inst->annotation = annotation.str;
-         inst->ir = annotation.ir;
+#endif
 
          if (block)
             static_cast<fs_inst *>(cursor)->insert_before(block, inst);
@@ -854,6 +855,52 @@ namespace brw {
          return inst;
       }
 
+      void
+      VARYING_PULL_CONSTANT_LOAD(const brw_reg &dst,
+                                 const brw_reg &surface,
+                                 const brw_reg &surface_handle,
+                                 const brw_reg &varying_offset,
+                                 uint32_t const_offset,
+                                 uint8_t alignment,
+                                 unsigned components) const
+      {
+         assert(components <= 4);
+
+         /* We have our constant surface use a pitch of 4 bytes, so our index can
+          * be any component of a vector, and then we load 4 contiguous
+          * components starting from that.  TODO: Support loading fewer than 4.
+          */
+         brw_reg total_offset = ADD(varying_offset, brw_imm_ud(const_offset));
+
+         /* The pull load message will load a vec4 (16 bytes). If we are loading
+          * a double this means we are only loading 2 elements worth of data.
+          * We also want to use a 32-bit data type for the dst of the load operation
+          * so other parts of the driver don't get confused about the size of the
+          * result.
+          */
+         brw_reg vec4_result = vgrf(BRW_TYPE_F, 4);
+
+         brw_reg srcs[PULL_VARYING_CONSTANT_SRCS];
+         srcs[PULL_VARYING_CONSTANT_SRC_SURFACE]        = surface;
+         srcs[PULL_VARYING_CONSTANT_SRC_SURFACE_HANDLE] = surface_handle;
+         srcs[PULL_VARYING_CONSTANT_SRC_OFFSET]         = total_offset;
+         srcs[PULL_VARYING_CONSTANT_SRC_ALIGNMENT]      = brw_imm_ud(alignment);
+
+         fs_inst *inst = emit(FS_OPCODE_VARYING_PULL_CONSTANT_LOAD_LOGICAL,
+                              vec4_result, srcs, PULL_VARYING_CONSTANT_SRCS);
+         inst->size_written = 4 * vec4_result.component_size(inst->exec_size);
+
+         shuffle_from_32bit_read(*this, dst, vec4_result, 0, components);
+      }
+
+      brw_reg
+      LOAD_SUBGROUP_INVOCATION() const
+      {
+         brw_reg reg = vgrf(shader->dispatch_width < 16 ? BRW_TYPE_UD : BRW_TYPE_UW);
+         exec_all().emit(SHADER_OPCODE_LOAD_SUBGROUP_INVOCATION, reg);
+         return reg;
+      }
+
       fs_visitor *shader;
 
       fs_inst *BREAK()    { return emit(BRW_OPCODE_BREAK); }
@@ -920,7 +967,6 @@ namespace brw {
       /** Debug annotation info. */
       struct {
          const char *str;
-         const void *ir;
       } annotation;
    };
 }

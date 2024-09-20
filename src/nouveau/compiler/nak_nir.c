@@ -47,7 +47,7 @@ nak_nir_workgroup_has_one_subgroup(const nir_shader *nir)
                        nir->info.workgroup_size[1] *
                        nir->info.workgroup_size[2];
 
-      return wg_sz <= 32;
+      return wg_sz <= NAK_SUBGROUP_SIZE;
    }
 
    default:
@@ -288,68 +288,6 @@ lower_bit_size_cb(const nir_instr *instr, void *data)
    }
 }
 
-static nir_def *
-nir_udiv_round_up(nir_builder *b, nir_def *n, nir_def *d)
-{
-   return nir_udiv(b, nir_iadd(b, n, nir_iadd_imm(b, d, -1)), d);
-}
-
-static bool
-nak_nir_lower_subgroup_id_intrin(nir_builder *b, nir_intrinsic_instr *intrin,
-                                 void *data)
-{
-   switch (intrin->intrinsic) {
-   case nir_intrinsic_load_num_subgroups: {
-      b->cursor = nir_instr_remove(&intrin->instr);
-
-      nir_def *num_subgroups;
-      if (nak_nir_workgroup_has_one_subgroup(b->shader)) {
-         num_subgroups = nir_imm_int(b, 1);
-      } else {
-         assert(b->shader->info.cs.derivative_group == DERIVATIVE_GROUP_NONE);
-
-         nir_def *workgroup_size = nir_load_workgroup_size(b);
-         workgroup_size =
-            nir_imul(b, nir_imul(b, nir_channel(b, workgroup_size, 0),
-                                    nir_channel(b, workgroup_size, 1)),
-                        nir_channel(b, workgroup_size, 2));
-         nir_def *subgroup_size = nir_load_subgroup_size(b);
-         num_subgroups = nir_udiv_round_up(b, workgroup_size, subgroup_size);
-      }
-      nir_def_rewrite_uses(&intrin->def, num_subgroups);
-
-      return true;
-   }
-   case nir_intrinsic_load_subgroup_id: {
-      b->cursor = nir_instr_remove(&intrin->instr);
-
-      nir_def *subgroup_id;
-      if (nak_nir_workgroup_has_one_subgroup(b->shader)) {
-         subgroup_id = nir_imm_int(b, 0);
-      } else {
-         assert(b->shader->info.cs.derivative_group == DERIVATIVE_GROUP_NONE);
-
-         nir_def *invocation_index = nir_load_local_invocation_index(b);
-         nir_def *subgroup_size = nir_load_subgroup_size(b);
-         subgroup_id = nir_udiv(b, invocation_index, subgroup_size);
-      }
-      nir_def_rewrite_uses(&intrin->def, subgroup_id);
-
-      return true;
-   }
-   default:
-      return false;
-   }
-}
-
-static bool
-nak_nir_lower_subgroup_id(nir_shader *nir)
-{
-   return nir_shader_intrinsics_pass(nir, nak_nir_lower_subgroup_id_intrin,
-                                     nir_metadata_control_flow,
-                                     NULL);
-}
-
 void
 nak_preprocess_nir(nir_shader *nir, const struct nak_compiler *nak)
 {
@@ -389,7 +327,6 @@ nak_preprocess_nir(nir_shader *nir, const struct nak_compiler *nak)
    OPT(nir, nir_lower_load_const_to_scalar);
    OPT(nir, nir_lower_var_copies);
    OPT(nir, nir_lower_system_values);
-   OPT(nir, nak_nir_lower_subgroup_id);
    OPT(nir, nir_lower_compute_system_values, NULL);
 
    if (nir->info.stage == MESA_SHADER_FRAGMENT)
@@ -536,7 +473,6 @@ nak_nir_lower_system_value_intrin(nir_builder *b, nir_intrinsic_instr *intrin,
    case nir_intrinsic_load_subgroup_invocation:
    case nir_intrinsic_load_helper_invocation:
    case nir_intrinsic_load_invocation_id:
-   case nir_intrinsic_load_local_invocation_id:
    case nir_intrinsic_load_workgroup_id: {
       const gl_system_value sysval =
          nir_system_value_from_intrinsic(intrin->intrinsic);
@@ -550,6 +486,59 @@ nak_nir_lower_system_value_intrin(nir_builder *b, nir_intrinsic_instr *intrin,
       val = nir_vec(b, comps, intrin->def.num_components);
       break;
    }
+
+   case nir_intrinsic_load_local_invocation_id: {
+      nir_def *x = nir_load_sysval_nv(b, 32, .base = NAK_SV_TID_X,
+                                      .access = ACCESS_CAN_REORDER);
+      nir_def *y = nir_load_sysval_nv(b, 32, .base = NAK_SV_TID_Y,
+                                      .access = ACCESS_CAN_REORDER);
+      nir_def *z = nir_load_sysval_nv(b, 32, .base = NAK_SV_TID_Z,
+                                      .access = ACCESS_CAN_REORDER);
+
+      if (b->shader->info.derivative_group == DERIVATIVE_GROUP_QUADS) {
+         nir_def *x_lo = nir_iand_imm(b, x, 0x1);
+         nir_def *y_lo = nir_ushr_imm(b, nir_iand_imm(b, x, 0x2), 1);
+         nir_def *x_hi = nir_ushr_imm(b, nir_iand_imm(b, x, ~0x3), 1);
+         nir_def *y_hi = nir_ishl_imm(b, y, 1);
+
+         x = nir_ior(b, x_lo, x_hi);
+         y = nir_ior(b, y_lo, y_hi);
+      }
+
+      val = nir_vec3(b, x, y, z);
+      break;
+   }
+
+   case nir_intrinsic_load_num_subgroups: {
+      assert(!b->shader->info.workgroup_size_variable);
+      uint16_t wg_size = b->shader->info.workgroup_size[0] *
+                         b->shader->info.workgroup_size[1] *
+                         b->shader->info.workgroup_size[2];
+      val = nir_imm_int(b, DIV_ROUND_UP(wg_size, 32));
+      break;
+   }
+
+   case nir_intrinsic_load_subgroup_id:
+      if (nak_nir_workgroup_has_one_subgroup(b->shader)) {
+         val = nir_imm_int(b, 0);
+      } else {
+         assert(!b->shader->info.workgroup_size_variable);
+         nir_def *tid_x = nir_load_sysval_nv(b, 32, .base = NAK_SV_TID_X,
+                                             .access = ACCESS_CAN_REORDER);
+         nir_def *tid_y = nir_load_sysval_nv(b, 32, .base = NAK_SV_TID_Y,
+                                             .access = ACCESS_CAN_REORDER);
+         nir_def *tid_z = nir_load_sysval_nv(b, 32, .base = NAK_SV_TID_Z,
+                                             .access = ACCESS_CAN_REORDER);
+
+         const uint16_t *wg_size = b->shader->info.workgroup_size;
+         nir_def *tid =
+            nir_iadd(b, tid_x,
+            nir_iadd(b, nir_imul_imm(b, tid_y, wg_size[0]),
+                        nir_imul_imm(b, tid_z, wg_size[0] * wg_size[1])));
+
+         val = nir_udiv_imm(b, tid, 32);
+      }
+      break;
 
    case nir_intrinsic_is_helper_invocation: {
       /* Unlike load_helper_invocation, this one isn't re-orderable */
@@ -893,7 +882,7 @@ nak_postprocess_nir(nir_shader *nir,
    nak_optimize_nir(nir, nak);
 
    const nir_lower_subgroups_options subgroups_options = {
-      .subgroup_size = 32,
+      .subgroup_size = NAK_SUBGROUP_SIZE,
       .ballot_bit_size = 32,
       .ballot_components = 1,
       .lower_to_scalar = true,
@@ -947,6 +936,18 @@ nak_postprocess_nir(nir_shader *nir,
    if (nir->info.stage == MESA_SHADER_TESS_EVAL) {
       OPT(nir, nir_lower_tess_coord_z,
           nir->info.tess._primitive_mode == TESS_PRIMITIVE_TRIANGLES);
+   }
+
+   /* We need to do this before nak_nir_lower_system_values() because it
+    * relies on the workgroup size being the actual HW workgroup size in
+    * nir_intrinsic_load_subgroup_id.
+    */
+   if (gl_shader_stage_uses_workgroup(nir->info.stage) &&
+       nir->info.derivative_group == DERIVATIVE_GROUP_QUADS) {
+      assert(nir->info.workgroup_size[0] % 2 == 0);
+      assert(nir->info.workgroup_size[1] % 2 == 0);
+      nir->info.workgroup_size[0] *= 2;
+      nir->info.workgroup_size[1] /= 2;
    }
 
    OPT(nir, nak_nir_lower_system_values, nak);
@@ -1006,6 +1007,9 @@ nak_postprocess_nir(nir_shader *nir,
          OPT(nir, nir_opt_cse);
       }
    } while (progress);
+
+   if (nak->sm < 70)
+      OPT(nir, nak_nir_split_64bit_conversions);
 
    nir_convert_to_lcssa(nir, true, true);
    nir_divergence_analysis(nir);

@@ -46,7 +46,8 @@ enum vpe_status {
 
     // errors for not supported operations
     VPE_STATUS_NOT_SUPPORTED,
-    VPE_STATUS_DCC_NOT_SUPPORTED,
+    VPE_STATUS_INPUT_DCC_NOT_SUPPORTED,
+    VPE_STATUS_OUTPUT_DCC_NOT_SUPPORTED,
     VPE_STATUS_SWIZZLE_NOT_SUPPORTED,
     VPE_STATUS_NUM_STREAM_NOT_SUPPORTED,
     VPE_STATUS_PIXEL_FORMAT_NOT_SUPPORTED,
@@ -182,6 +183,7 @@ struct vpe_caps {
 
     struct vpe_color_caps color_caps;
     struct vpe_plane_caps plane_caps;
+
 };
 
 /***********************************
@@ -193,6 +195,7 @@ struct vpe_dcc_surface_param {
     enum vpe_surface_pixel_format format;
     enum vpe_swizzle_mode_values  swizzle_mode;
     enum vpe_scan_direction       scan;
+    enum vpe_mirror               mirror;
 };
 
 struct vpe_dcc_setting {
@@ -222,6 +225,7 @@ struct vpe_surface_dcc_cap {
 
     bool capable;
     bool const_color_support;
+
 };
 
 /** Conditional Capability functions */
@@ -235,8 +239,8 @@ struct vpe_cap_funcs {
      * @param[in/out]  output        dcc capable result and related settings
      * @return true if supported
      */
-    bool (*get_dcc_compression_cap)(const struct vpe *vpe,
-        const struct vpe_dcc_surface_param *input, struct vpe_surface_dcc_cap *output);
+    bool (*get_dcc_compression_output_cap)(const struct vpe *vpe, const struct vpe_dcc_surface_param *params, struct vpe_surface_dcc_cap *cap);
+    bool (*get_dcc_compression_input_cap)(const struct vpe *vpe, const struct vpe_dcc_surface_param *params, struct vpe_surface_dcc_cap  *cap);
 };
 
 /****************************************
@@ -347,6 +351,7 @@ struct vpe_debug_options {
         uint32_t bg_bit_depth            : 1;
         uint32_t visual_confirm          : 1;
         uint32_t skip_optimal_tap_check  : 1;
+        uint32_t disable_3dlut_cache     : 1;
     } flags;
 
     // valid only if the corresponding flag is set
@@ -369,6 +374,7 @@ struct vpe_debug_options {
     uint32_t opp_pipe_crc_ctrl       : 1;
     uint32_t mpc_crc_ctrl            : 1;
     uint32_t skip_optimal_tap_check  : 1;
+    uint32_t disable_3dlut_cache     : 1;
     uint32_t bg_bit_depth;
 
     struct vpe_mem_low_power_enable_options enable_mem_low_power;
@@ -514,20 +520,19 @@ struct vpe_blend_info {
 };
 
 struct vpe_scaling_info {
+    struct vpe_rect               src_rect;
+    struct vpe_rect               dst_rect;
+    struct vpe_scaling_taps       taps;
 
-    struct vpe_rect         src_rect;
-    struct vpe_rect         dst_rect;
-    struct vpe_scaling_taps taps;
 };
-
 struct vpe_scaling_filter_coeffs {
 
     struct vpe_scaling_taps taps;
     unsigned int            nb_phases;
     uint16_t horiz_polyphase_coeffs[MAX_NB_POLYPHASE_COEFFS]; /*max nb of taps is 4, max nb of
                                                                  phases 33 = (32+1)*/
-    uint16_t vert_polyphase_coeffs[MAX_NB_POLYPHASE_COEFFS]; /*max nb of taps is 4, max nb of phases
-                                                                33 = (32+1)*/
+    uint16_t vert_polyphase_coeffs[MAX_NB_POLYPHASE_COEFFS];  /*max nb of taps is 4, max nb of
+                                                                 phases 33 = (32+1)*/
 };
 
 struct vpe_hdr_metadata {
@@ -546,6 +551,11 @@ struct vpe_hdr_metadata {
     uint32_t avg_content;
 };
 
+struct vpe_reserved_param {
+    void    *param;
+    uint32_t size;
+};
+
 struct vpe_tonemap_params {
     uint64_t                   UID;          /* Unique ID for tonemap params */
     enum vpe_transfer_function shaper_tf;
@@ -554,9 +564,11 @@ struct vpe_tonemap_params {
     enum vpe_color_primaries   lut_out_gamut;
     uint16_t                   input_pq_norm_factor;
     uint16_t                   lut_dim;
-    uint16_t                  *lut_data;
-
-    bool update_3dlut;
+    union {
+        uint16_t               *lut_data;  //CPU accessible
+        void                   *dma_lut_data;  //GPU accessible only for fast load
+    };
+    bool is_dma_lut;
     bool enable_3dlut;
 };
 
@@ -575,6 +587,7 @@ struct vpe_stream {
     bool                             enable_luma_key;
     float                            lower_luma_bound;
     float                            upper_luma_bound;
+    struct vpe_reserved_param        reserved_param;
 
     struct {
         uint32_t hdr_metadata : 1;
@@ -588,16 +601,17 @@ struct vpe_stream {
 
 struct vpe_build_param {
     /** source */
-    uint32_t           num_streams;
-    struct vpe_stream *streams;
+    uint32_t                  num_streams;
+    struct vpe_stream        *streams;
 
     /** destination */
-    struct vpe_surface_info dst_surface;
-    struct vpe_rect target_rect; /**< rectangle in target surface to be blt'd. Ranges out of rect
+    struct vpe_surface_info   dst_surface;
+    struct vpe_rect           target_rect; /**< rectangle in target surface to be blt'd. Ranges out of rect
                                     won't be touched */
-    struct vpe_color        bg_color;
-    enum vpe_alpha_mode     alpha_mode;
-    struct vpe_hdr_metadata hdr_metadata;
+    struct vpe_color          bg_color;
+    enum vpe_alpha_mode       alpha_mode;
+    struct vpe_hdr_metadata   hdr_metadata;
+    struct vpe_reserved_param dst_reserved_param;
 
     // data flags
     struct {
@@ -626,7 +640,7 @@ struct vpe_bufs_req {
 struct vpe_buf {
     uint64_t gpu_va; /**< GPU start address of the buffer */
     uint64_t cpu_va;
-    uint64_t  size;
+    uint64_t size;
     bool     tmz; /**< allocated from tmz */
 };
 

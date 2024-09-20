@@ -35,6 +35,7 @@
 #include "util/bitset.h"
 #include "util/list.h"
 #include "util/sparse_array.h"
+#include "util/timespec.h"
 #include "util/u_dynarray.h"
 
 #include "panfrost/util/pan_ir.h"
@@ -52,6 +53,12 @@
 #if defined(__cplusplus)
 extern "C" {
 #endif
+
+/* Always reserve the lower 32MB */
+#define PAN_VA_USER_START 0x2000000ull
+
+/* Max address space size allowed */
+#define PAN_VA_USER_END (1ull << 48ull)
 
 /* Driver limits */
 #define PAN_MAX_CONST_BUFFERS 16
@@ -111,6 +118,7 @@ struct panfrost_device {
    struct panfrost_tiler_features tiler_features;
    const struct panfrost_model *model;
    bool has_afbc;
+   bool has_afrc;
 
    /* Table of formats, indexed by a PIPE format */
    const struct panfrost_format *formats;
@@ -218,6 +226,12 @@ static inline bool
 pan_is_bifrost(const struct panfrost_device *dev)
 {
    return dev->arch >= 6 && dev->arch <= 7;
+}
+
+static inline uint64_t
+pan_gpu_time_to_ns(struct panfrost_device *dev, uint64_t gpu_time)
+{
+   return (gpu_time * NSEC_PER_SEC) / dev->kmod.props.timestamp_frequency;
 }
 
 #if defined(__cplusplus)

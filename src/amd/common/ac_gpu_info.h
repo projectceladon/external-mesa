@@ -183,6 +183,7 @@ struct radeon_info {
 
    /* CP info. */
    bool gfx_ib_pad_with_type2;
+   bool has_cp_dma;
    uint32_t me_fw_version;
    uint32_t me_fw_feature;
    uint32_t mec_fw_version;
@@ -269,6 +270,7 @@ struct radeon_info {
    uint32_t max_vgpr_alloc;
    uint32_t wave64_vgpr_alloc_granularity;
    uint32_t max_scratch_waves;
+   bool has_scratch_base_registers;
 
    /* Pos, prim, and attribute rings. */
    uint32_t attribute_ring_size_per_se;   /* GFX11+ */
@@ -384,6 +386,8 @@ void ac_get_task_info(const struct radeon_info *info,
                       struct ac_task_info *task_info);
 
 uint32_t ac_memory_ops_per_clock(uint32_t vram_type);
+
+uint32_t ac_gfx103_get_cu_mask_ps(const struct radeon_info *info);
 
 #ifdef __cplusplus
 }

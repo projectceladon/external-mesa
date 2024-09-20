@@ -155,7 +155,7 @@ etna_link_shaders(struct etna_context *ctx, struct compiled_shader_state *cs,
    cs->VS_OUTPUT_COUNT = 1 + link.num_varyings; /* position + varyings */
 
    /* vs outputs (varyings) */
-   DEFINE_ETNA_BITARRAY(vs_output, 16, 8) = {0};
+   DEFINE_ETNA_BITARRAY(vs_output, ARRAY_SIZE(cs->VS_OUTPUT) * 4, 8) = {0};
    int varid = 0;
    etna_bitarray_set(vs_output, 8, varid++, vs->vs_pos_out_reg);
    for (int idx = 0; idx < link.num_varyings; ++idx)
@@ -408,10 +408,8 @@ create_variant(struct etna_shader *shader,
 
    etna_disk_cache_store(shader->compiler, v);
 
-#if MESA_DEBUG
    if (DBG_ENABLED(ETNA_DBG_DUMP_SHADERS))
       etna_dump_shader(v);
-#endif
 
    return v;
 
@@ -463,7 +461,9 @@ etna_shader_variant(struct etna_shader *shader,
 static inline bool
 initial_variants_synchronous(struct etna_context *ctx)
 {
-   return unlikely(ctx->base.debug.debug_message) || DBG_ENABLED(ETNA_DBG_SHADERDB);
+   return unlikely(ctx->base.debug.debug_message) ||
+                   DBG_ENABLED(ETNA_DBG_SHADERDB) ||
+                   DBG_ENABLED(ETNA_DBG_DUMP_SHADERS);
 }
 
 static void
@@ -489,6 +489,7 @@ etna_create_shader_state(struct pipe_context *pctx,
       return NULL;
 
    shader->id = p_atomic_inc_return(&compiler->shader_count);
+   shader->info = screen->info;
    shader->specs = &screen->specs;
    shader->compiler = screen->compiler;
    util_queue_fence_init(&shader->ready);
@@ -593,7 +594,7 @@ etna_shader_screen_init(struct pipe_screen *pscreen)
    /* Create at least one thread - even on single core CPU systems. */
    num_threads = MAX2(1, num_threads);
 
-   screen->compiler = etna_compiler_create(pscreen->get_name(pscreen), &screen->specs);
+   screen->compiler = etna_compiler_create(pscreen->get_name(pscreen), screen->info);
    if (!screen->compiler)
       return false;
 

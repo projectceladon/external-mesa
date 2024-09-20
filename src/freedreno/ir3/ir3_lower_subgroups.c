@@ -1,24 +1,6 @@
 /*
- * Copyright (C) 2021 Valve Corporation
- *
- * Permission is hereby granted, free of charge, to any person obtaining a
- * copy of this software and associated documentation files (the "Software"),
- * to deal in the Software without restriction, including without limitation
- * the rights to use, copy, modify, merge, publish, distribute, sublicense,
- * and/or sell copies of the Software, and to permit persons to whom the
- * Software is furnished to do so, subject to the following conditions:
- *
- * The above copyright notice and this permission notice (including the next
- * paragraph) shall be included in all copies or substantial portions of the
- * Software.
- *
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
- * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
- * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL
- * THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
- * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
- * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
- * SOFTWARE.
+ * Copyright © 2021 Valve Corporation
+ * SPDX-License-Identifier: MIT
  */
 
 #include "ir3.h"
@@ -203,6 +185,8 @@ split_block(struct ir3 *ir, struct ir3_block *before_block,
       rem_instr->block = after_block;
    }
 
+   after_block->divergent_condition = before_block->divergent_condition;
+   before_block->divergent_condition = false;
    return after_block;
 }
 
@@ -239,6 +223,10 @@ link_blocks_branch(struct ir3_block *pred, struct ir3_block *target,
 
    link_blocks(pred, target, 0);
    link_blocks(pred, fallthrough, 1);
+
+   if (opc != OPC_BALL && opc != OPC_BANY) {
+      pred->divergent_condition = true;
+   }
 }
 
 static struct ir3_block *
@@ -367,7 +355,6 @@ lower_instr(struct ir3 *ir, struct ir3_block **block, struct ir3_instruction *in
       struct ir3_block *store = ir3_block_create(ir);
       list_add(&store->node, &body->node);
 
-      body->reconvergence_point = true;
       after_block->reconvergence_point = true;
 
       link_blocks_jump(before_block, body);

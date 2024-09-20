@@ -28,6 +28,7 @@ vulkan_lite_runtime_files = files(
   'vk_graphics_state.c',
   'vk_image.c',
   'vk_log.c',
+  'vk_meta_object_list.c',
   'vk_object.c',
   'vk_physical_device.c',
   'vk_pipeline_layout.c',
@@ -61,10 +62,6 @@ endif
 if with_platform_android
   vulkan_lite_runtime_files += files('vk_android.c')
   vulkan_lite_runtime_deps += [dep_android, idep_u_gralloc]
-endif
-
-if with_vk_magma
-  vulkan_lite_runtime_deps += dep_magma
 endif
 
 vk_common_entrypoints = custom_target(
@@ -261,6 +258,7 @@ vulkan_runtime_files = files(
   'vk_meta.c',
   'vk_meta_blit_resolve.c',
   'vk_meta_clear.c',
+  'vk_meta_copy_fill_update.c',
   'vk_meta_draw_rects.c',
   'vk_nir.c',
   'vk_nir_convert_ycbcr.c',

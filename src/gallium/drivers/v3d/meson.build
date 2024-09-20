@@ -35,12 +35,7 @@ files_per_version = files(
   'v3dx_tfu.c',
 )
 
-v3d_args = ['-DV3D_BUILD_NEON']
-
-dep_v3d_hw = dependency('v3d_hw', required: false)
-if dep_v3d_hw.found()
-  v3d_args += '-DUSE_V3D_SIMULATOR'
-endif
+v3d_args = ['-DV3D_BUILD_NEON', v3d_simulator_arg]
 
 v3d_versions = ['42', '71']
 
@@ -55,7 +50,7 @@ foreach ver : v3d_versions
     ],
     c_args : [v3d_args, '-DV3D_VERSION=' + ver],
     gnu_symbol_visibility : 'hidden',
-    dependencies : [dep_v3d_hw, dep_libdrm, dep_valgrind, idep_nir_headers],
+    dependencies : [dep_v3d_hw, dep_libdrm, dep_valgrind, idep_nir_headers, idep_mesautil],
 )
 
 endforeach

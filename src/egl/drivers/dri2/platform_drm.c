@@ -42,7 +42,9 @@
 
 #include "egl_dri2.h"
 #include "egldevice.h"
+#include "eglglobals.h"
 #include "loader.h"
+#include "dri_util.h"
 
 static struct gbm_bo *
 lock_front_buffer(struct gbm_surface *_surf)
@@ -199,17 +201,14 @@ dri2_drm_create_pixmap_surface(_EGLDisplay *disp, _EGLConfig *conf,
 static EGLBoolean
 dri2_drm_destroy_surface(_EGLDisplay *disp, _EGLSurface *surf)
 {
-   struct dri2_egl_display *dri2_dpy = dri2_egl_display(disp);
    struct dri2_egl_surface *dri2_surf = dri2_egl_surface(surf);
 
-   dri2_dpy->core->destroyDrawable(dri2_surf->dri_drawable);
+   driDestroyDrawable(dri2_surf->dri_drawable);
 
    for (unsigned i = 0; i < ARRAY_SIZE(dri2_surf->color_buffers); i++) {
       if (dri2_surf->color_buffers[i].bo)
          gbm_bo_destroy(dri2_surf->color_buffers[i].bo);
    }
-
-   dri2_egl_surface_free_local_buffers(dri2_surf);
 
    dri2_fini_surface(surf);
    free(surf);
@@ -315,8 +314,8 @@ dri2_drm_swap_buffers(_EGLDisplay *disp, _EGLSurface *draw)
    struct dri2_egl_display *dri2_dpy = dri2_egl_display(disp);
    struct dri2_egl_surface *dri2_surf = dri2_egl_surface(draw);
 
-   if (!dri2_dpy->flush) {
-      dri2_dpy->core->swapBuffers(dri2_surf->dri_drawable);
+   if (dri2_dpy->swrast_not_kms) {
+      driSwapBuffers(dri2_surf->dri_drawable);
       return EGL_TRUE;
    }
 
@@ -331,7 +330,7 @@ dri2_drm_swap_buffers(_EGLDisplay *disp, _EGLSurface *draw)
     * call get_back_bo (eg: through dri2_drm_image_get_buffers).
     */
    dri2_flush_drawable_for_swapbuffers(disp, draw);
-   dri2_dpy->flush->invalidate(dri2_surf->dri_drawable);
+   dri_invalidate_drawable(dri2_surf->dri_drawable);
 
    /* Make sure we have a back buffer in case we're swapping without
     * ever rendering. */
@@ -363,7 +362,6 @@ dri2_drm_create_image_khr_pixmap(_EGLDisplay *disp, _EGLContext *ctx,
                                  EGLClientBuffer buffer,
                                  const EGLint *attr_list)
 {
-   struct dri2_egl_display *dri2_dpy = dri2_egl_display(disp);
    struct gbm_dri_bo *dri_bo = gbm_dri_bo((struct gbm_bo *)buffer);
    struct dri2_egl_image *dri2_img;
 
@@ -375,7 +373,7 @@ dri2_drm_create_image_khr_pixmap(_EGLDisplay *disp, _EGLContext *ctx,
 
    _eglInitImage(&dri2_img->base, disp);
 
-   dri2_img->dri_image = dri2_dpy->image->dupImage(dri_bo->image, dri2_img);
+   dri2_img->dri_image = dri2_dup_image(dri_bo->image, dri2_img);
    if (dri2_img->dri_image == NULL) {
       free(dri2_img);
       _eglError(EGL_BAD_ALLOC, "dri2_create_image_khr_pixmap");
@@ -554,7 +552,7 @@ get_fd_render_gpu_drm(struct gbm_dri_device *gbm_dri, int fd_display_gpu)
       return fd_display_gpu;
 
    /* Display-only device, so return a compatible render-only device. */
-   return gbm_dri->mesa->queryCompatibleRenderOnlyDeviceFd(fd_display_gpu);
+   return dri_query_compatible_render_only_device_fd(fd_display_gpu);
 }
 
 EGLBoolean
@@ -586,10 +584,26 @@ dri2_initialize_drm(_EGLDisplay *disp)
          dri2_dpy->fd_display_gpu =
             loader_open_device(drm->nodes[DRM_NODE_PRIMARY]);
       } else {
-         char buf[64];
-         int n = snprintf(buf, sizeof(buf), DRM_DEV_NAME, DRM_DIR_NAME, 0);
-         if (n != -1 && n < sizeof(buf))
-            dri2_dpy->fd_display_gpu = loader_open_device(buf);
+         _EGLDevice *dev_list = _eglGlobal.DeviceList;
+         drmDevicePtr drm;
+         while (dev_list) {
+            if (!_eglDeviceSupports(dev_list, _EGL_DEVICE_DRM))
+               goto next;
+
+            drm = _eglDeviceDrm(dev_list);
+
+            if (!(drm->available_nodes & (1 << DRM_NODE_PRIMARY)))
+               goto next;
+
+            dri2_dpy->fd_display_gpu =
+               loader_open_device(drm->nodes[DRM_NODE_PRIMARY]);
+            if (dri2_dpy->fd_display_gpu < 0)
+               goto next;
+
+            break;
+         next:
+            dev_list = _eglDeviceNext(dev_list);
+         }
       }
 
       gbm = gbm_create_device(dri2_dpy->fd_display_gpu);
@@ -622,19 +636,14 @@ dri2_initialize_drm(_EGLDisplay *disp)
 
    dri2_dpy->driver_name = strdup(dri2_dpy->gbm_dri->driver_name);
 
-   if (!dri2_load_driver_dri3(disp)) {
+   if (!dri2_load_driver(disp)) {
       err = "DRI3: failed to load driver";
       goto cleanup;
    }
 
    dri2_dpy->dri_screen_render_gpu = dri2_dpy->gbm_dri->screen;
-   dri2_dpy->core = dri2_dpy->gbm_dri->core;
-   dri2_dpy->image_driver = dri2_dpy->gbm_dri->image_driver;
-   dri2_dpy->swrast = dri2_dpy->gbm_dri->swrast;
-   dri2_dpy->kopper = dri2_dpy->gbm_dri->kopper;
    dri2_dpy->driver_configs = dri2_dpy->gbm_dri->driver_configs;
 
-   dri2_dpy->gbm_dri->lookup_image = dri2_lookup_egl_image;
    dri2_dpy->gbm_dri->validate_image = dri2_validate_egl_image;
    dri2_dpy->gbm_dri->lookup_image_validated = dri2_lookup_egl_image_validated;
    dri2_dpy->gbm_dri->lookup_user_data = disp;
@@ -648,11 +657,6 @@ dri2_initialize_drm(_EGLDisplay *disp)
    dri2_dpy->gbm_dri->base.v0.surface_release_buffer = release_buffer;
    dri2_dpy->gbm_dri->base.v0.surface_has_free_buffers = has_free_buffers;
 
-   if (!dri2_setup_extensions(disp)) {
-      err = "DRI2: failed to find required DRI extensions";
-      goto cleanup;
-   }
-
    if (!dri2_setup_device(disp, dri2_dpy->gbm_dri->software)) {
       err = "DRI2: failed to setup EGLDevice";
       goto cleanup;
@@ -663,8 +667,7 @@ dri2_initialize_drm(_EGLDisplay *disp)
    drm_add_configs_for_visuals(disp);
 
    disp->Extensions.KHR_image_pixmap = EGL_TRUE;
-   if (dri2_dpy->image_driver)
-      disp->Extensions.EXT_buffer_age = EGL_TRUE;
+   disp->Extensions.EXT_buffer_age = EGL_TRUE;
 
 #ifdef HAVE_WAYLAND_PLATFORM
    dri2_dpy->device_name =

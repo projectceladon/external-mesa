@@ -16,7 +16,7 @@ set -ex -o pipefail
 # - the GL release produces `glcts`, and
 # - the GLES release produces `deqp-gles*` and `deqp-egl`
 
-DEQP_VK_VERSION=1.3.8.2
+DEQP_VK_VERSION=1.3.9.0
 DEQP_GL_VERSION=4.6.4.1
 DEQP_GLES_VERSION=3.2.10.1
 
@@ -28,14 +28,14 @@ DEQP_GLES_VERSION=3.2.10.1
 
 # shellcheck disable=SC2034
 vk_cts_commits_to_backport=(
-    # Fix more ASAN errors due to missing virtual destructors
-    dd40bcfef1b4035ea55480b6fd4d884447120768
+  # Add missing NonUniform decoration in variable pointers test
+  cd262587a42dcd20951c22f66d7525c76cf64af4
 
-    # Remove "unused shader stages" tests
-    7dac86c6bbd15dec91d7d9a98cd6dd57c11092a7
+  # Allow extra invocations in the pipeline stats
+  78f6618e147c0a745754b9e73ae10113a1ebde29
 
-    # Emit point size from "many indirect draws" test
-    771e56d1c4d03e073ddb7f1200ad6d57e0a0c979
+  # Reduce the memory usage of the compute reconvergence tests
+  85b965dbb675d1fdb4ff367a342b9ee189394e95
 )
 
 # shellcheck disable=SC2034
@@ -125,7 +125,7 @@ done
 {
   echo "dEQP base version $DEQP_VERSION"
   echo "The following local patches are applied on top:"
-  git log --reverse --oneline $DEQP_VERSION.. --format=%s | sed 's/^/- /'
+  git log --reverse --oneline $DEQP_VERSION.. --format='- %s'
 } > /deqp/version-$deqp_api
 
 # --insecure is due to SSL cert failures hitting sourceforge for zlib and

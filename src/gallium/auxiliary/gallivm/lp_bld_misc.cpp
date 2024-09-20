@@ -406,6 +406,37 @@ lp_build_fill_mattrs(std::vector<std::string> &MAttrs)
    /* MSA requires a 64-bit FPU register file */
    MAttrs.push_back("+fp64");
 #endif
+
+#if DETECT_ARCH_RISCV64 == 1
+   /* Before riscv is more matured and util_get_cpu_caps() is implemented,
+    * assume this for now since most of linux capable riscv machine are
+    * riscv64gc
+    */
+   MAttrs = {"+m","+c","+a","+d","+f"};
+#endif
+
+#if DETECT_ARCH_LOONGARCH64 == 1
+   /*
+    * No FPU-less LoongArch64 systems are ever shipped yet, and LP64D is
+    * the default ABI, so FPU is enabled here.
+    *
+    * The Software development convention defaults to have "128-bit
+    * vector", so LSX is enabled here, see
+    * https://github.com/loongson/la-softdev-convention/releases/download/v0.1/la-softdev-convention.pdf
+    */
+   MAttrs = {"+f","+d"};
+#if LLVM_VERSION_MAJOR >= 18
+   MAttrs.push_back(util_get_cpu_caps()->has_lsx ? "+lsx" : "-lsx");
+   MAttrs.push_back(util_get_cpu_caps()->has_lasx ? "+lasx" : "-lasx");
+#else
+   /*
+    * LLVM 17's LSX support is incomplete, and LLVM 16 isn't supported
+    * LSX and LASX. So explicitly mask it.
+    */
+   MAttrs.push_back("-lsx");
+   MAttrs.push_back("-lasx");
+#endif
+#endif
 }
 
 void

@@ -148,25 +148,37 @@ zink_get_vendor(struct pipe_screen *pscreen)
 static const char *
 zink_get_device_vendor(struct pipe_screen *pscreen)
 {
-   struct zink_screen *screen = zink_screen(pscreen);
-   static char buf[1000];
-   snprintf(buf, sizeof(buf), "Unknown (vendor-id: 0x%04x)", screen->info.props.vendorID);
-   return buf;
+   return zink_screen(pscreen)->vendor_name;
 }
 
 static const char *
 zink_get_name(struct pipe_screen *pscreen)
 {
-   struct zink_screen *screen = zink_screen(pscreen);
-   const char *driver_name = vk_DriverId_to_str(screen->info.driver_props.driverID) + strlen("VK_DRIVER_ID_");
-   static char buf[1000];
-   snprintf(buf, sizeof(buf), "zink Vulkan %d.%d(%s (%s))",
-            VK_VERSION_MAJOR(screen->info.device_version),
-            VK_VERSION_MINOR(screen->info.device_version),
-            screen->info.props.deviceName,
-            strstr(vk_DriverId_to_str(screen->info.driver_props.driverID), "VK_DRIVER_ID_") ? driver_name : "Driver Unknown"
-            );
-   return buf;
+   return zink_screen(pscreen)->device_name;
+}
+
+static int
+zink_set_driver_strings(struct zink_screen *screen)
+{
+   char buf[1000];
+   const char *driver_name = vk_DriverId_to_str(zink_driverid(screen)) + strlen("VK_DRIVER_ID_");
+   int written = snprintf(buf, sizeof(buf), "zink Vulkan %d.%d(%s (%s))",
+      VK_VERSION_MAJOR(screen->info.device_version),
+      VK_VERSION_MINOR(screen->info.device_version),
+      screen->info.props.deviceName,
+      strstr(vk_DriverId_to_str(zink_driverid(screen)), "VK_DRIVER_ID_") ? driver_name : "Driver Unknown"
+   );
+   if (written < 0)
+      return written;
+   assert(written < sizeof(buf));
+   screen->device_name = ralloc_strdup(screen, buf);
+
+   written = snprintf(buf, sizeof(buf), "Unknown (vendor-id: 0x%04x)", screen->info.props.vendorID);
+   if (written < 0)
+      return written;
+   assert(written < sizeof(buf));
+   screen->vendor_name = ralloc_strdup(screen, buf);
+   return 0;
 }
 
 static void
@@ -256,7 +268,7 @@ get_video_mem(struct zink_screen *screen)
  * path.
  *
  * The output that gets stored in the frontend's cache is the result of
- * zink_shader_finalize().  So, our sha1 cache key here needs to include
+ * zink_shader_finalize().  So, our blake3 cache key here needs to include
  * everything that would change the NIR we generate from a given set of GLSL
  * source, including our driver build, the Vulkan device and driver (which could
  * affect the pipe caps we show the frontend), and any debug flags that change
@@ -272,16 +284,16 @@ disk_cache_init(struct zink_screen *screen)
       return true;
 
 #ifdef ENABLE_SHADER_CACHE
-   struct mesa_sha1 ctx;
-   _mesa_sha1_init(&ctx);
+   struct mesa_blake3 ctx;
+   _mesa_blake3_init(&ctx);
 
 #ifdef HAVE_DL_ITERATE_PHDR
    /* Hash in the zink driver build. */
    const struct build_id_note *note =
        build_id_find_nhdr_for_addr(disk_cache_init);
    unsigned build_id_len = build_id_length(note);
-   assert(note && build_id_len == 20); /* sha1 */
-   _mesa_sha1_update(&ctx, build_id_data(note), build_id_len);
+   assert(note && build_id_len == 20); /* blake3 */
+   _mesa_blake3_update(&ctx, build_id_data(note), build_id_len);
 #endif
 
    /* Hash in the Vulkan pipeline cache UUID to identify the combination of
@@ -295,26 +307,29 @@ disk_cache_init(struct zink_screen *screen)
    *  latter is used to identify a compatible device and driver combination to
    *  use when serializing and de-serializing pipeline state."
    */
-   _mesa_sha1_update(&ctx, screen->info.props.pipelineCacheUUID, VK_UUID_SIZE);
+   _mesa_blake3_update(&ctx, screen->info.props.pipelineCacheUUID, VK_UUID_SIZE);
 
    /* Hash in our debug flags that affect NIR generation as of finalize_nir */
    unsigned shader_debug_flags = zink_debug & ZINK_DEBUG_COMPACT;
-   _mesa_sha1_update(&ctx, &shader_debug_flags, sizeof(shader_debug_flags));
+   _mesa_blake3_update(&ctx, &shader_debug_flags, sizeof(shader_debug_flags));
+
+   /* add in these shader keys */
+   _mesa_blake3_update(&ctx, &screen->driver_compiler_workarounds, sizeof(screen->driver_compiler_workarounds));
 
    /* Some of the driconf options change shaders.  Let's just hash the whole
     * thing to not forget any (especially as options get added).
     */
-   _mesa_sha1_update(&ctx, &screen->driconf, sizeof(screen->driconf));
+   _mesa_blake3_update(&ctx, &screen->driconf, sizeof(screen->driconf));
 
    /* EXT_shader_object causes different descriptor layouts for separate shaders */
-   _mesa_sha1_update(&ctx, &screen->info.have_EXT_shader_object, sizeof(screen->info.have_EXT_shader_object));
+   _mesa_blake3_update(&ctx, &screen->info.have_EXT_shader_object, sizeof(screen->info.have_EXT_shader_object));
 
-   /* Finish the sha1 and format it as text. */
-   unsigned char sha1[20];
-   _mesa_sha1_final(&ctx, sha1);
+   /* Finish the blake3 and format it as text. */
+   blake3_hash blake3;
+   _mesa_blake3_final(&ctx, blake3);
 
    char cache_id[20 * 2 + 1];
-   mesa_bytes_to_hex(cache_id, sha1, 20);
+   mesa_bytes_to_hex(cache_id, blake3, 20);
 
    screen->disk_cache = disk_cache_create("zink", cache_id, 0);
 
@@ -363,7 +378,7 @@ cache_put_job(void *data, void *gdata, int thread_index)
       pg->pipeline_cache_size = size;
 
       cache_key key;
-      disk_cache_compute_key(screen->disk_cache, pg->sha1, sizeof(pg->sha1), key);
+      disk_cache_compute_key(screen->disk_cache, pg->blake3, sizeof(pg->blake3), key);
       disk_cache_put_nocopy(screen->disk_cache, key, pipeline_data, size, NULL);
    } else {
       mesa_loge("ZINK: vkGetPipelineCacheData failed (%s)", vk_Result_to_str(result));
@@ -396,7 +411,7 @@ cache_get_job(void *data, void *gdata, int thread_index)
    pcci.pInitialData = NULL;
 
    cache_key key;
-   disk_cache_compute_key(screen->disk_cache, pg->sha1, sizeof(pg->sha1), key);
+   disk_cache_compute_key(screen->disk_cache, pg->blake3, sizeof(pg->blake3), key);
    pcci.pInitialData = disk_cache_get(screen->disk_cache, key, &pg->pipeline_cache_size);
    pcci.initialDataSize = pg->pipeline_cache_size;
 
@@ -540,6 +555,9 @@ zink_get_param(struct pipe_screen *pscreen, enum pipe_cap param)
    switch (param) {
    case PIPE_CAP_NULL_TEXTURES:
       return screen->info.rb_image_feats.robustImageAccess;
+   case PIPE_CAP_MULTIVIEW:
+      /* support OVR_multiview and OVR_multiview2 */
+      return screen->info.have_vulkan13 ? 2 * screen->info.feats11.multiview : 0;
    case PIPE_CAP_TEXRECT:
    case PIPE_CAP_MULTI_DRAW_INDIRECT_PARTIAL_STRIDE:
       return 0;
@@ -567,7 +585,7 @@ zink_get_param(struct pipe_screen *pscreen, enum pipe_cap param)
    }
    case PIPE_CAP_SUPPORTED_PRIM_MODES: {
       uint32_t modes = BITFIELD_MASK(MESA_PRIM_COUNT);
-      if (!screen->have_triangle_fans)
+      if (!screen->have_triangle_fans || !screen->info.feats.features.geometryShader)
         modes &= ~BITFIELD_BIT(MESA_PRIM_QUADS);
       modes &= ~BITFIELD_BIT(MESA_PRIM_QUAD_STRIP);
       modes &= ~BITFIELD_BIT(MESA_PRIM_POLYGON);
@@ -626,6 +644,7 @@ zink_get_param(struct pipe_screen *pscreen, enum pipe_cap param)
    case PIPE_CAP_LOAD_CONSTBUF:
    case PIPE_CAP_MULTISAMPLE_Z_RESOLVE:
    case PIPE_CAP_ALLOW_GLTHREAD_BUFFER_SUBDATA_OPT:
+   case PIPE_CAP_NIR_SAMPLERS_AS_DEREF:
       return 1;
 
    case PIPE_CAP_DRAW_VERTEX_STATE:
@@ -659,7 +678,7 @@ zink_get_param(struct pipe_screen *pscreen, enum pipe_cap param)
 
    case PIPE_CAP_ROBUST_BUFFER_ACCESS_BEHAVIOR:
       return screen->info.feats.features.robustBufferAccess &&
-             (screen->info.rb2_feats.robustImageAccess2 || screen->driver_workarounds.lower_robustImageAccess2);
+             (screen->info.rb2_feats.robustImageAccess2 || screen->driver_compiler_workarounds.lower_robustImageAccess2);
 
    case PIPE_CAP_MULTI_DRAW_INDIRECT:
       return screen->info.feats.features.multiDrawIndirect;
@@ -1156,10 +1175,8 @@ zink_get_shader_param(struct pipe_screen *pscreen,
          /* intel drivers report fewer components, but it's a value that's compatible
           * with what we need for GL, so we can still force a conformant value here
           */
-         if (screen->info.driver_props.driverID == VK_DRIVER_ID_INTEL_OPEN_SOURCE_MESA ||
-             screen->info.driver_props.driverID == VK_DRIVER_ID_INTEL_PROPRIETARY_WINDOWS ||
-             (screen->info.driver_props.driverID == VK_DRIVER_ID_MESA_VENUS
-              && screen->info.props.vendorID == 0x8086))
+         if (zink_driverid(screen) == VK_DRIVER_ID_INTEL_OPEN_SOURCE_MESA ||
+             zink_driverid(screen) == VK_DRIVER_ID_INTEL_PROPRIETARY_WINDOWS)
             return 32;
          max = screen->info.props.limits.maxFragmentInputComponents / 4;
          break;
@@ -1543,10 +1560,25 @@ zink_set_damage_region(struct pipe_screen *pscreen, struct pipe_resource *pres, 
 
    for (unsigned i = 0; i < nrects; i++) {
       int y = pres->height0 - rects[i].y - rects[i].height;
-      res->damage.extent.width = MAX2(res->damage.extent.width, rects[i].x + rects[i].width);
-      res->damage.extent.height = MAX2(res->damage.extent.height, y + rects[i].height);
-      res->damage.offset.x = MIN2(res->damage.offset.x, rects[i].x);
-      res->damage.offset.y = MIN2(res->damage.offset.y, y);
+      /* convert back to coord-based rects to use coordinate calcs */
+      struct u_rect currect = {
+         .x0 = res->damage.offset.x,
+         .y0 = res->damage.offset.y,
+         .x1 = res->damage.offset.x + res->damage.extent.width,
+         .y1 = res->damage.offset.y + res->damage.extent.height,
+      };
+      struct u_rect newrect = {
+         .x0 = rects[i].x,
+         .y0 = y,
+         .x1 = rects[i].x + rects[i].width,
+         .y1 = y + rects[i].height,
+      };
+      struct u_rect u;
+      u_rect_union(&u, &currect, &newrect);
+      res->damage.extent.width = u.y1 - u.y0;
+      res->damage.extent.height = u.x1 - u.x0;
+      res->damage.offset.x = u.x0;
+      res->damage.offset.y = u.y0;
    }
 
    res->use_damage = nrects > 0;
@@ -1700,7 +1732,8 @@ choose_pdev(struct zink_screen *screen, int64_t dev_major, int64_t dev_minor)
          return;
       }
 
-      assert(pdev_count > 0);
+      if (!pdev_count)
+         return;
 
       pdevs = malloc(sizeof(*pdevs) * pdev_count);
       if (!pdevs) {
@@ -1736,6 +1769,8 @@ choose_pdev(struct zink_screen *screen, int64_t dev_major, int64_t dev_minor)
             mesa_loge("ZINK: vkEnumeratePhysicalDevices failed (%s)", vk_Result_to_str(result));
          return;
       }
+      if (!pdev_count)
+         return;
       screen->pdev = pdev;
    }
    VKSCR(GetPhysicalDeviceProperties)(screen->pdev, &screen->info.props);
@@ -2758,7 +2793,7 @@ check_base_requirements(struct zink_screen *screen)
 {
    if (zink_debug & ZINK_DEBUG_QUIET)
       return;
-   if (screen->info.driver_props.driverID == VK_DRIVER_ID_MESA_V3DV) {
+   if (zink_driverid(screen) == VK_DRIVER_ID_MESA_V3DV) {
       /* v3dv doesn't support straddling i/o, but zink doesn't do that so this is effectively supported:
        * don't spam errors in this case
        */
@@ -2789,7 +2824,7 @@ check_base_requirements(struct zink_screen *screen)
       CHECK_OR_PRINT(have_EXT_line_rasterization);
       fprintf(stderr, "\n");
    }
-   if (screen->info.driver_props.driverID == VK_DRIVER_ID_MESA_V3DV) {
+   if (zink_driverid(screen) == VK_DRIVER_ID_MESA_V3DV) {
       screen->info.feats12.scalarBlockLayout = false;
       screen->info.have_EXT_scalar_block_layout = false;
    }
@@ -2810,15 +2845,14 @@ static void
 init_driver_workarounds(struct zink_screen *screen)
 {
    /* enable implicit sync for all non-mesa drivers */
-   screen->driver_workarounds.implicit_sync = true;
-   switch (screen->info.driver_props.driverID) {
+   screen->driver_workarounds.implicit_sync = screen->info.driver_props.driverID != VK_DRIVER_ID_MESA_VENUS;
+   switch (zink_driverid(screen)) {
    case VK_DRIVER_ID_MESA_RADV:
    case VK_DRIVER_ID_INTEL_OPEN_SOURCE_MESA:
    case VK_DRIVER_ID_MESA_LLVMPIPE:
    case VK_DRIVER_ID_MESA_TURNIP:
    case VK_DRIVER_ID_MESA_V3DV:
    case VK_DRIVER_ID_MESA_PANVK:
-   case VK_DRIVER_ID_MESA_VENUS:
       screen->driver_workarounds.implicit_sync = false;
       break;
    default:
@@ -2834,7 +2868,7 @@ init_driver_workarounds(struct zink_screen *screen)
       /* CWE usage needs EDS1 */
       screen->info.have_EXT_color_write_enable = false;
    }
-   if (screen->info.driver_props.driverID == VK_DRIVER_ID_AMD_PROPRIETARY)
+   if (zink_driverid(screen) == VK_DRIVER_ID_AMD_PROPRIETARY)
       /* this completely breaks xfb somehow */
       screen->info.have_EXT_extended_dynamic_state2 = false;
    /* EDS3 is only used with EDS2 */
@@ -2876,8 +2910,8 @@ init_driver_workarounds(struct zink_screen *screen)
                                                         (!(zink_debug & ZINK_DEBUG_GPL) ||
                                                          screen->info.gpl_props.graphicsPipelineLibraryFastLinking ||
                                                          screen->is_cpu);
-   screen->driver_workarounds.broken_l4a4 = screen->info.driver_props.driverID == VK_DRIVER_ID_NVIDIA_PROPRIETARY;
-   if (screen->info.driver_props.driverID == VK_DRIVER_ID_MESA_TURNIP) {
+   screen->driver_workarounds.broken_l4a4 = zink_driverid(screen) == VK_DRIVER_ID_NVIDIA_PROPRIETARY;
+   if (zink_driverid(screen) == VK_DRIVER_ID_MESA_TURNIP) {
       /* performance */
       screen->info.border_color_feats.customBorderColorWithoutFormat = VK_FALSE;
    }
@@ -2895,7 +2929,7 @@ init_driver_workarounds(struct zink_screen *screen)
       screen->driver_workarounds.no_linestipple = true;
    }
 
-   if (screen->info.driver_props.driverID ==
+   if (zink_driverid(screen) ==
        VK_DRIVER_ID_IMAGINATION_PROPRIETARY) {
       assert(screen->info.feats.features.geometryShader);
       screen->driver_workarounds.no_linesmooth = true;
@@ -2905,7 +2939,7 @@ init_driver_workarounds(struct zink_screen *screen)
     * gl_PointSize + glPolygonMode(..., GL_LINE), in the imagination
     * proprietary driver.
     */
-   switch (screen->info.driver_props.driverID) {
+   switch (zink_driverid(screen)) {
    case VK_DRIVER_ID_IMAGINATION_PROPRIETARY:
       screen->driver_workarounds.no_hw_gl_point = true;
       break;
@@ -2914,23 +2948,22 @@ init_driver_workarounds(struct zink_screen *screen)
       break;
    }
 
-   if (screen->info.driver_props.driverID == VK_DRIVER_ID_AMD_OPEN_SOURCE || 
-       screen->info.driver_props.driverID == VK_DRIVER_ID_AMD_PROPRIETARY || 
-       screen->info.driver_props.driverID == VK_DRIVER_ID_NVIDIA_PROPRIETARY || 
-       screen->info.driver_props.driverID == VK_DRIVER_ID_MESA_RADV)
+   if (zink_driverid(screen) == VK_DRIVER_ID_AMD_OPEN_SOURCE || 
+       zink_driverid(screen) == VK_DRIVER_ID_AMD_PROPRIETARY || 
+       zink_driverid(screen) == VK_DRIVER_ID_NVIDIA_PROPRIETARY || 
+       zink_driverid(screen) == VK_DRIVER_ID_MESA_RADV)
       screen->driver_workarounds.z24_unscaled_bias = 1<<23;
    else
       screen->driver_workarounds.z24_unscaled_bias = 1<<24;
-   if (screen->info.driver_props.driverID == VK_DRIVER_ID_NVIDIA_PROPRIETARY)
+   if (zink_driverid(screen) == VK_DRIVER_ID_NVIDIA_PROPRIETARY)
       screen->driver_workarounds.z16_unscaled_bias = 1<<15;
    else
       screen->driver_workarounds.z16_unscaled_bias = 1<<16;
    /* these drivers don't use VK_PIPELINE_CREATE_COLOR_ATTACHMENT_FEEDBACK_LOOP_BIT_EXT, so it can always be set */
-   switch (screen->info.driver_props.driverID) {
+   switch (zink_driverid(screen)) {
    case VK_DRIVER_ID_MESA_RADV:
    case VK_DRIVER_ID_INTEL_OPEN_SOURCE_MESA:
    case VK_DRIVER_ID_MESA_LLVMPIPE:
-   case VK_DRIVER_ID_MESA_VENUS:
    case VK_DRIVER_ID_NVIDIA_PROPRIETARY:
    case VK_DRIVER_ID_INTEL_PROPRIETARY_WINDOWS:
    case VK_DRIVER_ID_IMAGINATION_PROPRIETARY:
@@ -2940,9 +2973,8 @@ init_driver_workarounds(struct zink_screen *screen)
       break;
    }
    /* these drivers don't use VK_PIPELINE_CREATE_DEPTH_STENCIL_ATTACHMENT_FEEDBACK_LOOP_BIT_EXT, so it can always be set */
-   switch (screen->info.driver_props.driverID) {
+   switch (zink_driverid(screen)) {
    case VK_DRIVER_ID_MESA_LLVMPIPE:
-   case VK_DRIVER_ID_MESA_VENUS:
    case VK_DRIVER_ID_NVIDIA_PROPRIETARY:
    case VK_DRIVER_ID_IMAGINATION_PROPRIETARY:
       screen->driver_workarounds.always_feedback_loop_zs = screen->info.have_EXT_attachment_feedback_loop_layout;
@@ -2957,29 +2989,29 @@ init_driver_workarounds(struct zink_screen *screen)
    /* these drivers cannot handle OOB gl_Layer values, and therefore need clamping in shader.
     * TODO: Vulkan extension that details whether vulkan driver can handle OOB layer values
     */
-   switch (screen->info.driver_props.driverID) {
+   switch (zink_driverid(screen)) {
    case VK_DRIVER_ID_IMAGINATION_PROPRIETARY:
-      screen->driver_workarounds.needs_sanitised_layer = true;
+      screen->driver_compiler_workarounds.needs_sanitised_layer = true;
       break;
    default:
-      screen->driver_workarounds.needs_sanitised_layer = false;
+      screen->driver_compiler_workarounds.needs_sanitised_layer = false;
       break;
    }
    /* these drivers will produce undefined results when using swizzle 1 with combined z/s textures
     * TODO: use a future device property when available
     */
-   switch (screen->info.driver_props.driverID) {
+   switch (zink_driverid(screen)) {
    case VK_DRIVER_ID_IMAGINATION_PROPRIETARY:
    case VK_DRIVER_ID_IMAGINATION_OPEN_SOURCE_MESA:
-      screen->driver_workarounds.needs_zs_shader_swizzle = true;
+      screen->driver_compiler_workarounds.needs_zs_shader_swizzle = true;
       break;
    default:
-      screen->driver_workarounds.needs_zs_shader_swizzle = false;
+      screen->driver_compiler_workarounds.needs_zs_shader_swizzle = false;
       break;
    }
 
    /* When robust contexts are advertised but robustImageAccess2 is not available */
-   screen->driver_workarounds.lower_robustImageAccess2 =
+   screen->driver_compiler_workarounds.lower_robustImageAccess2 =
       !screen->info.rb2_feats.robustImageAccess2 &&
       screen->info.feats.features.robustBufferAccess &&
       screen->info.rb_image_feats.robustImageAccess;
@@ -2992,7 +3024,7 @@ init_driver_workarounds(struct zink_screen *screen)
    }
 
    /* these drivers benefit from renderpass optimization */
-   switch (screen->info.driver_props.driverID) {
+   switch (zink_driverid(screen)) {
    case VK_DRIVER_ID_MESA_LLVMPIPE:
    case VK_DRIVER_ID_MESA_TURNIP:
    case VK_DRIVER_ID_MESA_PANVK:
@@ -3013,10 +3045,10 @@ init_driver_workarounds(struct zink_screen *screen)
       screen->driver_workarounds.track_renderpasses = false;
 
    /* these drivers can successfully do INVALID <-> LINEAR dri3 modifier swap */
-   switch (screen->info.driver_props.driverID) {
+   switch (zink_driverid(screen)) {
    case VK_DRIVER_ID_MESA_TURNIP:
-   case VK_DRIVER_ID_MESA_VENUS:
    case VK_DRIVER_ID_MESA_NVK:
+   case VK_DRIVER_ID_MESA_LLVMPIPE:
       screen->driver_workarounds.can_do_invalid_linear_modifier = true;
       break;
    default:
@@ -3024,7 +3056,7 @@ init_driver_workarounds(struct zink_screen *screen)
    }
 
    /* these drivers have no difference between unoptimized and optimized shader compilation */
-   switch (screen->info.driver_props.driverID) {
+   switch (zink_driverid(screen)) {
    case VK_DRIVER_ID_MESA_LLVMPIPE:
       screen->driver_workarounds.disable_optimized_compile = true;
       break;
@@ -3034,7 +3066,7 @@ init_driver_workarounds(struct zink_screen *screen)
       break;
    }
 
-   switch (screen->info.driver_props.driverID) {
+   switch (zink_driverid(screen)) {
    case VK_DRIVER_ID_MESA_RADV:
    case VK_DRIVER_ID_AMD_OPEN_SOURCE:
    case VK_DRIVER_ID_AMD_PROPRIETARY:
@@ -3048,11 +3080,21 @@ init_driver_workarounds(struct zink_screen *screen)
    }
 
    screen->driver_workarounds.can_2d_view_sparse = true;
-   switch (screen->info.driver_props.driverID) {
+   switch (zink_driverid(screen)) {
    case VK_DRIVER_ID_INTEL_OPEN_SOURCE_MESA:
    case VK_DRIVER_ID_INTEL_PROPRIETARY_WINDOWS:
       /* this does wild things to block shapes */
       screen->driver_workarounds.can_2d_view_sparse = false;
+      break;
+   default:
+      break;
+   }
+
+   switch (zink_driverid(screen)) {
+   case VK_DRIVER_ID_MESA_RADV:
+   case VK_DRIVER_ID_MESA_NVK:
+   case VK_DRIVER_ID_NVIDIA_PROPRIETARY:
+      screen->driver_workarounds.general_depth_layout = true;
       break;
    default:
       break;
@@ -3092,7 +3134,7 @@ static void
 init_optimal_keys(struct zink_screen *screen)
 {
    /* assume that anyone who knows enough to enable optimal_keys on turnip doesn't care about missing line stipple */
-   if (zink_debug & ZINK_DEBUG_OPTIMAL_KEYS && screen->info.driver_props.driverID == VK_DRIVER_ID_MESA_TURNIP)
+   if (zink_debug & ZINK_DEBUG_OPTIMAL_KEYS && zink_driverid(screen) == VK_DRIVER_ID_MESA_TURNIP)
       zink_debug |= ZINK_DEBUG_QUIET;
    screen->optimal_keys = !screen->need_decompose_attrs &&
                           screen->info.have_EXT_non_seamless_cube_map &&
@@ -3101,9 +3143,9 @@ init_optimal_keys(struct zink_screen *screen)
                           !screen->driver_workarounds.no_linestipple &&
                           !screen->driver_workarounds.no_linesmooth &&
                           !screen->driver_workarounds.no_hw_gl_point &&
-                          !screen->driver_workarounds.lower_robustImageAccess2 &&
+                          !screen->driver_compiler_workarounds.lower_robustImageAccess2 &&
                           !screen->driconf.emulate_point_smooth &&
-                          !screen->driver_workarounds.needs_zs_shader_swizzle;
+                          !screen->driver_compiler_workarounds.needs_zs_shader_swizzle;
    if (!screen->optimal_keys && zink_debug & ZINK_DEBUG_OPTIMAL_KEYS && !(zink_debug & ZINK_DEBUG_QUIET)) {
       fprintf(stderr, "The following criteria are preventing optimal_keys enablement:\n");
       if (screen->need_decompose_attrs)
@@ -3112,7 +3154,7 @@ init_optimal_keys(struct zink_screen *screen)
          fprintf(stderr, "uniform inlining must be disabled (set ZINK_INLINE_UNIFORMS=0 in your env)\n");
       if (screen->driconf.emulate_point_smooth)
          fprintf(stderr, "smooth point emulation is enabled\n");
-      if (screen->driver_workarounds.needs_zs_shader_swizzle)
+      if (screen->driver_compiler_workarounds.needs_zs_shader_swizzle)
          fprintf(stderr, "Z/S shader swizzle workaround is enabled\n");
       CHECK_OR_PRINT(have_EXT_line_rasterization);
       CHECK_OR_PRINT(line_rast_feats.stippledBresenhamLines);
@@ -3304,7 +3346,7 @@ zink_internal_create_screen(const struct pipe_screen_config *config, int64_t dev
       screen->driconf.zink_shader_object_enable = driQueryOptionb(config->options, "zink_shader_object_enable");
    }
 
-   if (!zink_create_instance(screen, dev_major > 0 && dev_major < 255))
+   if (!zink_create_instance(screen))
       goto fail;
 
    if (zink_debug & ZINK_DEBUG_VALIDATION) {
@@ -3351,6 +3393,11 @@ zink_internal_create_screen(const struct pipe_screen_config *config, int64_t dev
    if (!zink_get_physical_device_info(screen)) {
       if (!screen->driver_name_is_inferred)
          debug_printf("ZINK: failed to detect features\n");
+      goto fail;
+   }
+
+   if (zink_set_driver_strings(screen)) {
+      mesa_loge("ZINK: failed to set driver strings\n");
       goto fail;
    }
 
@@ -3402,6 +3449,12 @@ zink_internal_create_screen(const struct pipe_screen_config *config, int64_t dev
    if (!screen->info.have_KHR_timeline_semaphore && !screen->info.feats12.timelineSemaphore) {
       if (!screen->driver_name_is_inferred)
          mesa_loge("zink: KHR_timeline_semaphore is required");
+      goto fail;
+   }
+
+   if (zink_driverid(screen) == VK_DRIVER_ID_IMAGINATION_PROPRIETARY && !screen->info.feats.features.geometryShader) {
+      if (!screen->driver_name_is_inferred)
+         mesa_loge("zink: Imagination proprietary driver w/o geometryShader is unsupported");
       goto fail;
    }
 
@@ -3526,7 +3579,7 @@ zink_internal_create_screen(const struct pipe_screen_config *config, int64_t dev
    zink_screen_fence_init(&screen->base);
 
    if (zink_debug & ZINK_DEBUG_IOOPT)
-      screen->driver_workarounds.io_opt = true;
+      screen->driver_compiler_workarounds.io_opt = true;
    zink_screen_init_compiler(screen);
    if (!disk_cache_init(screen)) {
       if (!screen->driver_name_is_inferred)

@@ -511,7 +511,8 @@ gather_intrinsic_info(nir_intrinsic_instr *instr, nir_shader *shader,
          shader->info.writes_memory = true;
       break;
    }
-   case nir_intrinsic_image_deref_load: {
+   case nir_intrinsic_image_deref_load:
+   case nir_intrinsic_image_deref_sparse_load: {
       nir_deref_instr *deref = nir_src_as_deref(instr->src[0]);
       nir_variable *var = nir_deref_instr_get_variable(deref);
       enum glsl_sampler_dim dim = glsl_get_sampler_dim(glsl_without_array(var->type));
@@ -524,7 +525,8 @@ gather_intrinsic_info(nir_intrinsic_instr *instr, nir_shader *shader,
       break;
    }
 
-   case nir_intrinsic_bindless_image_load: {
+   case nir_intrinsic_bindless_image_load:
+   case nir_intrinsic_bindless_image_sparse_load: {
       enum glsl_sampler_dim dim = nir_intrinsic_image_dim(instr);
       if (dim != GLSL_SAMPLER_DIM_SUBPASS &&
           dim != GLSL_SAMPLER_DIM_SUBPASS_MS)
@@ -537,6 +539,7 @@ gather_intrinsic_info(nir_intrinsic_instr *instr, nir_shader *shader,
    case nir_intrinsic_load_per_vertex_input:
    case nir_intrinsic_load_input_vertex:
    case nir_intrinsic_load_interpolated_input:
+   case nir_intrinsic_load_per_primitive_input:
       if (shader->info.stage == MESA_SHADER_TESS_EVAL &&
           instr->intrinsic == nir_intrinsic_load_input &&
           !is_patch_special) {
@@ -547,7 +550,7 @@ gather_intrinsic_info(nir_intrinsic_instr *instr, nir_shader *shader,
          shader->info.inputs_read |= slot_mask;
          if (nir_intrinsic_io_semantics(instr).high_dvec2)
             shader->info.dual_slot_inputs |= slot_mask;
-         if (nir_intrinsic_io_semantics(instr).per_primitive)
+         if (instr->intrinsic == nir_intrinsic_load_per_primitive_input)
             shader->info.per_primitive_inputs |= slot_mask;
          shader->info.inputs_read_16bit |= slot_mask_16bit;
          if (!nir_src_is_const(*nir_get_io_offset_src(instr))) {
@@ -675,6 +678,7 @@ gather_intrinsic_info(nir_intrinsic_instr *instr, nir_shader *shader,
    case nir_intrinsic_load_global_invocation_id:
    case nir_intrinsic_load_base_global_invocation_id:
    case nir_intrinsic_load_global_invocation_index:
+   case nir_intrinsic_load_global_size:
    case nir_intrinsic_load_workgroup_id:
    case nir_intrinsic_load_base_workgroup_id:
    case nir_intrinsic_load_workgroup_index:
@@ -753,6 +757,18 @@ gather_intrinsic_info(nir_intrinsic_instr *instr, nir_shader *shader,
       } else if (nir_intrinsic_interp_mode(instr) == INTERP_MODE_NOPERSPECTIVE) {
          BITSET_SET(shader->info.system_values_read, SYSTEM_VALUE_BARYCENTRIC_LINEAR_COORD);
       }
+      break;
+
+   case nir_intrinsic_ddx:
+   case nir_intrinsic_ddx_fine:
+   case nir_intrinsic_ddx_coarse:
+   case nir_intrinsic_ddy:
+   case nir_intrinsic_ddy_fine:
+   case nir_intrinsic_ddy_coarse:
+      shader->info.uses_fddx_fddy = true;
+
+      if (shader->info.stage == MESA_SHADER_FRAGMENT)
+         shader->info.fs.needs_quad_helper_invocations = true;
       break;
 
    case nir_intrinsic_quad_vote_any:
@@ -843,10 +859,13 @@ gather_intrinsic_info(nir_intrinsic_instr *instr, nir_shader *shader,
       if (nir_intrinsic_writes_external_memory(instr))
          shader->info.writes_memory = true;
 
-      if (instr->intrinsic == nir_intrinsic_image_size ||
+      if (instr->intrinsic == nir_intrinsic_image_levels ||
+          instr->intrinsic == nir_intrinsic_image_size ||
           instr->intrinsic == nir_intrinsic_image_samples ||
+          instr->intrinsic == nir_intrinsic_image_deref_levels ||
           instr->intrinsic == nir_intrinsic_image_deref_size ||
           instr->intrinsic == nir_intrinsic_image_deref_samples ||
+          instr->intrinsic == nir_intrinsic_bindless_image_levels ||
           instr->intrinsic == nir_intrinsic_bindless_image_size ||
           instr->intrinsic == nir_intrinsic_bindless_image_samples)
          shader->info.uses_resource_info_query = true;
@@ -864,6 +883,11 @@ gather_tex_info(nir_tex_instr *instr, nir_shader *shader)
    if (nir_tex_instr_src_index(instr, nir_tex_src_texture_handle) != -1 ||
        nir_tex_instr_src_index(instr, nir_tex_src_sampler_handle) != -1)
       shader->info.uses_bindless = true;
+
+   if (!nir_tex_instr_is_query(instr) &&
+       (instr->sampler_dim == GLSL_SAMPLER_DIM_SUBPASS ||
+        instr->sampler_dim == GLSL_SAMPLER_DIM_SUBPASS_MS))
+      shader->info.fs.uses_fbfetch_output = true;
 
    switch (instr->op) {
    case nir_texop_tg4:

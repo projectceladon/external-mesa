@@ -328,13 +328,13 @@ pandecode_run_idvs(struct pandecode_context *ctx, FILE *fp,
       (ctx, cs_get_u64(qctx, 20), "Fragment shader", qctx->gpu_id);
    }
 
-   DUMP_ADDR(ctx, LOCAL_STORAGE, cs_get_u64(qctx, 24),
+   DUMP_ADDR(ctx, LOCAL_STORAGE, cs_get_u64(qctx, reg_position_tsd),
              "Position Local Storage @%" PRIx64 ":\n",
              cs_get_u64(qctx, reg_position_tsd));
-   DUMP_ADDR(ctx, LOCAL_STORAGE, cs_get_u64(qctx, 24),
+   DUMP_ADDR(ctx, LOCAL_STORAGE, cs_get_u64(qctx, reg_vary_tsd),
              "Varying Local Storage @%" PRIx64 ":\n",
              cs_get_u64(qctx, reg_vary_tsd));
-   DUMP_ADDR(ctx, LOCAL_STORAGE, cs_get_u64(qctx, 30),
+   DUMP_ADDR(ctx, LOCAL_STORAGE, cs_get_u64(qctx, reg_frag_tsd),
              "Fragment Local Storage @%" PRIx64 ":\n",
              cs_get_u64(qctx, reg_frag_tsd));
 
@@ -854,6 +854,22 @@ interpret_ceu_instr(struct pandecode_context *ctx, struct queue_ctx *qctx)
       pan_unpack(bytes, CS_MOVE32, I);
 
       qctx->regs[I.destination] = I.immediate;
+      break;
+   }
+
+   case MALI_CS_OPCODE_LOAD_MULTIPLE: {
+      pan_unpack(bytes, CS_LOAD_MULTIPLE, I);
+      mali_ptr addr =
+         ((uint64_t)qctx->regs[I.address + 1] << 32) | qctx->regs[I.address];
+      addr += I.offset;
+
+      uint32_t *src =
+         pandecode_fetch_gpu_mem(ctx, addr, util_last_bit(I.mask) * 4);
+
+      for (uint32_t i = 0; i < 16; i++) {
+         if (I.mask & BITFIELD_BIT(i))
+            qctx->regs[I.base_register + i] = src[i];
+      }
       break;
    }
 

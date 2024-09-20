@@ -1408,9 +1408,28 @@ swap_subdword_gfx11(Builder& bld, Definition def, Operand op)
    if (def.bytes() == 2) {
       Operand def_as_op = Operand(def.physReg(), def.regClass());
       Definition op_as_def = Definition(op.physReg(), op.regClass());
-      Instruction* instr = bld.vop1(aco_opcode::v_swap_b16, def, op_as_def, op, def_as_op);
-      instr->valu().opsel[0] = op.physReg().byte();
-      instr->valu().opsel[3] = def.physReg().byte();
+      /* v_swap_b16 is not offically supported as VOP3, so it can't be used with v128-255.
+       * Tests show that VOP3 appears to work correctly, but according to AMD that should
+       * not be relied on.
+       */
+      if (def.physReg() < (256 + 128) && op.physReg() < (256 + 128)) {
+         Instruction* instr = bld.vop1(aco_opcode::v_swap_b16, def, op_as_def, op, def_as_op);
+         instr->valu().opsel[0] = op.physReg().byte();
+         instr->valu().opsel[3] = def.physReg().byte();
+      } else {
+         Instruction* instr = bld.vop3(aco_opcode::v_xor_b16, def, op, def_as_op);
+         instr->valu().opsel[0] = op.physReg().byte();
+         instr->valu().opsel[1] = def_as_op.physReg().byte();
+         instr->valu().opsel[3] = def.physReg().byte();
+         instr = bld.vop3(aco_opcode::v_xor_b16, op_as_def, op, def_as_op);
+         instr->valu().opsel[0] = op.physReg().byte();
+         instr->valu().opsel[1] = def_as_op.physReg().byte();
+         instr->valu().opsel[3] = op_as_def.physReg().byte();
+         instr = bld.vop3(aco_opcode::v_xor_b16, def, op, def_as_op);
+         instr->valu().opsel[0] = op.physReg().byte();
+         instr->valu().opsel[1] = def_as_op.physReg().byte();
+         instr->valu().opsel[3] = def.physReg().byte();
+      }
    } else {
       PhysReg op_half = op.physReg();
       op_half.reg_b &= ~1;
@@ -2805,6 +2824,11 @@ lower_to_hw_instr(Program* program)
                                            branch->opcode == aco_opcode::p_cbranch_nz) &&
                                           branch->operands[0].physReg() == exec);
 
+            if (branch->never_taken) {
+               assert(!uniform_branch);
+               continue;
+            }
+
             /* Check if the branch instruction can be removed.
              * This is beneficial when executing the next block with an empty exec mask
              * is faster than the branch instruction itself.
@@ -2813,8 +2837,7 @@ lower_to_hw_instr(Program* program)
              * - The application prefers to remove control flow
              * - The compiler stack knows that it's a divergent branch always taken
              */
-            const bool prefer_remove =
-               branch->selection_control_remove && ctx.program->gfx_level >= GFX10;
+            const bool prefer_remove = branch->rarely_taken;
             bool can_remove = block->index < target;
             unsigned num_scalar = 0;
             unsigned num_vector = 0;
@@ -2862,17 +2885,13 @@ lower_to_hw_instr(Program* program)
                               num_scalar++;
                         }
                      }
-                  } else if (inst->isEXP()) {
-                     /* Export instructions with exec=0 can hang some GFX10+ (unclear on old GPUs). */
+                  } else if (inst->isEXP() || inst->isSMEM() || inst->isBarrier()) {
+                     /* Export instructions with exec=0 can hang some GFX10+ (unclear on old GPUs),
+                      * SMEM might be an invalid access, and barriers are probably expensive. */
                      can_remove = false;
                   } else if (inst->isVMEM() || inst->isFlatLike() || inst->isDS() ||
                              inst->isLDSDIR()) {
                      // TODO: GFX6-9 can use vskip
-                     can_remove = prefer_remove;
-                  } else if (inst->isSMEM()) {
-                     /* SMEM are at least as expensive as branches */
-                     can_remove = prefer_remove;
-                  } else if (inst->isBarrier()) {
                      can_remove = prefer_remove;
                   } else {
                      can_remove = false;
@@ -2956,17 +2975,29 @@ lower_to_hw_instr(Program* program)
             } else if (emit_s_barrier) {
                bld.sopp(aco_opcode::s_barrier);
             }
-         } else if (instr->opcode == aco_opcode::p_cvt_f16_f32_rtne) {
+         } else if (instr->opcode == aco_opcode::p_v_cvt_f16_f32_rtne ||
+                    instr->opcode == aco_opcode::p_s_cvt_f16_f32_rtne) {
             float_mode new_mode = block->fp_mode;
             new_mode.round16_64 = fp_round_ne;
             bool set_round = new_mode.round != block->fp_mode.round;
 
             emit_set_mode(bld, new_mode, set_round, false);
 
-            instr->opcode = aco_opcode::v_cvt_f16_f32;
+            if (instr->opcode == aco_opcode::p_v_cvt_f16_f32_rtne)
+               instr->opcode = aco_opcode::v_cvt_f16_f32;
+            else
+               instr->opcode = aco_opcode::s_cvt_f16_f32;
             ctx.instructions.emplace_back(std::move(instr));
 
             emit_set_mode(bld, block->fp_mode, set_round, false);
+         } else if (instr->opcode == aco_opcode::p_v_cvt_pk_u8_f32) {
+            Definition def = instr->definitions[0];
+            VALU_instruction& valu =
+               bld.vop3(aco_opcode::v_cvt_pk_u8_f32, def, instr->operands[0],
+                        Operand::c32(def.physReg().byte()), Operand(def.physReg(), v1))
+                  ->valu();
+            valu.abs = instr->valu().abs;
+            valu.neg = instr->valu().neg;
          } else if (instr->isMIMG() && instr->mimg().strict_wqm) {
             lower_image_sample(&ctx, instr);
             ctx.instructions.emplace_back(std::move(instr));
@@ -3006,6 +3037,8 @@ lower_to_hw_instr(Program* program)
       end_with_regs_block->kind &= ~block_kind_end_with_regs;
       exit_block->kind |= block_kind_end_with_regs;
    }
+
+   program->progress = CompilationProgress::after_lower_to_hw;
 }
 
 } // namespace aco

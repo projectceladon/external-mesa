@@ -4,8 +4,6 @@ glx@glx_arb_sync_control@swapbuffersmsc-divisor-zero,Fail
 glx@glx-make-current,Fail
 glx@glx-multi-window-single-context,Fail
 glx@glx-swap-pixmap-bad,Fail
-glx@glx-visuals-depth -pixmap,Crash
-glx@glx-visuals-stencil -pixmap,Crash
 shaders@point-vertex-id divisor,Fail
 shaders@point-vertex-id gl_instanceid divisor,Fail
 shaders@point-vertex-id gl_instanceid,Fail
@@ -14,11 +12,8 @@ shaders@point-vertex-id gl_vertexid,Fail
 shaders@point-vertex-id gl_vertexid gl_instanceid divisor,Fail
 shaders@point-vertex-id gl_vertexid gl_instanceid,Fail
 spec@arb_base_instance@arb_base_instance-drawarrays,Fail
-spec@arb_depth_clamp@depth-clamp-range,Fail
 spec@arb_direct_state_access@gettextureimage-formats,Fail
 spec@arb_direct_state_access@gettextureimage-formats init-by-rendering,Fail
-spec@arb_framebuffer_object@fbo-luminance-alpha,Fail
-spec@arb_framebuffer_srgb@fbo-fast-clear,Fail
 spec@arb_point_sprite@arb_point_sprite-mipmap,Fail
 spec@arb_shader_texture_lod@execution@arb_shader_texture_lod-texgradcube,Fail
 spec@arb_shader_texture_lod@execution@arb_shader_texture_lod-texgrad,Fail
@@ -96,16 +91,8 @@ spec@ext_framebuffer_multisample@alpha-to-one-dual-src-blend 2,Fail
 spec@ext_framebuffer_multisample@alpha-to-one-dual-src-blend 4,Fail
 spec@ext_framebuffer_multisample@draw-buffers-alpha-to-one 2,Fail
 spec@ext_framebuffer_multisample@draw-buffers-alpha-to-one 4,Fail
-spec@ext_framebuffer_multisample@fast-clear,Fail
-spec@ext_framebuffer_multisample@formats 2,Fail
-spec@ext_framebuffer_multisample@formats 4,Fail
-spec@ext_framebuffer_multisample@formats all_samples,Fail
 spec@ext_framebuffer_multisample@sample-alpha-to-one 2,Fail
 spec@ext_framebuffer_multisample@sample-alpha-to-one 4,Fail
-spec@ext_framebuffer_object@fbo-alphatest-formats,Fail
-spec@ext_framebuffer_object@fbo-alphatest-formats@GL_INTENSITY4,Fail
-spec@ext_framebuffer_object@fbo-alphatest-formats@GL_INTENSITY8,Fail
-spec@ext_framebuffer_object@fbo-alphatest-formats@GL_INTENSITY,Fail
 spec@ext_framebuffer_object@fbo-blending-format-quirks,Fail
 spec@ext_framebuffer_object@fbo-blending-formats,Fail
 spec@ext_framebuffer_object@fbo-blending-formats@GL_ALPHA4,Fail
@@ -121,39 +108,15 @@ spec@ext_framebuffer_object@fbo-blending-formats@GL_LUMINANCE8,Fail
 spec@ext_framebuffer_object@fbo-blending-formats@GL_LUMINANCE_ALPHA,Fail
 spec@ext_framebuffer_object@fbo-blending-formats@GL_LUMINANCE,Fail
 spec@ext_framebuffer_object@fbo-blending-snorm,Fail
-spec@ext_framebuffer_object@fbo-clear-formats,Fail
-spec@ext_framebuffer_object@fbo-clear-formats@GL_INTENSITY4,Fail
-spec@ext_framebuffer_object@fbo-clear-formats@GL_INTENSITY8,Fail
-spec@ext_framebuffer_object@fbo-clear-formats@GL_INTENSITY,Fail
-spec@ext_framebuffer_object@fbo-clear-formats@GL_LUMINANCE4_ALPHA4,Fail
-spec@ext_framebuffer_object@fbo-clear-formats@GL_LUMINANCE4,Fail
-spec@ext_framebuffer_object@fbo-clear-formats@GL_LUMINANCE8_ALPHA8,Fail
-spec@ext_framebuffer_object@fbo-clear-formats@GL_LUMINANCE8,Fail
-spec@ext_framebuffer_object@fbo-clear-formats@GL_LUMINANCE_ALPHA,Fail
-spec@ext_framebuffer_object@fbo-clear-formats@GL_LUMINANCE,Fail
-spec@ext_framebuffer_object@fbo-colormask-formats,Fail
-spec@ext_framebuffer_object@fbo-colormask-formats@GL_INTENSITY4,Fail
-spec@ext_framebuffer_object@fbo-colormask-formats@GL_INTENSITY8,Fail
-spec@ext_framebuffer_object@fbo-colormask-formats@GL_INTENSITY,Fail
-spec@ext_framebuffer_object@fbo-colormask-formats@GL_LUMINANCE4_ALPHA4,Fail
-spec@ext_framebuffer_object@fbo-colormask-formats@GL_LUMINANCE4,Fail
-spec@ext_framebuffer_object@fbo-colormask-formats@GL_LUMINANCE8_ALPHA8,Fail
-spec@ext_framebuffer_object@fbo-colormask-formats@GL_LUMINANCE8,Fail
-spec@ext_framebuffer_object@fbo-colormask-formats@GL_LUMINANCE_ALPHA,Fail
-spec@ext_framebuffer_object@fbo-colormask-formats@GL_LUMINANCE,Fail
-spec@ext_framebuffer_object@fbo-fast-clear,Fail
 spec@ext_framebuffer_object@getteximage-formats init-by-clear-and-render,Fail
 spec@ext_framebuffer_object@getteximage-formats init-by-rendering,Fail
 spec@ext_packed_float@query-rgba-signed-components,Fail
-spec@ext_texture_srgb@fbo-fast-clear,Fail
 spec@ext_transform_feedback2@draw-auto,Fail
 spec@ext_transform_feedback@builtin-varyings gl_clipdistance,Fail
 spec@ext_transform_feedback@change-size base-shrink,Fail
 spec@ext_transform_feedback@change-size offset-shrink,Fail
 spec@ext_transform_feedback@change-size range-grow,Fail
 spec@ext_transform_feedback@change-size range-shrink,Fail
-spec@ext_transform_feedback@immediate-reuse-index-buffer,Crash
-spec@ext_transform_feedback@immediate-reuse-uniform-buffer,Crash
 spec@ext_transform_feedback@interleaved-attribs,Fail
 spec@ext_transform_feedback@intervening-read output,Fail
 spec@ext_transform_feedback@intervening-read prims_written,Fail
@@ -263,24 +226,6 @@ spec@glsl-1.10@execution@varying-packing@simple vec4 array,Fail
 spec@glsl-1.10@execution@varying-packing@simple vec4 arrays_of_arrays,Fail
 spec@glsl-1.30@execution@tex-miplevel-selection texture() 2drect,Crash
 spec@glsl-1.30@execution@tex-miplevel-selection texture() 2drectshadow,Crash
-spec@glsl-1.30@execution@tex-miplevel-selection texturegrad 2drect,Crash
-spec@glsl-1.30@execution@tex-miplevel-selection texturegrad 2drectshadow,Crash
-spec@glsl-1.30@execution@tex-miplevel-selection texturegradoffset 2drect,Crash
-spec@glsl-1.30@execution@tex-miplevel-selection texturegradoffset 2drectshadow,Crash
-spec@glsl-1.30@execution@tex-miplevel-selection textureoffset 2drect,Crash
-spec@glsl-1.30@execution@tex-miplevel-selection textureoffset 2drectshadow,Crash
-spec@glsl-1.30@execution@tex-miplevel-selection textureproj 2drect,Crash
-spec@glsl-1.30@execution@tex-miplevel-selection textureproj 2drect_projvec4,Crash
-spec@glsl-1.30@execution@tex-miplevel-selection textureproj 2drectshadow,Crash
-spec@glsl-1.30@execution@tex-miplevel-selection textureprojgrad 2drect,Crash
-spec@glsl-1.30@execution@tex-miplevel-selection textureprojgrad 2drect_projvec4,Crash
-spec@glsl-1.30@execution@tex-miplevel-selection textureprojgrad 2drectshadow,Crash
-spec@glsl-1.30@execution@tex-miplevel-selection textureprojgradoffset 2drect,Crash
-spec@glsl-1.30@execution@tex-miplevel-selection textureprojgradoffset 2drect_projvec4,Crash
-spec@glsl-1.30@execution@tex-miplevel-selection textureprojgradoffset 2drectshadow,Crash
-spec@glsl-1.30@execution@tex-miplevel-selection textureprojoffset 2drect,Crash
-spec@glsl-1.30@execution@tex-miplevel-selection textureprojoffset 2drect_projvec4,Crash
-spec@glsl-1.30@execution@tex-miplevel-selection textureprojoffset 2drectshadow,Crash
 spec@glsl-es-3.00@execution@varying-struct-centroid_gles3,Fail
 spec@khr_texture_compression_astc@miptree-gles hdr,Fail
 spec@khr_texture_compression_astc@miptree-gles hdr@HDR Profile,Fail
@@ -350,13 +295,6 @@ spec@!opengl 3.1@primitive-restart-xfb flush,Fail
 spec@!opengl 3.1@primitive-restart-xfb generated,Fail
 spec@!opengl 3.1@primitive-restart-xfb written,Fail
 spec@!opengl es 3.0@gles-3.0-transform-feedback-uniform-buffer-object,Fail
-
-# Resolve operations not supported
-dEQP-VK.rasterization.interpolation_multisample_4_bit.lines,Crash
-dEQP-VK.rasterization.interpolation_multisample_4_bit.lines_wide,Crash
-dEQP-VK.rasterization.interpolation_multisample_4_bit.non_strict_lines,Crash
-dEQP-VK.rasterization.interpolation_multisample_4_bit.non_strict_lines_wide,Crash
-dEQP-VK.rasterization.interpolation_multisample_4_bit.triangles,Crash
 
 # Seems to be caused by an off-by-0.5 in the position. Also passes if we change
 # the line shape mode to rectangular. This needs further investigation
@@ -2573,175 +2511,14 @@ dEQP-VK.pipeline.pipeline_library.sampler.exact_sampling.r16g16_sint.gradient.un
 dEQP-VK.pipeline.pipeline_library.sampler.exact_sampling.r32_sfloat.gradient.normalized_coords.edge_right,Fail
 dEQP-VK.pipeline.pipeline_library.sampler.exact_sampling.r32_sfloat.gradient.unnormalized_coords.edge_right,Fail
 
-
-# resolve operations not supported yet
-dEQP-VK.pipeline.fast_linked_library.framebuffer_attachment.2d_19x27_32x32_ms,Crash
-dEQP-VK.pipeline.fast_linked_library.framebuffer_attachment.2d_32x32_39x41_ms,Crash
-dEQP-VK.pipeline.fast_linked_library.framebuffer_attachment.2d_32x32_48x48_ms,Crash
-dEQP-VK.pipeline.fast_linked_library.framebuffer_attachment.2d_32x32_64x64_ms,Crash
-dEQP-VK.pipeline.fast_linked_library.framebuffer_attachment.2d_array_19x27_32x32_4_ms,Crash
-dEQP-VK.pipeline.fast_linked_library.framebuffer_attachment.2d_array_32x32_39x41_4_ms,Crash
-dEQP-VK.pipeline.fast_linked_library.framebuffer_attachment.2d_array_32x32_48x48_4_ms,Crash
-dEQP-VK.pipeline.fast_linked_library.framebuffer_attachment.2d_array_32x32_64x64_4_ms,Crash
-dEQP-VK.pipeline.fast_linked_library.framebuffer_attachment.diff_attachments_2d_19x27_32x32_ms,Crash
-dEQP-VK.pipeline.fast_linked_library.framebuffer_attachment.diff_attachments_2d_32x32_39x41_ms,Crash
-dEQP-VK.pipeline.fast_linked_library.framebuffer_attachment.diff_attachments_2d_32x32_48x48_ms,Crash
-dEQP-VK.pipeline.fast_linked_library.framebuffer_attachment.diff_attachments_2d_32x32_64x64_ms,Crash
-dEQP-VK.pipeline.fast_linked_library.framebuffer_attachment.multi_attachments_not_exported_2d_64x64_64x64_ms,Crash
-dEQP-VK.pipeline.fast_linked_library.framebuffer_attachment.resolve_input_same_attachment,Crash
-dEQP-VK.pipeline.fast_linked_library.multisample.alpha_to_coverage_no_color_attachment.samples_4.alpha_opaque,Crash
-dEQP-VK.pipeline.fast_linked_library.multisample.alpha_to_coverage.samples_4.alpha_invisible_check_depth,Crash
-dEQP-VK.pipeline.fast_linked_library.multisample.alpha_to_coverage.samples_4.alpha_invisible,Crash
-dEQP-VK.pipeline.fast_linked_library.multisample.alpha_to_coverage.samples_4.alpha_opaque,Crash
-dEQP-VK.pipeline.fast_linked_library.multisample.alpha_to_coverage.samples_4.alpha_translucent,Crash
-dEQP-VK.pipeline.fast_linked_library.multisample.alpha_to_coverage_unused_attachment.samples_4.alpha_invisible,Crash
-dEQP-VK.pipeline.fast_linked_library.multisample.alpha_to_coverage_unused_attachment.samples_4.alpha_opaque,Crash
-dEQP-VK.pipeline.fast_linked_library.multisample_interpolation.centroid_qualifier_inside_primitive.128_128_1.samples_4,Crash
-dEQP-VK.pipeline.fast_linked_library.multisample_interpolation.centroid_qualifier_inside_primitive.137_191_1.samples_4,Crash
-dEQP-VK.pipeline.fast_linked_library.multisample.raster_samples_consistency.unique_colors_check,Crash
-dEQP-VK.pipeline.fast_linked_library.multisample.raster_samples.samples_4.depth,Crash
-dEQP-VK.pipeline.fast_linked_library.multisample.raster_samples.samples_4.depth_stencil,Crash
-dEQP-VK.pipeline.fast_linked_library.multisample.raster_samples.samples_4.primitive_line,Crash
-dEQP-VK.pipeline.fast_linked_library.multisample.raster_samples.samples_4.primitive_point_1px,Crash
-dEQP-VK.pipeline.fast_linked_library.multisample.raster_samples.samples_4.primitive_point,Crash
-dEQP-VK.pipeline.fast_linked_library.multisample.raster_samples.samples_4.primitive_triangle,Crash
-dEQP-VK.pipeline.fast_linked_library.multisample.raster_samples.samples_4.stencil,Crash
-dEQP-VK.pipeline.fast_linked_library.multisample.resolve.renderpass_renderarea.diamond_samples_4,Crash
-dEQP-VK.pipeline.fast_linked_library.multisample.resolve.renderpass_renderarea.parallelogram_samples_4,Crash
-dEQP-VK.pipeline.fast_linked_library.multisample.resolve.renderpass_renderarea.rectangle_samples_4,Crash
-dEQP-VK.pipeline.fast_linked_library.multisample.sample_mask.mask_all_off.samples_4.primitive_line,Crash
-dEQP-VK.pipeline.fast_linked_library.multisample.sample_mask.mask_all_off.samples_4.primitive_point_1px,Crash
-dEQP-VK.pipeline.fast_linked_library.multisample.sample_mask.mask_all_off.samples_4.primitive_point,Crash
-dEQP-VK.pipeline.fast_linked_library.multisample.sample_mask.mask_all_off.samples_4.primitive_triangle,Crash
-dEQP-VK.pipeline.fast_linked_library.multisample.sample_mask.mask_all_on.samples_4.primitive_line,Crash
-dEQP-VK.pipeline.fast_linked_library.multisample.sample_mask.mask_all_on.samples_4.primitive_point_1px,Crash
-dEQP-VK.pipeline.fast_linked_library.multisample.sample_mask.mask_all_on.samples_4.primitive_point,Crash
-dEQP-VK.pipeline.fast_linked_library.multisample.sample_mask.mask_all_on.samples_4.primitive_triangle,Crash
-dEQP-VK.pipeline.fast_linked_library.multisample.sample_mask.mask_one.samples_4.primitive_line,Crash
-dEQP-VK.pipeline.fast_linked_library.multisample.sample_mask.mask_one.samples_4.primitive_point_1px,Crash
-dEQP-VK.pipeline.fast_linked_library.multisample.sample_mask.mask_one.samples_4.primitive_point,Crash
-dEQP-VK.pipeline.fast_linked_library.multisample.sample_mask.mask_one.samples_4.primitive_triangle,Crash
-dEQP-VK.pipeline.fast_linked_library.multisample.sample_mask.mask_random.samples_4.primitive_line,Crash
-dEQP-VK.pipeline.fast_linked_library.multisample.sample_mask.mask_random.samples_4.primitive_point_1px,Crash
-dEQP-VK.pipeline.fast_linked_library.multisample.sample_mask.mask_random.samples_4.primitive_point,Crash
-dEQP-VK.pipeline.fast_linked_library.multisample.sample_mask.mask_random.samples_4.primitive_triangle,Crash
-dEQP-VK.pipeline.fast_linked_library.multisample_shader_builtin.sample_mask.pattern.128_128_1.samples_4,Crash
-dEQP-VK.pipeline.fast_linked_library.multisample_shader_builtin.sample_mask.pattern.137_191_1.samples_4,Crash
-dEQP-VK.pipeline.fast_linked_library.multisample_shader_builtin.sample_mask.write.128_128_1.samples_4,Crash
-dEQP-VK.pipeline.fast_linked_library.multisample_shader_builtin.sample_mask.write.137_191_1.samples_4,Crash
-dEQP-VK.pipeline.monolithic.framebuffer_attachment.2d_19x27_32x32_ms,Crash
-dEQP-VK.pipeline.monolithic.framebuffer_attachment.2d_32x32_39x41_ms,Crash
-dEQP-VK.pipeline.monolithic.framebuffer_attachment.2d_32x32_48x48_ms,Crash
-dEQP-VK.pipeline.monolithic.framebuffer_attachment.2d_32x32_64x64_ms,Crash
-dEQP-VK.pipeline.monolithic.framebuffer_attachment.2d_array_19x27_32x32_4_ms,Crash
-dEQP-VK.pipeline.monolithic.framebuffer_attachment.2d_array_32x32_39x41_4_ms,Crash
-dEQP-VK.pipeline.monolithic.framebuffer_attachment.2d_array_32x32_48x48_4_ms,Crash
-dEQP-VK.pipeline.monolithic.framebuffer_attachment.2d_array_32x32_64x64_4_ms,Crash
-dEQP-VK.pipeline.monolithic.framebuffer_attachment.diff_attachments_2d_19x27_32x32_ms,Crash
-dEQP-VK.pipeline.monolithic.framebuffer_attachment.diff_attachments_2d_32x32_39x41_ms,Crash
-dEQP-VK.pipeline.monolithic.framebuffer_attachment.diff_attachments_2d_32x32_48x48_ms,Crash
-dEQP-VK.pipeline.monolithic.framebuffer_attachment.diff_attachments_2d_32x32_64x64_ms,Crash
-dEQP-VK.pipeline.monolithic.framebuffer_attachment.multi_attachments_not_exported_2d_64x64_64x64_ms,Crash
-dEQP-VK.pipeline.monolithic.framebuffer_attachment.resolve_input_same_attachment,Crash
-dEQP-VK.pipeline.monolithic.multisample.alpha_to_coverage_no_color_attachment.samples_4.alpha_opaque,Crash
-dEQP-VK.pipeline.monolithic.multisample.alpha_to_coverage.samples_4.alpha_invisible_check_depth,Crash
-dEQP-VK.pipeline.monolithic.multisample.alpha_to_coverage.samples_4.alpha_invisible,Crash
-dEQP-VK.pipeline.monolithic.multisample.alpha_to_coverage.samples_4.alpha_opaque,Crash
-dEQP-VK.pipeline.monolithic.multisample.alpha_to_coverage.samples_4.alpha_translucent,Crash
-dEQP-VK.pipeline.monolithic.multisample.alpha_to_coverage_unused_attachment.samples_4.alpha_invisible,Crash
-dEQP-VK.pipeline.monolithic.multisample.alpha_to_coverage_unused_attachment.samples_4.alpha_opaque,Crash
-dEQP-VK.pipeline.monolithic.multisample_interpolation.centroid_qualifier_inside_primitive.128_128_1.samples_4,Crash
-dEQP-VK.pipeline.monolithic.multisample_interpolation.centroid_qualifier_inside_primitive.137_191_1.samples_4,Crash
-dEQP-VK.pipeline.monolithic.multisample.raster_samples_consistency.unique_colors_check,Crash
-dEQP-VK.pipeline.monolithic.multisample.raster_samples.samples_4.depth,Crash
-dEQP-VK.pipeline.monolithic.multisample.raster_samples.samples_4.depth_stencil,Crash
-dEQP-VK.pipeline.monolithic.multisample.raster_samples.samples_4.primitive_line,Crash
-dEQP-VK.pipeline.monolithic.multisample.raster_samples.samples_4.primitive_point_1px,Crash
-dEQP-VK.pipeline.monolithic.multisample.raster_samples.samples_4.primitive_point,Crash
-dEQP-VK.pipeline.monolithic.multisample.raster_samples.samples_4.primitive_triangle,Crash
-dEQP-VK.pipeline.monolithic.multisample.raster_samples.samples_4.stencil,Crash
-dEQP-VK.pipeline.monolithic.multisample.resolve.renderpass_renderarea.diamond_samples_4,Crash
-dEQP-VK.pipeline.monolithic.multisample.resolve.renderpass_renderarea.parallelogram_samples_4,Crash
-dEQP-VK.pipeline.monolithic.multisample.resolve.renderpass_renderarea.rectangle_samples_4,Crash
-dEQP-VK.pipeline.monolithic.multisample.sample_mask.mask_all_off.samples_4.primitive_line,Crash
-dEQP-VK.pipeline.monolithic.multisample.sample_mask.mask_all_off.samples_4.primitive_point_1px,Crash
-dEQP-VK.pipeline.monolithic.multisample.sample_mask.mask_all_off.samples_4.primitive_point,Crash
-dEQP-VK.pipeline.monolithic.multisample.sample_mask.mask_all_off.samples_4.primitive_triangle,Crash
-dEQP-VK.pipeline.monolithic.multisample.sample_mask.mask_all_on.samples_4.primitive_line,Crash
-dEQP-VK.pipeline.monolithic.multisample.sample_mask.mask_all_on.samples_4.primitive_point_1px,Crash
-dEQP-VK.pipeline.monolithic.multisample.sample_mask.mask_all_on.samples_4.primitive_point,Crash
-dEQP-VK.pipeline.monolithic.multisample.sample_mask.mask_all_on.samples_4.primitive_triangle,Crash
-dEQP-VK.pipeline.monolithic.multisample.sample_mask.mask_one.samples_4.primitive_line,Crash
-dEQP-VK.pipeline.monolithic.multisample.sample_mask.mask_one.samples_4.primitive_point_1px,Crash
-dEQP-VK.pipeline.monolithic.multisample.sample_mask.mask_one.samples_4.primitive_point,Crash
-dEQP-VK.pipeline.monolithic.multisample.sample_mask.mask_one.samples_4.primitive_triangle,Crash
-dEQP-VK.pipeline.monolithic.multisample.sample_mask.mask_random.samples_4.primitive_line,Crash
-dEQP-VK.pipeline.monolithic.multisample.sample_mask.mask_random.samples_4.primitive_point_1px,Crash
-dEQP-VK.pipeline.monolithic.multisample.sample_mask.mask_random.samples_4.primitive_point,Crash
-dEQP-VK.pipeline.monolithic.multisample.sample_mask.mask_random.samples_4.primitive_triangle,Crash
-dEQP-VK.pipeline.monolithic.multisample_shader_builtin.sample_mask.pattern.128_128_1.samples_4,Crash
-dEQP-VK.pipeline.monolithic.multisample_shader_builtin.sample_mask.pattern.137_191_1.samples_4,Crash
-dEQP-VK.pipeline.monolithic.multisample_shader_builtin.sample_mask.write.128_128_1.samples_4,Crash
-dEQP-VK.pipeline.monolithic.multisample_shader_builtin.sample_mask.write.137_191_1.samples_4,Crash
-dEQP-VK.pipeline.pipeline_library.framebuffer_attachment.2d_19x27_32x32_ms,Crash
-dEQP-VK.pipeline.pipeline_library.framebuffer_attachment.2d_32x32_39x41_ms,Crash
-dEQP-VK.pipeline.pipeline_library.framebuffer_attachment.2d_32x32_48x48_ms,Crash
-dEQP-VK.pipeline.pipeline_library.framebuffer_attachment.2d_32x32_64x64_ms,Crash
-dEQP-VK.pipeline.pipeline_library.framebuffer_attachment.2d_array_19x27_32x32_4_ms,Crash
-dEQP-VK.pipeline.pipeline_library.framebuffer_attachment.2d_array_32x32_39x41_4_ms,Crash
-dEQP-VK.pipeline.pipeline_library.framebuffer_attachment.2d_array_32x32_48x48_4_ms,Crash
-dEQP-VK.pipeline.pipeline_library.framebuffer_attachment.2d_array_32x32_64x64_4_ms,Crash
-dEQP-VK.pipeline.pipeline_library.framebuffer_attachment.diff_attachments_2d_19x27_32x32_ms,Crash
-dEQP-VK.pipeline.pipeline_library.framebuffer_attachment.diff_attachments_2d_32x32_39x41_ms,Crash
-dEQP-VK.pipeline.pipeline_library.framebuffer_attachment.diff_attachments_2d_32x32_48x48_ms,Crash
-dEQP-VK.pipeline.pipeline_library.framebuffer_attachment.diff_attachments_2d_32x32_64x64_ms,Crash
-dEQP-VK.pipeline.pipeline_library.framebuffer_attachment.multi_attachments_not_exported_2d_64x64_64x64_ms,Crash
-dEQP-VK.pipeline.pipeline_library.framebuffer_attachment.resolve_input_same_attachment,Crash
-dEQP-VK.pipeline.pipeline_library.multisample.alpha_to_coverage_no_color_attachment.samples_4.alpha_opaque,Crash
-dEQP-VK.pipeline.pipeline_library.multisample.alpha_to_coverage.samples_4.alpha_invisible_check_depth,Crash
-dEQP-VK.pipeline.pipeline_library.multisample.alpha_to_coverage.samples_4.alpha_invisible,Crash
-dEQP-VK.pipeline.pipeline_library.multisample.alpha_to_coverage.samples_4.alpha_opaque,Crash
-dEQP-VK.pipeline.pipeline_library.multisample.alpha_to_coverage.samples_4.alpha_translucent,Crash
-dEQP-VK.pipeline.pipeline_library.multisample.alpha_to_coverage_unused_attachment.samples_4.alpha_invisible,Crash
-dEQP-VK.pipeline.pipeline_library.multisample.alpha_to_coverage_unused_attachment.samples_4.alpha_opaque,Crash
-dEQP-VK.pipeline.pipeline_library.multisample_interpolation.centroid_qualifier_inside_primitive.128_128_1.samples_4,Crash
-dEQP-VK.pipeline.pipeline_library.multisample_interpolation.centroid_qualifier_inside_primitive.137_191_1.samples_4,Crash
-dEQP-VK.pipeline.pipeline_library.multisample.raster_samples_consistency.unique_colors_check,Crash
-dEQP-VK.pipeline.pipeline_library.multisample.raster_samples.samples_4.depth,Crash
-dEQP-VK.pipeline.pipeline_library.multisample.raster_samples.samples_4.depth_stencil,Crash
-dEQP-VK.pipeline.pipeline_library.multisample.raster_samples.samples_4.primitive_line,Crash
-dEQP-VK.pipeline.pipeline_library.multisample.raster_samples.samples_4.primitive_point_1px,Crash
-dEQP-VK.pipeline.pipeline_library.multisample.raster_samples.samples_4.primitive_point,Crash
-dEQP-VK.pipeline.pipeline_library.multisample.raster_samples.samples_4.primitive_triangle,Crash
-dEQP-VK.pipeline.pipeline_library.multisample.raster_samples.samples_4.stencil,Crash
-dEQP-VK.pipeline.pipeline_library.multisample.resolve.renderpass_renderarea.diamond_samples_4,Crash
-dEQP-VK.pipeline.pipeline_library.multisample.resolve.renderpass_renderarea.parallelogram_samples_4,Crash
-dEQP-VK.pipeline.pipeline_library.multisample.resolve.renderpass_renderarea.rectangle_samples_4,Crash
-dEQP-VK.pipeline.pipeline_library.multisample.sample_mask.mask_all_off.samples_4.primitive_line,Crash
-dEQP-VK.pipeline.pipeline_library.multisample.sample_mask.mask_all_off.samples_4.primitive_point_1px,Crash
-dEQP-VK.pipeline.pipeline_library.multisample.sample_mask.mask_all_off.samples_4.primitive_point,Crash
-dEQP-VK.pipeline.pipeline_library.multisample.sample_mask.mask_all_off.samples_4.primitive_triangle,Crash
-dEQP-VK.pipeline.pipeline_library.multisample.sample_mask.mask_all_on.samples_4.primitive_line,Crash
-dEQP-VK.pipeline.pipeline_library.multisample.sample_mask.mask_all_on.samples_4.primitive_point_1px,Crash
-dEQP-VK.pipeline.pipeline_library.multisample.sample_mask.mask_all_on.samples_4.primitive_point,Crash
-dEQP-VK.pipeline.pipeline_library.multisample.sample_mask.mask_all_on.samples_4.primitive_triangle,Crash
-dEQP-VK.pipeline.pipeline_library.multisample.sample_mask.mask_one.samples_4.primitive_line,Crash
-dEQP-VK.pipeline.pipeline_library.multisample.sample_mask.mask_one.samples_4.primitive_point_1px,Crash
-dEQP-VK.pipeline.pipeline_library.multisample.sample_mask.mask_one.samples_4.primitive_point,Crash
-dEQP-VK.pipeline.pipeline_library.multisample.sample_mask.mask_one.samples_4.primitive_triangle,Crash
-dEQP-VK.pipeline.pipeline_library.multisample.sample_mask.mask_random.samples_4.primitive_line,Crash
-dEQP-VK.pipeline.pipeline_library.multisample.sample_mask.mask_random.samples_4.primitive_point_1px,Crash
-dEQP-VK.pipeline.pipeline_library.multisample.sample_mask.mask_random.samples_4.primitive_point,Crash
-dEQP-VK.pipeline.pipeline_library.multisample.sample_mask.mask_random.samples_4.primitive_triangle,Crash
-dEQP-VK.pipeline.pipeline_library.multisample_shader_builtin.sample_mask.pattern.128_128_1.samples_4,Crash
-dEQP-VK.pipeline.pipeline_library.multisample_shader_builtin.sample_mask.pattern.137_191_1.samples_4,Crash
-dEQP-VK.pipeline.pipeline_library.multisample_shader_builtin.sample_mask.write.128_128_1.samples_4,Crash
-dEQP-VK.pipeline.pipeline_library.multisample_shader_builtin.sample_mask.write.137_191_1.samples_4,Crash
-
 # uprev Piglit in Mesa
 spec@ext_image_dma_buf_import@ext_image_dma_buf_import-refcount-multithread,Crash
 
 # physical device and device needs more robustness in allocation handling
+dEQP-VK.api.object_management.alloc_callback_fail.device,Crash
+dEQP-VK.api.object_management.alloc_callback_fail.device_group,Crash
+dEQP-VK.api.object_management.max_concurrent.device,Fail
+dEQP-VK.api.object_management.max_concurrent.device_group,Fail
 dEQP-VK.api.device_init.create_instance_device_intentional_alloc_fail.basic,Crash
 
 # query pool not supported yet
@@ -2776,3 +2553,11 @@ dEQP-VK.compute.pipeline.indirect_dispatch.upload_buffer.multiple_groups,Crash
 dEQP-VK.compute.pipeline.indirect_dispatch.upload_buffer.multiple_groups_multiple_invocations,Crash
 dEQP-VK.compute.pipeline.indirect_dispatch.upload_buffer.single_invocation,Crash
 dEQP-VK.compute.pipeline.indirect_dispatch.upload_buffer.small_offset,Crash
+
+# Filtering of 3D depth-stencil textures fails unless we set SAMPLER:round_to_nearest_even=false
+dEQP-VK.texture.filtering.3d.formats.d24_unorm_s8_uint_stencil.d24_unorm_s8_uint_stencil_nearest,Fail
+dEQP-VK.texture.filtering.3d.formats.d32_sfloat_s8_uint_stencil.d32_sfloat_s8_uint_stencil_nearest,Fail
+
+# CTS bug, see https://gitlab.khronos.org/Tracker/vk-gl-cts/-/issues/5296
+dEQP-VK.api.device_init.create_device_unsupported_features.shader_draw_parameters_features,Fail
+dEQP-VK.api.device_init.create_device_unsupported_features.protected_memory_features,Fail

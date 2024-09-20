@@ -52,12 +52,6 @@ struct radv_layer_dispatch_tables {
    struct vk_device_dispatch_table ctx_roll;
 };
 
-enum radv_buffer_robustness {
-   RADV_BUFFER_ROBUSTNESS_DISABLED,
-   RADV_BUFFER_ROBUSTNESS_1, /* robustBufferAccess */
-   RADV_BUFFER_ROBUSTNESS_2, /* robustBufferAccess2 */
-};
-
 struct radv_device_cache_key {
    uint32_t disable_trunc_coord : 1;
    uint32_t image_2d_view_of_3d : 1;
@@ -257,9 +251,8 @@ struct radv_meta_state {
 
    struct {
       VkPipelineLayout p_layout;
-      VkPipeline decompress_pipeline;
-      VkPipeline resummarize_pipeline;
-   } depth_decomp[MAX_SAMPLES_LOG2];
+      VkPipeline decompress_pipeline[MAX_SAMPLES_LOG2];
+   } depth_decomp;
 
    VkDescriptorSetLayout expand_depth_stencil_compute_ds_layout;
    VkPipelineLayout expand_depth_stencil_compute_p_layout;
@@ -344,7 +337,6 @@ struct radv_meta_state {
    struct {
       VkDescriptorSetLayout ds_layout;
       VkPipelineLayout p_layout;
-      VkPipeline pipeline;
    } dgc_prepare;
 };
 
@@ -448,9 +440,6 @@ struct radv_device {
 
    /* Whether to DMA shaders to invisible VRAM or to upload directly through BAR. */
    bool shader_use_invisible_vram;
-
-   /* Whether the app has enabled the robustBufferAccess/robustBufferAccess2 features. */
-   enum radv_buffer_robustness buffer_robustness;
 
    /* Whether to inline the compute dispatch size in user sgprs. */
    bool load_grid_size_from_user_sgpr;
@@ -557,8 +546,6 @@ struct radv_device {
    uint32_t compute_scratch_size_per_wave;
    uint32_t compute_scratch_waves;
 
-   bool cache_disabled;
-
    /* PSO cache stats */
    simple_mtx_t pso_cache_stats_mtx;
    struct radv_pso_cache_stats pso_cache_stats[RADV_PIPELINE_TYPE_COUNT];
@@ -575,7 +562,7 @@ radv_device_physical(const struct radv_device *dev)
 static inline bool
 radv_uses_device_generated_commands(const struct radv_device *device)
 {
-   return device->vk.enabled_features.deviceGeneratedCommands || device->vk.enabled_features.deviceGeneratedCompute;
+   return device->vk.enabled_features.deviceGeneratedCommandsNV || device->vk.enabled_features.deviceGeneratedCompute;
 }
 
 static inline bool

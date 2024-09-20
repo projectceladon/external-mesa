@@ -572,6 +572,8 @@ iris_to_brw_fs_key(const struct iris_screen *screen,
       .color_outputs_valid = key->color_outputs_valid,
       .input_slots_valid = key->input_slots_valid,
       .ignore_sample_mask_out = !key->multisample_fbo,
+      .null_push_constant_tbimr_workaround =
+         screen->devinfo->needs_null_push_constant_tbimr_workaround,
    };
 }
 
@@ -3877,7 +3879,12 @@ iris_use_tcs_multi_patch(struct iris_screen *screen)
 bool
 iris_indirect_ubos_use_sampler(struct iris_screen *screen)
 {
-   return screen->devinfo->ver < 12;
+   if (screen->brw) {
+      return screen->brw->indirect_ubos_use_sampler;
+   } else {
+      assert(screen->elk);
+      return screen->elk->indirect_ubos_use_sampler;
+   }
 }
 
 static void
@@ -3939,12 +3946,10 @@ iris_compiler_init(struct iris_screen *screen)
       screen->brw = brw_compiler_create(screen, screen->devinfo);
       screen->brw->shader_debug_log = iris_shader_debug_log;
       screen->brw->shader_perf_log = iris_shader_perf_log;
-      screen->brw->indirect_ubos_use_sampler = iris_indirect_ubos_use_sampler(screen);
    } else {
       screen->elk = elk_compiler_create(screen, screen->devinfo);
       screen->elk->shader_debug_log = iris_shader_debug_log;
       screen->elk->shader_perf_log = iris_shader_perf_log;
       screen->elk->supports_shader_constants = true;
-      screen->elk->indirect_ubos_use_sampler = iris_indirect_ubos_use_sampler(screen);
    }
 }

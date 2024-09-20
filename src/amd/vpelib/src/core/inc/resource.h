@@ -41,6 +41,7 @@ struct vpe_cmd_info;
 struct segment_ctx;
 
 #define MAX_PIPE 2
+#define MAX_OUTPUT_PIPE 2
 
 enum vpe_cmd_ops;
 
@@ -68,6 +69,8 @@ struct resource {
 
     enum vpe_status (*calculate_segments)(
         struct vpe_priv *vpe_priv, const struct vpe_build_param *params);
+
+    enum vpe_status(*check_bg_color_support)(struct vpe_priv* vpe_priv, struct vpe_color* bg_color);
 
     enum vpe_status (*set_num_segments)(struct vpe_priv *vpe_priv, struct stream_ctx *stream_ctx,
         struct scaler_data *scl_data, struct vpe_rect *src_rect, struct vpe_rect *dst_rect,
@@ -151,6 +154,13 @@ void vpe_handle_output_h_mirror(struct vpe_priv *vpe_priv);
 
 void vpe_resource_build_bit_depth_reduction_params(
     struct opp *opp, struct bit_depth_reduction_params *fmt_bit_depth);
+
+/** resource function call backs*/
+void vpe_frontend_config_callback(
+    void *ctx, uint64_t cfg_base_gpu, uint64_t cfg_base_cpu, uint64_t size);
+
+void vpe_backend_config_callback(
+    void *ctx, uint64_t cfg_base_gpu, uint64_t cfg_base_cpu, uint64_t size);
 
 #ifdef __cplusplus
 }

@@ -13,7 +13,7 @@ endif
 
 librusticl = shared_library(
   'RusticlOpenCL',
-  'target.c',
+  'rusticl_target.c',
   gnu_symbol_visibility : 'hidden',
   include_directories : [
     inc_include,
@@ -44,6 +44,7 @@ librusticl = shared_library(
     driver_zink,
     idep_nir,
     idep_vtn,
+    idep_mesautil,
   ],
   link_args : [
     ld_args_build_id,

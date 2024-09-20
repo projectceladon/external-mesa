@@ -23,12 +23,16 @@ intel_nir_files = files(
 libintel_compiler_brw_files = files(
   'brw_cfg.cpp',
   'brw_cfg.h',
+  'brw_compile_bs.cpp',
+  'brw_compile_cs.cpp',
+  'brw_compile_fs.cpp',
   'brw_compile_gs.cpp',
+  'brw_compile_mesh.cpp',
   'brw_compile_tcs.cpp',
+  'brw_compile_tes.cpp',
   'brw_compile_vs.cpp',
   'brw_compiler.c',
   'brw_compiler.h',
-  'brw_dead_control_flow.cpp',
   'brw_debug_recompile.c',
   'brw_def_analysis.cpp',
   'brw_disasm.c',
@@ -66,7 +70,6 @@ libintel_compiler_brw_files = files(
   'brw_fs_register_coalesce.cpp',
   'brw_fs_saturate_propagation.cpp',
   'brw_fs_scoreboard.cpp',
-  'brw_fs_sel_peephole.cpp',
   'brw_fs_thread_payload.cpp',
   'brw_fs_validate.cpp',
   'brw_fs_visitor.cpp',
@@ -80,7 +83,6 @@ libintel_compiler_brw_files = files(
   'brw_ir_performance.cpp',
   'brw_isa_info.h',
   'brw_lower_logical_sends.cpp',
-  'brw_mesh.cpp',
   'brw_nir.h',
   'brw_nir.c',
   'brw_nir_analyze_ubo_ranges.c',
@@ -92,11 +94,12 @@ libintel_compiler_brw_files = files(
   'brw_nir_lower_rt_intrinsics.c',
   'brw_nir_lower_shader_calls.c',
   'brw_nir_lower_storage_image.c',
+  'brw_nir_opt_fsat.c',
   'brw_nir_rt.h',
   'brw_nir_rt.c',
   'brw_nir_rt_builder.h',
   'brw_packed_float.c',
-  'brw_predicated_break.cpp',
+  'brw_print.cpp',
   'brw_prim.h',
   'brw_private.h',
   'brw_reg.h',
@@ -151,6 +154,7 @@ idep_intel_compiler_brw = declare_dependency(
   link_with : [libintel_compiler_brw],
   dependencies : [
     idep_nir,
+    idep_mesautil,
   ],
 )
 
@@ -190,7 +194,6 @@ if with_tests
     executable(
       'intel_compiler_brw_tests',
       files(
-        'test_predicated_break.cpp',
         'test_eu_compact.cpp',
         'test_eu_validate.cpp',
         'test_fs_cmod_propagation.cpp',
@@ -242,11 +245,32 @@ brw_lex_yy_c = custom_target(
   command : [prog_flex, '-o', '@OUTPUT@', '@INPUT@']
 )
 
+brw_asm_deps = [
+  dep_thread,
+  idep_intel_compiler_brw,
+  idep_intel_dev,
+  idep_mesautil,
+]
+
+brw_asm = static_library(
+  'brw_asm',
+  ['brw_asm.c', brw_gram_tab[0], brw_gram_tab[1], brw_lex_yy_c],
+  dependencies : brw_asm_deps,
+  include_directories : [inc_include, inc_src, inc_intel],
+  c_args : [no_override_init_args],
+  gnu_symbol_visibility : 'hidden',
+  build_by_default : false,
+)
+
+idep_brw_asm = declare_dependency(
+  link_with : brw_asm,
+  dependencies : brw_asm_deps,
+)
+
 brw_asm_tool = executable(
   'brw_asm',
-  ['brw_asm_tool.c', brw_gram_tab[0], brw_gram_tab[1], brw_lex_yy_c],
-  dependencies : [idep_mesautil, dep_thread, idep_intel_dev,
-                  idep_intel_compiler_brw],
+  ['brw_asm_tool.c'],
+  dependencies : idep_brw_asm,
   include_directories : [inc_include, inc_src, inc_intel],
   c_args : [no_override_init_args],
   gnu_symbol_visibility : 'hidden',

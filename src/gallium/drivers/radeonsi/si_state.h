@@ -236,9 +236,9 @@ union si_state_atoms {
       struct si_atom ngg_cull_state;
       struct si_atom vgt_pipeline_state;
       struct si_atom tess_io_layout;
-      struct si_atom cache_flush;
-      struct si_atom streamout_begin; /* this must be done after cache_flush */
-      struct si_atom render_cond; /* this must be after cache_flush */
+      struct si_atom barrier;
+      struct si_atom streamout_begin; /* this must be done after barrier */
+      struct si_atom render_cond; /* this must be after barrier */
       struct si_atom spi_ge_ring_state; /* this must be last because it waits for idle. */
    } s;
    struct si_atom array[sizeof(struct si_atoms_s) / sizeof(struct si_atom)];
@@ -265,7 +265,7 @@ enum si_tracked_reg
 {
    /* CONTEXT registers. */
    /* 2 consecutive registers (GFX6-11), or separate registers (GFX12) */
-   SI_TRACKED_DB_RENDER_CONTROL,             /* GFX6-11 (not tracked on GFX12) */
+   SI_TRACKED_DB_RENDER_CONTROL,
    SI_TRACKED_DB_COUNT_CONTROL,
 
    SI_TRACKED_DB_DEPTH_CONTROL,
@@ -628,13 +628,10 @@ void si_init_gfx_preamble_state(struct si_context *sctx);
 void si_make_buffer_descriptor(struct si_screen *screen, struct si_resource *buf,
                                enum pipe_format format, unsigned offset, unsigned num_elements,
                                uint32_t *state);
-void si_set_sampler_depth_decompress_mask(struct si_context *sctx, struct si_texture *tex);
-void si_update_fb_dirtiness_after_rendering(struct si_context *sctx);
 void si_mark_display_dcc_dirty(struct si_context *sctx, struct si_texture *tex);
 void si_update_ps_iter_samples(struct si_context *sctx);
 void si_save_qbo_state(struct si_context *sctx, struct si_qbo_state *st);
 void si_restore_qbo_state(struct si_context *sctx, struct si_qbo_state *st);
-unsigned gfx103_get_cu_mask_ps(struct si_screen *sscreen);
 
 struct si_fast_udiv_info32 {
    unsigned multiplier; /* the "magic number" multiplier */

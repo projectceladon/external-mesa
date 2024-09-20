@@ -673,6 +673,26 @@ want_ccs_e_for_format(const struct intel_device_info *devinfo,
    return true;
 }
 
+static bool
+want_hiz_wt_for_res(const struct intel_device_info *devinfo,
+                    const struct iris_resource *res)
+{
+   /* Gen12 only supports single-sampled while Gen20+ supports
+    * multi-sampled images.
+    */
+   if (devinfo->ver < 20 && res->surf.samples > 1)
+      return false;
+
+   if (!(res->surf.usage & ISL_SURF_USAGE_TEXTURE_BIT))
+      return false;
+
+   /* If this resource has the maximum number of samples supported by
+    * running platform and will be used as a texture, put the HiZ surface
+    * in write-through mode so that we can sample from it.
+    */
+   return true;
+}
+
 static enum isl_surf_dim
 target_to_isl_surf_dim(enum pipe_texture_target target)
 {
@@ -861,12 +881,7 @@ iris_resource_configure_aux(struct iris_screen *screen,
       assert(!has_mcs);
       if (!has_ccs) {
          res->aux.usage = ISL_AUX_USAGE_HIZ;
-      } else if (res->surf.samples == 1 &&
-                 (res->surf.usage & ISL_SURF_USAGE_TEXTURE_BIT)) {
-         /* If this resource is single-sampled and will be used as a texture,
-          * put the HiZ surface in write-through mode so that we can sample
-          * from it.
-          */
+      } else if (want_hiz_wt_for_res(devinfo, res)) {
          res->aux.usage = ISL_AUX_USAGE_HIZ_CCS_WT;
       } else {
          res->aux.usage = ISL_AUX_USAGE_HIZ_CCS;
@@ -1036,12 +1051,6 @@ iris_resource_image_is_pat_compressible(const struct iris_screen *screen,
       return false;
    }
 
-   /* TODO: Enable compression on depth surfaces.
-    * https://gitlab.freedesktop.org/mesa/mesa/-/issues/11361
-    */
-   if (isl_surf_usage_is_depth(res->surf.usage))
-      return false;
-
    /* Bspec 58797 (r58646):
     *
     *    Enabling compression is not legal for TileX surfaces.
@@ -1146,14 +1155,9 @@ iris_resource_create_for_image(struct pipe_screen *pscreen,
                 res->surf.size_B / INTEL_AUX_MAP_MAIN_SIZE_SCALEDOWN;
    }
 
-   /* Allocate space for the indirect clear color.
-    *
-    * Also add some padding to make sure the fast clear color state buffer
-    * starts at a 4K alignment. We believe that 256B might be enough, but due
-    * to lack of testing we will leave this as 4K for now.
-    */
+   /* Allocate space for the indirect clear color. */
    if (iris_get_aux_clear_color_state_size(screen, res) > 0) {
-      res->aux.clear_color_offset = align64(bo_size, 4096);
+      res->aux.clear_color_offset = align64(bo_size, 64);
       bo_size = res->aux.clear_color_offset +
                 iris_get_aux_clear_color_state_size(screen, res);
    }
@@ -1220,18 +1224,18 @@ iris_resource_from_user_memory(struct pipe_screen *pscreen,
                                const struct pipe_resource *templ,
                                void *user_memory)
 {
-   struct iris_screen *screen = (struct iris_screen *)pscreen;
-   struct iris_bufmgr *bufmgr = screen->bufmgr;
-   struct iris_resource *res = iris_alloc_resource(pscreen, templ);
-   if (!res)
-      return NULL;
-
    if (templ->target != PIPE_BUFFER &&
        templ->target != PIPE_TEXTURE_1D &&
        templ->target != PIPE_TEXTURE_2D)
       return NULL;
 
    if (templ->array_size > 1)
+      return NULL;
+
+   struct iris_screen *screen = (struct iris_screen *)pscreen;
+   struct iris_bufmgr *bufmgr = screen->bufmgr;
+   struct iris_resource *res = iris_alloc_resource(pscreen, templ);
+   if (!res)
       return NULL;
 
    size_t res_size = templ->width0;
@@ -1433,18 +1437,13 @@ iris_resource_from_handle(struct pipe_screen *pscreen,
                   goto fail;
             }
 
-            /* Add on a clear color BO if needed.
-             *
-             * Also add some padding to make sure the fast clear color state
-             * buffer starts at a 4K alignment to avoid some unknown issues.
-             * See the matching comment in iris_resource_create_for_image().
-             */
+            /* Add on a clear color BO if needed. */
             if (!main_res->mod_info->supports_clear_color &&
                 iris_get_aux_clear_color_state_size(screen, main_res) > 0) {
                main_res->aux.clear_color_bo =
                   iris_bo_alloc(screen->bufmgr, "clear color buffer",
                                 screen->isl_dev.ss.clear_color_state_size,
-                                4096, IRIS_MEMZONE_OTHER, BO_ALLOC_ZEROED);
+                                64, IRIS_MEMZONE_OTHER, BO_ALLOC_ZEROED);
                if (!main_res->aux.clear_color_bo)
                   goto fail;
             }
@@ -2536,6 +2535,15 @@ iris_transfer_map(struct pipe_context *ctx,
    if (!(usage & PIPE_MAP_UNSYNCHRONIZED) &&
        can_promote_to_async(res, box, usage)) {
       usage |= PIPE_MAP_UNSYNCHRONIZED;
+   }
+
+   /* We are dealing with external memory object PIPE_BUFFER, disable
+    * async mapping because of sync issues.
+    */
+   if (!res->mod_info &&
+       res->external_format != PIPE_FORMAT_NONE &&
+       resource->target == PIPE_BUFFER) {
+      usage &= ~PIPE_MAP_UNSYNCHRONIZED;
    }
 
    /* Avoid using GPU copies for persistent/coherent buffers, as the idea

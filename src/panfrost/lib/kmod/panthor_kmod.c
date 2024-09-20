@@ -80,6 +80,7 @@ struct panthor_kmod_dev {
    struct {
       struct drm_panthor_gpu_info gpu;
       struct drm_panthor_csif_info csif;
+      struct drm_panthor_timestamp_info timestamp;
    } props;
 };
 
@@ -131,6 +132,20 @@ panthor_kmod_dev_create(int fd, uint32_t flags, drmVersionPtr version,
    if (ret) {
       mesa_loge("DRM_IOCTL_PANTHOR_DEV_QUERY failed (err=%d)", errno);
       goto err_free_dev;
+   }
+
+   if (version->version_major > 1 || version->version_minor >= 1) {
+      query = (struct drm_panthor_dev_query){
+         .type = DRM_PANTHOR_DEV_QUERY_TIMESTAMP_INFO,
+         .size = sizeof(panthor_dev->props.timestamp),
+         .pointer = (uint64_t)(uintptr_t)&panthor_dev->props.timestamp,
+      };
+
+      ret = drmIoctl(fd, DRM_IOCTL_PANTHOR_DEV_QUERY, &query);
+      if (ret) {
+         mesa_loge("DRM_IOCTL_PANTHOR_DEV_QUERY failed (err=%d)", errno);
+         goto err_free_dev;
+      }
    }
 
    /* Map the LATEST_FLUSH_ID register at device creation time. */
@@ -203,6 +218,11 @@ panthor_dev_query_props(const struct pan_kmod_dev *dev,
 
       /* This register does not exist because AFBC is no longer optional. */
       .afbc_features = 0,
+
+      /* Access to timstamp from the GPU is always supported on Panthor. */
+      .gpu_can_query_timestamp = true,
+
+      .timestamp_frequency = panthor_dev->props.timestamp.timestamp_frequency,
    };
 
    static_assert(sizeof(props->texture_features) ==
@@ -858,8 +878,7 @@ panthor_kmod_vm_bind(struct pan_kmod_vm *vm, enum pan_kmod_vm_op_mode mode,
    bind_ops =
       pan_kmod_dev_alloc_transient(vm->dev, sizeof(*bind_ops) * op_count);
    if (!bind_ops) {
-      mesa_loge("drm_panthor_vm_bind_op[%d] array allocation failed",
-                MIN2(op_count, 1));
+      mesa_loge("drm_panthor_vm_bind_op[%d] array allocation failed", op_count);
       goto out_free_sync_ops;
    }
 
@@ -867,7 +886,7 @@ panthor_kmod_vm_bind(struct pan_kmod_vm *vm, enum pan_kmod_vm_op_mode mode,
       .vm_id = vm->handle,
       .flags =
          mode != PAN_KMOD_VM_OP_MODE_IMMEDIATE ? DRM_PANTHOR_VM_BIND_ASYNC : 0,
-      .ops = DRM_PANTHOR_OBJ_ARRAY(MIN2(op_count, 1), bind_ops),
+      .ops = DRM_PANTHOR_OBJ_ARRAY(op_count, bind_ops),
    };
 
    uint64_t vm_orig_sync_point = 0, vm_new_sync_point = 0;
@@ -977,12 +996,12 @@ panthor_kmod_vm_bind(struct pan_kmod_vm *vm, enum pan_kmod_vm_op_mode mode,
       simple_mtx_unlock(&panthor_vm->auto_va.lock);
    }
 
+out_update_vas:
    if (track_activity) {
       panthor_kmod_vm_sync_unlock(vm,
                                   ret ? vm_orig_sync_point : vm_new_sync_point);
    }
 
-out_update_vas:
    for (uint32_t i = 0; i < op_count; i++) {
       if (ops[i].type == PAN_KMOD_VM_OP_TYPE_MAP &&
           ops[i].va.start == PAN_KMOD_VM_MAP_AUTO_VA) {
@@ -1086,6 +1105,29 @@ panthor_kmod_get_csif_props(const struct pan_kmod_dev *dev)
    return &panthor_dev->props.csif;
 }
 
+static uint64_t
+panthor_kmod_query_timestamp(const struct pan_kmod_dev *dev)
+{
+   if (dev->driver.version.major <= 1 && dev->driver.version.minor < 1)
+      return 0;
+
+   struct drm_panthor_timestamp_info timestamp_info;
+
+   struct drm_panthor_dev_query query = (struct drm_panthor_dev_query){
+      .type = DRM_PANTHOR_DEV_QUERY_TIMESTAMP_INFO,
+      .size = sizeof(timestamp_info),
+      .pointer = (uint64_t)(uintptr_t)&timestamp_info,
+   };
+
+   int ret = drmIoctl(dev->fd, DRM_IOCTL_PANTHOR_DEV_QUERY, &query);
+   if (ret) {
+      mesa_loge("DRM_IOCTL_PANTHOR_DEV_QUERY failed (err=%d)", errno);
+      return 0;
+   }
+
+   return timestamp_info.current_timestamp;
+}
+
 const struct pan_kmod_ops panthor_kmod_ops = {
    .dev_create = panthor_kmod_dev_create,
    .dev_destroy = panthor_kmod_dev_destroy,
@@ -1101,4 +1143,5 @@ const struct pan_kmod_ops panthor_kmod_ops = {
    .vm_destroy = panthor_kmod_vm_destroy,
    .vm_bind = panthor_kmod_vm_bind,
    .vm_query_state = panthor_kmod_vm_query_state,
+   .query_timestamp = panthor_kmod_query_timestamp,
 };

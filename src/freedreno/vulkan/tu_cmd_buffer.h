@@ -277,7 +277,6 @@ struct tu_render_pass_state
 {
    bool xfb_used;
    bool has_tess;
-   bool has_gs;
    bool has_prim_generated_query_in_rp;
    bool has_zpass_done_sample_count_write_in_rp;
    bool disable_gmem;
@@ -496,6 +495,7 @@ struct tu_cmd_state
       enum tu_gmem_layout gmem_layout;
 
       const struct tu_image_view **attachments;
+      VkClearValue *clear_values;
 
       struct tu_lrz_state lrz;
    } suspended_pass;
@@ -508,7 +508,6 @@ struct tu_cmd_state
    bool stencil_back_write;
    bool pipeline_sysmem_single_prim_mode;
    bool pipeline_has_tess;
-   bool pipeline_has_gs;
    bool pipeline_disable_gmem;
    bool raster_order_attachment_access;
    bool raster_order_attachment_access_valid;

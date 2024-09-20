@@ -196,6 +196,8 @@ lvp_physical_device_get_format_properties(struct lvp_physical_device *physical_d
        util_format_get_nr_components(pformat) != 3 &&
        !util_format_is_subsampled_422(pformat) &&
        !util_format_is_yuv(pformat) &&
+       pformat != PIPE_FORMAT_G8_B8R8_420_UNORM &&
+       pformat != PIPE_FORMAT_G8_B8_R8_420_UNORM &&
        pformat != PIPE_FORMAT_R10G10B10A2_SNORM &&
        pformat != PIPE_FORMAT_B10G10R10A2_SNORM &&
        pformat != PIPE_FORMAT_B10G10R10A2_UNORM) {
@@ -465,7 +467,7 @@ VKAPI_ATTR VkResult VKAPI_CALL lvp_GetPhysicalDeviceImageFormatProperties2(
       }
    }
 
-   if (external_info && external_info->handleType != 0) {
+   if (external_info && external_info->handleType != 0 && external_props) {
       VkExternalMemoryFeatureFlagBits flags = 0;
       VkExternalMemoryHandleTypeFlags export_flags = 0;
       VkExternalMemoryHandleTypeFlags compat_flags = 0;
@@ -518,9 +520,9 @@ fill_sparse_image_format_properties(struct lvp_physical_device *pdev, VkImageTyp
    prop->aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
    prop->flags = 0;
    prop->imageGranularity = (VkExtent3D){
-      .width = util_format_get_tilesize(pformat, type + 1, samples, 0) * util_format_get_blockwidth(pformat),
-      .height = util_format_get_tilesize(pformat, type + 1, samples, 1) * util_format_get_blockheight(pformat),
-      .depth = util_format_get_tilesize(pformat, type + 1, samples, 2) * util_format_get_blockdepth(pformat),
+      .width = util_format_get_tilesize(pformat, type + 1, samples, 0),
+      .height = util_format_get_tilesize(pformat, type + 1, samples, 1),
+      .depth = util_format_get_tilesize(pformat, type + 1, samples, 2),
    };
 }
 

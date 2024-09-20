@@ -281,8 +281,8 @@ tu_CreateDescriptorSetLayout(
 
    if (pCreateInfo->flags &
        VK_DESCRIPTOR_SET_LAYOUT_CREATE_EMBEDDED_IMMUTABLE_SAMPLERS_BIT_EXT) {
-      result = tu_bo_init_new(device, &set_layout->embedded_samplers,
-                              set_layout->size,
+      result = tu_bo_init_new(device, &set_layout->vk.base,
+                              &set_layout->embedded_samplers, set_layout->size,
                               (enum tu_bo_alloc_flags) (TU_BO_ALLOC_ALLOW_DUMP |
                                                         TU_BO_ALLOC_INTERNAL_RESOURCE),
                               "embedded samplers");
@@ -805,7 +805,8 @@ tu_CreateDescriptorPool(VkDevice _device,
 
    if (bo_size) {
       if (!(pCreateInfo->flags & VK_DESCRIPTOR_POOL_CREATE_HOST_ONLY_BIT_EXT)) {
-         ret = tu_bo_init_new(device, &pool->bo, bo_size, TU_BO_ALLOC_ALLOW_DUMP, "descriptor pool");
+         ret = tu_bo_init_new(device, &pool->base, &pool->bo, bo_size,
+                              TU_BO_ALLOC_ALLOW_DUMP, "descriptor pool");
          if (ret)
             goto fail_alloc;
 
@@ -976,7 +977,7 @@ write_texel_buffer_descriptor_addr(uint32_t *dst,
       uint8_t swiz[4] = { PIPE_SWIZZLE_X, PIPE_SWIZZLE_Y, PIPE_SWIZZLE_Z,
                           PIPE_SWIZZLE_W };
       fdl6_buffer_view_init(dst,
-                            tu_vk_format_to_pipe_format(buffer_info->format),
+                            vk_format_to_pipe_format(buffer_info->format),
                             swiz, buffer_info->address, buffer_info->range);
    }
 }

@@ -201,10 +201,13 @@ v3d_bo_free(struct v3d_bo *bo)
         struct v3d_screen *screen = bo->screen;
 
         if (bo->map) {
-                if (using_v3d_simulator && bo->name &&
+#if USE_V3D_SIMULATOR
+                if (bo->name &&
                     strcmp(bo->name, "winsys") == 0) {
                         free(bo->map);
-                } else {
+                } else
+#endif
+                {
                         munmap(bo->map, bo->size);
                         VG(VALGRIND_FREELIKE_BLOCK(bo->map, 0));
                 }
@@ -347,7 +350,7 @@ v3d_bo_open_handle(struct v3d_screen *screen,
         bo->name = "winsys";
         bo->private = false;
 
-#ifdef USE_V3D_SIMULATOR
+#if USE_V3D_SIMULATOR
         v3d_simulator_open_from_handle(screen->fd, bo->handle, bo->size);
         bo->map = malloc(bo->size);
 #endif

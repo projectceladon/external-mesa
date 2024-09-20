@@ -292,14 +292,14 @@ agx_optimizer_copyprop(agx_context *ctx, agx_instr **defs, agx_instr *I)
 /*
  * Fuse conditions into if. Specifically, acts on if_icmp and fuses:
  *
- *    if_icmp(cmp(x, y, *), 0, ne) -> if_cmp(x, y, *)
+ *    if_icmp(cmp(x, y, *), 0, ne/eq) -> if_cmp(x, y, *)
  */
 static void
 agx_optimizer_if_cmp(agx_instr **defs, agx_instr *I)
 {
    /* Check for unfused if */
    if (!agx_is_equiv(I->src[1], agx_zero()) || I->icond != AGX_ICOND_UEQ ||
-       !I->invert_cond || I->src[0].type != AGX_INDEX_NORMAL)
+       I->src[0].type != AGX_INDEX_NORMAL)
       return;
 
    /* Check for condition */
@@ -310,7 +310,7 @@ agx_optimizer_if_cmp(agx_instr **defs, agx_instr *I)
    /* Fuse */
    I->src[0] = def->src[0];
    I->src[1] = def->src[1];
-   I->invert_cond = def->invert_cond;
+   I->invert_cond = def->invert_cond ^ !I->invert_cond;
 
    if (def->op == AGX_OPCODE_ICMP) {
       I->op = AGX_OPCODE_IF_ICMP;
@@ -319,6 +319,31 @@ agx_optimizer_if_cmp(agx_instr **defs, agx_instr *I)
       I->op = AGX_OPCODE_IF_FCMP;
       I->fcond = def->fcond;
    }
+}
+
+/*
+ * Fuse invert into if. Acts on if_icmp and fuses:
+ *
+ *    if_icmp(xor(x, 1), 0, ne) -> if_cmp(x, 0, eq)
+ */
+static void
+agx_optimizer_if_not(agx_instr **defs, agx_instr *I)
+{
+   /* Check for unfused if */
+   if (!agx_is_equiv(I->src[1], agx_zero()) || I->icond != AGX_ICOND_UEQ ||
+       I->src[0].type != AGX_INDEX_NORMAL)
+      return;
+
+   /* Check for invert */
+   agx_instr *def = defs[I->src[0].value];
+   if (def->op != AGX_OPCODE_BITOP ||
+       !agx_is_equiv(def->src[1], agx_immediate(1)) ||
+       def->truth_table != AGX_BITOP_XOR)
+      return;
+
+   /* Fuse */
+   I->src[0] = def->src[0];
+   I->invert_cond = !I->invert_cond;
 }
 
 /*
@@ -455,14 +480,17 @@ agx_optimizer_forward(agx_context *ctx)
           I->op != AGX_OPCODE_BLOCK_IMAGE_STORE && I->op != AGX_OPCODE_EXPORT)
          agx_optimizer_inline_imm(defs, I);
 
-      if (I->op == AGX_OPCODE_IF_ICMP)
+      if (I->op == AGX_OPCODE_IF_ICMP) {
+         agx_optimizer_if_not(defs, I);
          agx_optimizer_if_cmp(defs, I);
-      else if (I->op == AGX_OPCODE_ICMPSEL)
+      } else if (I->op == AGX_OPCODE_ICMPSEL) {
          agx_optimizer_cmpsel(defs, I);
-      else if (I->op == AGX_OPCODE_BALLOT || I->op == AGX_OPCODE_QUAD_BALLOT)
+      } else if (I->op == AGX_OPCODE_BALLOT ||
+                 I->op == AGX_OPCODE_QUAD_BALLOT) {
          agx_optimizer_ballot(ctx, defs, I);
-      else if (I->op == AGX_OPCODE_BITOP)
+      } else if (I->op == AGX_OPCODE_BITOP) {
          agx_optimizer_bitop(defs, I);
+      }
    }
 
    free(defs);

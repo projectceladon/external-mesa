@@ -6,13 +6,15 @@ inc_egl_dri2 = include_directories('drivers/dri2')
 
 c_args_for_egl = [asan_c_args]
 cpp_args_for_egl = []
-link_for_egl = []
+link_for_egl = [libpipe_loader_dynamic]
+if with_dri
+  link_for_egl += libgallium_dri
+endif
+if with_platform_windows
+  link_for_egl += libgallium_wgl
+endif
 deps_for_egl = []
 incs_for_egl = [inc_include, inc_src, inc_egl]
-
-if with_gallium_softpipe
-  c_args_for_egl += '-DGALLIUM_SOFTPIPE'
-endif
 
 files_egl = files(
   'main/eglapi.c',
@@ -74,7 +76,7 @@ g_egldispatchstubs_h = custom_target(
   capture : true,
 )
 
-if with_dri2
+if with_dri
   files_egl += files(
     'drivers/dri2/egl_dri2.c',
     'drivers/dri2/egl_dri2.h',
@@ -83,6 +85,7 @@ if with_dri2
   deps_for_egl += idep_xmlconfig
   link_for_egl += libloader
   incs_for_egl += inc_loader
+  incs_for_egl += inc_loader_x11
   incs_for_egl += inc_gallium
   incs_for_egl += inc_gallium_aux
   incs_for_egl += inc_mesa
@@ -95,11 +98,11 @@ if with_dri2
 
   if with_platform_x11
     files_egl += files('drivers/dri2/platform_x11.c')
-    if with_dri3
+    if with_dri_platform == 'drm'
       files_egl += files('drivers/dri2/platform_x11_dri3.c')
-      link_for_egl += libloader_dri3_helper
+      link_for_egl += [libloader_x11]
     endif
-    deps_for_egl += [dep_x11_xcb, dep_xcb_dri2, dep_xcb_xrandr, dep_xcb_xfixes]
+    deps_for_egl += [dep_x11_xcb, dep_xcb_dri2, dep_xcb_xrandr, dep_xcb_xfixes, dep_xcb_shm]
   endif
   if with_gbm and not with_platform_android
     files_egl += files('drivers/dri2/platform_drm.c')

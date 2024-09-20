@@ -292,86 +292,26 @@ public:
 
    void import_uniforms(fs_visitor *v);
 
-   void VARYING_PULL_CONSTANT_LOAD(const brw::fs_builder &bld,
-                                   const brw_reg &dst,
-                                   const brw_reg &surface,
-                                   const brw_reg &surface_handle,
-                                   const brw_reg &varying_offset,
-                                   uint32_t const_offset,
-                                   uint8_t alignment,
-                                   unsigned components);
-
-   bool run_fs(bool allow_spilling, bool do_rep_send);
-   bool run_vs();
-   bool run_tcs();
-   bool run_tes();
-   bool run_gs();
-   bool run_cs(bool allow_spilling);
-   bool run_bs(bool allow_spilling);
-   bool run_task(bool allow_spilling);
-   bool run_mesh(bool allow_spilling);
-   void allocate_registers(bool allow_spilling);
-   uint32_t compute_max_register_pressure();
    void assign_curb_setup();
-   void assign_urb_setup();
    void convert_attr_sources_to_hw_regs(fs_inst *inst);
-   void assign_vs_urb_setup();
-   void assign_tcs_urb_setup();
-   void assign_tes_urb_setup();
-   void assign_gs_urb_setup();
-   bool assign_regs(bool allow_spilling, bool spill_all);
-   void assign_regs_trivial();
-   void calculate_payload_ranges(unsigned payload_node_count,
+   void calculate_payload_ranges(bool allow_spilling,
+                                 unsigned payload_node_count,
                                  int *payload_last_use_ip) const;
    void assign_constant_locations();
    bool get_pull_locs(const brw_reg &src, unsigned *out_surf_index,
                       unsigned *out_pull_index);
    void invalidate_analysis(brw::analysis_dependency_class c);
 
-   instruction_scheduler *prepare_scheduler(void *mem_ctx);
-   void schedule_instructions_pre_ra(instruction_scheduler *sched,
-                                     instruction_scheduler_mode mode);
-   void schedule_instructions_post_ra();
-
    void vfail(const char *msg, va_list args);
    void fail(const char *msg, ...);
    void limit_dispatch_width(unsigned n, const char *msg);
 
-   void emit_repclear_shader();
-   void emit_interpolation_setup();
-
-   void set_tcs_invocation_id();
-
-   fs_inst *emit_single_fb_write(const brw::fs_builder &bld,
-                                 brw_reg color1, brw_reg color2,
-                                 brw_reg src0_alpha, unsigned components);
-   void do_emit_fb_writes(int nr_color_regions, bool replicate_alpha);
-   void emit_fb_writes();
    void emit_urb_writes(const brw_reg &gs_vertex_count = brw_reg());
    void emit_gs_control_data_bits(const brw_reg &vertex_count);
    brw_reg gs_urb_channel_mask(const brw_reg &dword_index);
    brw_reg gs_urb_per_slot_dword_index(const brw_reg &vertex_count);
-   void emit_gs_thread_end();
    bool mark_last_urb_write_with_eot();
-   void emit_tcs_thread_end();
-   void emit_urb_fence();
    void emit_cs_terminate();
-
-   brw_reg interp_reg(const brw::fs_builder &bld, unsigned location,
-                     unsigned channel, unsigned comp);
-   brw_reg per_primitive_reg(const brw::fs_builder &bld,
-                            int location, unsigned comp);
-
-   void dump_instruction_to_file(const fs_inst *inst, FILE *file, const brw::def_analysis *defs) const;
-   void dump_instructions_to_file(FILE *file) const;
-
-   /* Convenience functions based on the above. */
-   void dump_instruction(const fs_inst *inst, FILE *file = stderr, const brw::def_analysis *defs = nullptr) const {
-      dump_instruction_to_file(inst, file, defs);
-   }
-   void dump_instructions(const char *name = nullptr) const;
-
-   void calculate_cfg();
 
    const struct brw_compiler *compiler;
    void *log_data; /* Passed to compiler->*_log functions */
@@ -502,12 +442,19 @@ public:
 
    struct shader_stats shader_stats;
 
-   unsigned workgroup_size() const;
-
    void debug_optimizer(const nir_shader *nir,
                         const char *pass_name,
                         int iteration, int pass_num) const;
 };
+
+void brw_print_instruction_to_file(const fs_visitor &s, const fs_inst *inst, FILE *file, const brw::def_analysis *defs);
+void brw_print_instructions_to_file(const fs_visitor &s, FILE *file);
+
+/* Convenience functions based on the above. */
+inline void brw_print_instruction(const fs_visitor &s, const fs_inst *inst, FILE *file = stderr, const brw::def_analysis *defs = nullptr) {
+   brw_print_instruction_to_file(s, inst, file, defs);
+}
+void brw_print_instructions(const fs_visitor &s, const char *name = nullptr);
 
 void brw_print_swsb(FILE *f, const struct intel_device_info *devinfo, const tgl_swsb swsb);
 
@@ -559,7 +506,8 @@ private:
                      struct brw_reg dst, struct brw_reg src);
    void generate_ddy(const fs_inst *inst,
                      struct brw_reg dst, struct brw_reg src);
-   void generate_scratch_header(fs_inst *inst, struct brw_reg dst);
+   void generate_scratch_header(fs_inst *inst,
+                                struct brw_reg dst, struct brw_reg src);
 
    void generate_halt(fs_inst *inst);
 
@@ -650,7 +598,18 @@ void brw_fs_validate(const fs_visitor &s);
 static inline void brw_fs_validate(const fs_visitor &s) {}
 #endif
 
+void brw_calculate_cfg(fs_visitor &s);
+
 void brw_fs_optimize(fs_visitor &s);
+
+instruction_scheduler *brw_prepare_scheduler(fs_visitor &s, void *mem_ctx);
+void brw_schedule_instructions_pre_ra(fs_visitor &s, instruction_scheduler *sched,
+                                      instruction_scheduler_mode mode);
+void brw_schedule_instructions_post_ra(fs_visitor &s);
+
+void brw_allocate_registers(fs_visitor &s, bool allow_spilling);
+bool brw_assign_regs(fs_visitor &s, bool allow_spilling, bool spill_all);
+void brw_assign_regs_trivial(fs_visitor &s);
 
 bool brw_fs_lower_3src_null_dest(fs_visitor &s);
 bool brw_fs_lower_alu_restrictions(fs_visitor &s);
@@ -683,10 +642,7 @@ bool brw_fs_opt_copy_propagation(fs_visitor &s);
 bool brw_fs_opt_copy_propagation_defs(fs_visitor &s);
 bool brw_fs_opt_cse_defs(fs_visitor &s);
 bool brw_fs_opt_dead_code_eliminate(fs_visitor &s);
-bool brw_fs_opt_dead_control_flow_eliminate(fs_visitor &s);
 bool brw_fs_opt_eliminate_find_live_channel(fs_visitor &s);
-bool brw_fs_opt_peephole_sel(fs_visitor &s);
-bool brw_fs_opt_predicated_break(fs_visitor &s);
 bool brw_fs_opt_register_coalesce(fs_visitor &s);
 bool brw_fs_opt_remove_extra_rounding_modes(fs_visitor &s);
 bool brw_fs_opt_remove_redundant_halts(fs_visitor &s);

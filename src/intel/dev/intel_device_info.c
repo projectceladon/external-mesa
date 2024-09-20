@@ -984,11 +984,16 @@ static const struct intel_device_info intel_device_info_ehl_2x4 = {
    .gt = _gt, .num_slices = _slices, .l3_banks = _l3,           \
    .simulator_id = 22,                                          \
    .max_eus_per_subslice = 16,                                  \
+   /* BSpec 45101 (r51017) */                                   \
    .pat = {                                                     \
-         .cached_coherent = PAT_ENTRY(0, WB, 2WAY),             \
-         .scanout = PAT_ENTRY(1, WC, NONE),                     \
-         .writeback_incoherent = PAT_ENTRY(0, WB, 2WAY),        \
-         .writecombining = PAT_ENTRY(1, WC, NONE),              \
+         /* CPU: WB, GPU: PAT 0 => WB, 2WAY */                  \
+         .cached_coherent = PAT_ENTRY(0, WB),                   \
+         /* CPU: WC, GPU: PAT 1 => WC */                        \
+         .scanout = PAT_ENTRY(1, WC),                           \
+         /* CPU: WB, GPU: PAT 0 => WB, 2WAY */                  \
+         .writeback_incoherent = PAT_ENTRY(0, WB),              \
+         /* CPU: WC, GPU: PAT 1 => WC */                        \
+         .writecombining = PAT_ENTRY(1, WC),                    \
    },                                                           \
    .cooperative_matrix_configurations = {                       \
     { INTEL_CMAT_SCOPE_SUBGROUP, 8, 8, 16, INTEL_CMAT_FLOAT16, INTEL_CMAT_FLOAT16, INTEL_CMAT_FLOAT32, INTEL_CMAT_FLOAT32 }, \
@@ -1064,14 +1069,7 @@ static const struct intel_device_info intel_device_info_rpl_p = {
    .has_llc = false,                                     \
    .has_local_mem = true,                                \
    .urb.size = 768,                                      \
-   .simulator_id = 30,                                   \
-   /* There is no PAT table for DG1, using TGL one */    \
-   .pat = {                                              \
-         .cached_coherent = PAT_ENTRY(0, WB, 2WAY),      \
-         .scanout = PAT_ENTRY(1, WC, NONE),              \
-         .writeback_incoherent = PAT_ENTRY(0, WB, 2WAY), \
-         .writecombining = PAT_ENTRY(1, WC, NONE),       \
-   }
+   .simulator_id = 30
 
 static const struct intel_device_info intel_device_info_dg1 = {
    GFX12_DG1_SG1_FEATURES,
@@ -1095,6 +1093,7 @@ static const struct intel_device_info intel_device_info_sg1 = {
 
 #define XEHP_FEATURES(_gt, _slices, _l3)                        \
    GFX8_FEATURES,                                               \
+   .needs_null_push_constant_tbimr_workaround = true,           \
    .has_64bit_float = false,                                    \
    .has_64bit_int = false,                                      \
    .has_integer_dword_mul = false,                              \
@@ -1136,11 +1135,16 @@ static const struct intel_device_info intel_device_info_sg1 = {
    .has_ray_tracing = true,                                     \
    .has_flat_ccs = true,                                        \
    /* There is no PAT table for DG2, using TGL ones */          \
+   /* BSpec 45101 (r51017) */                                   \
    .pat = {                                                     \
-         .cached_coherent = PAT_ENTRY(0, WB, 1WAY),             \
-         .scanout = PAT_ENTRY(1, WC, NONE),                     \
-         .writeback_incoherent = PAT_ENTRY(0, WB, 2WAY),        \
-         .writecombining = PAT_ENTRY(1, WC, NONE),              \
+         /* CPU: WB, GPU: PAT 0 => WB, 2WAY */                  \
+         .cached_coherent = PAT_ENTRY(0, WB),                   \
+         /* CPU: WC, GPU: PAT 1 => WC */                        \
+         .scanout = PAT_ENTRY(1, WC),                           \
+         /* CPU: WB, GPU: PAT 0 => WB, 2WAY */                  \
+         .writeback_incoherent = PAT_ENTRY(0, WB),              \
+         /* CPU: WC, GPU: PAT 1 => WC */                        \
+         .writecombining = PAT_ENTRY(1, WC),                    \
    }
 
 static const struct intel_device_info intel_device_info_dg2_g10 = {
@@ -1179,11 +1183,16 @@ static const struct intel_device_info intel_device_info_atsm_g11 = {
    .has_coarse_pixel_primitive_and_cb = true,                   \
    .has_mesh_shading = true,                                    \
    .has_ray_tracing = true,                                     \
+   /* BSpec 45101 (r51017) */                                   \
    .pat = {                                                     \
-         .cached_coherent = PAT_ENTRY(3, WB, 1WAY),             \
-         .scanout = PAT_ENTRY(1, WC, NONE),                     \
-         .writeback_incoherent = PAT_ENTRY(0, WB, NONE),        \
-         .writecombining = PAT_ENTRY(1, WC, NONE),              \
+         /* CPU: WB, GPU: PAT 3 => WB, 1WAY */                  \
+         .cached_coherent = PAT_ENTRY(3, WB),                   \
+         /* CPU: WC, GPU: PAT 1 => WC */                        \
+         .scanout = PAT_ENTRY(1, WC),                           \
+         /* CPU: WB, GPU: PAT 0 => WB, 0WAY */                  \
+         .writeback_incoherent = PAT_ENTRY(0, WB),              \
+         /* CPU: WC, GPU: PAT 1 => WC */                        \
+         .writecombining = PAT_ENTRY(1, WC),                    \
    }
 
 static const struct intel_device_info intel_device_info_mtl_u = {
@@ -1213,6 +1222,7 @@ static const struct intel_device_info intel_device_info_arl_h = {
    .verx10 = 200,                                               \
    .num_subslices = dual_subslices(1),                          \
    .grf_size = 64,                                              \
+   .needs_null_push_constant_tbimr_workaround = false,          \
    .has_64bit_float = true,                                     \
    .has_64bit_int = true,                                       \
    .has_integer_dword_mul = false,                              \
@@ -1220,12 +1230,16 @@ static const struct intel_device_info intel_device_info_arl_h = {
    .has_mesh_shading = true,                                    \
    .has_ray_tracing = true,                                     \
    .has_indirect_unroll = true,                                 \
+   /* BSpec 71582 (r59285) */                                   \
    .pat = {                                                     \
-      .cached_coherent = PAT_ENTRY(1, WB, 1WAY),                \
-      .scanout = PAT_ENTRY(6, WC, NONE),                        \
-      .writeback_incoherent = PAT_ENTRY(0, WB, NONE),           \
-      .writecombining = PAT_ENTRY(6, WC, NONE),                 \
-      .compressed = PAT_ENTRY(11, WC, NONE)                     \
+      /* CPU: WB, GPU: PAT 1 => WB, 1WAY */                     \
+      .cached_coherent = PAT_ENTRY(1, WB),                      \
+      /* CPU: WC, GPU: PAT 6 => XD */                           \
+      .scanout = PAT_ENTRY(6, WC),                              \
+      /* CPU: WC, GPU: PAT 0 => WB */                           \
+      .writecombining = PAT_ENTRY(0, WC),                       \
+      /* CPU: WC, GPU: PAT 11 => XD, compressed */              \
+      .compressed = PAT_ENTRY(11, WC)                           \
    },                                                           \
    .cooperative_matrix_configurations = {                       \
     { INTEL_CMAT_SCOPE_SUBGROUP, 8, 16, 16, INTEL_CMAT_FLOAT16, INTEL_CMAT_FLOAT16, INTEL_CMAT_FLOAT32, INTEL_CMAT_FLOAT32 }, \
@@ -1527,6 +1541,7 @@ intel_device_info_init_common(int pci_id, bool building,
       force_on = true;
    else
       scan_for_force_probe(pci_id, &force_on, &force_off);
+   devinfo->probe_forced = force_on;
    if (force_off) {
       mesa_logw("%s (0x%x) disabled with INTEL_FORCE_PROBE", devinfo->name,
                 pci_id);
@@ -1601,6 +1616,20 @@ intel_device_info_init_common(int pci_id, bool building,
             devinfo->max_constant_urb_size_kb / 2;
    }
 
+   /*
+    * Gfx 12.5 moved scratch to a surface and SURFTYPE_SCRATCH has this pitch
+    * restriction:
+    *
+    * BSpec 43862 (r52666)
+    * RENDER_SURFACE_STATE::Surface Pitch
+    *    For surfaces of type SURFTYPE_SCRATCH, valid range of pitch is:
+    *    [63,262143] -> [64B, 256KB]
+    *
+    * The pitch of the surface is the scratch size per thread and the surface
+    * should be large enough to accommodate every physical thread.
+    */
+   devinfo->max_scratch_size_per_thread = devinfo->verx10 >= 125 ?
+                                          (256 * 1024) : (2 * 1024 * 1024);
    intel_device_info_update_cs_workgroup_threads(devinfo);
 
    return true;
@@ -2009,15 +2038,15 @@ intel_device_info_wa_stepping(struct intel_device_info *devinfo)
 uint32_t
 intel_device_info_get_max_slm_size(const struct intel_device_info *devinfo)
 {
-   uint32_t k_bytes = 0;
+   uint32_t bytes = 0;
 
    if (devinfo->verx10 >= 200) {
-      k_bytes = intel_device_info_get_max_preferred_slm_size(devinfo);
+      bytes = intel_device_info_get_max_preferred_slm_size(devinfo);
    } else {
-      k_bytes = 64;
+      bytes = 64 * 1024;
    }
 
-   return k_bytes * 1024;
+   return bytes;
 }
 
 uint32_t

@@ -21,7 +21,7 @@
  * IN THE SOFTWARE.
  */
 
-/** @file brw_fs_combine_constants.cpp
+/** @file
  *
  * This file contains the opt_combine_constants() pass that runs after the
  * regular optimization loop. It passes over the instruction list and promotes
@@ -1750,7 +1750,7 @@ brw_fs_opt_combine_constants(fs_visitor &s)
 
       delete s.cfg;
       s.cfg = NULL;
-      s.calculate_cfg();
+      brw_calculate_cfg(s);
    }
 
    ralloc_free(const_ctx);

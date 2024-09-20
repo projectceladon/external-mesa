@@ -723,7 +723,8 @@ vgpu10_get_shader_param(struct pipe_screen *screen,
    .lower_vector_cmp = true,                                                  \
    .lower_cs_local_index_to_id = true,                                        \
    .max_unroll_iterations = 32,                                               \
-   .use_interpolated_input_intrinsics = true
+   .use_interpolated_input_intrinsics = true,                                 \
+   .has_ddx_intrinsics = true
 
 #define VGPU10_OPTIONS                                                        \
    .lower_doubles_options = nir_lower_dfloor | nir_lower_dsign | nir_lower_dceil | nir_lower_dtrunc | nir_lower_dround_even, \
@@ -735,6 +736,7 @@ static const nir_shader_compiler_options svga_vgpu9_fragment_compiler_options = 
    .lower_bitops = true,
    .force_indirect_unrolling = nir_var_all,
    .force_indirect_unrolling_sampler = true,
+   .no_integers = true,
 };
 
 static const nir_shader_compiler_options svga_vgpu9_vertex_compiler_options = {
@@ -742,6 +744,7 @@ static const nir_shader_compiler_options svga_vgpu9_vertex_compiler_options = {
    .lower_bitops = true,
    .force_indirect_unrolling = nir_var_function_temp,
    .force_indirect_unrolling_sampler = true,
+   .no_integers = true,
 };
 
 static const nir_shader_compiler_options svga_vgpu10_compiler_options = {

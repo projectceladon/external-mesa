@@ -261,7 +261,9 @@ class Instruction(object):
         self.operand_size = 0
       elif 'sad_' in name:
         self.operand_size = 32
-      elif name in ['v_mad_u64_u32', 'v_mad_i64_i32']:
+      elif name in ['v_mad_u64_u32', 'v_mad_i64_i32',
+                    'v_interp_p10_f16_f32_inreg', 'v_interp_p10_rtz_f16_f32_inreg',
+                    'v_interp_p2_f16_f32_inreg', 'v_interp_p2_rtz_f16_f32_inreg']:
         self.operand_size = 0
       elif self.operand_size == 24:
         self.operand_size = 32
@@ -639,6 +641,7 @@ SOP1 = {
    ("s_cvt_i32_f32",            dst(1), src(1), op(gfx11=0x66), InstrClass.SFPU),
    ("s_cvt_u32_f32",            dst(1), src(1), op(gfx11=0x67), InstrClass.SFPU),
    ("s_cvt_f16_f32",            dst(1), src(1), op(gfx11=0x68), InstrClass.SFPU),
+   ("p_s_cvt_f16_f32_rtne",     dst(1), src(1), op(-1), InstrClass.SFPU),
    ("s_cvt_f32_f16",            dst(1), src(1), op(gfx11=0x69), InstrClass.SFPU),
    ("s_cvt_hi_f32_f16",         dst(1), src(1), op(gfx11=0x6a), InstrClass.SFPU),
    ("s_ceil_f16",               dst(1), src(1), op(gfx11=0x6b), InstrClass.SFPU),
@@ -986,7 +989,7 @@ VOP1 = {
    ("v_cvt_u32_f32",              True, False, dst(1), src(1), op(0x07)),
    ("v_cvt_i32_f32",              True, False, dst(1), src(1), op(0x08)),
    ("v_cvt_f16_f32",              True, True, dst(1), src(1), op(0x0a)),
-   ("p_cvt_f16_f32_rtne",         True, True, dst(1), src(1), op(-1)),
+   ("p_v_cvt_f16_f32_rtne",       True, True, dst(1), src(1), op(-1)),
    ("v_cvt_f32_f16",              True, True, dst(1), src(1), op(0x0b)),
    ("v_cvt_rpi_i32_f32",          True, False, dst(1), src(1), op(0x0c)), #v_cvt_nearest_i32_f32 in GFX11
    ("v_cvt_flr_i32_f32",          True, False, dst(1), src(1), op(0x0d)),#v_cvt_floor_i32_f32 in GFX11
@@ -1243,7 +1246,7 @@ VINTERP = {
    ("v_interp_p2_rtz_f16_f32_inreg",  op(gfx11=0x05)),
 }
 for (name, num) in VINTERP:
-   insn(name, num, Format.VINTERP_INREG, InstrClass.Valu32, False, True, definitions = dst(1), operands = src(1, 1, 1))
+   insn(name, num, Format.VINTERP_INREG, InstrClass.Valu32, True, True, definitions = dst(1), operands = src(1, 1, 1))
 
 
 # VOP3 instructions: 3 inputs, 1 output
@@ -1280,6 +1283,7 @@ VOP3 = {
    ("v_sad_u16",               False, False, dst(1), src(1, 1, 1), op(0x15c, gfx8=0x1db, gfx10=0x15c, gfx11=0x224)),
    ("v_sad_u32",               False, False, dst(1), src(1, 1, 1), op(0x15d, gfx8=0x1dc, gfx10=0x15d, gfx11=0x225)),
    ("v_cvt_pk_u8_f32",         True, False, dst(1), src(1, 1, 1), op(0x15e, gfx8=0x1dd, gfx10=0x15e, gfx11=0x226)),
+   ("p_v_cvt_pk_u8_f32",       True, False, dst(1), src(1), op(-1)),
    ("v_div_fixup_f32",         True, True, dst(1), src(1, 1, 1), op(0x15f, gfx8=0x1de, gfx10=0x15f, gfx11=0x227)),
    ("v_div_fixup_f64",         True, True, dst(2), src(2, 2, 2), op(0x160, gfx8=0x1df, gfx10=0x160, gfx11=0x228)),
    ("v_lshl_b64",              False, False, dst(2), src(2, 1), op(0x161, gfx8=-1), InstrClass.Valu64),

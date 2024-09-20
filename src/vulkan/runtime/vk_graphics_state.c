@@ -1073,6 +1073,7 @@ vk_color_attachment_location_state_init(struct vk_color_attachment_location_stat
    for (uint32_t a = 0; a < MIN2(cal_info->colorAttachmentCount,
                                  MESA_VK_MAX_COLOR_ATTACHMENTS); a++) {
       cal->color_map[a] =
+         cal_info->pColorAttachmentLocations == NULL ? a :
          cal_info->pColorAttachmentLocations[a] == VK_ATTACHMENT_UNUSED ?
          MESA_VK_ATTACHMENT_UNUSED : cal_info->pColorAttachmentLocations[a];
    }
@@ -3092,21 +3093,30 @@ vk_common_CmdSetDepthBias2EXT(
    }
 }
 
+void
+vk_cmd_set_rendering_attachment_locations(struct vk_command_buffer *cmd,
+                                          const VkRenderingAttachmentLocationInfoKHR *info)
+{
+   struct vk_dynamic_graphics_state *dyn = &cmd->dynamic_graphics_state;
+
+   assert(info->colorAttachmentCount <= MESA_VK_MAX_COLOR_ATTACHMENTS);
+   for (uint32_t i = 0; i < info->colorAttachmentCount; i++) {
+      const uint8_t val =
+         info->pColorAttachmentLocations == NULL ? i :
+         info->pColorAttachmentLocations[i] == VK_ATTACHMENT_UNUSED ?
+         MESA_VK_ATTACHMENT_UNUSED : info->pColorAttachmentLocations[i];
+      SET_DYN_VALUE(dyn, COLOR_ATTACHMENT_MAP, cal.color_map[i], val);
+   }
+}
+
 VKAPI_ATTR void VKAPI_CALL
 vk_common_CmdSetRenderingAttachmentLocationsKHR(
     VkCommandBuffer                             commandBuffer,
     const VkRenderingAttachmentLocationInfoKHR* pLocationInfo)
 {
    VK_FROM_HANDLE(vk_command_buffer, cmd, commandBuffer);
-   struct vk_dynamic_graphics_state *dyn = &cmd->dynamic_graphics_state;
 
-   assert(pLocationInfo->colorAttachmentCount <= MESA_VK_MAX_COLOR_ATTACHMENTS);
-   for (uint32_t i = 0; i < pLocationInfo->colorAttachmentCount; i++) {
-      uint8_t val =
-         pLocationInfo->pColorAttachmentLocations[i] == VK_ATTACHMENT_UNUSED ?
-         MESA_VK_ATTACHMENT_UNUSED : pLocationInfo->pColorAttachmentLocations[i];
-      SET_DYN_VALUE(dyn, COLOR_ATTACHMENT_MAP, cal.color_map[i], val);
-   }
+   vk_cmd_set_rendering_attachment_locations(cmd, pLocationInfo);
 }
 
 VKAPI_ATTR void VKAPI_CALL

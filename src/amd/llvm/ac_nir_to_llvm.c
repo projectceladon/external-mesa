@@ -333,6 +333,14 @@ static LLVMValueRef emit_umul_high(struct ac_llvm_context *ctx, LLVMValueRef src
                                    LLVMValueRef src1)
 {
    LLVMValueRef dst64, result;
+
+#if LLVM_VERSION_MAJOR < 20
+   if (LLVMIsConstant(src0))
+      ac_build_optimization_barrier(ctx, &src1, false);
+   else
+      ac_build_optimization_barrier(ctx, &src0, false);
+#endif
+
    src0 = LLVMBuildZExt(ctx->builder, src0, ctx->i64, "");
    src1 = LLVMBuildZExt(ctx->builder, src1, ctx->i64, "");
 
@@ -404,21 +412,21 @@ static LLVMValueRef emit_unpack_half_2x16(struct ac_llvm_context *ctx, LLVMValue
    return ac_build_gather_values(ctx, temps, 2);
 }
 
-static LLVMValueRef emit_ddxy(struct ac_nir_context *ctx, nir_op op, LLVMValueRef src0)
+static LLVMValueRef emit_ddxy(struct ac_nir_context *ctx, nir_intrinsic_op op, LLVMValueRef src0)
 {
    unsigned mask;
    int idx;
    LLVMValueRef result;
 
-   if (op == nir_op_fddx_fine)
+   if (op == nir_intrinsic_ddx_fine)
       mask = AC_TID_MASK_LEFT;
-   else if (op == nir_op_fddy_fine)
+   else if (op == nir_intrinsic_ddy_fine)
       mask = AC_TID_MASK_TOP;
    else
       mask = AC_TID_MASK_TOP_LEFT;
 
    /* for DDX we want to next X pixel, DDY next Y pixel. */
-   if (op == nir_op_fddx_fine || op == nir_op_fddx_coarse || op == nir_op_fddx)
+   if (op == nir_intrinsic_ddx_fine || op == nir_intrinsic_ddx_coarse || op == nir_intrinsic_ddx)
       idx = 1;
    else
       idx = 2;
@@ -1081,15 +1089,6 @@ static bool visit_alu(struct ac_nir_context *ctx, const nir_alu_instr *instr)
       result = LLVMBuildExtractElement(ctx->ac.builder, tmp, ctx->ac.i32_1, "");
       break;
    }
-   case nir_op_fddx:
-   case nir_op_fddy:
-   case nir_op_fddx_fine:
-   case nir_op_fddy_fine:
-   case nir_op_fddx_coarse:
-   case nir_op_fddy_coarse:
-      result = emit_ddxy(ctx, instr->op, src[0]);
-      break;
-
    case nir_op_unpack_64_4x16: {
       result = LLVMBuildBitCast(ctx->ac.builder, src[0], ctx->ac.v4i16, "");
       break;
@@ -1480,7 +1479,7 @@ static LLVMValueRef build_tex_intrinsic(struct ac_nir_context *ctx, const nir_te
    case nir_texop_tex:
       if (ctx->stage != MESA_SHADER_FRAGMENT &&
           (!gl_shader_stage_is_compute(ctx->stage) ||
-           ctx->info->cs.derivative_group == DERIVATIVE_GROUP_NONE)) {
+           ctx->info->derivative_group == DERIVATIVE_GROUP_NONE)) {
          assert(!args->lod);
          args->level_zero = true;
       }
@@ -1515,7 +1514,7 @@ static LLVMValueRef build_tex_intrinsic(struct ac_nir_context *ctx, const nir_te
 
    args->attributes = AC_ATTR_INVARIANT_LOAD;
    bool cs_derivs =
-      gl_shader_stage_is_compute(ctx->stage) && ctx->info->cs.derivative_group != DERIVATIVE_GROUP_NONE;
+      gl_shader_stage_is_compute(ctx->stage) && ctx->info->derivative_group != DERIVATIVE_GROUP_NONE;
    if (ctx->stage == MESA_SHADER_FRAGMENT || cs_derivs) {
       /* Prevent texture instructions with implicit derivatives from being
        * sinked into branches. */
@@ -2884,6 +2883,14 @@ static bool visit_intrinsic(struct ac_nir_context *ctx, nir_intrinsic_instr *ins
    LLVMValueRef result = NULL;
 
    switch (instr->intrinsic) {
+   case nir_intrinsic_ddx:
+   case nir_intrinsic_ddy:
+   case nir_intrinsic_ddx_fine:
+   case nir_intrinsic_ddy_fine:
+   case nir_intrinsic_ddx_coarse:
+   case nir_intrinsic_ddy_coarse:
+      result = emit_ddxy(ctx, instr->intrinsic, get_src(ctx, instr->src[0]));
+      break;
    case nir_intrinsic_ballot:
    case nir_intrinsic_ballot_relaxed:
       result = ac_build_ballot(&ctx->ac, get_src(ctx, instr->src[0]));
@@ -3072,6 +3079,7 @@ static bool visit_intrinsic(struct ac_nir_context *ctx, nir_intrinsic_instr *ins
       result = visit_get_ssbo_size(ctx, instr);
       break;
    case nir_intrinsic_load_input:
+   case nir_intrinsic_load_per_primitive_input:
    case nir_intrinsic_load_input_vertex:
    case nir_intrinsic_load_per_vertex_input:
       result = visit_load(ctx, instr);
@@ -3268,26 +3276,31 @@ static bool visit_intrinsic(struct ac_nir_context *ctx, nir_intrinsic_instr *ins
    case nir_intrinsic_quad_broadcast: {
       unsigned lane = nir_src_as_uint(instr->src[1]);
       result = ac_build_quad_swizzle(&ctx->ac, get_src(ctx, instr->src[0]), lane, lane, lane, lane);
-      result = ac_build_wqm(&ctx->ac, result);
+      if (ctx->info->stage == MESA_SHADER_FRAGMENT)
+         result = ac_build_wqm(&ctx->ac, result);
       break;
    }
    case nir_intrinsic_quad_swap_horizontal:
       result = ac_build_quad_swizzle(&ctx->ac, get_src(ctx, instr->src[0]), 1, 0, 3, 2);
-      result = ac_build_wqm(&ctx->ac, result);
+      if (ctx->info->stage == MESA_SHADER_FRAGMENT)
+         result = ac_build_wqm(&ctx->ac, result);
       break;
    case nir_intrinsic_quad_swap_vertical:
       result = ac_build_quad_swizzle(&ctx->ac, get_src(ctx, instr->src[0]), 2, 3, 0, 1);
-      result = ac_build_wqm(&ctx->ac, result);
+      if (ctx->info->stage == MESA_SHADER_FRAGMENT)
+         result = ac_build_wqm(&ctx->ac, result);
       break;
    case nir_intrinsic_quad_swap_diagonal:
       result = ac_build_quad_swizzle(&ctx->ac, get_src(ctx, instr->src[0]), 3, 2, 1, 0);
-      result = ac_build_wqm(&ctx->ac, result);
+      if (ctx->info->stage == MESA_SHADER_FRAGMENT)
+         result = ac_build_wqm(&ctx->ac, result);
       break;
    case nir_intrinsic_quad_swizzle_amd: {
       uint32_t mask = nir_intrinsic_swizzle_mask(instr);
       result = ac_build_quad_swizzle(&ctx->ac, get_src(ctx, instr->src[0]), mask & 0x3,
                                      (mask >> 2) & 0x3, (mask >> 4) & 0x3, (mask >> 6) & 0x3);
-      result = ac_build_wqm(&ctx->ac, result);
+      if (ctx->info->stage == MESA_SHADER_FRAGMENT)
+         result = ac_build_wqm(&ctx->ac, result);
       break;
    }
    case nir_intrinsic_masked_swizzle_amd: {
@@ -3600,20 +3613,20 @@ static bool visit_intrinsic(struct ac_nir_context *ctx, nir_intrinsic_instr *ins
       }
       break;
    }
-   case nir_intrinsic_ordered_xfb_counter_add_gfx12_amd: {
-      const unsigned num_atomics = 6; /* max 8, using v0..v15 as temporaries */
+   case nir_intrinsic_ordered_add_loop_gfx12_amd: {
+      const unsigned num_atomics = 6;
       char code[2048];
       char *ptr = code;
 
       /* Assembly outputs:
-       *    i32 VGPR $0 = dwordsWritten (set in 4 lanes)
+       *    i32 VGPR $0 = previous value in memory
        *
        * Assembly inputs:
-       *    EXEC = 0xf (4 lanes, set by nir_push_if())
+       *    EXEC = one lane per counter (use nir_push_if, streamout should always enable 4 lanes)
        *    i64 SGPR $1 = atomic base address
-       *    i32 VGPR $2 = voffset = 8 * threadIDInGroup
+       *    i32 VGPR $2 = 32-bit VGPR voffset (streamout should set local_invocation_index * 8)
        *    i32 SGPR $3 = orderedID
-       *    i64 VGPR $4 = {orderedID, numDwords} (set in 4 lanes)
+       *    i64 VGPR $4 = 64-bit VGPR atomic src (streamout should set {orderedID, numDwords})
        */
 
       /* Issue (num_atomics - 1) atomics to initialize the results.
@@ -3622,9 +3635,11 @@ static bool visit_intrinsic(struct ac_nir_context *ctx, nir_intrinsic_instr *ins
       for (int i = 0; i < num_atomics - 1; i++) {
          /* global_atomic_ordered_add_b64 dst, offset, data, address */
          ptr += sprintf(ptr,
-                        "global_atomic_ordered_add_b64 v[%u:%u], $2, $4, $1 th:TH_ATOMIC_RETURN\n",
-                        i * 2,
-                        i * 2 + 1);
+                        "global_atomic_ordered_add_b64 v[%u:%u], $2, $4, $1 th:TH_ATOMIC_RETURN\n"
+                        "s_nop 15\n"
+                        "s_nop 7\n",
+                        3 + i * 2,
+                        3 + i * 2 + 1);
       }
 
       /* This is an infinite while loop with breaks. The loop body executes "num_atomics"
@@ -3633,40 +3648,37 @@ static bool visit_intrinsic(struct ac_nir_context *ctx, nir_intrinsic_instr *ins
        * It's pipelined such that we only wait for the oldest atomic, so there is always
        * "num_atomics" atomics in flight while the shader is waiting.
        */
-      unsigned inst_block_size = 3 + 1 + 3 + 2; /* size of the next sprintf in dwords */
+      unsigned inst_block_size = 3 + 1 + 3; /* size of the next sprintf in dwords */
 
       for (unsigned i = 0; i < num_atomics; i++) {
          unsigned issue_index = (num_atomics - 1 + i) % num_atomics;
          unsigned read_index = i;
 
-         /* result = dwords_written */
          ptr += sprintf(ptr,
                         /* Issue (or repeat) the attempt. */
                         "global_atomic_ordered_add_b64 v[%u:%u], $2, $4, $1 th:TH_ATOMIC_RETURN\n"
                         "s_wait_loadcnt 0x%x\n"
                         /* if (result[check_index].ordered_id == ordered_id) {
-                         *    dwords_written = result[check_index].dwords_written;
+                         *    return_value = result[check_index].value;
                          *    break;
                          * }
                          */
                         "v_cmp_eq_u32 %s, $3, v%u\n"
                         "v_mov_b32 $0, v%u\n"
-                        "s_cbranch_vccnz 0x%x\n"
-                        /* This is roughly "atomic_latency / num_atomics - latency_of_last_5_instructions" cycles. */
-                        "s_nop 15\n"
-                        "s_nop 10\n",
-                        issue_index * 2,
-                        issue_index * 2 + 1,
+                        "s_cbranch_vccnz 0x%x\n",
+                        3 + issue_index * 2,
+                        3 + issue_index * 2 + 1,
                         num_atomics - 1, /* wait count */
                         ctx->ac.wave_size == 32 ? "vcc_lo" : "vcc",
-                        read_index * 2, /* v_cmp_eq: src1 */
-                        read_index * 2 + 1, /* output */
-                        inst_block_size * (num_atomics - i - 1) + 3); /* forward s_cbranch as loop break */
+                        3 + read_index * 2, /* v_cmp_eq: src1 */
+                        3 + read_index * 2 + 1, /* output */
+                        inst_block_size * (num_atomics - i - 1) + 1); /* forward s_cbranch as loop break */
       }
 
       /* Jump to the beginning of the loop. */
       ptr += sprintf(ptr,
                      "s_branch 0x%x\n"
+                     "s_wait_alu 0xfffe\n"
                      "s_wait_loadcnt 0x0\n",
                      (inst_block_size * -(int)num_atomics - 1) & 0xffff);
 
@@ -3675,11 +3687,20 @@ static bool visit_intrinsic(struct ac_nir_context *ctx, nir_intrinsic_instr *ins
 
       /* =v means a VGPR output, =& means the dst register must be different from src registers,
        * s means an SGPR input, v means a VGPR input, ~{reg} means that the register is clobbered
+       *
+       * We need to list the registers manually because the clobber constraint doesn't prevent
+       * input and output registers from being assigned the same registers as the ones that are
+       * clobbered.
+       *
+       * Since registers in the clobber constraints are ignored by LLVM during computation of
+       * register usage, we have to set the input register to the highest used register because
+       * that one is included in the register usage computation.
        */
       char constraint[128];
-      snprintf(constraint, sizeof(constraint), "=&v,s,v,s,v,~{%s},~{v[0:%u]}",
+      snprintf(constraint, sizeof(constraint), "=&{v0},{s[8:9]},{v%u},{s12},{v[1:2]},~{%s},~{v[3:%u]}",
+               3 + num_atomics * 2,
                ctx->ac.wave_size == 32 ? "vcc_lo" : "vcc",
-               num_atomics * 2 - 1);
+               3 + num_atomics * 2 - 1);
 
       LLVMValueRef inlineasm = LLVMConstInlineAsm(calltype, code, constraint, true, false);
 

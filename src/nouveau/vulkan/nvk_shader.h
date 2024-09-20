@@ -102,10 +102,10 @@ nvk_physical_device_compiler_flags(const struct nvk_physical_device *pdev);
 
 nir_address_format
 nvk_ubo_addr_format(const struct nvk_physical_device *pdev,
-                    VkPipelineRobustnessBufferBehaviorEXT robustness);
+                    const struct vk_pipeline_robustness_state *rs);
 nir_address_format
 nvk_ssbo_addr_format(const struct nvk_physical_device *pdev,
-                     VkPipelineRobustnessBufferBehaviorEXT robustness);
+                     const struct vk_pipeline_robustness_state *rs);
 
 bool
 nvk_nir_lower_descriptors(nir_shader *nir,
@@ -123,7 +123,9 @@ nvk_lower_nir(struct nvk_device *dev, nir_shader *nir,
               struct nvk_cbuf_map *cbuf_map_out);
 
 VkResult
-nvk_shader_upload(struct nvk_device *dev, struct nvk_shader *shader);
+nvk_compile_nir_shader(struct nvk_device *dev, nir_shader *nir,
+                       const VkAllocationCallbacks *alloc,
+                       struct nvk_shader **shader_out);
 
 /* Codegen wrappers.
  *

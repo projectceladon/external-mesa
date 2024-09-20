@@ -6,17 +6,11 @@ libfreedreno_perfcntrs_files = files(
   'fd5_perfcntr.c',
   'fd6_perfcntr.c',
   'fd7_perfcntr.c',
+  'freedreno_dt.c',
   'freedreno_dt.h',
   'freedreno_perfcntr.c',
   'freedreno_perfcntr.h',
 )
-
-if host_machine.system() == 'fuchsia'
-  # Fuchsia doesn't support file tree walk
-  libfreedreno_perfcntrs_files += files('freedreno_dt_stubs.c')
-else
-  libfreedreno_perfcntrs_files += files('freedreno_dt.c')
-endif
 
 libfreedreno_perfcntrs = static_library(
   'freedreno_perfcntrs',

@@ -563,8 +563,8 @@ The integer capabilities:
 
 * ``PIPE_CAP_CL_GL_SHARING``: True if driver supports everything required by a frontend implementing the CL extension, and
   also supports importing/exporting all of pipe_texture_target via dma buffers.
-* ``PIPE_CAP_PREFER_COMPUTE_FOR_MULTIMEDIA``: Whether VDPAU, VAAPI, and
-  OpenMAX should use a compute-based blit instead of pipe_context::blit and compute pipeline for compositing images.
+* ``PIPE_CAP_PREFER_COMPUTE_FOR_MULTIMEDIA``: Whether VDPAU and VAAPI
+  should use a compute-based blit instead of pipe_context::blit and compute pipeline for compositing images.
 * ``PIPE_CAP_FRAGMENT_SHADER_INTERLOCK``: True if fragment shader interlock
   functionality is supported.
 * ``PIPE_CAP_ATOMIC_FLOAT_MINMAX``: Atomic float point minimum,
@@ -649,6 +649,12 @@ The integer capabilities:
 * ``PIPE_CAP_HAS_CONST_BW``: Whether the driver only supports non-data-dependent layouts (ie. not bandwidth compressed formats like AFBC, UBWC, etc), or supports ``PIPE_BIND_CONST_BW`` to disable data-dependent layouts on requested resources.
 * ``PIPE_CAP_PERFORMANCE_MONITOR``: Whether GL_AMD_performance_monitor should be exposed.
 * ``PIPE_CAP_TEXTURE_SAMPLER_INDEPENDENT``: Whether sampler views and sampler states are independent objects, meaning both can be freely mixed and matched by the frontend. This isn't required for OpenGL where on the shader level those are the same object. However for proper gallium nine and OpenCL support this is required.
+* ``PIPE_CAP_ASTC_DECODE_MODE``: Whether the driver supports ASTC decode precision. The :ext:`GL_EXT_texture_compression_astc_decode_mode` extension will only get exposed if :ext:`GL_KHR_texture_compression_astc_ldr<GL_KHR_texture_compression_astc_hdr>` is also supported.
+* ``PIPE_CAP_SHADER_SUBGROUP_SIZE``: A fixed subgroup size shader runs on GPU when GLSL GL_KHR_shader_subgroup_* extensions are enabled.
+* ``PIPE_CAP_SHADER_SUBGROUP_SUPPORTED_STAGES``: Bitmask of shader stages which support GL_KHR_shader_subgroup_* intrinsics.
+* ``PIPE_CAP_SHADER_SUBGROUP_SUPPORTED_FEATURES``: Bitmask of shader subgroup features listed in :ext:`GL_KHR_shader_subgroup`.
+* ``PIPE_CAP_SHADER_SUBGROUP_QUAD_ALL_STAGES``: Whether shader subgroup quad operations are supported by shader stages other than fragment shader.
+* ``PIPE_CAP_MULTIVIEW``: Whether multiview rendering of array textures is supported. A return of ``1`` indicates support for OVR_multiview, and ``2`` additionally supports OVR_multiview2. 
 
 
 .. _pipe_capf:

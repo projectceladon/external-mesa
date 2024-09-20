@@ -992,7 +992,7 @@ struct zink_shader_module {
 struct zink_program {
    struct pipe_reference reference;
    struct zink_context *ctx;
-   unsigned char sha1[20];
+   blake3_hash blake3;
    struct util_queue_fence cache_fence;
    struct u_rwlock pipeline_cache_lock;
    VkPipelineCache pipeline_cache;
@@ -1288,10 +1288,12 @@ struct zink_resource {
    enum pipe_format internal_format:16;
 
    struct zink_resource_object *obj;
+   struct pipe_surface *surface; //for swapchain images
    uint32_t queue;
    union {
       struct {
          struct util_range valid_buffer_range;
+         struct util_range *real_buffer_range; //only set on tc replace_buffer src
          uint32_t vbo_bind_mask : PIPE_MAX_ATTRIBS;
          uint8_t ubo_bind_count[2];
          uint8_t ssbo_bind_count[2];
@@ -1382,6 +1384,9 @@ struct zink_format_props {
 
 struct zink_screen {
    struct pipe_screen base;
+
+   const char *vendor_name;
+   const char *device_name;
 
    struct util_dl_library *loader_lib;
    PFN_vkGetInstanceProcAddr vk_GetInstanceProcAddr;
@@ -1524,6 +1529,13 @@ struct zink_screen {
    VkPipelineLayout gfx_push_constant_layout;
 
    struct {
+      /* these affect shader cache */
+      bool lower_robustImageAccess2;
+      bool needs_zs_shader_swizzle;
+      bool needs_sanitised_layer;
+      bool io_opt;
+   } driver_compiler_workarounds;
+   struct {
       bool broken_l4a4;
       /* https://gitlab.khronos.org/vulkan/vulkan/-/issues/3306
        * HI TURNIP
@@ -1534,17 +1546,14 @@ struct zink_screen {
       bool disable_optimized_compile;
       bool always_feedback_loop;
       bool always_feedback_loop_zs;
-      bool needs_sanitised_layer;
       bool track_renderpasses;
       bool no_linestipple;
       bool no_linesmooth;
       bool no_hw_gl_point;
-      bool lower_robustImageAccess2;
-      bool needs_zs_shader_swizzle;
       bool can_do_invalid_linear_modifier;
-      bool io_opt;
       bool inconsistent_interpolation;
       bool can_2d_view_sparse;
+      bool general_depth_layout;
       unsigned z16_unscaled_bias;
       unsigned z24_unscaled_bias;
    } driver_workarounds;

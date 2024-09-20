@@ -9,6 +9,7 @@
 #include <sys/mman.h>
 
 #include "drm-uapi/virtgpu_drm.h"
+#include "unstable_asahi_drm.h"
 
 #define VIRGL_RENDERER_UNSTABLE_APIS 1
 #include "vdrm.h"
@@ -58,7 +59,6 @@ agx_virtio_bo_alloc(struct agx_device *dev, size_t size, size_t align,
 {
    struct agx_bo *bo;
    unsigned handle = 0;
-   uint64_t ptr_gpu;
 
    size = ALIGN_POT(size, dev->params.vm_page_size);
 
@@ -83,24 +83,15 @@ agx_virtio_bo_alloc(struct agx_device *dev, size_t size, size_t align,
 
    uint32_t blob_id = p_atomic_inc_return(&dev->next_blob_id);
 
-   ASSERTED bool lo = (flags & AGX_BO_LOW_VA);
-
-   struct util_vma_heap *heap;
-   if (lo)
-      heap = &dev->usc_heap;
-   else
-      heap = &dev->main_heap;
-
-   simple_mtx_lock(&dev->vma_lock);
-   ptr_gpu = util_vma_heap_alloc(heap, size + dev->guard_size,
-                                 dev->params.vm_page_size);
-   simple_mtx_unlock(&dev->vma_lock);
-   if (!ptr_gpu) {
+   enum agx_va_flags va_flags = flags & AGX_BO_LOW_VA ? AGX_VA_USC : 0;
+   struct agx_va *va =
+      agx_va_alloc(dev, size, dev->params.vm_page_size, va_flags, 0);
+   if (!va) {
       fprintf(stderr, "Failed to allocate BO VMA\n");
       return NULL;
    }
 
-   req.addr = ptr_gpu;
+   req.addr = va->addr;
    req.blob_id = blob_id;
    req.vm_id = dev->vm_id;
 
@@ -118,37 +109,32 @@ agx_virtio_bo_alloc(struct agx_device *dev, size_t size, size_t align,
    /* Fresh handle */
    assert(!memcmp(bo, &((struct agx_bo){}), sizeof(*bo)));
 
-   bo->type = AGX_ALLOC_REGULAR;
    bo->size = size;
    bo->align = MAX2(dev->params.vm_page_size, align);
    bo->flags = flags;
-   bo->dev = dev;
    bo->handle = handle;
    bo->prime_fd = -1;
    bo->blob_id = blob_id;
-   bo->ptr.gpu = ptr_gpu;
+   bo->va = va;
    bo->vbo_res_id = vdrm_handle_to_res_id(dev->vdrm, handle);
 
-   dev->ops.bo_mmap(bo);
-
-   if (flags & AGX_BO_LOW_VA)
-      bo->ptr.gpu -= dev->shader_base;
-
-   assert(bo->ptr.gpu < (1ull << (lo ? 32 : 40)));
-
+   dev->ops.bo_mmap(dev, bo);
    return bo;
 }
 
 static int
 agx_virtio_bo_bind(struct agx_device *dev, struct agx_bo *bo, uint64_t addr,
-                   uint32_t flags)
+                   size_t size_B, uint64_t offset_B, uint32_t flags,
+                   bool unbind)
 {
+   assert(offset_B == 0 && "TODO: need to extend virtgpu");
+
    struct asahi_ccmd_gem_bind_req req = {
-      .op = ASAHI_BIND_OP_BIND,
+      .op = unbind ? ASAHI_BIND_OP_UNBIND : ASAHI_BIND_OP_BIND,
       .flags = flags,
       .vm_id = dev->vm_id,
       .res_id = bo->vbo_res_id,
-      .size = bo->size,
+      .size = size_B,
       .addr = addr,
       .hdr.cmd = ASAHI_CCMD_GEM_BIND,
       .hdr.len = sizeof(struct asahi_ccmd_gem_bind_req),
@@ -164,17 +150,17 @@ agx_virtio_bo_bind(struct agx_device *dev, struct agx_bo *bo, uint64_t addr,
 }
 
 static void
-agx_virtio_bo_mmap(struct agx_bo *bo)
+agx_virtio_bo_mmap(struct agx_device *dev, struct agx_bo *bo)
 {
-   if (bo->ptr.cpu) {
+   if (bo->map) {
       return;
    }
 
-   bo->ptr.cpu = vdrm_bo_map(bo->dev->vdrm, bo->handle, bo->size, NULL);
-   if (bo->ptr.cpu == MAP_FAILED) {
-      bo->ptr.cpu = NULL;
-      fprintf(stderr, "mmap failed: result=%p size=0x%llx fd=%i\n", bo->ptr.cpu,
-              (long long)bo->size, bo->dev->fd);
+   bo->map = vdrm_bo_map(dev->vdrm, bo->handle, bo->size, NULL);
+   if (bo->map == MAP_FAILED) {
+      bo->map = NULL;
+      fprintf(stderr, "mmap failed: result=%p size=0x%llx fd=%i\n", bo->map,
+              (long long)bo->size, dev->fd);
    }
 }
 

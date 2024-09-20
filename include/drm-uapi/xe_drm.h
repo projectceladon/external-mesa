@@ -80,7 +80,7 @@ extern "C" {
  *  - &DRM_IOCTL_XE_EXEC_QUEUE_GET_PROPERTY
  *  - &DRM_IOCTL_XE_EXEC
  *  - &DRM_IOCTL_XE_WAIT_USER_FENCE
- *  - &DRM_IOCTL_XE_PERF
+ *  - &DRM_IOCTL_XE_OBSERVATION
  */
 
 /*
@@ -101,7 +101,7 @@ extern "C" {
 #define DRM_XE_EXEC_QUEUE_GET_PROPERTY	0x08
 #define DRM_XE_EXEC			0x09
 #define DRM_XE_WAIT_USER_FENCE		0x0a
-#define DRM_XE_PERF			0x0b
+#define DRM_XE_OBSERVATION		0x0b
 
 /* Must be kept compact -- no holes */
 
@@ -116,7 +116,7 @@ extern "C" {
 #define DRM_IOCTL_XE_EXEC_QUEUE_GET_PROPERTY	DRM_IOWR(DRM_COMMAND_BASE + DRM_XE_EXEC_QUEUE_GET_PROPERTY, struct drm_xe_exec_queue_get_property)
 #define DRM_IOCTL_XE_EXEC			DRM_IOW(DRM_COMMAND_BASE + DRM_XE_EXEC, struct drm_xe_exec)
 #define DRM_IOCTL_XE_WAIT_USER_FENCE		DRM_IOWR(DRM_COMMAND_BASE + DRM_XE_WAIT_USER_FENCE, struct drm_xe_wait_user_fence)
-#define DRM_IOCTL_XE_PERF			DRM_IOW(DRM_COMMAND_BASE + DRM_XE_PERF, struct drm_xe_perf_param)
+#define DRM_IOCTL_XE_OBSERVATION		DRM_IOW(DRM_COMMAND_BASE + DRM_XE_OBSERVATION, struct drm_xe_observation_param)
 
 /**
  * DOC: Xe IOCTL Extensions
@@ -517,7 +517,14 @@ struct drm_xe_query_gt_list {
  *    available per Dual Sub Slices (DSS). For example a query response
  *    containing the following in mask:
  *    ``EU_PER_DSS    ff ff 00 00 00 00 00 00``
- *    means each DSS has 16 EU.
+ *    means each DSS has 16 SIMD8 EUs. This type may be omitted if device
+ *    doesn't have SIMD8 EUs.
+ *  - %DRM_XE_TOPO_SIMD16_EU_PER_DSS - To query the mask of SIMD16 Execution
+ *    Units (EU) available per Dual Sub Slices (DSS). For example a query
+ *    response containing the following in mask:
+ *    ``SIMD16_EU_PER_DSS    ff ff 00 00 00 00 00 00``
+ *    means each DSS has 16 SIMD16 EUs. This type may be omitted if device
+ *    doesn't have SIMD16 EUs.
  */
 struct drm_xe_query_topology_mask {
 	/** @gt_id: GT ID the mask is associated with */
@@ -527,6 +534,7 @@ struct drm_xe_query_topology_mask {
 #define DRM_XE_TOPO_DSS_COMPUTE		2
 #define DRM_XE_TOPO_L3_BANK		3
 #define DRM_XE_TOPO_EU_PER_DSS		4
+#define DRM_XE_TOPO_SIMD16_EU_PER_DSS	5
 	/** @type: type of mask */
 	__u16 type;
 
@@ -783,7 +791,13 @@ struct drm_xe_gem_create {
 #define DRM_XE_GEM_CPU_CACHING_WC                      2
 	/**
 	 * @cpu_caching: The CPU caching mode to select for this object. If
-	 * mmaping the object the mode selected here will also be used.
+	 * mmaping the object the mode selected here will also be used. The
+	 * exception is when mapping system memory (including data evicted
+	 * to system) on discrete GPUs. The caching mode selected will
+	 * then be overridden to DRM_XE_GEM_CPU_CACHING_WB, and coherency
+	 * between GPU- and CPU is guaranteed. The caching mode of
+	 * existing CPU-mappings will be updated transparently to
+	 * user-space clients.
 	 */
 	__u16 cpu_caching;
 	/** @pad: MBZ */
@@ -1376,66 +1390,67 @@ struct drm_xe_wait_user_fence {
 };
 
 /**
- * enum drm_xe_perf_type - Perf stream types
+ * enum drm_xe_observation_type - Observation stream types
  */
-enum drm_xe_perf_type {
-	/** @DRM_XE_PERF_TYPE_OA: OA perf stream type */
-	DRM_XE_PERF_TYPE_OA,
+enum drm_xe_observation_type {
+	/** @DRM_XE_OBSERVATION_TYPE_OA: OA observation stream type */
+	DRM_XE_OBSERVATION_TYPE_OA,
 };
 
 /**
- * enum drm_xe_perf_op - Perf stream ops
+ * enum drm_xe_observation_op - Observation stream ops
  */
-enum drm_xe_perf_op {
-	/** @DRM_XE_PERF_OP_STREAM_OPEN: Open a perf counter stream */
-	DRM_XE_PERF_OP_STREAM_OPEN,
+enum drm_xe_observation_op {
+	/** @DRM_XE_OBSERVATION_OP_STREAM_OPEN: Open an observation stream */
+	DRM_XE_OBSERVATION_OP_STREAM_OPEN,
 
-	/** @DRM_XE_PERF_OP_ADD_CONFIG: Add perf stream config */
-	DRM_XE_PERF_OP_ADD_CONFIG,
+	/** @DRM_XE_OBSERVATION_OP_ADD_CONFIG: Add observation stream config */
+	DRM_XE_OBSERVATION_OP_ADD_CONFIG,
 
-	/** @DRM_XE_PERF_OP_REMOVE_CONFIG: Remove perf stream config */
-	DRM_XE_PERF_OP_REMOVE_CONFIG,
+	/** @DRM_XE_OBSERVATION_OP_REMOVE_CONFIG: Remove observation stream config */
+	DRM_XE_OBSERVATION_OP_REMOVE_CONFIG,
 };
 
 /**
- * struct drm_xe_perf_param - Input of &DRM_XE_PERF
+ * struct drm_xe_observation_param - Input of &DRM_XE_OBSERVATION
  *
- * The perf layer enables multiplexing perf counter streams of multiple
- * types. The actual params for a particular stream operation are supplied
- * via the @param pointer (use __copy_from_user to get these params).
+ * The observation layer enables multiplexing observation streams of
+ * multiple types. The actual params for a particular stream operation are
+ * supplied via the @param pointer (use __copy_from_user to get these
+ * params).
  */
-struct drm_xe_perf_param {
+struct drm_xe_observation_param {
 	/** @extensions: Pointer to the first extension struct, if any */
 	__u64 extensions;
-	/** @perf_type: Perf stream type, of enum @drm_xe_perf_type */
-	__u64 perf_type;
-	/** @perf_op: Perf op, of enum @drm_xe_perf_op */
-	__u64 perf_op;
+	/** @observation_type: observation stream type, of enum @drm_xe_observation_type */
+	__u64 observation_type;
+	/** @observation_op: observation stream op, of enum @drm_xe_observation_op */
+	__u64 observation_op;
 	/** @param: Pointer to actual stream params */
 	__u64 param;
 };
 
 /**
- * enum drm_xe_perf_ioctls - Perf fd ioctl's
+ * enum drm_xe_observation_ioctls - Observation stream fd ioctl's
  *
- * Information exchanged between userspace and kernel for perf fd ioctl's
- * is stream type specific
+ * Information exchanged between userspace and kernel for observation fd
+ * ioctl's is stream type specific
  */
-enum drm_xe_perf_ioctls {
-	/** @DRM_XE_PERF_IOCTL_ENABLE: Enable data capture for a stream */
-	DRM_XE_PERF_IOCTL_ENABLE = _IO('i', 0x0),
+enum drm_xe_observation_ioctls {
+	/** @DRM_XE_OBSERVATION_IOCTL_ENABLE: Enable data capture for an observation stream */
+	DRM_XE_OBSERVATION_IOCTL_ENABLE = _IO('i', 0x0),
 
-	/** @DRM_XE_PERF_IOCTL_DISABLE: Disable data capture for a stream */
-	DRM_XE_PERF_IOCTL_DISABLE = _IO('i', 0x1),
+	/** @DRM_XE_OBSERVATION_IOCTL_DISABLE: Disable data capture for a observation stream */
+	DRM_XE_OBSERVATION_IOCTL_DISABLE = _IO('i', 0x1),
 
-	/** @DRM_XE_PERF_IOCTL_CONFIG: Change stream configuration */
-	DRM_XE_PERF_IOCTL_CONFIG = _IO('i', 0x2),
+	/** @DRM_XE_OBSERVATION_IOCTL_CONFIG: Change observation stream configuration */
+	DRM_XE_OBSERVATION_IOCTL_CONFIG = _IO('i', 0x2),
 
-	/** @DRM_XE_PERF_IOCTL_STATUS: Return stream status */
-	DRM_XE_PERF_IOCTL_STATUS = _IO('i', 0x3),
+	/** @DRM_XE_OBSERVATION_IOCTL_STATUS: Return observation stream status */
+	DRM_XE_OBSERVATION_IOCTL_STATUS = _IO('i', 0x3),
 
-	/** @DRM_XE_PERF_IOCTL_INFO: Return stream info */
-	DRM_XE_PERF_IOCTL_INFO = _IO('i', 0x4),
+	/** @DRM_XE_OBSERVATION_IOCTL_INFO: Return observation stream info */
+	DRM_XE_OBSERVATION_IOCTL_INFO = _IO('i', 0x4),
 };
 
 /**
@@ -1546,12 +1561,12 @@ enum drm_xe_oa_format_type {
  * Stream params are specified as a chain of @drm_xe_ext_set_property
  * struct's, with @property values from enum @drm_xe_oa_property_id and
  * @drm_xe_user_extension base.name set to @DRM_XE_OA_EXTENSION_SET_PROPERTY.
- * @param field in struct @drm_xe_perf_param points to the first
+ * @param field in struct @drm_xe_observation_param points to the first
  * @drm_xe_ext_set_property struct.
  *
- * Exactly the same mechanism is also used for stream reconfiguration using
- * the @DRM_XE_PERF_IOCTL_CONFIG perf fd ioctl, though only a subset of
- * properties below can be specified for stream reconfiguration.
+ * Exactly the same mechanism is also used for stream reconfiguration using the
+ * @DRM_XE_OBSERVATION_IOCTL_CONFIG observation stream fd ioctl, though only a
+ * subset of properties below can be specified for stream reconfiguration.
  */
 enum drm_xe_oa_property_id {
 #define DRM_XE_OA_EXTENSION_SET_PROPERTY	0
@@ -1571,11 +1586,11 @@ enum drm_xe_oa_property_id {
 
 	/**
 	 * @DRM_XE_OA_PROPERTY_OA_METRIC_SET: OA metrics defining contents of OA
-	 * reports, previously added via @DRM_XE_PERF_OP_ADD_CONFIG.
+	 * reports, previously added via @DRM_XE_OBSERVATION_OP_ADD_CONFIG.
 	 */
 	DRM_XE_OA_PROPERTY_OA_METRIC_SET,
 
-	/** @DRM_XE_OA_PROPERTY_OA_FORMAT: Perf counter report format */
+	/** @DRM_XE_OA_PROPERTY_OA_FORMAT: OA counter report format */
 	DRM_XE_OA_PROPERTY_OA_FORMAT,
 	/*
 	 * OA_FORMAT's are specified the same way as in PRM/Bspec 52198/60942,
@@ -1583,10 +1598,10 @@ enum drm_xe_oa_property_id {
 	 * b. Counter select c. Counter size and d. BC report. Also refer to the
 	 * oa_formats array in drivers/gpu/drm/xe/xe_oa.c.
 	 */
-#define DRM_XE_OA_FORMAT_MASK_FMT_TYPE		(0xff << 0)
-#define DRM_XE_OA_FORMAT_MASK_COUNTER_SEL	(0xff << 8)
-#define DRM_XE_OA_FORMAT_MASK_COUNTER_SIZE	(0xff << 16)
-#define DRM_XE_OA_FORMAT_MASK_BC_REPORT		(0xff << 24)
+#define DRM_XE_OA_FORMAT_MASK_FMT_TYPE		(0xffu << 0)
+#define DRM_XE_OA_FORMAT_MASK_COUNTER_SEL	(0xffu << 8)
+#define DRM_XE_OA_FORMAT_MASK_COUNTER_SIZE	(0xffu << 16)
+#define DRM_XE_OA_FORMAT_MASK_BC_REPORT		(0xffu << 24)
 
 	/**
 	 * @DRM_XE_OA_PROPERTY_OA_PERIOD_EXPONENT: Requests periodic OA unit
@@ -1596,13 +1611,13 @@ enum drm_xe_oa_property_id {
 
 	/**
 	 * @DRM_XE_OA_PROPERTY_OA_DISABLED: A value of 1 will open the OA
-	 * stream in a DISABLED state (see @DRM_XE_PERF_IOCTL_ENABLE).
+	 * stream in a DISABLED state (see @DRM_XE_OBSERVATION_IOCTL_ENABLE).
 	 */
 	DRM_XE_OA_PROPERTY_OA_DISABLED,
 
 	/**
 	 * @DRM_XE_OA_PROPERTY_EXEC_QUEUE_ID: Open the stream for a specific
-	 * @exec_queue_id. Perf queries can be executed on this exec queue.
+	 * @exec_queue_id. OA queries can be executed on this exec queue.
 	 */
 	DRM_XE_OA_PROPERTY_EXEC_QUEUE_ID,
 
@@ -1622,7 +1637,7 @@ enum drm_xe_oa_property_id {
 /**
  * struct drm_xe_oa_config - OA metric configuration
  *
- * Multiple OA configs can be added using @DRM_XE_PERF_OP_ADD_CONFIG. A
+ * Multiple OA configs can be added using @DRM_XE_OBSERVATION_OP_ADD_CONFIG. A
  * particular config can be specified when opening an OA stream using
  * @DRM_XE_OA_PROPERTY_OA_METRIC_SET property.
  */
@@ -1645,8 +1660,9 @@ struct drm_xe_oa_config {
 
 /**
  * struct drm_xe_oa_stream_status - OA stream status returned from
- * @DRM_XE_PERF_IOCTL_STATUS perf fd ioctl. Userspace can call the ioctl to
- * query stream status in response to EIO errno from perf fd read().
+ * @DRM_XE_OBSERVATION_IOCTL_STATUS observation stream fd ioctl. Userspace can
+ * call the ioctl to query stream status in response to EIO errno from
+ * observation fd read().
  */
 struct drm_xe_oa_stream_status {
 	/** @extensions: Pointer to the first extension struct, if any */
@@ -1665,7 +1681,7 @@ struct drm_xe_oa_stream_status {
 
 /**
  * struct drm_xe_oa_stream_info - OA stream info returned from
- * @DRM_XE_PERF_IOCTL_INFO perf fd ioctl
+ * @DRM_XE_OBSERVATION_IOCTL_INFO observation stream fd ioctl
  */
 struct drm_xe_oa_stream_info {
 	/** @extensions: Pointer to the first extension struct, if any */

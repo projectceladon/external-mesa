@@ -27,7 +27,7 @@
       when: on_success
 
 .panfrost-midgard-manual-rules:
-  stage: arm
+  stage: arm-postmerge
   extends: .no-auto-retry
   rules:
     - !reference [.test, rules]
@@ -58,7 +58,7 @@
       when: on_success
 
 .panfrost-bifrost-gl-manual-rules:
-  stage: arm
+  stage: arm-postmerge
   extends: .no-auto-retry
   rules:
     - !reference [.test, rules]
@@ -91,7 +91,7 @@
       when: on_success
 
 .panfrost-bifrost-vk-manual-rules:
-  stage: arm
+  stage: arm-postmerge
   extends: .no-auto-retry
   rules:
     - !reference [.test, rules]
@@ -105,6 +105,39 @@
       when: manual
     - changes:
         *panfrost_bifrost_file_list
+      when: manual
+
+.panfrost-valhall-gl-rules:
+  stage: arm
+  rules:
+    - !reference [.test, rules]
+    - !reference [.collabora-farm-rules, rules]
+    - !reference [.gl-rules, rules]
+    - changes:
+        *panfrost_common_file_list
+      when: on_success
+    - changes:
+        *panfrost_gallium_file_list
+      when: on_success
+    - changes: &panfrost_valhall_file_list
+        - src/panfrost/compiler/**/*
+      when: on_success
+
+.panfrost-valhall-gl-manual-rules:
+  stage: arm-postmerge
+  extends: .no-auto-retry
+  rules:
+    - !reference [.test, rules]
+    - !reference [.collabora-farm-manual-rules, rules]
+    - !reference [.gl-manual-rules, rules]
+    - changes:
+        *panfrost_common_file_list
+      when: manual
+    - changes:
+        *panfrost_gallium_file_list
+      when: manual
+    - changes:
+        *panfrost_valhall_file_list
       when: manual
 
 .panfrost-test:
@@ -183,6 +216,22 @@
     KERNEL_IMAGE_TYPE: ""
     RUNNER_TAG: mesa-ci-x86-64-lava-rk3399-gru-kevin
 
+# Status: https://lava.collabora.dev/scheduler/device_type/rk3588-rock-5b
+.lava-rk3588-rock-5b:arm64:
+  variables:
+    DEVICE_TYPE: rk3588-rock-5b
+    DTB: $DEVICE_TYPE
+    FARM: collabora
+    GPU_VERSION: panfrost-g610
+    DRIVER_NAME: panfrost
+    FDO_CI_CONCURRENT: 6
+    BOOT_METHOD: u-boot
+    KERNEL_IMAGE_NAME: Image
+    KERNEL_IMAGE_TYPE: "image"
+    FORCE_KERNEL_TAG: "v6.11-rc5-mesa-3831"
+    KERNEL_IMAGE_BASE: https://${S3_HOST}/${S3_KERNEL_BUCKET}/${KERNEL_REPO}/${FORCE_KERNEL_TAG}
+    RUNNER_TAG: mesa-ci-x86-64-lava-rk3588-rock-5b
+
 # Status: https://lava.collabora.dev/scheduler/device_type/sun50i-h6-pine-h64
 .lava-sun50i-h6-pine-h64:arm64:
   variables:
@@ -221,6 +270,19 @@ panfrost-t760-traces:arm32:
     - .panfrost-test
     - .lava-rk3288-veyron-jaq:arm32
     - .panfrost-traces
+
+panfrost-t860-cl:arm64:
+  extends:
+    - .lava-test-deqp:arm64
+    - .panfrost-midgard-manual-rules
+    - .panfrost-test
+    - .lava-rk3399-gru-kevin:arm64
+  rules:
+    - !reference [.panfrost-midgard-manual-rules, rules]
+    - !reference [.rusticl-manual-rules, rules]
+  variables:
+    HWCI_START_WESTON: 1
+    DEQP_SUITE: panfrost-t860-cl
 
 panfrost-t860-gl:arm64:
   parallel: 3
@@ -307,3 +369,21 @@ panfrost-g57-gl:arm64:
   parallel: 6
   variables:
     DEQP_SUITE: panfrost-g57
+
+panfrost-g610-gl:arm64:
+  parallel: 2
+  extends:
+    - .lava-test-deqp:arm64
+    - .panfrost-valhall-gl-rules
+    - .panfrost-test
+    - .lava-rk3588-rock-5b:arm64
+  variables:
+    DEQP_SUITE: panfrost-g610
+    PAN_MESA_DEBUG: "deqp,sync,indirect"
+
+panfrost-g610-gl-full:arm64:
+  extends:
+    - panfrost-g610-gl:arm64
+    - .panfrost-valhall-gl-manual-rules
+  variables:
+    DEQP_FRACTION: 1

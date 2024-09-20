@@ -50,6 +50,10 @@ mod_to_block_fmt(uint64_t mod)
       if (drm_is_afbc(mod) && (mod & AFBC_FORMAT_MOD_TILED))
          return MALI_BLOCK_FORMAT_AFBC_TILED;
 #endif
+#if PAN_ARCH >= 10
+      if (drm_is_afrc(mod))
+         return 0; /* Reserved field for AFRC state */
+#endif
 
       unreachable("Unsupported modifer");
    }
@@ -413,10 +417,11 @@ pan_rt_init_format(const struct pan_image_view *rt,
 
    struct pan_blendable_format fmt =
       *GENX(panfrost_blendable_format_from_pipe_format)(rt->format);
+   enum mali_color_format writeback_format;
 
    if (fmt.internal) {
       cfg->internal_format = fmt.internal;
-      cfg->writeback_format = fmt.writeback;
+      writeback_format = fmt.writeback;
       panfrost_invert_swizzle(desc->swizzle, swizzle);
    } else {
       /* Construct RAW internal/writeback, where internal is
@@ -428,9 +433,19 @@ pan_rt_init_format(const struct pan_image_view *rt,
       assert(offset <= 4);
 
       cfg->internal_format = MALI_COLOR_BUFFER_INTERNAL_FORMAT_RAW8 + offset;
-
-      cfg->writeback_format = pan_mfbd_raw_format(bits);
+      writeback_format = pan_mfbd_raw_format(bits);
    }
+
+#if PAN_ARCH >= 10
+   const struct pan_image *image = pan_image_view_get_rt_image(rt);
+
+   if (drm_is_afrc(image->layout.modifier))
+      cfg->afrc.writeback_format = writeback_format;
+   else
+      cfg->writeback_format = writeback_format;
+#else
+   cfg->writeback_format = writeback_format;
+#endif
 
    cfg->swizzle = panfrost_translate_swizzle_4(swizzle);
 }
@@ -462,7 +477,9 @@ pan_prepare_rt(const struct pan_fb_info *fb, unsigned layer_idx,
 
    const struct pan_image *image = pan_image_view_get_rt_image(rt);
 
-   cfg->write_enable = true;
+   if (!drm_is_afrc(image->layout.modifier))
+      cfg->write_enable = true;
+
    cfg->dithering_enable = true;
 
    unsigned level = rt->first_level;
@@ -521,6 +538,21 @@ pan_prepare_rt(const struct pan_fb_info *fb, unsigned layer_idx,
 
       if (image->layout.modifier & AFBC_FORMAT_MOD_YTR)
          cfg->afbc.yuv_transform_enable = true;
+#endif
+#if PAN_ARCH >= 10
+   } else if (drm_is_afrc(image->layout.modifier)) {
+      struct pan_afrc_format_info finfo =
+         panfrost_afrc_get_format_info(image->layout.format);
+
+      cfg->writeback_mode = MALI_WRITEBACK_MODE_AFRC_RGB;
+      cfg->afrc.block_size =
+         GENX(pan_afrc_block_size)(image->layout.modifier, 0);
+      cfg->afrc.format =
+         GENX(pan_afrc_format)(finfo, image->layout.modifier, 0);
+
+      cfg->rgb.base = surf.data;
+      cfg->rgb.row_stride = row_stride;
+      cfg->rgb.surface_stride = layer_stride;
 #endif
    } else {
       assert(image->layout.modifier == DRM_FORMAT_MOD_LINEAR ||
@@ -591,7 +623,7 @@ pan_emit_midgard_tiler(const struct pan_fb_info *fb,
          cfg.heap_end = tiler_ctx->midgard.polygon_list;
       } else {
          cfg.hierarchy_mask = panfrost_choose_hierarchy_mask(
-            fb->width, fb->height, tiler_ctx->vertex_count, hierarchy);
+            fb->width, fb->height, tiler_ctx->midgard.vertex_count, hierarchy);
          header_size = panfrost_tiler_header_size(
             fb->width, fb->height, cfg.hierarchy_mask, hierarchy);
          cfg.polygon_list_size = panfrost_tiler_full_size(
@@ -719,7 +751,8 @@ GENX(pan_emit_fbd)(const struct pan_fb_info *fb, unsigned layer_idx,
       cfg.post_frame = pan_fix_frame_shader_mode(fb->bifrost.pre_post.modes[2],
                                                  force_clean_write);
       cfg.frame_shader_dcds = fb->bifrost.pre_post.dcds.gpu;
-      cfg.tiler = tiler_ctx->bifrost;
+      cfg.tiler =
+         PAN_ARCH >= 9 ? tiler_ctx->valhall.desc : tiler_ctx->bifrost.desc;
 #endif
       cfg.width = fb->width;
       cfg.height = fb->height;
@@ -783,6 +816,15 @@ GENX(pan_emit_fbd)(const struct pan_fb_info *fb, unsigned layer_idx,
 #if PAN_ARCH >= 9
       cfg.point_sprite_coord_origin_max_y = fb->sprite_coord_origin;
       cfg.first_provoking_vertex = fb->first_provoking_vertex;
+
+      /* internal_layer_index is used to select the right primitive list in the
+       * tiler context, and frame_arg is the value that's passed to the fragment
+       * shader through r62-r63, which we use to pass gl_Layer. Since the
+       * layer_idx only takes 8-bits, we might use the extra 56-bits we have
+       * in frame_argument to pass other information to the fragment shader at
+       * some point. */
+      cfg.internal_layer_index = layer_idx;
+      cfg.frame_argument = layer_idx;
 #endif
    }
 

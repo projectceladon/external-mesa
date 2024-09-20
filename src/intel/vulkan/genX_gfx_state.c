@@ -99,14 +99,8 @@ get_cps_state_offset(struct anv_cmd_buffer *cmd_buffer, bool cps_enabled,
 {
    struct anv_device *device = cmd_buffer->device;
 
-   if (!cps_enabled) {
-      assert(cmd_buffer->state.current_db_mode !=
-             ANV_CMD_DESCRIPTOR_BUFFER_MODE_UNKNOWN);
-      return cmd_buffer->state.current_db_mode ==
-             ANV_CMD_DESCRIPTOR_BUFFER_MODE_BUFFER ?
-             device->cps_states_db.offset :
-             device->cps_states.offset;
-   }
+   if (!cps_enabled)
+      return device->cps_states.offset;
 
    uint32_t offset;
    static const uint32_t size_index[] = {
@@ -131,12 +125,7 @@ get_cps_state_offset(struct anv_cmd_buffer *cmd_buffer, bool cps_enabled,
 
    offset *= MAX_VIEWPORTS * GENX(CPS_STATE_length) * 4;
 
-   assert(cmd_buffer->state.current_db_mode !=
-          ANV_CMD_DESCRIPTOR_BUFFER_MODE_UNKNOWN);
-   return (cmd_buffer->state.current_db_mode ==
-           ANV_CMD_DESCRIPTOR_BUFFER_MODE_BUFFER ?
-           device->cps_states_db.offset :
-           device->cps_states.offset) + offset;
+   return device->cps_states.offset + offset;
 }
 #endif /* GFX_VER >= 12 */
 
@@ -463,8 +452,10 @@ calculate_tile_dimensions(struct anv_cmd_buffer *cmd_buffer,
  * reemission if the values are changing.
  *
  * Nothing is emitted in the batch buffer.
+ *
+ * Returns a mask for state that we want to leave dirty afterwards.
  */
-void
+anv_cmd_dirty_mask_t
 genX(cmd_buffer_flush_gfx_runtime_state)(struct anv_cmd_buffer *cmd_buffer)
 {
    UNUSED struct anv_device *device = cmd_buffer->device;
@@ -476,6 +467,7 @@ genX(cmd_buffer_flush_gfx_runtime_state)(struct anv_cmd_buffer *cmd_buffer)
    struct anv_gfx_dynamic_state *hw_state = &gfx->dyn_state;
    const struct brw_wm_prog_data *wm_prog_data = get_wm_prog_data(pipeline);
    struct anv_instance *instance = cmd_buffer->device->physical->instance;
+   anv_cmd_dirty_mask_t dirty_state_mask = 0;
 
 #define GET(field) hw_state->field
 #define SET(bit, field, value)                               \
@@ -574,7 +566,8 @@ genX(cmd_buffer_flush_gfx_runtime_state)(struct anv_cmd_buffer *cmd_buffer)
    }
 
    if ((gfx->dirty & ANV_CMD_DIRTY_PIPELINE) ||
-       (gfx->dirty & ANV_CMD_DIRTY_FS_MSAA_FLAGS)) {
+       (gfx->dirty & ANV_CMD_DIRTY_FS_MSAA_FLAGS) ||
+       (gfx->dirty & ANV_CMD_DIRTY_COARSE_PIXEL_ACTIVE)) {
       if (wm_prog_data) {
          const struct anv_shader_bin *fs_bin =
             pipeline->base.shaders[MESA_SHADER_FRAGMENT];
@@ -625,15 +618,24 @@ genX(cmd_buffer_flush_gfx_runtime_state)(struct anv_cmd_buffer *cmd_buffer)
          SET(PS_EXTRA, ps_extra.PixelShaderIsPerSample,
              brw_wm_prog_data_is_persample(wm_prog_data, gfx->fs_msaa_flags));
 #if GFX_VER >= 11
-         SET(PS_EXTRA, ps_extra.PixelShaderIsPerCoarsePixel,
-             brw_wm_prog_data_is_coarse(wm_prog_data, gfx->fs_msaa_flags));
+         const bool uses_coarse_pixel =
+            brw_wm_prog_data_is_coarse(wm_prog_data, gfx->fs_msaa_flags);
+         SET(PS_EXTRA, ps_extra.PixelShaderIsPerCoarsePixel, uses_coarse_pixel);
 #endif
 #if GFX_VERx10 >= 125
-         /* TODO: We should only require this when the last geometry shader
-          *       uses a fragment shading rate that is not constant.
-          */
-         SET(PS_EXTRA, ps_extra.EnablePSDependencyOnCPsizeChange,
-             brw_wm_prog_data_is_coarse(wm_prog_data, gfx->fs_msaa_flags));
+         enum anv_coarse_pixel_state cps_state = uses_coarse_pixel ?
+            ANV_COARSE_PIXEL_STATE_ENABLED : ANV_COARSE_PIXEL_STATE_DISABLED;
+         bool cps_state_toggled =
+            genX(cmd_buffer_set_coarse_pixel_active)(cmd_buffer, cps_state);
+         if (cps_state_toggled)
+            dirty_state_mask |= ANV_CMD_DIRTY_COARSE_PIXEL_ACTIVE;
+
+         const bool needs_ps_dependency =
+            /* TODO: We should only require this when the last geometry shader
+             *       uses a fragment shading rate that is not constant.
+             */
+            uses_coarse_pixel || cps_state_toggled;
+         SET(PS_EXTRA, ps_extra.EnablePSDependencyOnCPsizeChange, needs_ps_dependency);
 #endif
          SET(WM, wm.BarycentricInterpolationMode,
              wm_prog_data_barycentric_modes(wm_prog_data, gfx->fs_msaa_flags));
@@ -1023,19 +1025,6 @@ genX(cmd_buffer_flush_gfx_runtime_state)(struct anv_cmd_buffer *cmd_buffer)
         BITSET_TEST(dyn->dirty, MESA_VK_DYNAMIC_MS_SAMPLE_LOCATIONS_ENABLE)))
       BITSET_SET(hw_state->dirty, ANV_GFX_STATE_SAMPLE_PATTERN);
 
-   if ((gfx->dirty & ANV_CMD_DIRTY_PIPELINE) ||
-       (gfx->dirty & ANV_CMD_DIRTY_RENDER_TARGETS) ||
-       BITSET_TEST(dyn->dirty, MESA_VK_DYNAMIC_CB_COLOR_WRITE_ENABLES)) {
-      /* 3DSTATE_WM in the hope we can avoid spawning fragment shaders
-       * threads.
-       */
-      bool force_thread_dispatch =
-         anv_pipeline_has_stage(pipeline, MESA_SHADER_FRAGMENT) &&
-         (pipeline->force_fragment_thread_dispatch ||
-          anv_cmd_buffer_all_color_write_masked(cmd_buffer));
-      SET(WM, wm.ForceThreadDispatchEnable, force_thread_dispatch ? ForceON : 0);
-   }
-
    if ((cmd_buffer->state.gfx.dirty & ANV_CMD_DIRTY_PIPELINE) ||
        BITSET_TEST(dyn->dirty, MESA_VK_DYNAMIC_ATTACHMENT_FEEDBACK_LOOP_ENABLE)) {
       SET_STAGE(PS_EXTRA, ps_extra.PixelShaderKillsPixel,
@@ -1044,6 +1033,33 @@ genX(cmd_buffer_flush_gfx_runtime_state)(struct anv_cmd_buffer *cmd_buffer)
                                  wm_prog_data->uses_kill),
                 FRAGMENT);
    }
+
+#if GFX_VERx10 >= 125
+   if (cmd_buffer->state.gfx.dirty & ANV_CMD_DIRTY_PIPELINE) {
+      SET_STAGE(PS_EXTRA, ps_extra.PixelShaderHasUAV,
+                wm_prog_data && wm_prog_data->has_side_effects,
+                FRAGMENT);
+   }
+#else
+   if (cmd_buffer->state.gfx.dirty & (ANV_CMD_DIRTY_PIPELINE |
+                                      ANV_CMD_DIRTY_OCCLUSION_QUERY_ACTIVE)) {
+      /* Prior to Gfx12.5 the HW seems to avoid spawning fragment shaders even
+       * if 3DSTATE_PS_EXTRA::PixelShaderKillsPixel=true when
+       * 3DSTATE_PS_BLEND::HasWriteableRT=false. This is causing problems with
+       * occlusion queries with 0 attachments. There are no CTS tests
+       * exercising this but zink+anv fails a bunch of tests like piglit
+       * arb_framebuffer_no_attachments-query.
+       *
+       * Here we choose to tweak the PixelShaderHasUAV to make sure the
+       * fragment shaders are run properly.
+       */
+      SET_STAGE(PS_EXTRA, ps_extra.PixelShaderHasUAV,
+                wm_prog_data && (wm_prog_data->has_side_effects ||
+                                 (gfx->color_att_count == 0 &&
+                                  gfx->n_occlusion_queries > 0)),
+                FRAGMENT);
+   }
+#endif
 
    if ((gfx->dirty & ANV_CMD_DIRTY_PIPELINE) ||
        (gfx->dirty & ANV_CMD_DIRTY_RENDER_TARGETS) ||
@@ -1057,7 +1073,7 @@ genX(cmd_buffer_flush_gfx_runtime_state)(struct anv_cmd_buffer *cmd_buffer)
       const uint8_t color_writes = dyn->cb.color_write_enables;
       bool has_writeable_rt =
          anv_pipeline_has_stage(pipeline, MESA_SHADER_FRAGMENT) &&
-         (color_writes & ((1u << gfx->color_att_count) - 1)) != 0;
+         !anv_cmd_buffer_all_color_write_masked(cmd_buffer);
 
       SET(BLEND_STATE, blend.AlphaToCoverageEnable,
                        dyn->ms.alpha_to_coverage_enable);
@@ -1255,6 +1271,26 @@ genX(cmd_buffer_flush_gfx_runtime_state)(struct anv_cmd_buffer *cmd_buffer)
 
       const float scale = dyn->vp.depth_clip_negative_one_to_one ? 0.5f : 1.0f;
 
+      /* From the Vulkan 1.0.45 spec:
+       *
+       *    "If the last active vertex processing stage shader entry point's
+       *     interface does not include a variable decorated with
+       *     ViewportIndex, then the first viewport is used."
+       *
+       * This could mean that we might need to set the MaximumVPIndex based on
+       * the pipeline's last stage, but if the last shader doesn't write the
+       * viewport index and the VUE header is used, the compiler will force
+       * the value to 0 (which is what the spec requires above). Otherwise it
+       * seems like the HW should be pulling 0 if the VUE header is not
+       * present.
+       *
+       * Avoiding a check on the pipeline seems to prevent additional
+       * emissions of 3DSTATE_CLIP which appear to impact performance on
+       * Assassin's Creed Valhalla..
+       */
+      SET(CLIP, clip.MaximumVPIndex, dyn->vp.viewport_count > 0 ?
+                                     dyn->vp.viewport_count - 1 : 0);
+
       for (uint32_t i = 0; i < dyn->vp.viewport_count; i++) {
          const VkViewport *vp = &viewports[i];
 
@@ -1373,9 +1409,6 @@ genX(cmd_buffer_flush_gfx_runtime_state)(struct anv_cmd_buffer *cmd_buffer)
 
          SET(VIEWPORT_CC, vp_cc.elem[i].MinimumDepth, min_depth);
          SET(VIEWPORT_CC, vp_cc.elem[i].MaximumDepth, max_depth);
-
-         SET(CLIP, clip.MaximumVPIndex, dyn->vp.viewport_count > 0 ?
-                                        dyn->vp.viewport_count - 1 : 0);
       }
 
       /* If the HW state is already considered dirty or the previous
@@ -1512,6 +1545,8 @@ genX(cmd_buffer_flush_gfx_runtime_state)(struct anv_cmd_buffer *cmd_buffer)
 #undef SET_STAGE
 
    vk_dynamic_graphics_state_clear_dirty(&cmd_buffer->vk.dynamic_graphics_state);
+
+   return dirty_state_mask;
 }
 
 static void
@@ -1770,6 +1805,7 @@ cmd_buffer_gfx_state_emission(struct anv_cmd_buffer *cmd_buffer)
    if (BITSET_TEST(hw_state->dirty, ANV_GFX_STATE_PS_EXTRA)) {
       anv_batch_emit_merge(&cmd_buffer->batch, GENX(3DSTATE_PS_EXTRA),
                            pipeline, partial.ps_extra, pse) {
+         SET(pse, ps_extra, PixelShaderHasUAV);
          SET(pse, ps_extra, PixelShaderIsPerSample);
 #if GFX_VER >= 11
          SET(pse, ps_extra, PixelShaderIsPerCoarsePixel);
@@ -1836,7 +1872,13 @@ cmd_buffer_gfx_state_emission(struct anv_cmd_buffer *cmd_buffer)
       }
    }
 
-   if (BITSET_TEST(hw_state->dirty, ANV_GFX_STATE_VIEWPORT_CC)) {
+   /* Force CC_VIEWPORT reallocation on Gfx9 when reprogramming
+    * 3DSTATE_VIEWPORT_STATE_POINTERS_CC :
+    *    https://gitlab.freedesktop.org/mesa/mesa/-/issues/11647
+    */
+   if (BITSET_TEST(hw_state->dirty, ANV_GFX_STATE_VIEWPORT_CC) ||
+       (GFX_VER == 9 &&
+        BITSET_TEST(hw_state->dirty, ANV_GFX_STATE_VIEWPORT_CC_PTR))) {
       hw_state->vp_cc.state =
          anv_cmd_buffer_alloc_dynamic_state(cmd_buffer,
                                             hw_state->vp_cc.count * 8, 32);
@@ -2147,7 +2189,6 @@ cmd_buffer_gfx_state_emission(struct anv_cmd_buffer *cmd_buffer)
    if (BITSET_TEST(hw_state->dirty, ANV_GFX_STATE_WM)) {
       anv_batch_emit_merge(&cmd_buffer->batch, GENX(3DSTATE_WM),
                            pipeline, partial.wm, wm) {
-         SET(wm, wm, ForceThreadDispatchEnable);
          SET(wm, wm, LineStippleEnable);
          SET(wm, wm, BarycentricInterpolationMode);
       }
@@ -2297,7 +2338,7 @@ genX(cmd_buffer_flush_gfx_hw_state)(struct anv_cmd_buffer *cmd_buffer)
     * https://gitlab.freedesktop.org/mesa/mesa/-/issues/9781
     */
 #if GFX_VER == 11
-   if (BITSET_TEST(hw_state->dirty, ANV_GFX_STATE_WM))
+   if (BITSET_TEST(hw_state->dirty, ANV_GFX_STATE_BLEND_STATE))
       BITSET_SET(hw_state->dirty, ANV_GFX_STATE_MULTISAMPLE);
 #endif
 

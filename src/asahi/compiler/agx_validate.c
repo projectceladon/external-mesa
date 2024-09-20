@@ -266,6 +266,8 @@ agx_read_registers(const agx_instr *I, unsigned s)
       /* See agx_write_registers */
       if (s == 0)
          return util_bitcount(I->mask) * MIN2(size, 2);
+      else if (s == 2 && I->explicit_coords)
+         return 2;
       else
          return size;
 
@@ -298,23 +300,32 @@ agx_read_registers(const agx_instr *I, unsigned s)
          return agx_coordinate_registers(I);
       } else if (s == 1) {
          /* LOD */
-         if (I->lod_mode == AGX_LOD_MODE_LOD_GRAD) {
+         if (I->lod_mode == AGX_LOD_MODE_LOD_GRAD ||
+             I->lod_mode == AGX_LOD_MODE_LOD_GRAD_MIN) {
+
+            /* Technically only 16-bit but we model as 32-bit to keep the IR
+             * simple, since the gradient is otherwise 32-bit.
+             */
+            unsigned min = I->lod_mode == AGX_LOD_MODE_LOD_GRAD_MIN ? 2 : 0;
+
             switch (I->dim) {
             case AGX_DIM_1D:
             case AGX_DIM_1D_ARRAY:
-               return 2 * 2 * 1;
+               return (2 * 2 * 1) + min;
             case AGX_DIM_2D:
             case AGX_DIM_2D_ARRAY:
             case AGX_DIM_2D_MS_ARRAY:
             case AGX_DIM_2D_MS:
-               return 2 * 2 * 2;
+               return (2 * 2 * 2) + min;
             case AGX_DIM_CUBE:
             case AGX_DIM_CUBE_ARRAY:
             case AGX_DIM_3D:
-               return 2 * 2 * 3;
+               return (2 * 2 * 3) + min;
             }
 
             unreachable("Invalid texture dimension");
+         } else if (I->lod_mode == AGX_LOD_MODE_AUTO_LOD_BIAS_MIN) {
+            return 2;
          } else {
             return 1;
          }
@@ -324,6 +335,12 @@ agx_read_registers(const agx_instr *I, unsigned s)
       } else {
          return size;
       }
+
+   case AGX_OPCODE_BLOCK_IMAGE_STORE:
+      if (s == 3 && I->explicit_coords)
+         return agx_coordinate_registers(I);
+      else
+         return size;
 
    case AGX_OPCODE_ATOMIC:
    case AGX_OPCODE_LOCAL_ATOMIC:
@@ -423,6 +440,8 @@ agx_validate_sr(const agx_instr *I)
    switch (I->sr) {
    case AGX_SR_ACTIVE_THREAD_INDEX_IN_QUAD:
    case AGX_SR_ACTIVE_THREAD_INDEX_IN_SUBGROUP:
+   case AGX_SR_TOTAL_ACTIVE_THREADS_IN_QUAD:
+   case AGX_SR_TOTAL_ACTIVE_THREADS_IN_SUBGROUP:
    case AGX_SR_COVERAGE_MASK:
    case AGX_SR_IS_ACTIVE_THREAD:
       return coverage;

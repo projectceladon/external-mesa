@@ -1431,6 +1431,10 @@ create_image_alias(struct v3dv_cmd_buffer *cmd_buffer,
        return NULL;
     }
 
+    v3dv_cmd_buffer_add_private_obj(
+       cmd_buffer, (uintptr_t)_image,
+       (v3dv_cmd_buffer_private_obj_destroy_cb)v3dv_DestroyImage);
+
     struct v3dv_image *image = v3dv_image_from_handle(_image);
     image->planes[0].mem = src->planes[0].mem;
     image->planes[0].mem_offset = src->planes[0].mem_offset;
@@ -2532,10 +2536,8 @@ get_copy_texel_buffer_pipeline(
       goto fail;
 
    if (device->instance->meta_cache_enabled) {
-      uint8_t *dupkey = malloc(V3DV_META_TEXEL_BUFFER_COPY_CACHE_KEY_SIZE);
-      memcpy(dupkey, key, V3DV_META_TEXEL_BUFFER_COPY_CACHE_KEY_SIZE);
       _mesa_hash_table_insert(device->meta.texel_buffer_copy.cache[image_type],
-                              dupkey, *pipeline);
+                              key, *pipeline);
       mtx_unlock(&device->meta.mtx);
    } else {
       v3dv_cmd_buffer_add_private_obj(

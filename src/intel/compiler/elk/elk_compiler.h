@@ -47,6 +47,8 @@ struct shader_info;
 struct nir_shader_compiler_options;
 typedef struct nir_shader nir_shader;
 
+#define REG_CLASS_COUNT 20
+
 struct elk_compiler {
    const struct intel_device_info *devinfo;
 
@@ -74,7 +76,7 @@ struct elk_compiler {
        * Array of the ra classes for the unaligned contiguous register
        * block sizes used, indexed by register size.
        */
-      struct ra_class *classes[16];
+      struct ra_class *classes[REG_CLASS_COUNT];
 
       /**
        * ra class for the aligned barycentrics we use for PLN, which doesn't
@@ -1748,7 +1750,8 @@ elk_compute_first_urb_slot_required(uint64_t inputs_read,
    if ((inputs_read & (VARYING_BIT_LAYER | VARYING_BIT_VIEWPORT | VARYING_BIT_PRIMITIVE_SHADING_RATE)) == 0) {
       for (int i = 0; i < prev_stage_vue_map->num_slots; i++) {
          int varying = prev_stage_vue_map->slot_to_varying[i];
-         if (varying > 0 && (inputs_read & BITFIELD64_BIT(varying)) != 0)
+         if (varying != ELK_VARYING_SLOT_PAD && varying > 0 &&
+             varying > 0 && (inputs_read & BITFIELD64_BIT(varying)) != 0)
             return ROUND_DOWN_TO(i, 2);
       }
    }

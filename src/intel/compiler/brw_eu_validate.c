@@ -21,7 +21,7 @@
  * IN THE SOFTWARE.
  */
 
-/** @file brw_eu_validate.c
+/** @file
  *
  * This file implements a pass that validates shader assembly.
  *
@@ -145,7 +145,7 @@ inst_is_raw_move(const struct brw_isa_info *isa, const brw_inst *inst)
    unsigned dst_type = signed_type(inst_dst_type(isa, inst));
    unsigned src_type = signed_type(brw_inst_src0_type(devinfo, inst));
 
-   if (brw_inst_src0_reg_file(devinfo, inst) == BRW_IMMEDIATE_VALUE) {
+   if (brw_inst_src0_reg_file(devinfo, inst) == IMM) {
       /* FIXME: not strictly true */
       if (brw_inst_src0_type(devinfo, inst) == BRW_TYPE_VF ||
           brw_inst_src0_type(devinfo, inst) == BRW_TYPE_UV ||
@@ -165,7 +165,7 @@ inst_is_raw_move(const struct brw_isa_info *isa, const brw_inst *inst)
 static bool
 dst_is_null(const struct intel_device_info *devinfo, const brw_inst *inst)
 {
-   return brw_inst_dst_reg_file(devinfo, inst) == BRW_ARCHITECTURE_REGISTER_FILE &&
+   return brw_inst_dst_reg_file(devinfo, inst) == ARF &&
           brw_inst_dst_da_reg_nr(devinfo, inst) == BRW_ARF_NULL;
 }
 
@@ -173,28 +173,28 @@ static bool
 src0_is_null(const struct intel_device_info *devinfo, const brw_inst *inst)
 {
    return brw_inst_src0_address_mode(devinfo, inst) == BRW_ADDRESS_DIRECT &&
-          brw_inst_src0_reg_file(devinfo, inst) == BRW_ARCHITECTURE_REGISTER_FILE &&
+          brw_inst_src0_reg_file(devinfo, inst) == ARF &&
           brw_inst_src0_da_reg_nr(devinfo, inst) == BRW_ARF_NULL;
 }
 
 static bool
 src1_is_null(const struct intel_device_info *devinfo, const brw_inst *inst)
 {
-   return brw_inst_src1_reg_file(devinfo, inst) == BRW_ARCHITECTURE_REGISTER_FILE &&
+   return brw_inst_src1_reg_file(devinfo, inst) == ARF &&
           brw_inst_src1_da_reg_nr(devinfo, inst) == BRW_ARF_NULL;
 }
 
 static bool
 src0_is_acc(const struct intel_device_info *devinfo, const brw_inst *inst)
 {
-   return brw_inst_src0_reg_file(devinfo, inst) == BRW_ARCHITECTURE_REGISTER_FILE &&
+   return brw_inst_src0_reg_file(devinfo, inst) == ARF &&
           (brw_inst_src0_da_reg_nr(devinfo, inst) & 0xF0) == BRW_ARF_ACCUMULATOR;
 }
 
 static bool
 src1_is_acc(const struct intel_device_info *devinfo, const brw_inst *inst)
 {
-   return brw_inst_src1_reg_file(devinfo, inst) == BRW_ARCHITECTURE_REGISTER_FILE &&
+   return brw_inst_src1_reg_file(devinfo, inst) == ARF &&
           (brw_inst_src1_da_reg_nr(devinfo, inst) & 0xF0) == BRW_ARF_ACCUMULATOR;
 }
 
@@ -358,7 +358,7 @@ send_restrictions(const struct brw_isa_info *isa,
    struct string error_msg = { .str = NULL, .len = 0 };
 
    if (inst_is_split_send(isa, inst)) {
-      ERROR_IF(brw_inst_send_src1_reg_file(devinfo, inst) == BRW_ARCHITECTURE_REGISTER_FILE &&
+      ERROR_IF(brw_inst_send_src1_reg_file(devinfo, inst) == ARF &&
                brw_inst_send_src1_reg_nr(devinfo, inst) != BRW_ARF_NULL,
                "src1 of split send must be a GRF or NULL");
 
@@ -366,12 +366,12 @@ send_restrictions(const struct brw_isa_info *isa,
                brw_inst_src0_da_reg_nr(devinfo, inst) < 112,
                "send with EOT must use g112-g127");
       ERROR_IF(brw_inst_eot(devinfo, inst) &&
-               brw_inst_send_src1_reg_file(devinfo, inst) == BRW_GENERAL_REGISTER_FILE &&
+               brw_inst_send_src1_reg_file(devinfo, inst) == FIXED_GRF &&
                brw_inst_send_src1_reg_nr(devinfo, inst) < 112,
                "send with EOT must use g112-g127");
 
-      if (brw_inst_send_src0_reg_file(devinfo, inst) == BRW_GENERAL_REGISTER_FILE &&
-          brw_inst_send_src1_reg_file(devinfo, inst) == BRW_GENERAL_REGISTER_FILE) {
+      if (brw_inst_send_src0_reg_file(devinfo, inst) == FIXED_GRF &&
+          brw_inst_send_src1_reg_file(devinfo, inst) == FIXED_GRF) {
          /* Assume minimums if we don't know */
          unsigned mlen = 1;
          if (!brw_inst_send_sel_reg32_desc(devinfo, inst)) {
@@ -397,7 +397,7 @@ send_restrictions(const struct brw_isa_info *isa,
       ERROR_IF(brw_inst_src0_address_mode(devinfo, inst) != BRW_ADDRESS_DIRECT,
                "send must use direct addressing");
 
-      ERROR_IF(brw_inst_send_src0_reg_file(devinfo, inst) != BRW_GENERAL_REGISTER_FILE,
+      ERROR_IF(brw_inst_send_src0_reg_file(devinfo, inst) != FIXED_GRF,
                "send from non-GRF");
       ERROR_IF(brw_inst_eot(devinfo, inst) &&
                brw_inst_src0_da_reg_nr(devinfo, inst) < 112,
@@ -993,7 +993,7 @@ general_restrictions_on_region_parameters(const struct brw_isa_info *isa,
                   "Destination Horizontal Stride must be 1");
 
       if (num_sources >= 1) {
-         ERROR_IF(brw_inst_src0_reg_file(devinfo, inst) != BRW_IMMEDIATE_VALUE &&
+         ERROR_IF(brw_inst_src0_reg_file(devinfo, inst) != IMM &&
                   brw_inst_src0_vstride(devinfo, inst) != BRW_VERTICAL_STRIDE_0 &&
                   brw_inst_src0_vstride(devinfo, inst) != BRW_VERTICAL_STRIDE_2 &&
                   brw_inst_src0_vstride(devinfo, inst) != BRW_VERTICAL_STRIDE_4,
@@ -1001,7 +1001,7 @@ general_restrictions_on_region_parameters(const struct brw_isa_info *isa,
       }
 
       if (num_sources == 2) {
-         ERROR_IF(brw_inst_src1_reg_file(devinfo, inst) != BRW_IMMEDIATE_VALUE &&
+         ERROR_IF(brw_inst_src1_reg_file(devinfo, inst) != IMM &&
                   brw_inst_src1_vstride(devinfo, inst) != BRW_VERTICAL_STRIDE_0 &&
                   brw_inst_src1_vstride(devinfo, inst) != BRW_VERTICAL_STRIDE_2 &&
                   brw_inst_src1_vstride(devinfo, inst) != BRW_VERTICAL_STRIDE_4,
@@ -1017,7 +1017,7 @@ general_restrictions_on_region_parameters(const struct brw_isa_info *isa,
 
 #define DO_SRC(n)                                                              \
       if (brw_inst_src ## n ## _reg_file(devinfo, inst) ==                     \
-          BRW_IMMEDIATE_VALUE)                                                 \
+          IMM)                                                 \
          continue;                                                             \
                                                                                \
       vstride = STRIDE(brw_inst_src ## n ## _vstride(devinfo, inst));          \
@@ -1075,21 +1075,27 @@ general_restrictions_on_region_parameters(const struct brw_isa_info *isa,
       /* VertStride must be used to cross GRF register boundaries. This rule
        * implies that elements within a 'Width' cannot cross GRF boundaries.
        */
-      const uint64_t mask = (1ULL << element_size) - 1;
       unsigned rowbase = subreg;
+      assert(util_is_power_of_two_nonzero(reg_unit(devinfo)));
+      unsigned grf_size_shift = ffs(REG_SIZE * reg_unit(devinfo)) - 1;
 
       for (int y = 0; y < exec_size / width; y++) {
-         uint64_t access_mask = 0;
+         bool spans_grfs = false;
          unsigned offset = rowbase;
+         unsigned first_grf = offset >> grf_size_shift;
 
          for (int x = 0; x < width; x++) {
-            access_mask |= mask << (offset % 64);
+            const unsigned end_byte = offset + (element_size - 1);
+            const unsigned end_grf = end_byte >> grf_size_shift;
+            spans_grfs = end_grf != first_grf;
+            if (spans_grfs)
+               break;
             offset += hstride * element_size;
          }
 
          rowbase += vstride * element_size;
 
-         if ((uint32_t)access_mask != 0 && (access_mask >> 32) != 0) {
+         if (spans_grfs) {
             ERROR("VertStride must be used to cross GRF register boundaries");
             break;
          }
@@ -1328,37 +1334,63 @@ special_restrictions_for_mixed_float_mode(const struct brw_isa_info *isa,
 }
 
 /**
- * Creates an \p access_mask for an \p exec_size, \p element_size, and a region
+ * Creates a \p grf_access_mask for an \p exec_size, \p element_size, and a
+ * region
  *
- * An \p access_mask is a 32-element array of uint64_t, where each uint64_t is
- * a bitmask of bytes accessed by the region.
+ * A \p grf_access_mask is a 32-element array of uint8_t, where each uint8_t
+ * is a bitmask of grfs accessed by the region.
  *
  * For instance the access mask of the source gX.1<4,2,2>F in an exec_size = 4
  * instruction would be
  *
- *    access_mask[0] = 0x00000000000000F0
- *    access_mask[1] = 0x000000000000F000
- *    access_mask[2] = 0x0000000000F00000
- *    access_mask[3] = 0x00000000F0000000
+ *    access_mask[0] = 0x01 (bytes 7-4 of the 1st grf)
+ *    access_mask[1] = 0x01 (bytes 15-12 of the 1st grf)
+ *    access_mask[2] = 0x01 (bytes 23-20 of the 1st grf)
+ *    access_mask[3] = 0x01 (bytes 31-28 of the 1st grf)
  *    access_mask[4-31] = 0
  *
- * because the first execution channel accesses bytes 7-4 and the second
- * execution channel accesses bytes 15-12, etc.
+ * Before Xe2, gX<1,1,0>F in an exec_size == 16 would yield:
+ *
+ *    access_mask[0] = 0x01 (bytes 3-0 of the 1st grf)
+ *    access_mask[1] = 0x01 (bytes 7-4 of the 1st grf)
+ *      ...
+ *    access_mask[7] = 0x01 (bytes 31-28 of the 1st grf)
+ *    access_mask[8] = 0x02 (bytes 3-0 of the 2nd grf)
+ *      ...
+ *    access_mask[15] = 0x02 (bytes 31-28 of the 2nd grf)
+ *    access_mask[16-31] = 0
+ *
+ * Whereas on Xe2, gX<1,1,0>F in an exec_size of 16 would yield:
+ *
+ *    access_mask[0] = 0x01 (bytes 3-0 of the 1st grf)
+ *    access_mask[1] = 0x01 (bytes 7-4 of the 1st grf)
+ *      ...
+ *    access_mask[7] = 0x01 (bytes 31-28 of the 1st grf)
+ *    access_mask[8] = 0x01 (bytes 35-32 of the 1st grf)
+ *      ...
+ *    access_mask[15] = 0x01 (bytes 63-60 of the 1st grf)
+ *    access_mask[4-31] = 0
+ *
  */
 static void
-align1_access_mask(uint64_t access_mask[static 32],
-                   unsigned exec_size, unsigned element_size, unsigned subreg,
-                   unsigned vstride, unsigned width, unsigned hstride)
+grfs_accessed(const struct intel_device_info *devinfo,
+              uint8_t grf_access_mask[static 32],
+              unsigned exec_size, unsigned element_size, unsigned subreg,
+              unsigned vstride, unsigned width, unsigned hstride)
 {
-   const uint64_t mask = (1ULL << element_size) - 1;
    unsigned rowbase = subreg;
    unsigned element = 0;
+   assert(util_is_power_of_two_nonzero(reg_unit(devinfo)));
+   unsigned grf_size_shift = (5 - 1) + ffs(reg_unit(devinfo));
 
    for (int y = 0; y < exec_size / width; y++) {
       unsigned offset = rowbase;
 
       for (int x = 0; x < width; x++) {
-         access_mask[element++] = mask << (offset % 64);
+         const unsigned start_grf = (offset >> grf_size_shift) % 8;
+         const unsigned end_byte = offset + (element_size - 1);
+         const unsigned end_grf = (end_byte >> grf_size_shift) % 8;
+         grf_access_mask[element++] = (1 << start_grf) | (1 << end_grf);
          offset += hstride * element_size;
       }
 
@@ -1372,19 +1404,14 @@ align1_access_mask(uint64_t access_mask[static 32],
  * Returns the number of registers accessed according to the \p access_mask
  */
 static int
-registers_read(const uint64_t access_mask[static 32])
+registers_read(const uint8_t grfs_accessed[static 32])
 {
-   int regs_read = 0;
+   uint8_t all_read = 0;
 
-   for (unsigned i = 0; i < 32; i++) {
-      if (access_mask[i] > 0xFFFFFFFF) {
-         return 2;
-      } else if (access_mask[i]) {
-         regs_read = 1;
-      }
-   }
+   for (unsigned i = 0; i < 32; i++)
+      all_read |= grfs_accessed[i];
 
-   return regs_read;
+   return util_bitcount(all_read);
 }
 
 /**
@@ -1400,7 +1427,7 @@ region_alignment_rules(const struct brw_isa_info *isa,
       brw_opcode_desc(isa, brw_inst_opcode(isa, inst));
    unsigned num_sources = brw_num_sources_from_inst(isa, inst);
    unsigned exec_size = 1 << brw_inst_exec_size(devinfo, inst);
-   uint64_t dst_access_mask[32], src0_access_mask[32], src1_access_mask[32];
+   uint8_t dst_access_mask[32], src0_access_mask[32], src1_access_mask[32];
    struct string error_msg = { .str = NULL, .len = 0 };
 
    if (num_sources == 3)
@@ -1430,7 +1457,7 @@ region_alignment_rules(const struct brw_isa_info *isa,
          continue;                                                             \
                                                                                \
       if (brw_inst_src ## n ## _reg_file(devinfo, inst) ==                     \
-          BRW_IMMEDIATE_VALUE)                                                 \
+          IMM)                                                 \
          continue;                                                             \
                                                                                \
       vstride = STRIDE(brw_inst_src ## n ## _vstride(devinfo, inst));          \
@@ -1439,9 +1466,9 @@ region_alignment_rules(const struct brw_isa_info *isa,
       type = brw_inst_src ## n ## _type(devinfo, inst);                        \
       element_size = brw_type_size_bytes(type);                                \
       subreg = brw_inst_src ## n ## _da1_subreg_nr(devinfo, inst);             \
-      align1_access_mask(src ## n ## _access_mask,                             \
-                         exec_size, element_size, subreg,                      \
-                         vstride, width, hstride)
+      grfs_accessed(devinfo, src ## n ## _access_mask,                         \
+                    exec_size, element_size, subreg,                           \
+                    vstride, width, hstride)
 
       if (i == 0) {
          DO_SRC(0);
@@ -1474,10 +1501,10 @@ region_alignment_rules(const struct brw_isa_info *isa,
    if (error_msg.str)
       return error_msg;
 
-   align1_access_mask(dst_access_mask, exec_size, element_size, subreg,
-                      exec_size == 1 ? 0 : exec_size * stride,
-                      exec_size == 1 ? 1 : exec_size,
-                      exec_size == 1 ? 0 : stride);
+   grfs_accessed(devinfo, dst_access_mask, exec_size, element_size, subreg,
+                 exec_size == 1 ? 0 : exec_size * stride,
+                 exec_size == 1 ? 1 : exec_size,
+                 exec_size == 1 ? 0 : stride);
 
    unsigned dst_regs = registers_read(dst_access_mask);
 
@@ -1494,10 +1521,10 @@ region_alignment_rules(const struct brw_isa_info *isa,
          unsigned upper_reg_writes = 0, lower_reg_writes = 0;
 
          for (unsigned i = 0; i < exec_size; i++) {
-            if (dst_access_mask[i] > 0xFFFFFFFF) {
+            if (dst_access_mask[i] == 2) {
                upper_reg_writes++;
             } else {
-               assert(dst_access_mask[i] != 0);
+               assert(dst_access_mask[i] == 1);
                lower_reg_writes++;
             }
          }
@@ -1527,7 +1554,7 @@ vector_immediate_restrictions(const struct brw_isa_info *isa,
    unsigned file = num_sources == 1 ?
                    brw_inst_src0_reg_file(devinfo, inst) :
                    brw_inst_src1_reg_file(devinfo, inst);
-   if (file != BRW_IMMEDIATE_VALUE)
+   if (file != IMM)
       return (struct string){};
 
    enum brw_reg_type dst_type = inst_dst_type(isa, inst);
@@ -1621,7 +1648,7 @@ special_requirements_for_handling_double_precision_data_types(
 
 #define DO_SRC(n)                                                              \
       if (brw_inst_src ## n ## _reg_file(devinfo, inst) ==                     \
-          BRW_IMMEDIATE_VALUE)                                                 \
+          IMM)                                                 \
          continue;                                                             \
                                                                                \
       is_scalar_region = src ## n ## _has_scalar_region(devinfo, inst);        \
@@ -1705,9 +1732,9 @@ special_requirements_for_handling_double_precision_data_types(
           intel_device_info_is_9lp(devinfo)) {
          ERROR_IF(brw_inst_opcode(isa, inst) == BRW_OPCODE_MAC ||
                   brw_inst_acc_wr_control(devinfo, inst) ||
-                  (BRW_ARCHITECTURE_REGISTER_FILE == file &&
+                  (ARF == file &&
                    reg != BRW_ARF_NULL) ||
-                  (BRW_ARCHITECTURE_REGISTER_FILE == dst_file &&
+                  (ARF == dst_file &&
                    dst_reg != BRW_ARF_NULL),
                   "Architecture registers cannot be used when the execution "
                   "type is 64-bit");
@@ -1745,9 +1772,9 @@ special_requirements_for_handling_double_precision_data_types(
                   "source and destination are not supported except for "
                   "broadcast of a scalar.");
 
-         ERROR_IF((address_mode == BRW_ADDRESS_DIRECT && file == BRW_ARCHITECTURE_REGISTER_FILE &&
+         ERROR_IF((address_mode == BRW_ADDRESS_DIRECT && file == ARF &&
                    reg != BRW_ARF_NULL && !(reg >= BRW_ARF_ACCUMULATOR && reg < BRW_ARF_FLAG)) ||
-                  (dst_file == BRW_ARCHITECTURE_REGISTER_FILE &&
+                  (dst_file == ARF &&
                    dst_reg != BRW_ARF_NULL && (dst_reg & 0xF0) != BRW_ARF_ACCUMULATOR),
                   "Explicit ARF registers except null and accumulator must not "
                   "be used.");
@@ -1823,12 +1850,12 @@ instruction_restrictions(const struct brw_isa_info *isa,
       enum brw_reg_type exec_type = execution_type(isa, inst);
       const bool src0_valid =
          brw_type_size_bytes(brw_inst_src0_type(devinfo, inst)) == 4 ||
-         brw_inst_src0_reg_file(devinfo, inst) == BRW_IMMEDIATE_VALUE ||
+         brw_inst_src0_reg_file(devinfo, inst) == IMM ||
          !(brw_inst_src0_negate(devinfo, inst) ||
            brw_inst_src0_abs(devinfo, inst));
       const bool src1_valid =
          brw_type_size_bytes(brw_inst_src1_type(devinfo, inst)) == 4 ||
-         brw_inst_src1_reg_file(devinfo, inst) == BRW_IMMEDIATE_VALUE ||
+         brw_inst_src1_reg_file(devinfo, inst) == IMM ||
          !(brw_inst_src1_negate(devinfo, inst) ||
            brw_inst_src1_abs(devinfo, inst));
 
@@ -2002,7 +2029,7 @@ instruction_restrictions(const struct brw_isa_info *isa,
       ERROR_IF(brw_inst_src0_abs(devinfo, inst),
                "Behavior of abs source modifier in logic ops is undefined.");
       ERROR_IF(brw_inst_opcode(isa, inst) != BRW_OPCODE_NOT &&
-               brw_inst_src1_reg_file(devinfo, inst) != BRW_IMMEDIATE_VALUE &&
+               brw_inst_src1_reg_file(devinfo, inst) != IMM &&
                brw_inst_src1_abs(devinfo, inst),
                "Behavior of abs source modifier in logic ops is undefined.");
 
@@ -2310,7 +2337,7 @@ send_descriptor_restrictions(const struct brw_isa_info *isa,
          return error_msg;
    } else if (inst_is_send(isa, inst)) {
       /* We can only validate immediate descriptors */
-      if (brw_inst_src1_reg_file(devinfo, inst) != BRW_IMMEDIATE_VALUE)
+      if (brw_inst_src1_reg_file(devinfo, inst) != IMM)
          return error_msg;
    } else {
       return error_msg;

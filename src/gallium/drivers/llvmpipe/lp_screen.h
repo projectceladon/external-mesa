@@ -79,10 +79,15 @@ struct llvmpipe_screen
    int udmabuf_fd;
 #endif
 
+#if DETECT_OS_LINUX
    int fd_mem_alloc;
    mtx_t mem_mutex;
    uint64_t mem_file_size;
    struct util_vma_heap mem_heap;
+#endif
+
+   struct llvmpipe_memory_allocation *dummy_dmabuf;
+   int dummy_sync_fd;
 };
 
 

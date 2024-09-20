@@ -49,6 +49,10 @@
 #include "drm-uapi/drm_fourcc.h"
 #endif
 
+#if DETECT_OS_ANDROID
+#include <vndk/hardware_buffer.h>
+#endif
+
 /* Pre-declarations needed for WSI entrypoints */
 struct wl_surface;
 struct wl_display;
@@ -100,6 +104,8 @@ extern "C" {
 #define MAX_PER_STAGE_DESCRIPTOR_UNIFORM_BLOCKS 8
 #define MAX_DGC_STREAMS 16
 #define MAX_DGC_TOKENS 16
+/* Currently lavapipe does not support more than 1 image plane */
+#define LVP_MAX_PLANE_COUNT 1
 
 #ifdef _WIN32
 #define lvp_printflike(a, b)
@@ -237,6 +243,12 @@ struct lvp_device_memory {
    void *                                       map;
    enum lvp_device_memory_type memory_type;
    int                                          backed_fd;
+#ifdef PIPE_MEMORY_FD
+   struct llvmpipe_memory_allocation            *alloc;
+#endif
+#if DETECT_OS_ANDROID
+   struct AHardwareBuffer *android_hardware_buffer;
+#endif
 };
 
 struct lvp_pipe_sync {
@@ -514,6 +526,7 @@ struct lvp_pipeline {
    struct lvp_pipeline_layout *                 layout;
 
    enum lvp_pipeline_type type;
+   VkPipelineCreateFlags2KHR flags;
 
    void *state_data;
    bool force_min_sample;
@@ -775,6 +788,16 @@ bool
 lvp_nir_lower_sparse_residency(struct nir_shader *shader);
 enum vk_cmd_type
 lvp_nv_dgc_token_to_cmd_type(const VkIndirectCommandsLayoutTokenNV *token);
+
+#if DETECT_OS_ANDROID
+VkResult
+lvp_import_ahb_memory(struct lvp_device *device, struct lvp_device_memory *mem,
+                      const VkImportAndroidHardwareBufferInfoANDROID *info);
+VkResult
+lvp_create_ahb_memory(struct lvp_device *device, struct lvp_device_memory *mem,
+                      const VkMemoryAllocateInfo *pAllocateInfo);
+#endif
+
 #ifdef __cplusplus
 }
 #endif

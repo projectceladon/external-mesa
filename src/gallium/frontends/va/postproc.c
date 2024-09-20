@@ -352,7 +352,11 @@ static VAStatus vlVaPostProcBlit(vlVaDriver *drv, vlVaContext *context,
    if ((src->buffer_format == PIPE_FORMAT_B8G8R8X8_UNORM ||
         src->buffer_format == PIPE_FORMAT_B8G8R8A8_UNORM ||
         src->buffer_format == PIPE_FORMAT_R8G8B8X8_UNORM ||
-        src->buffer_format == PIPE_FORMAT_R8G8B8A8_UNORM) &&
+        src->buffer_format == PIPE_FORMAT_R8G8B8A8_UNORM ||
+        src->buffer_format == PIPE_FORMAT_B10G10R10X2_UNORM ||
+        src->buffer_format == PIPE_FORMAT_B10G10R10A2_UNORM ||
+        src->buffer_format == PIPE_FORMAT_R10G10B10X2_UNORM ||
+        src->buffer_format == PIPE_FORMAT_R10G10B10A2_UNORM) &&
        !src->interlaced)
       grab = true;
 
@@ -547,6 +551,8 @@ vlVaHandleVAProcPipelineParameterBufferType(vlVaDriver *drv, vlVaContext *contex
    dst_surface = handle_table_get(drv->htab, context->target_id);
    if (!src_surface || !dst_surface)
       return VA_STATUS_ERROR_INVALID_SURFACE;
+   vlVaGetSurfaceBuffer(drv, src_surface);
+   vlVaGetSurfaceBuffer(drv, dst_surface);
    if (!src_surface->buffer || !dst_surface->buffer)
       return VA_STATUS_ERROR_INVALID_SURFACE;
 

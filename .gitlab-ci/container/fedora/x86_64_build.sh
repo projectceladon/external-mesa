@@ -48,7 +48,6 @@ DEPS=(
     "pkgconfig(libclc)"
     "pkgconfig(libelf)"
     "pkgconfig(libglvnd)"
-    "pkgconfig(libomxil-bellagio)"
     "pkgconfig(libselinux)"
     "pkgconfig(libva)"
     "pkgconfig(pciaccess)"
@@ -78,6 +77,7 @@ DEPS=(
     python3-mako
     python3-ply
     python3-pycparser
+    python3-yaml
     rust-packaging
     vulkan-headers
     spirv-tools-devel

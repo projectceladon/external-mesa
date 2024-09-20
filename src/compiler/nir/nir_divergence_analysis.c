@@ -133,6 +133,8 @@ visit_intrinsic(nir_intrinsic_instr *instr, struct divergence_state *state)
    case nir_intrinsic_first_invocation:
    case nir_intrinsic_last_invocation:
    case nir_intrinsic_load_subgroup_id:
+   case nir_intrinsic_shared_append_amd:
+   case nir_intrinsic_shared_consume_amd:
       /* VS/TES/GS invocations of the same primitive can be in different
        * subgroups, so subgroup ops are always divergent between vertices of
        * the same primitive.
@@ -141,6 +143,7 @@ visit_intrinsic(nir_intrinsic_instr *instr, struct divergence_state *state)
       break;
 
    /* Intrinsics which are always uniform */
+   case nir_intrinsic_load_preamble:
    case nir_intrinsic_load_push_constant:
    case nir_intrinsic_load_push_constant_zink:
    case nir_intrinsic_load_work_dim:
@@ -225,7 +228,6 @@ visit_intrinsic(nir_intrinsic_instr *instr, struct divergence_state *state)
    case nir_intrinsic_load_scalar_arg_amd:
    case nir_intrinsic_load_smem_amd:
    case nir_intrinsic_load_resume_shader_address_amd:
-   case nir_intrinsic_load_global_const_block_intel:
    case nir_intrinsic_load_reloc_const_intel:
    case nir_intrinsic_load_btd_global_arg_addr_intel:
    case nir_intrinsic_load_btd_local_arg_addr_intel:
@@ -267,6 +269,10 @@ visit_intrinsic(nir_intrinsic_instr *instr, struct divergence_state *state)
    case nir_intrinsic_optimization_barrier_sgpr_amd:
    case nir_intrinsic_load_printf_buffer_address:
    case nir_intrinsic_load_printf_base_identifier:
+   case nir_intrinsic_load_core_id_agx:
+   case nir_intrinsic_load_samples_log2_agx:
+   case nir_intrinsic_load_active_subgroup_count_agx:
+   case nir_intrinsic_load_constant_base_ptr:
       is_divergent = false;
       break;
 
@@ -289,6 +295,7 @@ visit_intrinsic(nir_intrinsic_instr *instr, struct divergence_state *state)
       is_divergent = !(options & nir_divergence_single_frag_shading_rate_per_subgroup);
       break;
    case nir_intrinsic_load_input:
+   case nir_intrinsic_load_per_primitive_input:
       is_divergent = instr->src[0].ssa->divergent;
 
       if (stage == MESA_SHADER_FRAGMENT) {
@@ -353,7 +360,8 @@ visit_intrinsic(nir_intrinsic_instr *instr, struct divergence_state *state)
       break;
    case nir_intrinsic_load_layer_id:
    case nir_intrinsic_load_front_face:
-      assert(stage == MESA_SHADER_FRAGMENT);
+   case nir_intrinsic_load_back_face_agx:
+      assert(stage == MESA_SHADER_FRAGMENT || state->shader->info.internal);
       is_divergent = !(options & nir_divergence_single_prim_per_subgroup);
       break;
    case nir_intrinsic_load_view_index:
@@ -403,7 +411,7 @@ visit_intrinsic(nir_intrinsic_instr *instr, struct divergence_state *state)
 
    case nir_intrinsic_load_workgroup_index:
    case nir_intrinsic_load_workgroup_id:
-      assert(gl_shader_stage_uses_workgroup(stage));
+      assert(gl_shader_stage_uses_workgroup(stage) || stage == MESA_SHADER_TESS_CTRL);
       if (stage == MESA_SHADER_COMPUTE)
          is_divergent |= (options & nir_divergence_multiple_workgroup_per_compute_subgroup);
       break;
@@ -523,6 +531,12 @@ visit_intrinsic(nir_intrinsic_instr *instr, struct divergence_state *state)
 
    /* Intrinsics with divergence depending on sources */
    case nir_intrinsic_convert_alu_types:
+   case nir_intrinsic_ddx:
+   case nir_intrinsic_ddx_fine:
+   case nir_intrinsic_ddx_coarse:
+   case nir_intrinsic_ddy:
+   case nir_intrinsic_ddy_fine:
+   case nir_intrinsic_ddy_coarse:
    case nir_intrinsic_ballot_bitfield_extract:
    case nir_intrinsic_ballot_find_lsb:
    case nir_intrinsic_ballot_find_msb:
@@ -547,6 +561,9 @@ visit_intrinsic(nir_intrinsic_instr *instr, struct divergence_state *state)
    case nir_intrinsic_load_task_payload:
    case nir_intrinsic_load_buffer_amd:
    case nir_intrinsic_load_typed_buffer_amd:
+   case nir_intrinsic_image_levels:
+   case nir_intrinsic_image_deref_levels:
+   case nir_intrinsic_bindless_image_levels:
    case nir_intrinsic_image_samples:
    case nir_intrinsic_image_deref_samples:
    case nir_intrinsic_bindless_image_samples:
@@ -573,13 +590,12 @@ visit_intrinsic(nir_intrinsic_instr *instr, struct divergence_state *state)
    case nir_intrinsic_image_load_raw_intel:
    case nir_intrinsic_get_ubo_size:
    case nir_intrinsic_load_ssbo_address:
-   case nir_intrinsic_load_desc_set_address_intel:
-   case nir_intrinsic_load_desc_set_dynamic_index_intel:
    case nir_intrinsic_load_global_constant_bounded:
    case nir_intrinsic_load_global_constant_offset:
-   case nir_intrinsic_resource_intel:
    case nir_intrinsic_load_reg:
+   case nir_intrinsic_load_constant_agx:
    case nir_intrinsic_load_reg_indirect:
+   case nir_intrinsic_load_const_ir3:
    case nir_intrinsic_load_frag_size_ir3:
    case nir_intrinsic_load_frag_offset_ir3:
    case nir_intrinsic_bindless_resource_ir3: {
@@ -592,6 +608,23 @@ visit_intrinsic(nir_intrinsic_instr *instr, struct divergence_state *state)
       }
       break;
    }
+
+   case nir_intrinsic_resource_intel:
+      /* Not having the non_uniform flag with divergent sources is undefined
+       * behavior. The Intel driver defines it pick the lowest numbered live
+       * SIMD lane (via emit_uniformize).
+       */
+      if ((nir_intrinsic_resource_access_intel(instr) &
+           nir_resource_intel_non_uniform) != 0) {
+         unsigned num_srcs = nir_intrinsic_infos[instr->intrinsic].num_srcs;
+         for (unsigned i = 0; i < num_srcs; i++) {
+            if (instr->src[i].ssa->divergent) {
+               is_divergent = true;
+               break;
+            }
+         }
+      }
+      break;
 
    case nir_intrinsic_shuffle:
       is_divergent = instr->src[0].ssa->divergent &&
@@ -705,6 +738,7 @@ visit_intrinsic(nir_intrinsic_instr *instr, struct divergence_state *state)
    case nir_intrinsic_write_invocation_amd:
    case nir_intrinsic_mbcnt_amd:
    case nir_intrinsic_lane_permute_16_amd:
+   case nir_intrinsic_dpp16_shift_amd:
    case nir_intrinsic_elect:
    case nir_intrinsic_elect_any_ir3:
    case nir_intrinsic_load_tlb_color_brcm:
@@ -721,7 +755,7 @@ visit_intrinsic(nir_intrinsic_instr *instr, struct divergence_state *state)
    case nir_intrinsic_load_topology_id_intel:
    case nir_intrinsic_load_scratch_base_ptr:
    case nir_intrinsic_ordered_xfb_counter_add_gfx11_amd:
-   case nir_intrinsic_ordered_xfb_counter_add_gfx12_amd:
+   case nir_intrinsic_ordered_add_loop_gfx12_amd:
    case nir_intrinsic_xfb_counter_sub_gfx11_amd:
    case nir_intrinsic_unit_test_divergent_amd:
    case nir_intrinsic_load_stack:
@@ -759,6 +793,18 @@ visit_intrinsic(nir_intrinsic_instr *instr, struct divergence_state *state)
    case nir_intrinsic_load_tcs_header_ir3:
    case nir_intrinsic_load_rel_patch_id_ir3:
    case nir_intrinsic_brcst_active_ir3:
+   case nir_intrinsic_load_helper_op_id_agx:
+   case nir_intrinsic_load_helper_arg_lo_agx:
+   case nir_intrinsic_load_helper_arg_hi_agx:
+   case nir_intrinsic_stack_map_agx:
+   case nir_intrinsic_stack_unmap_agx:
+   case nir_intrinsic_load_exported_agx:
+   case nir_intrinsic_load_local_pixel_agx:
+   case nir_intrinsic_load_coefficients_agx:
+   case nir_intrinsic_load_active_subgroup_invocation_agx:
+   case nir_intrinsic_load_sample_mask:
+   case nir_intrinsic_quad_ballot_agx:
+   case nir_intrinsic_load_agx:
       is_divergent = true;
       break;
 
@@ -956,6 +1002,8 @@ update_instr_divergence(nir_instr *instr, struct divergence_state *state)
       return visit_def(&nir_instr_as_undef(instr)->def, state);
    case nir_instr_type_deref:
       return visit_deref(state->shader, nir_instr_as_deref(instr), state);
+   case nir_instr_type_debug_info:
+      return false;
    case nir_instr_type_jump:
    case nir_instr_type_phi:
    case nir_instr_type_call:

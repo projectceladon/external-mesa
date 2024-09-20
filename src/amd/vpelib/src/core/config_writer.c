@@ -23,7 +23,6 @@
  */
 
 #include "vpe_assert.h"
-#include "vpe_command.h"
 #include "config_writer.h"
 #include "reg_helper.h"
 #include "common.h"
@@ -91,6 +90,26 @@ void config_writer_set_type(struct config_writer *writer, enum config_type type)
         }
         writer->type = type;
     }
+}
+
+void config_writer_force_new_with_type(struct config_writer *writer, enum config_type type)
+{
+    VPE_ASSERT(type != CONFIG_TYPE_UNKNOWN);
+
+    if (writer->status != VPE_STATUS_OK)
+        return;
+
+    uint64_t size = writer->buf->cpu_va - writer->base_cpu_va;
+
+    if (writer->type == CONFIG_TYPE_UNKNOWN) {
+        // new header. don't need to fill it yet until completion
+        config_writer_new(writer);
+    } else if (size > 0) {
+        // command not empty, close the previous one
+        config_writer_complete(writer);
+        config_writer_new(writer);
+    }
+    writer->type = type;
 }
 
 void config_writer_fill(struct config_writer *writer, uint32_t value)

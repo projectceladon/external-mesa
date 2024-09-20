@@ -75,7 +75,7 @@ try_fold_alu(nir_builder *b, nir_alu_instr *alu)
       bit_size = 32;
 
    nir_const_value dest[NIR_MAX_VEC_COMPONENTS];
-   nir_const_value *srcs[NIR_MAX_VEC_COMPONENTS];
+   nir_const_value *srcs[NIR_ALU_MAX_INPUTS];
    memset(dest, 0, sizeof(dest));
    for (unsigned i = 0; i < nir_op_infos[alu->op].num_inputs; ++i)
       srcs[i] = src[i];
@@ -247,6 +247,31 @@ try_fold_intrinsic(nir_builder *b, nir_intrinsic_instr *intrin,
       return true;
    }
 
+   case nir_intrinsic_ddx:
+   case nir_intrinsic_ddx_fine:
+   case nir_intrinsic_ddx_coarse:
+   case nir_intrinsic_ddy:
+   case nir_intrinsic_ddy_fine:
+   case nir_intrinsic_ddy_coarse: {
+      if (!nir_src_is_const(intrin->src[0]))
+         return false;
+
+      /* Derivative of a constant is zero, except for NaNs and Infs */
+      nir_const_value imm[NIR_MAX_VEC_COMPONENTS];
+      unsigned sz = intrin->def.bit_size;
+
+      b->cursor = nir_before_instr(&intrin->instr);
+
+      for (unsigned i = 0; i < intrin->def.num_components; i++) {
+         bool finite = isfinite(nir_src_comp_as_float(intrin->src[0], i));
+         imm[i] = nir_const_value_for_float(finite ? 0 : NAN, sz);
+      }
+
+      nir_def_replace(&intrin->def,
+                      nir_build_imm(b, intrin->def.num_components, sz, imm));
+      return true;
+   }
+
    case nir_intrinsic_vote_any:
    case nir_intrinsic_vote_all:
    case nir_intrinsic_read_invocation:
@@ -280,6 +305,23 @@ try_fold_intrinsic(nir_builder *b, nir_intrinsic_instr *intrin,
          return true;
       }
       return false;
+
+   case nir_intrinsic_inverse_ballot: {
+      if (!nir_src_is_const(intrin->src[0]))
+         return false;
+      bool constant_true = true;
+      bool constant_false = true;
+      for (unsigned i = 0; i < nir_src_num_components(intrin->src[0]); i++) {
+         int64_t value = nir_src_comp_as_int(intrin->src[0], i);
+         constant_true &= value == -1;
+         constant_false &= value == 0;
+      }
+      if (!constant_true && !constant_false)
+         return false;
+      b->cursor = nir_before_instr(&intrin->instr);
+      nir_def_replace(&intrin->def, nir_imm_bool(b, constant_true));
+      return true;
+   }
 
    default:
       return false;

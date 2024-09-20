@@ -1136,19 +1136,6 @@ test_vgpr_bitset(std::bitset<256>& set, Operand op)
 }
 
 /* GFX11 */
-unsigned
-parse_vdst_wait(aco_ptr<Instruction>& instr)
-{
-   if (instr->isVMEM() || instr->isFlatLike() || instr->isDS() || instr->isEXP())
-      return 0;
-   else if (instr->isLDSDIR())
-      return instr->ldsdir().wait_vdst;
-   else if (instr->opcode == aco_opcode::s_waitcnt_depctr)
-      return (instr->salu().imm >> 12) & 0xf;
-   else
-      return 15;
-}
-
 struct LdsDirectVALUHazardGlobalState {
    unsigned wait_vdst = 15;
    PhysReg vgpr;
@@ -1188,7 +1175,7 @@ handle_lds_direct_valu_hazard_instr(LdsDirectVALUHazardGlobalState& global_state
       block_state.num_valu++;
    }
 
-   if (parse_vdst_wait(instr) == 0)
+   if (parse_vdst_wait(instr.get()) == 0)
       return true;
 
    block_state.num_instrs++;
@@ -1310,7 +1297,7 @@ handle_valu_partial_forwarding_hazard_instr(VALUPartialForwardingHazardGlobalSta
       }
 
       block_state.num_valu_since_read++;
-   } else if (parse_vdst_wait(instr) == 0) {
+   } else if (parse_vdst_wait(instr.get()) == 0) {
       return true;
    }
 
@@ -1407,7 +1394,7 @@ handle_instruction_gfx11(State& state, NOP_ctx_gfx11& ctx, aco_ptr<Instruction>&
       ctx.has_Vcmpx = false;
    }
 
-   unsigned va_vdst = parse_vdst_wait(instr);
+   unsigned va_vdst = parse_vdst_wait(instr.get());
    unsigned vm_vsrc = 7;
    unsigned sa_sdst = 1;
 
@@ -1462,14 +1449,11 @@ handle_instruction_gfx11(State& state, NOP_ctx_gfx11& ctx, aco_ptr<Instruction>&
 
    if (state.program->gfx_level < GFX12) {
       /* VALUMaskWriteHazard
-       * VALU reads SGPR as a lane mask and later written by SALU cannot safely be read by SALU.
+       * VALU reads SGPR as a lane mask and later written by SALU cannot safely be read by SALU or
+       * VALU.
        */
-      if (state.program->wave_size == 64 && instr->isSALU() &&
-          check_written_regs(instr, ctx.sgpr_read_by_valu_as_lanemask)) {
-         ctx.sgpr_read_by_valu_as_lanemask_then_wr_by_salu = ctx.sgpr_read_by_valu_as_lanemask;
-         ctx.sgpr_read_by_valu_as_lanemask.reset();
-      } else if (state.program->wave_size == 64 && instr->isSALU() &&
-                 check_read_regs(instr, ctx.sgpr_read_by_valu_as_lanemask_then_wr_by_salu)) {
+      if (state.program->wave_size == 64 && (instr->isSALU() || instr->isVALU()) &&
+          check_read_regs(instr, ctx.sgpr_read_by_valu_as_lanemask_then_wr_by_salu)) {
          bld.sopp(aco_opcode::s_waitcnt_depctr, 0xfffe);
          sa_sdst = 0;
       }
@@ -1481,6 +1465,13 @@ handle_instruction_gfx11(State& state, NOP_ctx_gfx11& ctx, aco_ptr<Instruction>&
 
       if (sa_sdst == 0)
          ctx.sgpr_read_by_valu_as_lanemask_then_wr_by_salu.reset();
+
+      if (state.program->wave_size == 64 && instr->isSALU() &&
+          check_written_regs(instr, ctx.sgpr_read_by_valu_as_lanemask)) {
+         unsigned reg = instr->definitions[0].physReg().reg();
+         for (unsigned i = 0; i < instr->definitions[0].size(); i++)
+            ctx.sgpr_read_by_valu_as_lanemask_then_wr_by_salu[reg + i] = 1;
+      }
 
       if (instr->isVALU()) {
          bool is_trans = instr->isTrans();
@@ -1498,7 +1489,8 @@ handle_instruction_gfx11(State& state, NOP_ctx_gfx11& ctx, aco_ptr<Instruction>&
 
          if (state.program->wave_size == 64) {
             for (Operand& op : instr->operands) {
-               if (op.isLiteral() || (!op.isConstant() && op.physReg().reg() < 128))
+               /* This should ignore exec reads */
+               if (!op.isConstant() && op.physReg().reg() < 126)
                   ctx.sgpr_read_by_valu_as_lanemask.reset();
             }
             switch (instr->opcode) {
@@ -1608,7 +1600,7 @@ handle_instruction_gfx11(State& state, NOP_ctx_gfx11& ctx, aco_ptr<Instruction>&
 bool
 has_vdst0_since_valu_instr(bool& global_state, unsigned& block_state, aco_ptr<Instruction>& pred)
 {
-   if (parse_vdst_wait(pred) == 0)
+   if (parse_vdst_wait(pred.get()) == 0)
       return true;
 
    if (--block_state == 0) {
@@ -1642,6 +1634,7 @@ resolve_all_gfx11(State& state, NOP_ctx_gfx11& ctx,
    Builder bld(state.program, &new_instructions);
 
    unsigned waitcnt_depctr = 0xffff;
+   bool valu_read_sgpr = false;
 
    /* LdsDirectVALUHazard/VALUPartialForwardingHazard/VALUTransUseHazard */
    bool has_vdst0_since_valu = true;
@@ -1662,12 +1655,15 @@ resolve_all_gfx11(State& state, NOP_ctx_gfx11& ctx,
    }
 
    /* VALUMaskWriteHazard */
-   if (state.program->gfx_level < GFX12 && state.program->wave_size == 64 &&
-       (ctx.sgpr_read_by_valu_as_lanemask.any() ||
-        ctx.sgpr_read_by_valu_as_lanemask_then_wr_by_salu.any())) {
-      waitcnt_depctr &= 0xfffe;
-      ctx.sgpr_read_by_valu_as_lanemask.reset();
-      ctx.sgpr_read_by_valu_as_lanemask_then_wr_by_salu.reset();
+   if (state.program->gfx_level < GFX12 && state.program->wave_size == 64) {
+      if (ctx.sgpr_read_by_valu_as_lanemask_then_wr_by_salu.any()) {
+         waitcnt_depctr &= 0xfffe;
+         ctx.sgpr_read_by_valu_as_lanemask_then_wr_by_salu.reset();
+      }
+      if (ctx.sgpr_read_by_valu_as_lanemask.any()) {
+         valu_read_sgpr = true;
+         ctx.sgpr_read_by_valu_as_lanemask.reset();
+      }
    }
 
    /* LdsDirectVMEMHazard */
@@ -1682,6 +1678,16 @@ resolve_all_gfx11(State& state, NOP_ctx_gfx11& ctx,
 
    if (waitcnt_depctr != 0xffff)
       bld.sopp(aco_opcode::s_waitcnt_depctr, waitcnt_depctr);
+
+   if (valu_read_sgpr) {
+      /* This has to be after the s_waitcnt_depctr so that the instruction is not involved in any
+       * other hazards. */
+      bld.vop3(aco_opcode::v_xor3_b32, Definition(PhysReg(256), v1), Operand(PhysReg(256), v1),
+               Operand(PhysReg(0), s1), Operand(PhysReg(0), s1));
+
+      /* workaround possible LdsDirectVALUHazard/VALUPartialForwardingHazard */
+      bld.sopp(aco_opcode::s_waitcnt_depctr, 0x0fff);
+   }
 }
 
 template <typename Ctx>
@@ -1772,6 +1778,70 @@ mitigate_hazards(Program* program)
    }
 }
 
+/* FeatureRequiredExportPriority in LLVM */
+void
+required_export_priority(Program* program)
+{
+   /* Skip callees, assuming that the caller has already increased the priority. */
+   bool increase_priority = !program->is_epilog && !program->info.vs.has_prolog &&
+                            (!program->info.merged_shader_compiled_separately ||
+                             program->stage.sw == SWStage::VS || program->stage.sw == SWStage::TES);
+   increase_priority |= program->is_prolog;
+
+   for (Block& block : program->blocks) {
+      std::vector<aco_ptr<Instruction>> new_instructions;
+      new_instructions.reserve(block.instructions.size() + 6);
+
+      Builder bld(program, &new_instructions);
+
+      if (increase_priority && block.index == 0) {
+         if (!block.instructions.empty() && block.instructions[0]->opcode == aco_opcode::s_setprio)
+            block.instructions[0]->salu().imm = MAX2(block.instructions[0]->salu().imm, 2);
+         else
+            bld.sopp(aco_opcode::s_setprio, 2);
+      }
+
+      for (unsigned i = 0; i < block.instructions.size(); i++) {
+         Instruction* instr = block.instructions[i].get();
+         new_instructions.push_back(std::move(block.instructions[i]));
+
+         if (instr->opcode == aco_opcode::s_setprio) {
+            instr->salu().imm = MAX2(instr->salu().imm, 2);
+            continue;
+         }
+
+         bool end_of_export_sequence = instr->isEXP() && (i == block.instructions.size() - 1 ||
+                                                          !block.instructions[i + 1]->isEXP());
+         if (!end_of_export_sequence)
+            continue;
+
+         bool before_endpgm = false;
+         if (i != block.instructions.size() - 1) {
+            before_endpgm = block.instructions[i + 1]->opcode == aco_opcode::s_endpgm;
+         } else {
+            /* Does this fallthrough to a s_endpgm? */
+            for (unsigned j = block.index + 1; j < program->blocks.size(); j++) {
+               if (program->blocks[j].instructions.size() == 1 &&
+                   program->blocks[j].instructions[0]->opcode == aco_opcode::s_endpgm)
+                  before_endpgm = true;
+               if (!program->blocks[j].instructions.empty())
+                  break;
+            }
+         }
+
+         bld.sopp(aco_opcode::s_setprio, 0);
+         if (!before_endpgm)
+            bld.sopk(aco_opcode::s_waitcnt_expcnt, Operand(sgpr_null, s1), 0);
+         bld.sopp(aco_opcode::s_nop, 0);
+         bld.sopp(aco_opcode::s_nop, 0);
+         if (!before_endpgm)
+            bld.sopp(aco_opcode::s_setprio, 2);
+      }
+
+      block.instructions = std::move(new_instructions);
+   }
+}
+
 } /* end namespace */
 
 void
@@ -1785,6 +1855,10 @@ insert_NOPs(Program* program)
       mitigate_hazards<NOP_ctx_gfx10, handle_instruction_gfx10, resolve_all_gfx10>(program);
    else
       mitigate_hazards<NOP_ctx_gfx6, handle_instruction_gfx6, resolve_all_gfx6>(program);
+
+   if (program->gfx_level == GFX11_5 && (program->stage.hw == AC_HW_NEXT_GEN_GEOMETRY_SHADER ||
+                                         program->stage.hw == AC_HW_PIXEL_SHADER))
+      required_export_priority(program);
 }
 
 } // namespace aco
