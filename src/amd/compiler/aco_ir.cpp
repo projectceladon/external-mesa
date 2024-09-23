@@ -21,6 +21,7 @@ uint64_t debug_flags = 0;
 static const struct debug_control aco_debug_options[] = {
    {"validateir", DEBUG_VALIDATE_IR},
    {"validatera", DEBUG_VALIDATE_RA},
+   {"validate-livevars", DEBUG_VALIDATE_LIVE_VARS},
    {"novalidateir", DEBUG_NO_VALIDATE_IR},
    {"force-waitcnt", DEBUG_FORCE_WAITCNT},
    {"force-waitdeps", DEBUG_FORCE_WAITDEPS},
@@ -198,8 +199,6 @@ init_program(Program* program, Stage stage, const struct aco_shader_info* info,
 
    program->progress = CompilationProgress::after_isel;
 
-   program->next_fp_mode.preserve_signed_zero_inf_nan32 = false;
-   program->next_fp_mode.preserve_signed_zero_inf_nan16_64 = false;
    program->next_fp_mode.must_flush_denorms32 = false;
    program->next_fp_mode.must_flush_denorms16_64 = false;
    program->next_fp_mode.care_about_round32 = false;
@@ -432,7 +431,8 @@ can_use_DPP(amd_gfx_level gfx_level, const aco_ptr<Instruction>& instr, bool dpp
           instr->opcode != aco_opcode::v_permlanex16_b32 &&
           instr->opcode != aco_opcode::v_permlane64_b32 &&
           instr->opcode != aco_opcode::v_readlane_b32_e64 &&
-          instr->opcode != aco_opcode::v_writelane_b32_e64;
+          instr->opcode != aco_opcode::v_writelane_b32_e64 &&
+          instr->opcode != aco_opcode::p_v_cvt_pk_u8_f32;
 }
 
 aco_ptr<Instruction>
@@ -626,7 +626,7 @@ instr_is_16bit(amd_gfx_level gfx_level, aco_opcode op)
    case aco_opcode::v_fmaak_f16:
    /* VOP1 */
    case aco_opcode::v_cvt_f16_f32:
-   case aco_opcode::p_cvt_f16_f32_rtne:
+   case aco_opcode::p_v_cvt_f16_f32_rtne:
    case aco_opcode::v_cvt_f16_u16:
    case aco_opcode::v_cvt_f16_i16:
    case aco_opcode::v_rcp_f16:
@@ -828,6 +828,12 @@ get_operand_size(aco_ptr<Instruction>& instr, unsigned index)
             instr->opcode == aco_opcode::v_fma_mixlo_f16 ||
             instr->opcode == aco_opcode::v_fma_mixhi_f16)
       return instr->valu().opsel_hi[index] ? 16 : 32;
+   else if (instr->opcode == aco_opcode::v_interp_p10_f16_f32_inreg ||
+            instr->opcode == aco_opcode::v_interp_p10_rtz_f16_f32_inreg)
+      return index == 1 ? 32 : 16;
+   else if (instr->opcode == aco_opcode::v_interp_p2_f16_f32_inreg ||
+            instr->opcode == aco_opcode::v_interp_p2_rtz_f16_f32_inreg)
+      return index == 0 ? 16 : 32;
    else if (instr->isVALU() || instr->isSALU())
       return instr_info.operand_size[(int)instr->opcode];
    else
@@ -1346,6 +1352,9 @@ should_form_clause(const Instruction* a, const Instruction* b)
    if (a->isVMEM() || a->isSMEM())
       return a->operands[0].tempId() == b->operands[0].tempId();
 
+   if (a->isEXP() && b->isEXP())
+      return true;
+
    return false;
 }
 
@@ -1358,7 +1367,8 @@ get_op_fixed_to_def(Instruction* instr)
        instr->opcode == aco_opcode::v_fmac_legacy_f32 ||
        instr->opcode == aco_opcode::v_pk_fmac_f16 || instr->opcode == aco_opcode::v_writelane_b32 ||
        instr->opcode == aco_opcode::v_writelane_b32_e64 ||
-       instr->opcode == aco_opcode::v_dot4c_i32_i8) {
+       instr->opcode == aco_opcode::v_dot4c_i32_i8 || instr->opcode == aco_opcode::s_fmac_f32 ||
+       instr->opcode == aco_opcode::s_fmac_f16) {
       return 2;
    } else if (instr->opcode == aco_opcode::s_addk_i32 || instr->opcode == aco_opcode::s_mulk_i32 ||
               instr->opcode == aco_opcode::s_cmovk_i32) {
@@ -1387,6 +1397,19 @@ get_vmem_type(enum amd_gfx_level gfx_level, Instruction* instr)
    return 0;
 }
 
+unsigned
+parse_vdst_wait(Instruction* instr)
+{
+   if (instr->isVMEM() || instr->isFlatLike() || instr->isDS() || instr->isEXP())
+      return 0;
+   else if (instr->isLDSDIR())
+      return instr->ldsdir().wait_vdst;
+   else if (instr->opcode == aco_opcode::s_waitcnt_depctr)
+      return (instr->salu().imm >> 12) & 0xf;
+   else
+      return 15;
+}
+
 bool
 dealloc_vgprs(Program* program)
 {
@@ -1396,6 +1419,14 @@ dealloc_vgprs(Program* program)
    /* sendmsg(dealloc_vgprs) releases scratch, so this isn't safe if there is a in-progress scratch
     * store. */
    if (uses_scratch(program))
+      return false;
+
+   /* If we insert the sendmsg on GFX11.5, the export priority workaround will require us to insert
+    * a wait after exports. There might still be pending VMEM stores for PS parameter exports,
+    * except NGG lowering usually inserts a memory barrier. This means there is unlikely to be any
+    * pending VMEM stores or exports if we insert the sendmsg for these stages. */
+   if (program->gfx_level == GFX11_5 && (program->stage.hw == AC_HW_NEXT_GEN_GEOMETRY_SHADER ||
+                                         program->stage.hw == AC_HW_PIXEL_SHADER))
       return false;
 
    Block& block = program->blocks.back();
@@ -1416,7 +1447,8 @@ bool
 Instruction::isTrans() const noexcept
 {
    return instr_info.classes[(int)opcode] == instr_class::valu_transcendental32 ||
-          instr_info.classes[(int)opcode] == instr_class::valu_double_transcendental;
+          instr_info.classes[(int)opcode] == instr_class::valu_double_transcendental ||
+          instr_info.classes[(int)opcode] == instr_class::valu_pseudo_scalar_trans;
 }
 
 size_t

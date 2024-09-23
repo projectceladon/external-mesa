@@ -30,7 +30,7 @@ nvk_get_buffer_alignment(const struct nvk_physical_device *pdev,
 
    if (create_flags & (VK_BUFFER_CREATE_SPARSE_BINDING_BIT |
                        VK_BUFFER_CREATE_DEVICE_ADDRESS_CAPTURE_REPLAY_BIT))
-      alignment = MAX2(alignment, NVK_SPARSE_BIND_ALIGN_B);
+      alignment = MAX2(alignment, pdev->nvkmd->bind_align_B);
 
    return alignment;
 }
@@ -324,4 +324,13 @@ nvk_queue_buffer_bind(struct nvk_queue *queue,
    STACK_ARRAY_FINISH(binds);
 
    return result;
+}
+
+VKAPI_ATTR VkResult VKAPI_CALL
+nvk_GetBufferOpaqueCaptureDescriptorDataEXT(
+    VkDevice device,
+    const VkBufferCaptureDescriptorDataInfoEXT *pInfo,
+    void *pData)
+{
+   return VK_SUCCESS;
 }

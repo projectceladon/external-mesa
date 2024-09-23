@@ -7,7 +7,6 @@
 
 #include "nvkmd/nvkmd.h"
 #include "vk_drm_syncobj.h"
-#include "util/simple_mtx.h"
 #include "util/vma.h"
 
 #include "drm-uapi/nouveau_drm.h"
@@ -58,9 +57,6 @@ NVKMD_DECL_SUBCLASS(dev, nouveau);
 VkResult nvkmd_nouveau_create_dev(struct nvkmd_pdev *pdev,
                                   struct vk_object_base *log_obj,
                                   struct nvkmd_dev **dev_out);
-
-#define NVKMD_NOUVEAU_GART_ALIGN_B (1 << 12)
-#define NVKMD_NOUVEAU_VRAM_ALIGN_B (1 << 16)
 
 struct nvkmd_nouveau_mem {
    struct nvkmd_mem base;

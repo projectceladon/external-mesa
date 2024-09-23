@@ -4,12 +4,12 @@
 #![allow(unstable_name_collisions)]
 
 use crate::api::{GetDebugFlags, DEBUG};
-use crate::bitset::BitSet;
 use crate::ir::*;
 use crate::liveness::{
     BlockLiveness, LiveSet, Liveness, NextUseBlockLiveness, NextUseLiveness,
 };
 
+use compiler::bitset::BitSet;
 use std::cell::RefCell;
 use std::cmp::{max, Ordering, Reverse};
 use std::collections::{BinaryHeap, HashMap, HashSet};
@@ -898,14 +898,6 @@ fn spill_values<S: Spill>(
             continue;
         }
         let s_idx = succ[0];
-
-        // If blocks[p_idx] is the unique predecessor of blocks[s_idx] then the
-        // spill/fill sets for blocks[s_idx] are just those from blocks[p_idx],
-        // filtered for liveness and there is no phi source.  There's nothing
-        // for us to do here.
-        if blocks.pred_indices(s_idx).len() == 1 {
-            continue;
-        }
 
         let pb = &mut blocks[p_idx];
         let p_out = &ssa_state_out[p_idx];

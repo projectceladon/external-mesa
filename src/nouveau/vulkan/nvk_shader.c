@@ -66,7 +66,7 @@ nvk_nak_stages(const struct nv_device_info *info)
 
    const char *env_str = getenv("NVK_USE_NAK");
    if (env_str == NULL)
-      return info->cls_eng3d >= VOLTA_A ? all : 0;
+      return info->cls_eng3d >= MAXWELL_A ? all : 0;
    else
       return parse_debug_string(env_str, flags);
 }
@@ -81,6 +81,7 @@ uint64_t
 nvk_physical_device_compiler_flags(const struct nvk_physical_device *pdev)
 {
    bool no_cbufs = pdev->debug_flags & NVK_DEBUG_NO_CBUF;
+   bool use_edb_buffer_views = nvk_use_edb_buffer_views(pdev);
    uint64_t prog_debug = nvk_cg_get_prog_debug();
    uint64_t prog_optimize = nvk_cg_get_prog_optimize();
    uint64_t nak_stages = nvk_nak_stages(&pdev->info);
@@ -94,6 +95,7 @@ nvk_physical_device_compiler_flags(const struct nvk_physical_device *pdev)
    return prog_debug
       | (prog_optimize << 8)
       | ((uint64_t)no_cbufs << 12)
+      | ((uint64_t)use_edb_buffer_views << 13)
       | (nak_stages << 16)
       | (nak_flags << 48);
 }
@@ -114,12 +116,15 @@ nvk_get_nir_options(struct vk_physical_device *vk_pdev,
 
 nir_address_format
 nvk_ubo_addr_format(const struct nvk_physical_device *pdev,
-                    VkPipelineRobustnessBufferBehaviorEXT robustness)
+                    const struct vk_pipeline_robustness_state *rs)
 {
    if (nvk_use_bindless_cbuf(&pdev->info)) {
       return nir_address_format_vec2_index_32bit_offset;
+   } else if (rs->null_uniform_buffer_descriptor) {
+      /* We need bounds checking for null descriptors */
+      return nir_address_format_64bit_bounded_global;
    } else {
-      switch (robustness) {
+      switch (rs->uniform_buffers) {
       case VK_PIPELINE_ROBUSTNESS_BUFFER_BEHAVIOR_DISABLED_EXT:
          return nir_address_format_64bit_global_32bit_offset;
       case VK_PIPELINE_ROBUSTNESS_BUFFER_BEHAVIOR_ROBUST_BUFFER_ACCESS_EXT:
@@ -133,16 +138,21 @@ nvk_ubo_addr_format(const struct nvk_physical_device *pdev,
 
 nir_address_format
 nvk_ssbo_addr_format(const struct nvk_physical_device *pdev,
-                     VkPipelineRobustnessBufferBehaviorEXT robustness)
+                    const struct vk_pipeline_robustness_state *rs)
 {
-   switch (robustness) {
-   case VK_PIPELINE_ROBUSTNESS_BUFFER_BEHAVIOR_DISABLED_EXT:
-      return nir_address_format_64bit_global_32bit_offset;
-   case VK_PIPELINE_ROBUSTNESS_BUFFER_BEHAVIOR_ROBUST_BUFFER_ACCESS_EXT:
-   case VK_PIPELINE_ROBUSTNESS_BUFFER_BEHAVIOR_ROBUST_BUFFER_ACCESS_2_EXT:
+   if (rs->null_storage_buffer_descriptor) {
+      /* We need bounds checking for null descriptors */
       return nir_address_format_64bit_bounded_global;
-   default:
-      unreachable("Invalid robust buffer access behavior");
+   } else {
+      switch (rs->storage_buffers) {
+      case VK_PIPELINE_ROBUSTNESS_BUFFER_BEHAVIOR_DISABLED_EXT:
+         return nir_address_format_64bit_global_32bit_offset;
+      case VK_PIPELINE_ROBUSTNESS_BUFFER_BEHAVIOR_ROBUST_BUFFER_ACCESS_EXT:
+      case VK_PIPELINE_ROBUSTNESS_BUFFER_BEHAVIOR_ROBUST_BUFFER_ACCESS_2_EXT:
+         return nir_address_format_64bit_bounded_global;
+      default:
+         unreachable("Invalid robust buffer access behavior");
+      }
    }
 }
 
@@ -155,9 +165,9 @@ nvk_get_spirv_options(struct vk_physical_device *vk_pdev,
       container_of(vk_pdev, struct nvk_physical_device, vk);
 
    return (struct spirv_to_nir_options) {
-      .ssbo_addr_format = nvk_ssbo_addr_format(pdev, rs->storage_buffers),
+      .ssbo_addr_format = nvk_ssbo_addr_format(pdev, rs),
       .phys_ssbo_addr_format = nir_address_format_64bit_global,
-      .ubo_addr_format = nvk_ubo_addr_format(pdev, rs->uniform_buffers),
+      .ubo_addr_format = nvk_ubo_addr_format(pdev, rs),
       .shared_addr_format = nir_address_format_32bit_offset,
       .min_ssbo_alignment = NVK_MIN_SSBO_ALIGNMENT,
       .min_ubo_alignment = nvk_min_cbuf_alignment(&pdev->info),
@@ -185,8 +195,9 @@ nvk_populate_fs_key(struct nak_fs_key *key,
 {
    memset(key, 0, sizeof(*key));
 
-   key->sample_locations_cb = 0;
+   key->sample_info_cb = 0;
    key->sample_locations_offset = nvk_root_descriptor_offset(draw.sample_locations);
+   key->sample_masks_offset = nvk_root_descriptor_offset(draw.sample_masks);
 
    /* Turn underestimate on when no state is availaible or if explicitly set */
    if (state == NULL || state->rs == NULL ||
@@ -244,6 +255,15 @@ nvk_hash_graphics_state(struct vk_physical_device *device,
 
       const bool is_multiview = state->rp->view_mask != 0;
       _mesa_blake3_update(&blake3_ctx, &is_multiview, sizeof(is_multiview));
+
+      /* This doesn't impact the shader compile but it does go in the
+       * nvk_shader and gets [de]serialized along with the binary so we
+       * need to hash it.
+       */
+      if (state->ms && state->ms->sample_shading_enable) {
+         _mesa_blake3_update(&blake3_ctx, &state->ms->min_sample_shading,
+                             sizeof(state->ms->min_sample_shading));
+      }
    }
    _mesa_blake3_final(&blake3_ctx, blake3_out);
 }
@@ -462,9 +482,9 @@ nvk_lower_nir(struct nvk_device *dev, nir_shader *nir,
    NIR_PASS(_, nir, nir_lower_explicit_io, nir_var_mem_global,
             nir_address_format_64bit_global);
    NIR_PASS(_, nir, nir_lower_explicit_io, nir_var_mem_ssbo,
-            nvk_ssbo_addr_format(pdev, rs->storage_buffers));
+            nvk_ssbo_addr_format(pdev, rs));
    NIR_PASS(_, nir, nir_lower_explicit_io, nir_var_mem_ubo,
-            nvk_ubo_addr_format(pdev, rs->uniform_buffers));
+            nvk_ubo_addr_format(pdev, rs));
    NIR_PASS(_, nir, nir_shader_intrinsics_pass,
             lower_load_intrinsic, nir_metadata_none, NULL);
 
@@ -579,7 +599,7 @@ nvk_compile_nir(struct nvk_device *dev, nir_shader *nir,
    return VK_SUCCESS;
 }
 
-VkResult
+static VkResult
 nvk_shader_upload(struct nvk_device *dev, struct nvk_shader *shader)
 {
    struct nvk_physical_device *pdev = nvk_device_physical(dev);
@@ -616,7 +636,9 @@ nvk_shader_upload(struct nvk_device *dev, struct nvk_shader *shader)
 
    uint32_t data_offset = 0;
    if (shader->data_size > 0) {
-      total_size = align(total_size, nvk_min_cbuf_alignment(&pdev->info));
+      uint32_t cbuf_alignment = nvk_min_cbuf_alignment(&pdev->info);
+      alignment = MAX2(alignment, cbuf_alignment);
+      total_size = align(total_size, cbuf_alignment);
       data_offset = total_size;
       total_size += shader->data_size;
    }
@@ -732,8 +754,7 @@ nvk_compile_shader(struct nvk_device *dev,
    }
 
    if (info->stage == MESA_SHADER_FRAGMENT) {
-      if (shader->info.fs.reads_sample_mask ||
-          shader->info.fs.uses_sample_shading) {
+      if (shader->info.fs.uses_sample_shading) {
          shader->min_sample_shading = 1;
       } else if (state != NULL && state->ms != NULL &&
                  state->ms->sample_shading_enable) {
@@ -745,6 +766,39 @@ nvk_compile_shader(struct nvk_device *dev,
    }
 
    *shader_out = &shader->vk;
+
+   return VK_SUCCESS;
+}
+
+VkResult
+nvk_compile_nir_shader(struct nvk_device *dev, nir_shader *nir,
+                       const VkAllocationCallbacks *alloc,
+                       struct nvk_shader **shader_out)
+{
+   struct nvk_physical_device *pdev = nvk_device_physical(dev);
+
+   const struct vk_pipeline_robustness_state rs_none = {
+      .uniform_buffers = VK_PIPELINE_ROBUSTNESS_BUFFER_BEHAVIOR_DISABLED_EXT,
+      .storage_buffers = VK_PIPELINE_ROBUSTNESS_BUFFER_BEHAVIOR_DISABLED_EXT,
+      .images = VK_PIPELINE_ROBUSTNESS_IMAGE_BEHAVIOR_ROBUST_IMAGE_ACCESS_2_EXT,
+   };
+
+   assert(nir->info.stage == MESA_SHADER_COMPUTE);
+   if (nir->options == NULL)
+      nir->options = nvk_get_nir_options(&pdev->vk, nir->info.stage, &rs_none);
+
+   struct vk_shader_compile_info info = {
+      .stage = nir->info.stage,
+      .nir = nir,
+      .robustness = &rs_none,
+   };
+
+   struct vk_shader *shader;
+   VkResult result = nvk_compile_shader(dev, &info, NULL, alloc, &shader);
+   if (result != VK_SUCCESS)
+      return result;
+
+   *shader_out = container_of(shader, struct nvk_shader, vk);
 
    return VK_SUCCESS;
 }
@@ -913,6 +967,13 @@ nvk_shader_get_executable_statistics(
                           statistics, statistic_count);
 
    assert(executable_index == 0);
+
+   vk_outarray_append_typed(VkPipelineExecutableStatisticKHR, &out, stat) {
+      WRITE_STR(stat->name, "Instruction count");
+      WRITE_STR(stat->description, "Number of instructions used by this shader");
+      stat->format = VK_PIPELINE_EXECUTABLE_STATISTIC_FORMAT_UINT64_KHR;
+      stat->value.u64 = shader->info.num_instrs;
+   }
 
    vk_outarray_append_typed(VkPipelineExecutableStatisticKHR, &out, stat) {
       WRITE_STR(stat->name, "Code Size");

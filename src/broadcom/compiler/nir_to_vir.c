@@ -1615,8 +1615,8 @@ ntq_emit_alu(struct v3d_compile *c, nir_alu_instr *instr)
                 result = vir_NOT(c, src[0]);
                 break;
 
-        case nir_op_ufind_msb:
-                result = vir_SUB(c, vir_uniform_ui(c, 31), vir_CLZ(c, src[0]));
+        case nir_op_uclz:
+                result = vir_CLZ(c, src[0]);
                 break;
 
         case nir_op_imul:
@@ -1714,18 +1714,6 @@ ntq_emit_alu(struct v3d_compile *c, nir_alu_instr *instr)
 
         case nir_op_iabs:
                 result = vir_MAX(c, src[0], vir_NEG(c, src[0]));
-                break;
-
-        case nir_op_fddx:
-        case nir_op_fddx_coarse:
-        case nir_op_fddx_fine:
-                result = vir_FDX(c, src[0]);
-                break;
-
-        case nir_op_fddy:
-        case nir_op_fddy_coarse:
-        case nir_op_fddy_fine:
-                result = vir_FDY(c, src[0]);
                 break;
 
         case nir_op_uadd_carry:
@@ -3936,6 +3924,22 @@ ntq_emit_intrinsic(struct v3d_compile *c, nir_intrinsic_instr *instr)
                 ntq_store_def(c, &instr->def, 0, vir_EIDX(c));
                 break;
 
+        case nir_intrinsic_ddx:
+        case nir_intrinsic_ddx_coarse:
+        case nir_intrinsic_ddx_fine: {
+                struct qreg value = ntq_get_src(c, instr->src[0], 0);
+                ntq_store_def(c, &instr->def, 0, vir_FDX(c, value));
+                break;
+        }
+
+        case nir_intrinsic_ddy:
+        case nir_intrinsic_ddy_coarse:
+        case nir_intrinsic_ddy_fine: {
+                struct qreg value = ntq_get_src(c, instr->src[0], 0);
+                ntq_store_def(c, &instr->def, 0, vir_FDY(c, value));
+                break;
+        }
+
         case nir_intrinsic_elect: {
                 struct qreg first;
                 if (vir_in_nonuniform_control_flow(c)) {
@@ -4621,6 +4625,71 @@ ntq_emit_impl(struct v3d_compile *c, nir_function_impl *impl)
         ntq_emit_cf_list(c, &impl->body);
 }
 
+static bool
+vir_inst_reads_reg(struct qinst *inst, struct qreg r)
+{
+   for (int i = 0; i < vir_get_nsrc(inst); i++) {
+           if (inst->src[i].file == r.file && inst->src[i].index == r.index)
+                   return true;
+   }
+   return false;
+}
+
+static void
+sched_flags_in_block(struct v3d_compile *c, struct qblock *block)
+{
+        struct qinst *flags_inst = NULL;
+        list_for_each_entry_safe_rev(struct qinst, inst, &block->instructions, link) {
+                /* Check for cases that would prevent us from moving a flags
+                 * instruction any earlier than this instruction:
+                 *
+                 * - The flags instruction reads the result of this instr.
+                 * - The instruction reads or writes flags.
+                 */
+                if (flags_inst) {
+                        if (vir_inst_reads_reg(flags_inst, inst->dst) ||
+                            v3d_qpu_writes_flags(&inst->qpu) ||
+                            v3d_qpu_reads_flags(&inst->qpu)) {
+                                list_move_to(&flags_inst->link, &inst->link);
+                                flags_inst = NULL;
+                        }
+                }
+
+                /* Skip if this instruction does more than just write flags */
+                if (inst->qpu.type != V3D_QPU_INSTR_TYPE_ALU ||
+                    inst->dst.file != QFILE_NULL ||
+                    !v3d_qpu_writes_flags(&inst->qpu)) {
+                        continue;
+                }
+
+                /* If we already had a flags_inst we should've moved it after
+                 * this instruction in the if (flags_inst) above.
+                 */
+                assert(!flags_inst);
+                flags_inst = inst;
+        }
+
+        /* If we reached the beginning of the block and we still have a flags
+         * instruction selected we can put it at the top of the block.
+         */
+        if (flags_inst) {
+                list_move_to(&flags_inst->link, &block->instructions);
+                flags_inst = NULL;
+        }
+}
+
+/**
+ * The purpose of this pass is to emit instructions that are only concerned
+ * with producing flags as early as possible to hopefully reduce liveness
+ * of their source arguments.
+ */
+static void
+sched_flags(struct v3d_compile *c)
+{
+        vir_for_each_block(block, c)
+                sched_flags_in_block(c, block);
+}
+
 static void
 nir_to_vir(struct v3d_compile *c)
 {
@@ -4894,6 +4963,7 @@ v3d_nir_to_vir(struct v3d_compile *c)
         }
 
         vir_optimize(c);
+        sched_flags(c);
 
         vir_check_payload_w(c);
 

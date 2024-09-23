@@ -403,6 +403,8 @@ struct pipe_framebuffer_state
 
    /** multiple color buffers for multiple render targets */
    uint8_t nr_cbufs;
+   /** used for multiview */
+   uint8_t viewmask;
    struct pipe_surface *cbufs[PIPE_MAX_COLOR_BUFS];
 
    struct pipe_surface *zsbuf;      /**< Z/stencil buffer */
@@ -483,7 +485,8 @@ struct pipe_sampler_view
    /* Put the refcount on its own cache line to prevent "False sharing". */
    EXCLUSIVE_CACHELINE(struct pipe_reference reference);
 
-   enum pipe_format format:14;      /**< typed PIPE_FORMAT_x */
+   enum pipe_format format:12;      /**< typed PIPE_FORMAT_x */
+   unsigned astc_decode_format:2;   /**< intermediate format used for ASTC textures */
    bool is_tex2d_from_buf:1;       /**< true if union is tex2d_from_buf */
    enum pipe_texture_target target:5; /**< PIPE_TEXTURE_x */
    unsigned swizzle_r:3;         /**< PIPE_SWIZZLE_x for red component */
@@ -533,6 +536,7 @@ struct pipe_image_view
          unsigned last_layer:16;      /**< last layer to use for array textures */
          unsigned level:8;            /**< mipmap level to use */
          bool single_layer_view;      /**< single layer view of array */
+         bool is_2d_view_of_3d;
       } tex;
       struct {
          unsigned offset;   /**< offset in bytes */
@@ -590,7 +594,10 @@ struct pipe_resource
     * next plane.
     */
    struct pipe_resource *next;
-   /* The screen pointer should be last for optimal structure packing. */
+   /* The screen pointer should be last for optimal structure packing.
+    * This pointer cannot be casted directly to a driver's screen. Use
+    * screen::get_driver_pipe_screen instead if it's non-NULL.
+    */
    struct pipe_screen *screen; /**< screen that this texture belongs to */
 };
 

@@ -5,16 +5,6 @@ api@clbuildprogram,Fail
 # Failed (error code: CL_INVALID_OPERATION): CL_SUCCESS when compiling an empty string..
 api@clcompileprogram,Fail
 
-# Failed (error code: CL_INVALID_COMMAND_QUEUE): Get size of CL_QUEUE_SIZE.
-api@clgetcommandqueueinfo,Fail
-
-# CL_DEVICE_VERSION: failed, 'OpenCL 3.0' should contains 'OpenCL 1.1'
-# CL_DEVICE_OPENCL_C_VERSION: failed, 'OpenCL C 1.2 ' should contains 'OpenCL C 1.1'
-# CL_DEVICE_DOUBLE_FP_CONFIG: failed, expected CL_FP_FMA|CL_FP_ROUND_TO_NEAREST|CL_
-#
-# I think the test needs to be updated for CL 3.0, and we need to set PIGLIT_CL_VERSION=3.0 in the environment.
-api@clgetdeviceinfo,Fail
-
 # Failed: return NULL if platform is not a valid platform
 api@clgetextensionfunctionaddressforplatform,Fail
 
@@ -43,23 +33,6 @@ program@execute@builtin@builtin-float-nextafter-1.0.generated@nextafter float16,
 program@execute@builtin@builtin-float-nextafter-1.0.generated@nextafter float2,Fail
 program@execute@builtin@builtin-float-nextafter-1.0.generated@nextafter float4,Fail
 program@execute@builtin@builtin-float-nextafter-1.0.generated@nextafter float8,Fail
-
-# Expecting 14 (0xe) with tolerance 0, but got 114 (0x72)
-# Error at int[0]
-#  Argument 1: FAIL
-program@execute@calls-large-struct,Fail
-program@execute@calls-large-struct@byval struct,Fail
-
-program@execute@calls-struct,Fail
-# Expecting 14 (0xe) with tolerance 0, but got 114 (0x72)
-# Error at int[0]
-#  Argument 1: FAIL
-program@execute@calls-struct@regs struct,Fail
-# Expecting 86 (0x56) with tolerance 0, but got 134 (0x86)
-# Error at int[0]
-#  Argument 0: FAIL
-#  Argument 1: PASS
-program@execute@calls-struct@small struct in regs,Fail
 
 # Expecting 0 (0x0) with tolerance 0, but got 9 (0x9)
 program@execute@global-offset,Fail

@@ -34,8 +34,6 @@
 
 using namespace brw;
 
-#define REG_CLASS_COUNT 20
-
 static void
 assign_reg(const struct intel_device_info *devinfo,
            unsigned *reg_hw_locations, brw_reg *reg)
@@ -47,33 +45,34 @@ assign_reg(const struct intel_device_info *devinfo,
 }
 
 void
-fs_visitor::assign_regs_trivial()
+brw_assign_regs_trivial(fs_visitor &s)
 {
-   unsigned hw_reg_mapping[this->alloc.count + 1];
+   const struct intel_device_info *devinfo = s.devinfo;
+   unsigned hw_reg_mapping[s.alloc.count + 1];
    unsigned i;
-   int reg_width = dispatch_width / 8;
+   int reg_width = s.dispatch_width / 8;
 
    /* Note that compressed instructions require alignment to 2 registers. */
-   hw_reg_mapping[0] = ALIGN(this->first_non_payload_grf, reg_width);
-   for (i = 1; i <= this->alloc.count; i++) {
+   hw_reg_mapping[0] = ALIGN(s.first_non_payload_grf, reg_width);
+   for (i = 1; i <= s.alloc.count; i++) {
       hw_reg_mapping[i] = (hw_reg_mapping[i - 1] +
-                           DIV_ROUND_UP(this->alloc.sizes[i - 1],
+                           DIV_ROUND_UP(s.alloc.sizes[i - 1],
                                         reg_unit(devinfo)));
    }
-   this->grf_used = hw_reg_mapping[this->alloc.count];
+   s.grf_used = hw_reg_mapping[s.alloc.count];
 
-   foreach_block_and_inst(block, fs_inst, inst, cfg) {
+   foreach_block_and_inst(block, fs_inst, inst, s.cfg) {
       assign_reg(devinfo, hw_reg_mapping, &inst->dst);
       for (i = 0; i < inst->sources; i++) {
          assign_reg(devinfo, hw_reg_mapping, &inst->src[i]);
       }
    }
 
-   if (this->grf_used >= BRW_MAX_GRF) {
-      fail("Ran out of regs on trivial allocator (%d/%d)\n",
-	   this->grf_used, BRW_MAX_GRF);
+   if (s.grf_used >= BRW_MAX_GRF) {
+      s.fail("Ran out of regs on trivial allocator (%d/%d)\n",
+	     s.grf_used, BRW_MAX_GRF);
    } else {
-      this->alloc.count = this->grf_used;
+      s.alloc.count = s.grf_used;
    }
 
 }
@@ -152,7 +151,8 @@ count_to_loop_end(const bblock_t *block)
    unreachable("not reached");
 }
 
-void fs_visitor::calculate_payload_ranges(unsigned payload_node_count,
+void fs_visitor::calculate_payload_ranges(bool allow_spilling,
+                                          unsigned payload_node_count,
                                           int *payload_last_use_ip) const
 {
    int loop_depth = 0;
@@ -221,19 +221,22 @@ void fs_visitor::calculate_payload_ranges(unsigned payload_node_count,
          }
       }
 
-      if (inst->eot) {
-         /* We could omit this for the !inst->header_present case, except
-          * that the simulator apparently incorrectly reads from g0/g1
-          * instead of sideband.  It also really freaks out driver
-          * developers to see g0 used in unusual places, so just always
-          * reserve it.
-          */
+      /* The generator implicitly uses g0 to construct extended message
+       * descriptors for scratch send messages when this bit is set.
+       */
+      if (inst->send_ex_desc_scratch)
          payload_last_use_ip[0] = use_ip;
-         payload_last_use_ip[1] = use_ip;
-      }
 
       ip++;
    }
+
+   /* g0 is needed to construct scratch headers for spilling.  While we could
+    * extend its live range each time we spill a register, and update the
+    * interference graph accordingly, this would get pretty messy.  Instead,
+    * simply consider g0 live for the whole program if spilling is required.
+    */
+   if (allow_spilling)
+      payload_last_use_ip[0] = ip - 1;
 }
 
 class fs_reg_alloc {
@@ -288,8 +291,7 @@ private:
                                 int node_start_ip, int node_end_ip);
    void setup_inst_interference(const fs_inst *inst);
 
-   void build_interference_graph();
-   void discard_interference_graph();
+   void build_interference_graph(bool allow_spilling);
 
    brw_reg build_lane_offsets(const fs_builder &bld,
                              uint32_t spill_offset, int ip);
@@ -510,7 +512,7 @@ fs_reg_alloc::setup_inst_interference(const fs_inst *inst)
 }
 
 void
-fs_reg_alloc::build_interference_graph()
+fs_reg_alloc::build_interference_graph(bool allow_spilling)
 {
    /* Compute the RA node layout */
    node_count = 0;
@@ -525,7 +527,7 @@ fs_reg_alloc::build_interference_graph()
    last_vgrf_node = node_count - 1;
    first_spill_node = node_count;
 
-   fs->calculate_payload_ranges(payload_node_count,
+   fs->calculate_payload_ranges(allow_spilling, payload_node_count,
                                 payload_last_use_ip);
 
    assert(g == NULL);
@@ -561,14 +563,6 @@ fs_reg_alloc::build_interference_graph()
     */
    foreach_block_and_inst(block, fs_inst, inst, fs->cfg)
       setup_inst_interference(inst);
-}
-
-void
-fs_reg_alloc::discard_interference_graph()
-{
-   ralloc_free(g);
-   g = NULL;
-   have_spill_costs = false;
 }
 
 brw_reg
@@ -633,7 +627,8 @@ fs_reg_alloc::build_legacy_scratch_header(const fs_builder &bld,
    brw_reg header = retype(alloc_spill_reg(1, ip), BRW_TYPE_UD);
    ra_add_node_interference(g, first_vgrf_node + header.nr, first_payload_node);
 
-   fs_inst *inst = ubld8.emit(SHADER_OPCODE_SCRATCH_HEADER, header);
+   fs_inst *inst =
+      ubld8.emit(SHADER_OPCODE_SCRATCH_HEADER, header, brw_ud8_grf(0, 0));
    _mesa_set_add(spill_insts, inst);
 
    /* Write the scratch offset */
@@ -945,7 +940,7 @@ fs_reg_alloc::spill_reg(unsigned spill_reg)
 
    fs->spilled_any_registers = true;
 
-   fs->last_scratch += size * REG_SIZE;
+   fs->last_scratch += align(size * REG_SIZE, REG_SIZE * reg_unit(devinfo));
 
    /* We're about to replace all uses of this register.  It no longer
     * conflicts with anything so we can get rid of its interference.
@@ -969,7 +964,7 @@ fs_reg_alloc::spill_reg(unsigned spill_reg)
              inst->src[i].nr == spill_reg) {
             int count = regs_read(inst, i);
             int subset_spill_offset = spill_offset +
-               ROUND_DOWN_TO(inst->src[i].offset, REG_SIZE);
+               ROUND_DOWN_TO(inst->src[i].offset, REG_SIZE * reg_unit(devinfo));
             brw_reg unspill_dst = alloc_spill_reg(count, ip);
 
             inst->src[i].nr = unspill_dst.nr;
@@ -998,7 +993,7 @@ fs_reg_alloc::spill_reg(unsigned spill_reg)
           inst->dst.nr == spill_reg &&
           inst->opcode != SHADER_OPCODE_UNDEF) {
          int subset_spill_offset = spill_offset +
-            ROUND_DOWN_TO(inst->dst.offset, REG_SIZE);
+            ROUND_DOWN_TO(inst->dst.offset, reg_unit(devinfo) * REG_SIZE);
          brw_reg spill_src = alloc_spill_reg(regs_written(inst), ip);
 
          inst->dst.nr = spill_src.nr;
@@ -1073,7 +1068,7 @@ fs_reg_alloc::spill_reg(unsigned spill_reg)
 bool
 fs_reg_alloc::assign_regs(bool allow_spilling, bool spill_all)
 {
-   build_interference_graph();
+   build_interference_graph(allow_spilling);
 
    unsigned spilled = 0;
    while (1) {
@@ -1143,13 +1138,13 @@ fs_reg_alloc::assign_regs(bool allow_spilling, bool spill_all)
 }
 
 bool
-fs_visitor::assign_regs(bool allow_spilling, bool spill_all)
+brw_assign_regs(fs_visitor &s, bool allow_spilling, bool spill_all)
 {
-   fs_reg_alloc alloc(this);
+   fs_reg_alloc alloc(&s);
    bool success = alloc.assign_regs(allow_spilling, spill_all);
    if (!success && allow_spilling) {
-      fail("no register to spill:\n");
-      dump_instructions(NULL);
+      s.fail("no register to spill:\n");
+      brw_print_instructions(s, NULL);
    }
    return success;
 }

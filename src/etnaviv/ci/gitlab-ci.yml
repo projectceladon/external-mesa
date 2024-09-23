@@ -21,7 +21,7 @@
       when: on_success
 
 .etnaviv-manual-rules:
-  stage: etnaviv
+  stage: etnaviv-postmerge
   extends: .no-auto-retry
   rules:
     - !reference [.test, rules]
@@ -86,7 +86,6 @@ gc2000_piglit:
   variables:
     DEQP_SUITE: etnaviv-gc2000-piglit
     FLAKES_CHANNEL: "#etnaviv-ci"
-    TEST_PHASE_TIMEOUT: 40
   timeout: 40m
 
 gc7000_gles2:

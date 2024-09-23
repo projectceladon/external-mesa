@@ -82,6 +82,7 @@ pub struct ImageInitInfo {
     pub samples: u32,
     pub usage: ImageUsageFlags,
     pub modifier: u64,
+    pub explicit_row_stride_B: u32,
 }
 
 /// Represents the data layout of a single slice (level + lod) of an image.
@@ -192,6 +193,12 @@ impl Image {
         let mut layer_size_B = 0;
         for level in 0..info.levels {
             let mut lvl_ext_B = image.level_extent_B(level);
+
+            // NVIDIA images are layed out as an array of 1/2/3D images, each of
+            // which may have multiple miplevels.  For the purposes of computing
+            // the size of a miplevel, we don't care about arrays.
+            lvl_ext_B.array_len = 1;
+
             if tiling.is_tiled {
                 let lvl_tiling = tiling.clamp(lvl_ext_B);
 
@@ -203,30 +210,46 @@ impl Image {
                 // Align the size to tiles
                 let lvl_tiling_ext_B = lvl_tiling.extent_B();
                 lvl_ext_B = lvl_ext_B.align(&lvl_tiling_ext_B);
+                assert!(
+                    info.explicit_row_stride_B == 0
+                        || info.explicit_row_stride_B == lvl_ext_B.width
+                );
 
                 image.levels[level as usize] = ImageLevel {
                     offset_B: layer_size_B,
                     tiling: lvl_tiling,
                     row_stride_B: lvl_ext_B.width,
                 };
+
+                layer_size_B += lvl_ext_B.size_B();
             } else {
                 // Linear images need to be 2D
                 assert!(image.dim == ImageDim::_2D);
+                // Linear images can't be arrays
+                assert!(image.extent_px.array_len == 1);
                 // NVIDIA can't do linear and mipmapping
                 assert!(image.num_levels == 1);
                 // NVIDIA can't do linear and multisampling
                 assert!(image.sample_layout == SampleLayout::_1x1);
 
+                let row_stride_B = if info.explicit_row_stride_B > 0 {
+                    assert!(info.modifier == DRM_FORMAT_MOD_LINEAR);
+                    assert!(info.explicit_row_stride_B % 128 == 0);
+                    info.explicit_row_stride_B
+                } else {
+                    // Row stride needs to be aligned to 128B for render to work
+                    lvl_ext_B.width.next_multiple_of(128)
+                };
+
                 image.levels[level as usize] = ImageLevel {
                     offset_B: layer_size_B,
                     tiling,
-                    // Row stride needs to be aligned to 128B for render to work
-                    row_stride_B: lvl_ext_B.width.next_multiple_of(128),
+                    row_stride_B,
                 };
 
-                assert!(lvl_ext_B.depth == 1);
+                layer_size_B +=
+                    u64::from(row_stride_B) * u64::from(lvl_ext_B.height);
             }
-            layer_size_B += image.level_size_B(level);
         }
 
         // We use the tiling for level 0 instead of the tiling selected above
@@ -365,11 +388,17 @@ impl Image {
 
         if level.tiling.is_tiled {
             let lvl_tiling_ext_B = level.tiling.extent_B();
-            lvl_ext_B.align(&lvl_tiling_ext_B).size_B().into()
+            let mut lvl_ext_B = lvl_ext_B.align(&lvl_tiling_ext_B);
+
+            let array_len = lvl_ext_B.array_len;
+            lvl_ext_B.array_len = 1;
+
+            self.array_stride_B * u64::from(array_len - 1) + lvl_ext_B.size_B()
         } else {
             assert!(lvl_ext_B.depth == 1);
-            let row_stride = level.row_stride_B * lvl_ext_B.height;
-            row_stride.into()
+            assert!(lvl_ext_B.array_len == 1);
+            u64::from(level.row_stride_B) * u64::from(lvl_ext_B.height - 1)
+                + u64::from(lvl_ext_B.width)
         }
     }
 

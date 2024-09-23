@@ -1188,6 +1188,9 @@ bool ac_query_gpu_info(int fd, void *dev_p, struct radeon_info *info,
    info->mc_arb_ramcfg = amdinfo.mc_arb_ramcfg;
    info->gb_addr_config = amdinfo.gb_addr_cfg;
    if (info->gfx_level >= GFX9) {
+      if (!info->has_graphics && info->family >= CHIP_GFX940)
+         info->gb_addr_config = 0;
+
       info->num_tile_pipes = 1 << G_0098F8_NUM_PIPES(info->gb_addr_config);
       info->pipe_interleave_bytes = 256 << G_0098F8_PIPE_INTERLEAVE_SIZE_GFX9(info->gb_addr_config);
    } else {
@@ -1441,8 +1444,9 @@ bool ac_query_gpu_info(int fd, void *dev_p, struct radeon_info *info,
    info->pte_fragment_size = alignment_info.size_local;
    info->gart_page_size = alignment_info.size_remote;
 
-   if (info->gfx_level == GFX6)
-      info->gfx_ib_pad_with_type2 = true;
+   info->gfx_ib_pad_with_type2 = info->gfx_level == GFX6;
+   /* CDNA starting with GFX940 shouldn't use CP DMA. */
+   info->has_cp_dma = info->has_graphics || info->family < CHIP_GFX940;
 
    if (info->gfx_level >= GFX11 && info->gfx_level < GFX12) {
       /* With num_cu = 4 in gfx11 measured power for idle, video playback and observed
@@ -1596,6 +1600,8 @@ bool ac_query_gpu_info(int fd, void *dev_p, struct radeon_info *info,
    const unsigned max_waves_per_tg = 32; /* 1024 threads in Wave32 */
    info->max_scratch_waves = MAX2(32 * info->min_good_cu_per_sa * info->max_sa_per_se * info->num_se,
                                   max_waves_per_tg);
+   info->has_scratch_base_registers = info->gfx_level >= GFX11 ||
+                                      (!info->has_graphics && info->family >= CHIP_GFX940);
    info->max_gflops = (info->gfx_level >= GFX11 ? 256 : 128) * info->num_cu * info->max_gpu_freq_mhz / 1000;
    info->memory_bandwidth_gbps = DIV_ROUND_UP(info->memory_freq_mhz_effective * info->memory_bus_width / 8, 1000);
    info->has_pcie_bandwidth_info = info->drm_minor >= 51;
@@ -1913,6 +1919,7 @@ void ac_print_gpu_info(const struct radeon_info *info, FILE *f)
 
    fprintf(f, "CP info:\n");
    fprintf(f, "    gfx_ib_pad_with_type2 = %i\n", info->gfx_ib_pad_with_type2);
+   fprintf(f, "    has_cp_dma = %i\n", info->has_cp_dma);
    fprintf(f, "    me_fw_version = %i\n", info->me_fw_version);
    fprintf(f, "    me_fw_feature = %i\n", info->me_fw_feature);
    fprintf(f, "    mec_fw_version = %i\n", info->mec_fw_version);
@@ -2033,6 +2040,7 @@ void ac_print_gpu_info(const struct radeon_info *info, FILE *f)
    fprintf(f, "    max_vgpr_alloc = %i\n", info->max_vgpr_alloc);
    fprintf(f, "    wave64_vgpr_alloc_granularity = %i\n", info->wave64_vgpr_alloc_granularity);
    fprintf(f, "    max_scratch_waves = %i\n", info->max_scratch_waves);
+   fprintf(f, "    has_scratch_base_registers = %i\n", info->has_scratch_base_registers);
    fprintf(f, "Ring info:\n");
    fprintf(f, "    attribute_ring_size_per_se = %u KB\n",
            DIV_ROUND_UP(info->attribute_ring_size_per_se, 1024));
@@ -2337,6 +2345,10 @@ ac_get_compute_resource_limits(const struct radeon_info *info, unsigned waves_pe
                             info->max_waves_per_simd;
       }
 
+      /* On GFX12+, WAVES_PER_SH means waves per SE. */
+      if (info->gfx_level >= GFX12)
+         max_waves_per_sh *= info->max_sa_per_se;
+
       /* Force even distribution on all SIMDs in CU if the workgroup
        * size is 64. This has shown some good improvements if # of CUs
        * per SE is not a multiple of 4.
@@ -2509,4 +2521,16 @@ uint32_t ac_memory_ops_per_clock(uint32_t vram_type)
    case AMDGPU_VRAM_TYPE_GDDR6:
       return 16;
    }
+}
+
+uint32_t ac_gfx103_get_cu_mask_ps(const struct radeon_info *info)
+{
+   /* It's wasteful to enable all CUs for PS if shader arrays have a different
+    * number of CUs. The reason is that the hardware sends the same number of PS
+    * waves to each shader array, so the slowest shader array limits the performance.
+    * Disable the extra CUs for PS in other shader arrays to save power and thus
+    * increase clocks for busy CUs. In the future, we might disable or enable this
+    * tweak only for certain apps.
+    */
+   return u_bit_consecutive(0, info->min_good_cu_per_sa);
 }

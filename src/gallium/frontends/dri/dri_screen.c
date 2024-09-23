@@ -44,7 +44,11 @@
 #include "util/format/u_format_s3tc.h"
 
 #include "state_tracker/st_context.h"
+#include "driver_trace/tr_screen.h"
 
+#ifdef HAVE_LIBDRM
+#include <xf86drm.h>
+#endif
 #define MSAA_VISUAL_MAX_SAMPLES 32
 
 #undef false
@@ -500,14 +504,11 @@ dri_get_egl_image(struct pipe_frontend_screen *fscreen,
                   struct st_egl_image *stimg)
 {
    struct dri_screen *screen = (struct dri_screen *)fscreen;
+   const __DRIimageLookupExtension *loader = screen->dri2.image;
    __DRIimage *img = NULL;
    const struct dri2_format_mapping *map;
 
-   if (screen->lookup_egl_image_validated) {
-      img = screen->lookup_egl_image_validated(screen, egl_image);
-   } else if (screen->lookup_egl_image) {
-      img = screen->lookup_egl_image(screen, egl_image);
-   }
+   img = loader->lookupEGLImageValidated(egl_image, screen->loaderPrivate);
 
    if (!img)
       return false;
@@ -524,8 +525,7 @@ dri_get_egl_image(struct pipe_frontend_screen *fscreen,
       /* Guess sized internal format for dma-bufs. Could be used
        * by EXT_EGL_image_storage.
        */
-      mesa_format mesa_format = driImageFormatToGLFormat(map->dri_format);
-      stimg->internalformat = driGLFormatToSizedInternalGLFormat(mesa_format);
+      stimg->internalformat = driImageFormatToSizedInternalGLFormat(map->dri_format);
    } else {
       stimg->internalformat = img->internal_format;
    }
@@ -541,8 +541,12 @@ dri_validate_egl_image(struct pipe_frontend_screen *fscreen,
                        void *egl_image)
 {
    struct dri_screen *screen = (struct dri_screen *)fscreen;
+   const __DRIimageLookupExtension *loader = screen->dri2.image;
 
-   return screen->validate_egl_image(screen, egl_image);
+   if (loader)
+      return loader->validateEGLImage(egl_image, screen->loaderPrivate);
+   else
+      return true;
 }
 
 static int
@@ -614,21 +618,21 @@ dri_set_background_context(struct st_context *st,
 
 const __DRIconfig **
 dri_init_screen(struct dri_screen *screen,
-                struct pipe_screen *pscreen)
+                struct pipe_screen *pscreen,
+                bool has_multibuffer)
 {
    screen->base.screen = pscreen;
    screen->base.get_egl_image = dri_get_egl_image;
    screen->base.get_param = dri_get_param;
    screen->base.set_background_context = dri_set_background_context;
-
-   if (screen->validate_egl_image)
-      screen->base.validate_egl_image = dri_validate_egl_image;
+   screen->base.validate_egl_image = dri_validate_egl_image;
 
    if (pscreen->get_param(pscreen, PIPE_CAP_NPOT_TEXTURES))
       screen->target = PIPE_TEXTURE_2D;
    else
       screen->target = PIPE_TEXTURE_RECT;
 
+   dri_init_options(screen);
    dri_postprocessing_init(screen);
 
    st_api_query_versions(&screen->base,
@@ -637,6 +641,22 @@ dri_init_screen(struct dri_screen *screen,
                          &screen->max_gl_compat_version,
                          &screen->max_gl_es1_version,
                          &screen->max_gl_es2_version);
+
+   screen->throttle = pscreen->get_param(pscreen, PIPE_CAP_THROTTLE);
+   if (pscreen->get_param(pscreen, PIPE_CAP_DEVICE_PROTECTED_CONTEXT))
+      screen->has_protected_context = true;
+   screen->has_reset_status_query = pscreen->get_param(pscreen, PIPE_CAP_DEVICE_RESET_STATUS_QUERY);
+
+
+#ifdef HAVE_LIBDRM
+   if (has_multibuffer) {
+      int dmabuf_caps = pscreen->get_param(pscreen, PIPE_CAP_DMABUF);
+      if (dmabuf_caps & DRM_PRIME_CAP_IMPORT)
+         screen->dmabuf_import = true;
+      if (screen->dmabuf_import && dmabuf_caps & DRM_PRIME_CAP_EXPORT)
+         screen->has_dmabuf = true;
+   }
+#endif
 
    return dri_fill_in_modes(screen);
 }

@@ -11,6 +11,7 @@ builtin_types_h = custom_target(
   output : 'builtin_types.h',
   command : [prog_python, '@INPUT@', '@OUTPUT@'],
   depend_files : files('builtin_types.py'),
+  depends : u_format_gen_h,
 )
 
 builtin_types_c = custom_target(
@@ -69,3 +70,7 @@ if with_gallium
   subdir('glsl')
 endif
 subdir('isaspec')
+
+if with_nouveau_vk
+  subdir('rust')
+endif

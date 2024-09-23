@@ -38,24 +38,22 @@
 #include "kopper_interface.h"
 #include "loader.h"
 #include "loader_dri_helper.h"
+#include "dri_util.h"
 
 static __DRIimage *
 surfaceless_alloc_image(struct dri2_egl_display *dri2_dpy,
                         struct dri2_egl_surface *dri2_surf)
 {
-   return dri2_dpy->image->createImage(
+   return dri_create_image(
       dri2_dpy->dri_screen_render_gpu, dri2_surf->base.Width,
-      dri2_surf->base.Height, dri2_surf->visual, 0, NULL);
+      dri2_surf->base.Height, dri2_surf->visual, NULL, 0, 0, NULL);
 }
 
 static void
 surfaceless_free_images(struct dri2_egl_surface *dri2_surf)
 {
-   struct dri2_egl_display *dri2_dpy =
-      dri2_egl_display(dri2_surf->base.Resource.Display);
-
    if (dri2_surf->front) {
-      dri2_dpy->image->destroyImage(dri2_surf->front);
+      dri2_destroy_image(dri2_surf->front);
       dri2_surf->front = NULL;
    }
 
@@ -93,8 +91,11 @@ surfaceless_image_get_buffers(__DRIdrawable *driDrawable, unsigned int format,
 
    if (buffer_mask & __DRI_IMAGE_BUFFER_FRONT) {
 
-      if (!dri2_surf->front)
+      if (!dri2_surf->front) {
          dri2_surf->front = surfaceless_alloc_image(dri2_dpy, dri2_surf);
+         if (!dri2_surf->front)
+            return 0;
+      }
 
       buffers->image_mask |= __DRI_IMAGE_BUFFER_FRONT;
       buffers->front = dri2_surf->front;
@@ -151,12 +152,11 @@ cleanup_surface:
 static EGLBoolean
 surfaceless_destroy_surface(_EGLDisplay *disp, _EGLSurface *surf)
 {
-   struct dri2_egl_display *dri2_dpy = dri2_egl_display(disp);
    struct dri2_egl_surface *dri2_surf = dri2_egl_surface(surf);
 
    surfaceless_free_images(dri2_surf);
 
-   dri2_dpy->core->destroyDrawable(dri2_surf->dri_drawable);
+   driDestroyDrawable(dri2_surf->dri_drawable);
 
    dri2_fini_surface(surf);
    free(dri2_surf);
@@ -266,7 +266,7 @@ surfaceless_probe_device(_EGLDisplay *disp, bool swrast, bool zink)
          dri2_dpy->driver_name = driver_name;
       }
 
-      if (dri2_dpy->driver_name && dri2_load_driver_dri3(disp)) {
+      if (dri2_dpy->driver_name && dri2_load_driver(disp)) {
          if (swrast || zink)
             dri2_dpy->loader_extensions = swrast_loader_extensions;
          else
@@ -308,7 +308,7 @@ surfaceless_probe_device_sw(_EGLDisplay *disp)
    if (!dri2_dpy->driver_name)
       return false;
 
-   if (!dri2_load_driver_swrast(disp)) {
+   if (!dri2_load_driver(disp)) {
       free(dri2_dpy->driver_name);
       dri2_dpy->driver_name = NULL;
       return false;
@@ -348,11 +348,6 @@ dri2_initialize_surfaceless(_EGLDisplay *disp)
 
    if (!dri2_create_screen(disp)) {
       err = "DRI2: failed to create screen";
-      goto cleanup;
-   }
-
-   if (!dri2_setup_extensions(disp)) {
-      err = "DRI2: failed to find required DRI extensions";
       goto cleanup;
    }
 

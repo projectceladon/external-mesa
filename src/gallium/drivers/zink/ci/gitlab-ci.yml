@@ -35,9 +35,32 @@ zink-venus-lvp:
   script:
     - xvfb-run --server-args='-noreset' bash -c "./install/crosvm-runner.sh ./install/deqp-runner.sh"
 
+zink-anv-adl:
+  extends:
+    - .zink-anv-adl-test
+  variables:
+    DEQP_SUITE: zink-anv-adl
+    PIGLIT_NO_WINDOW: 1
+    HWCI_START_WESTON: 1
+    # We use gbm because its a copy of tgl job
+    PIGLIT_PLATFORM: gbm
+  timeout: 30m
+
+# Manual full run when you want to double-check the full status.
+zink-anv-adl-full:
+  extends:
+    - zink-anv-adl
+    - .zink-anv-manual-rules
+  variables:
+    DEQP_SUITE: zink-anv-adl-full
+    JOB_TIMEOUT: 105
+    HWCI_START_WESTON: 1
+  timeout: 2h
+  parallel: 2
+
 zink-anv-tgl:
   extends:
-    - .zink-anv-test
+    - .zink-anv-tgl-test
   timeout: 1h
   variables:
     DEQP_SUITE: zink-anv-tgl
@@ -63,9 +86,9 @@ zink-anv-tgl-full:
 zink-anv-tgl-traces:
   extends:
     - .lava-piglit-traces:x86_64
-    - .zink-anv-test
+    - .zink-anv-tgl-test
     - .zink-trace-test
-    # Add .lava-traces-base again to override .zink-anv-test setting the
+    # Add .lava-traces-base again to override .zink-anv-tgl-test setting the
     # HWCI_TEST_SCRIPT, but .lava-piglit-traces having to come first to get
     # dependencies right.
     - .lava-traces-base
@@ -97,7 +120,7 @@ zink-tu-a618:
 zink-tu-a618-full:
   extends:
     - zink-tu-a618
-    - .collabora-turnip-manual-rules
+    - .zink-turnip-collabora-manual-rules
   variables:
     DEQP_FRACTION: 1
 
@@ -141,15 +164,15 @@ zink-tu-a750:
 
 ############### Combined testing (GL, GLES, Piglit) on NVK / RADV
 zink-nvk-ga106-valve:
-  timeout: 45m
+  timeout: 60m
   extends:
     - .zink-nvk-test-valve
     - .zink-nvk-manual-rules
     - .nvk-ga106-valve
   variables:
     GPU_VERSION: zink-nvk-ga106
-    B2C_TIMEOUT_BOOT_MINUTES: 35
-    B2C_TIMEOUT_OVERALL_MINUTES: 40  # usual run time: 26min
+    B2C_TIMEOUT_BOOT_MINUTES: 50
+    B2C_TIMEOUT_OVERALL_MINUTES: 55  # usual run time: 35min
 
 zink-radv-polaris10-valve:
   extends:

@@ -143,21 +143,20 @@ Struct("intel_memory_class_instance",
 
 Enum("intel_device_info_mmap_mode",
       [EnumValue("INTEL_DEVICE_INFO_MMAP_MODE_UC", value=0),
-       "INTEL_DEVICE_INFO_MMAP_MODE_WC",
-       "INTEL_DEVICE_INFO_MMAP_MODE_WB"
+       EnumValue("INTEL_DEVICE_INFO_MMAP_MODE_WC"),
+       EnumValue("INTEL_DEVICE_INFO_MMAP_MODE_WB"),
+       EnumValue("INTEL_DEVICE_INFO_MMAP_MODE_XD",
+                 comment=dedent("""\
+                 Xe2+ only. Only supported in GPU side and used for displayable
+                 buffers."""))
        ])
-
-Enum("intel_device_info_coherency_mode",
-     [EnumValue("INTEL_DEVICE_INFO_COHERENCY_MODE_NONE", value=0),
-      EnumValue("INTEL_DEVICE_INFO_COHERENCY_MODE_1WAY", comment="CPU caches are snooped by GPU"),
-      EnumValue("INTEL_DEVICE_INFO_COHERENCY_MODE_2WAY",
-                comment="Fully coherent between GPU and CPU")
-      ])
 
 Struct("intel_device_info_pat_entry",
        [Member("uint8_t", "index"),
-        Member("intel_device_info_mmap_mode", "mmap"),
-        Member("intel_device_info_coherency_mode", "coherency")])
+        Member("intel_device_info_mmap_mode", "mmap",
+               comment=dedent("""\
+               This tells KMD what caching mode the CPU mapping should use.
+               It has nothing to do with any PAT cache modes."""))])
 
 Enum("intel_cmat_scope",
      [EnumValue("INTEL_CMAT_SCOPE_NONE", value=0),
@@ -323,6 +322,13 @@ Struct("intel_device_info",
                non-centroid interpolation for unlit pixels, at the expense of two extra
                fragment shader instructions.""")),
 
+        Member("bool", "needs_null_push_constant_tbimr_workaround",
+               comment=dedent("""\
+               Whether the platform needs an undocumented workaround for a hardware bug
+               that affects draw calls with a pixel shader that has 0 push constant cycles
+               when TBIMR is enabled, which has been seen to lead to hangs.  To avoid the
+               issue we simply pad the push constant payload to be at least 1 register.""")),
+
         Member("bool", "is_adl_n", comment="We need this for ADL-N specific Wa_14014966230."),
 
         Member("unsigned", "num_slices",
@@ -461,6 +467,8 @@ Struct("intel_device_info",
                implementation details, the range of scratch ids may be larger than the
                number of subslices.""")),
 
+        Member("uint32_t", "max_scratch_size_per_thread", compiler_field=True),
+
         Member("intel_device_info_urb_desc", "urb"),
         Member("unsigned", "max_constant_urb_size_kb"),
         Member("unsigned", "mesh_max_constant_urb_size_kb"),
@@ -473,6 +481,7 @@ Struct("intel_device_info",
         Member("int", "simulator_id"),
         Member("char", "name", array="INTEL_DEVICE_MAX_NAME_SIZE"),
         Member("bool", "no_hw"),
+        Member("bool", "probe_forced", comment="Device needed INTEL_FORCE_PROBE"),
         Member("intel_device_info_mem_desc", "mem"),
         Member("intel_device_info_pat_desc", "pat"),
         Member("intel_cooperative_matrix_configuration",

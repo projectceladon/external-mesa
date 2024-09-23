@@ -33,10 +33,6 @@
 #include "util/simple_mtx.h"
 #include "util/u_atomic.h"
 
-#if defined(USE_MAGMA)
-#include <lib/magma/magma.h>
-#endif
-
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -196,12 +192,8 @@ struct vk_device {
                                       bool signal_memory,
                                       struct vk_sync **sync_out);
 
-#if defined(USE_MAGMA)
-   magma_connection_t magma_connection;
-#else
    /* Set by vk_device_set_drm_fd() */
    int drm_fd;
-#endif
 
    /** Implicit pipeline cache, or NULL */
    struct vk_pipeline_cache *mem_cache;
@@ -275,6 +267,9 @@ struct vk_device {
    struct hash_table *swapchain_private;
    mtx_t swapchain_name_mtx;
    struct hash_table *swapchain_name;
+
+   /* For VK_KHR_pipeline_binary */
+   bool disable_internal_cache;
 };
 
 VK_DEFINE_HANDLE_CASTS(vk_device, base, VkDevice,
@@ -306,13 +301,11 @@ vk_device_init(struct vk_device *device,
                const VkDeviceCreateInfo *pCreateInfo,
                const VkAllocationCallbacks *alloc);
 
-#if !defined(USE_MAGMA)
 static inline void
 vk_device_set_drm_fd(struct vk_device *device, int drm_fd)
 {
    device->drm_fd = drm_fd;
 }
-#endif
 
 /** Tears down a vk_device
  *

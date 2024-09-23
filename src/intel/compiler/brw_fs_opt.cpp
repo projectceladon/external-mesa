@@ -67,8 +67,6 @@ brw_fs_optimize(fs_visitor &s)
          OPT(brw_fs_opt_copy_propagation);
       OPT(brw_fs_opt_cmod_propagation);
       OPT(brw_fs_opt_dead_code_eliminate);
-      OPT(brw_fs_opt_peephole_sel);
-      OPT(brw_fs_opt_dead_control_flow_eliminate);
       OPT(brw_fs_opt_saturate_propagation);
       OPT(brw_fs_opt_register_coalesce);
 
@@ -77,8 +75,6 @@ brw_fs_optimize(fs_visitor &s)
 
    progress = false;
    pass_num = 0;
-
-   OPT(brw_fs_opt_predicated_break);
 
    if (OPT(brw_fs_lower_pack)) {
       OPT(brw_fs_opt_register_coalesce);
@@ -116,7 +112,6 @@ brw_fs_optimize(fs_visitor &s)
       OPT(brw_fs_opt_cse_defs);
       OPT(brw_fs_opt_register_coalesce);
       OPT(brw_fs_opt_dead_code_eliminate);
-      OPT(brw_fs_opt_peephole_sel);
    }
 
    OPT(brw_fs_opt_remove_redundant_halts);
@@ -506,7 +501,7 @@ brw_fs_opt_remove_extra_rounding_modes(fs_visitor &s)
 
       foreach_inst_in_block_safe (fs_inst, inst, block) {
          if (inst->opcode == SHADER_OPCODE_RND_MODE) {
-            assert(inst->src[0].file == BRW_IMMEDIATE_VALUE);
+            assert(inst->src[0].file == IMM);
             const brw_rnd_mode mode = (brw_rnd_mode) inst->src[0].d;
             if (mode == prev_mode) {
                inst->remove(block);

@@ -411,12 +411,6 @@ setup_execbuf_for_cmd_buffers(struct anv_execbuf *execbuf,
    if (result != VK_SUCCESS)
       return result;
 
-   if (device->vk.enabled_extensions.EXT_descriptor_buffer) {
-      result = pin_state_pool(device, execbuf, &device->dynamic_state_db_pool);
-      if (result != VK_SUCCESS)
-         return result;
-   }
-
    result = pin_state_pool(device, execbuf, &device->general_state_pool);
    if (result != VK_SUCCESS)
       return result;
@@ -912,8 +906,7 @@ i915_queue_exec_locked(struct anv_queue *queue,
    if (result != VK_SUCCESS)
       goto error;
 
-   const bool has_perf_query =
-      perf_query_pool && perf_query_pass >= 0 && cmd_buffer_count;
+   const bool has_perf_query = perf_query_pool && cmd_buffer_count;
 
    if (INTEL_DEBUG(DEBUG_SUBMIT))
       anv_i915_debug_submit(&execbuf);

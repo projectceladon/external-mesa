@@ -69,15 +69,18 @@ struct pan_fb_zs_attachment {
 };
 
 struct pan_tiler_context {
-   /* Sum of vertex counts (for non-indexed draws), index counts (for
-    * indexed draws on Valhall as a best effort), or ~0 if any indirect
-    * draws are used. Helps tune hierarchy masks.
-    */
-   uint32_t vertex_count;
-
    union {
-      mali_ptr bifrost;
       struct {
+         mali_ptr desc;
+      } valhall;
+      struct {
+         mali_ptr desc;
+      } bifrost;
+      struct {
+         /* Sum of vertex counts (for non-indexed draws), index counts, or ~0 if
+          * any indirect draws are used. Helps tune hierarchy masks.
+          */
+         uint32_t vertex_count;
          bool disable;
          bool no_hierarchical_tiling;
          mali_ptr polygon_list;

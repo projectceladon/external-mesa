@@ -47,7 +47,6 @@ DEPS=(
     libflatbuffers-dev
     libgtk-3-dev
     "libllvm${LLVM_VERSION}"
-    libomxil-bellagio-dev
     libpciaccess-dev
     libunwind-dev
     libva-dev
@@ -74,6 +73,7 @@ DEPS=(
     python3-pycparser
     python3-requests
     python3-setuptools
+    python3-yaml
     qemu-user
     valgrind
     x11proto-dri2-dev

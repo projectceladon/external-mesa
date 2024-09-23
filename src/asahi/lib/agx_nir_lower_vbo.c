@@ -4,7 +4,7 @@
  */
 
 #include "agx_nir_lower_vbo.h"
-#include "asahi/compiler/agx_internal_formats.h"
+#include "asahi/layout/layout.h"
 #include "compiler/nir/nir_builder.h"
 #include "compiler/nir/nir_format_convert.h"
 #include "util/bitset.h"
@@ -198,10 +198,16 @@ pass(struct nir_builder *b, nir_intrinsic_instr *intr, void *data)
     *
     * TODO: Optimize.
     *
-    * TODO: We always clamp to handle null descriptors. Maybe optimize?
     */
    nir_def *oob = nir_ult(b, bounds, el);
-   el = nir_bcsel(b, oob, nir_imm_int(b, 0), el);
+
+   /* TODO: We clamp to handle null descriptors. This should be optimized
+    * further. However, with the fix up after the load for D3D robustness, we
+    * don't need this clamp if we can ignore the fault.
+    */
+   if (!(ctx->rs.level >= AGX_ROBUSTNESS_D3D && ctx->rs.soft_fault)) {
+      el = nir_bcsel(b, oob, nir_imm_int(b, 0), el);
+   }
 
    nir_def *base = nir_load_vbo_base_agx(b, buf_handle);
 
@@ -217,8 +223,7 @@ pass(struct nir_builder *b, nir_intrinsic_instr *intr, void *data)
     * i.e. the set of formats that support masking.
     */
    if (offset_el == 0 && (stride_el == 2 || stride_el == 4) &&
-       agx_internal_format_supports_mask(
-          (enum agx_internal_formats)interchange_format)) {
+       ail_isa_format_supports_mask((enum ail_isa_format)interchange_format)) {
 
       shift = util_logbase2(stride_el);
       stride_el = 1;

@@ -1390,6 +1390,7 @@ static unsigned rvcn_dec_dynamic_dpb_t2_message(struct radeon_decoder *dec, rvcn
                            dummy->dpb.res;
                addr = dec->ws->buffer_get_virtual_address(dummy_res->buf);
             }
+            dec->ws->cs_add_buffer(&dec->cs, res->buf, RADEON_USAGE_READWRITE | RADEON_USAGE_SYNCHRONIZED, RADEON_DOMAIN_VRAM);
             dynamic_dpb_t2->dpbAddrLo[i] = addr;
             dynamic_dpb_t2->dpbAddrHi[i] = addr >> 32;
             ++dynamic_dpb_t2->dpbArraySize;
@@ -1699,7 +1700,7 @@ static struct pb_buffer_lean *rvcn_dec_message_decode(struct radeon_decoder *dec
             align(dec->base.height, dec->db_alignment) * 3 / 2);
 
          dec->dpb_size = calc_dpb_size(dec);
-         r = si_vid_resize_buffer(dec->screen, &dec->cs, &dec->dpb, dec->dpb_size, &buf_offset_info);
+         r = si_vid_resize_buffer(dec->base.context, &dec->cs, &dec->dpb, dec->dpb_size, &buf_offset_info);
          if (!r) {
             RVID_ERR("Can't resize dpb.\n");
             return NULL;
@@ -1972,9 +1973,12 @@ static struct pb_buffer_lean *rvcn_dec_message_decode(struct radeon_decoder *dec
    if (dec->ctx.res)
       decode->hw_ctxt_size = dec->ctx.res->buf->size;
 
-   if (dec->dpb_type == DPB_DYNAMIC_TIER_2)
+   if (dec->dpb_type == DPB_DYNAMIC_TIER_2) {
       if (rvcn_dec_dynamic_dpb_t2_message(dec, decode, dynamic_dpb_t2, encrypted))
          return NULL;
+   } else if (((struct si_screen *)dec->screen)->info.vcn_ip_version == VCN_5_0_0 &&
+                dec->dpb_type == DPB_MAX_RES)
+      decode->db_swizzle_mode = RDECODE_VCN5_256B_D;
 
    return luma->buffer.buf;
 }
@@ -2239,7 +2243,7 @@ static unsigned calc_dpb_size(struct radeon_decoder *dec)
    unsigned max_references = dec->base.max_references + 1;
 
    // aligned size of a single frame
-   image_size = align(width, 32) * height;
+   image_size = align(width, dec->db_alignment) * align(height, dec->db_alignment);
    image_size += image_size / 2;
    image_size = align(image_size, 1024);
 
@@ -2290,12 +2294,12 @@ static unsigned calc_dpb_size(struct radeon_decoder *dec)
       else
          max_references = MAX2(max_references, 17);
 
-      width = align(width, 16);
-      height = align(height, 16);
       if (dec->base.profile == PIPE_VIDEO_PROFILE_HEVC_MAIN_10)
-         dpb_size = align((align(width, 64) * align(height, 64) * 9) / 4, 256) * max_references;
+         dpb_size = align((align(width, dec->db_alignment) *
+                    align(height, dec->db_alignment) * 9) / 4, 256) * max_references;
       else
-         dpb_size = align((align(width, 32) * height * 3) / 2, 256) * max_references;
+         dpb_size = align((align(width, dec->db_alignment) *
+                    align(height, dec->db_alignment) * 3) / 2, 256) * max_references;
       break;
 
    case PIPE_VIDEO_FORMAT_VC1:
@@ -2499,7 +2503,7 @@ static void radeon_dec_decode_bitstream(struct pipe_video_codec *decoder,
             return;
          }
          si_vid_destroy_buffer(&old_buf);
-      } else if (!si_vid_resize_buffer(dec->screen, &dec->cs, buf, total_bs_size, NULL)) {
+      } else if (!si_vid_resize_buffer(dec->base.context, &dec->cs, buf, total_bs_size, NULL)) {
          RVID_ERR("Can't resize bitstream buffer!");
          return;
       }
@@ -2565,15 +2569,15 @@ void send_cmd_dec(struct radeon_decoder *dec, struct pipe_video_buffer *target,
 /**
  * end decoding of the current frame
  */
-static void radeon_dec_end_frame(struct pipe_video_codec *decoder, struct pipe_video_buffer *target,
-                                 struct pipe_picture_desc *picture)
+static int radeon_dec_end_frame(struct pipe_video_codec *decoder, struct pipe_video_buffer *target,
+                                struct pipe_picture_desc *picture)
 {
    struct radeon_decoder *dec = (struct radeon_decoder *)decoder;
 
    assert(decoder);
 
    if (!dec->bs_ptr)
-      return;
+      return 1;
 
    dec->send_cmd(dec, target, picture);
    flush(dec, picture->flush_flags, picture->fence);
@@ -2581,13 +2585,14 @@ static void radeon_dec_end_frame(struct pipe_video_codec *decoder, struct pipe_v
       dec->ws->fence_reference(dec->ws, &dec->prev_fence, *picture->fence);
 
    next_buffer(dec);
+   return 0;
 }
 
 /**
  * end decoding of the current jpeg frame
  */
-static void radeon_dec_jpeg_end_frame(struct pipe_video_codec *decoder, struct pipe_video_buffer *target,
-                                 struct pipe_picture_desc *picture)
+static int radeon_dec_jpeg_end_frame(struct pipe_video_codec *decoder, struct pipe_video_buffer *target,
+                                     struct pipe_picture_desc *picture)
 {
    struct radeon_decoder *dec = (struct radeon_decoder *)decoder;
    struct pipe_mjpeg_picture_desc *pic = (struct pipe_mjpeg_picture_desc *)picture;
@@ -2595,7 +2600,7 @@ static void radeon_dec_jpeg_end_frame(struct pipe_video_codec *decoder, struct p
    assert(decoder);
 
    if (!dec->bs_ptr)
-      return;
+      return 1;
 
    dec->jpg.crop_x = ROUND_DOWN_TO(pic->picture_parameter.crop_x, VL_MACROBLOCK_WIDTH);
    dec->jpg.crop_y = ROUND_DOWN_TO(pic->picture_parameter.crop_y, VL_MACROBLOCK_HEIGHT);
@@ -2609,6 +2614,7 @@ static void radeon_dec_jpeg_end_frame(struct pipe_video_codec *decoder, struct p
    dec->ws->cs_flush(&dec->jcs[dec->cb_idx], picture->flush_flags, NULL);
    next_buffer(dec);
    dec->cb_idx = (dec->cb_idx+1) % dec->njctx;
+   return 0;
 }
 
 /**
@@ -2874,12 +2880,21 @@ struct pipe_video_codec *radeon_create_decoder(struct pipe_context *context,
    else
       dec->dpb_type = DPB_MAX_RES;
 
-   dec->db_alignment = (((struct si_screen *)dec->screen)->info.vcn_ip_version >= VCN_2_0_0 &&
+   dec->db_alignment = (sctx->vcn_ip_ver >= VCN_2_0_0 &&
                    dec->base.width > 32 && (dec->stream_type == RDECODE_CODEC_VP9 ||
                    dec->stream_type == RDECODE_CODEC_AV1 ||
                    dec->base.profile == PIPE_VIDEO_PROFILE_HEVC_MAIN_10)) ? 64 : 32;
 
-   dec->dpb_size = calc_dpb_size(dec);
+   if (sctx->vcn_ip_ver >= VCN_5_0_0) {
+      if (stream_type == RDECODE_CODEC_VP9 ||
+          stream_type == RDECODE_CODEC_AV1 ||
+          stream_type == RDECODE_CODEC_H265 ||
+          stream_type == RDECODE_CODEC_H264_PERF)
+         dec->db_alignment = 64;
+   }
+
+   if (dec->dpb_type != DPB_DYNAMIC_TIER_2)
+      dec->dpb_size = calc_dpb_size(dec);
 
    if (!si_vid_create_buffer(dec->screen, &dec->sessionctx, RDECODE_SESSION_CONTEXT_SIZE,
                              PIPE_USAGE_DEFAULT)) {
@@ -2948,16 +2963,6 @@ struct pipe_video_codec *radeon_create_decoder(struct pipe_context *context,
    default:
       RVID_ERR("VCN is not supported.\n");
       goto error;
-   }
-
-   /* hack for vcn 5 temporarily */
-   if (sctx->vcn_ip_ver >= VCN_5_0_0) {
-      if (stream_type == RDECODE_CODEC_VP9 ||
-         stream_type == RDECODE_CODEC_AV1 ||
-         stream_type == RDECODE_CODEC_H265)
-            dec->db_alignment = 64;
-      else if(stream_type == RDECODE_CODEC_H264_PERF)
-            dec->db_alignment = 256;
    }
 
    if (dec->stream_type != RDECODE_CODEC_JPEG) {

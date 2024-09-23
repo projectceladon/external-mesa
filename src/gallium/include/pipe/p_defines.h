@@ -492,6 +492,8 @@ enum pipe_flush_flags
 #define PIPE_BIND_PRIME_BLIT_DST (1 << 24)
 #define PIPE_BIND_USE_FRONT_RENDERING (1 << 25) /* Resource may be used for frontbuffer rendering */
 #define PIPE_BIND_CONST_BW    (1 << 26) /* Avoid using a data dependent layout (AFBC, UBWC, etc) */
+#define PIPE_BIND_VIDEO_DECODE_DPB     (1 << 27) /* video engine DPB decode reconstructed picture */
+#define PIPE_BIND_VIDEO_ENCODE_DPB     (1 << 28) /* video engine DPB encode reconstructed picture */
 
 /**
  * Flags for the driver about resource behaviour:
@@ -663,6 +665,19 @@ enum pipe_conservative_raster_mode
 #define PIPE_IMAGE_ACCESS_VOLATILE           (1 << 3)
 #define PIPE_IMAGE_ACCESS_TEX2D_FROM_BUFFER  (1 << 4)
 #define PIPE_IMAGE_ACCESS_DRIVER_INTERNAL    (1 << 5)
+
+/**
+ * Shader subgroup feature flags aligned with GL_KHR_shader_subgroup.
+ */
+#define PIPE_SHADER_SUBGROUP_FEATURE_BASIC            (1 << 0)
+#define PIPE_SHADER_SUBGROUP_FEATURE_VOTE             (1 << 1)
+#define PIPE_SHADER_SUBGROUP_FEATURE_ARITHMETIC       (1 << 2)
+#define PIPE_SHADER_SUBGROUP_FEATURE_BALLOT           (1 << 3)
+#define PIPE_SHADER_SUBGROUP_FEATURE_SHUFFLE          (1 << 4)
+#define PIPE_SHADER_SUBGROUP_FEATURE_SHUFFLE_RELATIVE (1 << 5)
+#define PIPE_SHADER_SUBGROUP_FEATURE_CLUSTERED        (1 << 6)
+#define PIPE_SHADER_SUBGROUP_FEATURE_QUAD             (1 << 7)
+#define PIPE_SHADER_SUBGROUP_NUM_FEATURES             8
 
 /**
  * Implementation capabilities/limits which are queried through
@@ -953,6 +968,13 @@ enum pipe_cap
    PIPE_CAP_HAS_CONST_BW,
    PIPE_CAP_PERFORMANCE_MONITOR,
    PIPE_CAP_TEXTURE_SAMPLER_INDEPENDENT,
+   PIPE_CAP_ASTC_DECODE_MODE,
+   /** For GL_KHR_shader_subgroup */
+   PIPE_CAP_SHADER_SUBGROUP_SIZE,
+   PIPE_CAP_SHADER_SUBGROUP_SUPPORTED_STAGES,
+   PIPE_CAP_SHADER_SUBGROUP_SUPPORTED_FEATURES,
+   PIPE_CAP_SHADER_SUBGROUP_QUAD_ALL_STAGES,
+   PIPE_CAP_MULTIVIEW,
    PIPE_CAP_LAST,
    /* XXX do not add caps after PIPE_CAP_LAST! */
 };
@@ -1327,6 +1349,10 @@ enum pipe_perf_counter_data_type
    PIPE_PERF_COUNTER_DATA_TYPE_FLOAT,
    PIPE_PERF_COUNTER_DATA_TYPE_DOUBLE,
 };
+
+#define PIPE_ASTC_DECODE_FORMAT_FLOAT16 0
+#define PIPE_ASTC_DECODE_FORMAT_UNORM8  1
+#define PIPE_ASTC_DECODE_FORMAT_RGB9E5  2
 
 #define PIPE_UUID_SIZE 16
 #define PIPE_LUID_SIZE 8

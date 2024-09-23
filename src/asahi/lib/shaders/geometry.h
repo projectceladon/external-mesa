@@ -163,6 +163,13 @@ struct agx_geometry_params {
     */
    GLOBAL(uchar) xfb_base[MAX_SO_BUFFERS];
 
+   /* Address and present mask for the input to the geometry shader. These will
+    * reflect the vertex shader for VS->GS or instead the tessellation
+    * evaluation shader for TES->GS.
+    */
+   uint64_t input_buffer;
+   uint64_t input_mask;
+
    /* Location-indexed mask of flat outputs, used for lowering GL edge flags. */
    uint64_t flat_outputs;
 
@@ -201,48 +208,7 @@ struct agx_geometry_params {
     */
    uint32_t input_topology;
 } PACKED;
-AGX_STATIC_ASSERT(sizeof(struct agx_geometry_params) == 78 * 4);
-
-struct agx_tess_params {
-   /* Persistent (cross-draw) geometry state */
-   GLOBAL(struct agx_geometry_state) state;
-
-   /* Patch coordinate offsets in patch_coord_buffer, indexed by patch ID. */
-   GLOBAL(uint) patch_coord_offs;
-
-   /* Patch coordinate buffer, indexed as:
-    *
-    *    patch_coord_offs[patch_ID] + vertex_in_patch
-    *
-    * Currently float2s, but we might be able to compact later?
-    */
-   GLOBAL(float2) patch_coord_buffer;
-
-   /* Tessellation control shader output buffer, indexed by patch ID. */
-   GLOBAL(uchar) tcs_buffer;
-
-   /* Bitfield of TCS per-vertex outputs */
-   uint64_t tcs_per_vertex_outputs;
-
-   /* Default tess levels used in OpenGL when there is no TCS in the pipeline.
-    * Unused in Vulkan and OpenGL ES.
-    */
-   float tess_level_outer_default[4];
-   float tess_level_inner_default[4];
-
-   /* Number of vertices in the input patch */
-   uint input_patch_size;
-
-   /* Number of vertices in the TCS output patch */
-   uint output_patch_size;
-
-   /* Number of patch constants written by TCS */
-   uint tcs_patch_constants;
-
-   /* Number of input patches per instance of the VS/TCS */
-   uint patches_per_instance;
-} PACKED;
-AGX_STATIC_ASSERT(sizeof(struct agx_tess_params) == 22 * 4);
+AGX_STATIC_ASSERT(sizeof(struct agx_geometry_params) == 82 * 4);
 
 /* TCS shared memory layout:
  *

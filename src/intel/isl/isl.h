@@ -834,7 +834,8 @@ enum isl_aux_usage {
     * CCS-compressed surface contains valid data at all times.
     *
     * :invariant: The surface is a color surface
-    * :invariant: :c:member:`isl_surf.samples` == 1
+    * :invariant: :c:member:`isl_surf.samples` == 1 for GFX 12, GFX 20 can
+    *             be multisampled
     */
    ISL_AUX_USAGE_HIZ_CCS_WT,
 
@@ -1982,6 +1983,14 @@ isl_device_init(struct isl_device *dev,
 
 isl_sample_count_mask_t ATTRIBUTE_CONST
 isl_device_get_sample_counts(const struct isl_device *dev);
+
+/**
+ * :returns: The offset of the field within CLEAR_COLOR from which the sampler
+ *           fetches the clear color.
+ */
+uint64_t
+isl_get_sampler_clear_field_offset(const struct intel_device_info *devinfo,
+                                   enum isl_format format);
 
 /**
  * :returns: The isl_format_layout for the given isl_format

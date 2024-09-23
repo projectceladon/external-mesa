@@ -2,10 +2,10 @@
 // SPDX-License-Identifier: MIT
 
 use crate::api::{GetDebugFlags, DEBUG};
-use crate::bitset::BitSet;
 use crate::ir::*;
 use crate::liveness::{BlockLiveness, Liveness, SimpleLiveness};
 
+use compiler::bitset::BitSet;
 use std::cmp::{max, Ordering};
 use std::collections::{HashMap, HashSet};
 
@@ -119,7 +119,7 @@ impl SSAUseMap {
     pub fn add_block(&mut self, b: &BasicBlock) {
         for (ip, instr) in b.instrs.iter().enumerate() {
             match &instr.op {
-                Op::FSOut(op) => {
+                Op::RegOut(op) => {
                     for (i, src) in op.srcs.iter().enumerate() {
                         let out_reg = u32::try_from(i).unwrap();
                         if let Some(ssa) = src_ssa_ref(src) {
@@ -1130,7 +1130,7 @@ impl AssignRegsBlock {
                     Some(instr)
                 }
             }
-            Op::FSOut(out) => {
+            Op::RegOut(out) => {
                 for src in out.srcs.iter_mut() {
                     if let Some(src_vec) = src_ssa_ref(src) {
                         debug_assert!(src_vec.comps() == 1);
@@ -1299,7 +1299,7 @@ impl AssignRegsBlock {
     }
 }
 
-impl Shader {
+impl Shader<'_> {
     pub fn assign_regs(&mut self) {
         assert!(self.functions.len() == 1);
         let f = &mut self.functions[0];
@@ -1316,7 +1316,7 @@ impl Shader {
         let spill_files =
             [RegFile::UPred, RegFile::Pred, RegFile::UGPR, RegFile::Bar];
         for file in spill_files {
-            let num_regs = file.num_regs(self.info.sm);
+            let num_regs = self.sm.num_regs(file);
             if max_live[file] > num_regs {
                 f.spill_values(file, num_regs);
 
@@ -1336,7 +1336,13 @@ impl Shader {
         let mut gpr_limit = max(max_live[RegFile::GPR], 16);
         let mut total_gprs = gpr_limit + u32::from(tmp_gprs);
 
-        let max_gprs = RegFile::GPR.num_regs(self.info.sm);
+        let max_gprs = if DEBUG.spill() {
+            // We need at least 16 registers to satisfy RA constraints for
+            // texture ops and another 2 for parallel copy lowering
+            18
+        } else {
+            self.sm.num_regs(RegFile::GPR)
+        };
         if total_gprs > max_gprs {
             // If we're spilling GPRs, we need to reserve 2 GPRs for OpParCopy
             // lowering because it needs to be able lower Mem copies which
@@ -1353,18 +1359,11 @@ impl Shader {
 
         self.info.num_gprs = total_gprs.try_into().unwrap();
 
-        // We do a maximum here because nak_from_nir may set num_barriers to 1
-        // in the case where there is an OpBar.
-        self.info.num_barriers = max(
-            self.info.num_barriers,
-            max_live[RegFile::Bar].try_into().unwrap(),
-        );
-
         let limit = PerRegFile::new_with(|file| {
             if file == RegFile::GPR {
                 gpr_limit
             } else {
-                file.num_regs(self.info.sm)
+                self.sm.num_regs(file)
             }
         });
 

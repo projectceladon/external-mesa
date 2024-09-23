@@ -974,7 +974,7 @@ v3d_update_job_ez(struct v3d_context *v3d, struct v3d_job *job)
                  */
                 bool needs_depth_load = v3d->zsa && job->zsbuf &&
                         v3d->zsa->base.depth_enabled &&
-                        (PIPE_CLEAR_DEPTH & ~job->clear);
+                        (PIPE_CLEAR_DEPTH & ~job->clear_tlb);
                 if (needs_depth_load) {
                         if (job->zsbuf->texture->format == PIPE_FORMAT_Z16_UNORM &&
                             job->zsbuf->texture->nr_samples > 0) {
@@ -1357,14 +1357,29 @@ v3d_draw_vbo(struct pipe_context *pctx, const struct pipe_draw_info *info,
                                 u_stream_outputs_for_vertices(info->mode, draws[0].count);
         }
 
+        if (v3d->zsa && job->zsbuf) {
+                struct v3d_resource *rsc = v3d_resource(job->zsbuf->texture);
+                if (rsc->invalidated) {
+                        /* Currently gallium only applies invalidates if it
+                         * affects both depth and stencil together.
+                         */
+                        job->invalidated_load |=
+                                PIPE_CLEAR_DEPTH | PIPE_CLEAR_STENCIL;
+                        rsc->invalidated = false;
+                        if (rsc->separate_stencil)
+                                rsc->separate_stencil->invalidated = false;
+                }
+        }
+
+        uint32_t no_load_mask =
+                job->clear_tlb | job->clear_draw | job->invalidated_load;
         if (v3d->zsa && job->zsbuf && v3d->zsa->base.depth_enabled) {
                 struct v3d_resource *rsc = v3d_resource(job->zsbuf->texture);
                 v3d_job_add_bo(job, rsc->bo);
-
-                job->load |= PIPE_CLEAR_DEPTH & ~job->clear;
+                job->load |= PIPE_CLEAR_DEPTH & ~no_load_mask;
                 if (v3d->zsa->base.depth_writemask)
                         job->store |= PIPE_CLEAR_DEPTH;
-                rsc->initialized_buffers = PIPE_CLEAR_DEPTH;
+                rsc->initialized_buffers |= PIPE_CLEAR_DEPTH;
         }
 
         if (v3d->zsa && job->zsbuf && v3d->zsa->base.stencil[0].enabled) {
@@ -1374,13 +1389,14 @@ v3d_draw_vbo(struct pipe_context *pctx, const struct pipe_draw_info *info,
 
                 v3d_job_add_bo(job, rsc->bo);
 
-                job->load |= PIPE_CLEAR_STENCIL & ~job->clear;
+                job->load |= PIPE_CLEAR_STENCIL & ~no_load_mask;
                 if (v3d->zsa->base.stencil[0].writemask ||
                     v3d->zsa->base.stencil[1].writemask) {
                         job->store |= PIPE_CLEAR_STENCIL;
                 }
                 rsc->initialized_buffers |= PIPE_CLEAR_STENCIL;
         }
+
 
         for (int i = 0; i < job->nr_cbufs; i++) {
                 uint32_t bit = PIPE_CLEAR_COLOR0 << i;
@@ -1390,7 +1406,12 @@ v3d_draw_vbo(struct pipe_context *pctx, const struct pipe_draw_info *info,
                         continue;
                 struct v3d_resource *rsc = v3d_resource(job->cbufs[i]->texture);
 
-                job->load |= bit & ~job->clear;
+                if (rsc->invalidated) {
+                        job->invalidated_load |= bit;
+                        rsc->invalidated = false;
+                } else {
+                        job->load |= bit & ~no_load_mask;
+                }
                 if (v3d->blend->base.rt[blend_rt].colormask)
                         job->store |= bit;
                 v3d_job_add_bo(job, rsc->bo);
@@ -1619,11 +1640,19 @@ v3d_launch_grid(struct pipe_context *pctx, const struct pipe_grid_info *info)
  */
 static void
 v3d_draw_clear(struct v3d_context *v3d,
+               struct v3d_job *job,
                unsigned buffers,
                const union pipe_color_union *color,
                double depth, unsigned stencil)
 {
-        v3d_blitter_save(v3d, false, true);
+        /* Flag we are clearing these buffers with a draw call so we can
+         * skip loads for them. Notice that if we had emitted any draw calls
+         * before this clear the loads will still happen, since those previous
+         * draw calls would have flagged them.
+         */
+        job->clear_draw |= buffers;
+
+        v3d_blitter_save(v3d, V3D_CLEAR_COND);
         util_blitter_clear(v3d->blitter,
                            v3d->framebuffer.width,
                            v3d->framebuffer.height,
@@ -1749,7 +1778,7 @@ v3d_tlb_clear(struct v3d_job *job, unsigned buffers,
         job->draw_min_y = 0;
         job->draw_max_x = v3d->framebuffer.width;
         job->draw_max_y = v3d->framebuffer.height;
-        job->clear |= buffers;
+        job->clear_tlb |= buffers;
         job->store |= buffers;
         job->scissor.disabled = true;
 
@@ -1770,7 +1799,7 @@ v3d_clear(struct pipe_context *pctx, unsigned buffers, const struct pipe_scissor
         if (!buffers || !v3d_render_condition_check(v3d))
                 return;
 
-        v3d_draw_clear(v3d, buffers, color, depth, stencil);
+        v3d_draw_clear(v3d, job, buffers, color, depth, stencil);
 }
 
 static void
@@ -1784,7 +1813,8 @@ v3d_clear_render_target(struct pipe_context *pctx, struct pipe_surface *ps,
         if (render_condition_enabled && !v3d_render_condition_check(v3d))
                 return;
 
-        v3d_blitter_save(v3d, false, render_condition_enabled);
+        v3d_blitter_save(v3d, render_condition_enabled ?
+                         V3D_CLEAR_SURFACE_COND : V3D_CLEAR_SURFACE);
         util_blitter_clear_render_target(v3d->blitter, ps, color, x, y, w, h);
 }
 
@@ -1799,7 +1829,8 @@ v3d_clear_depth_stencil(struct pipe_context *pctx, struct pipe_surface *ps,
         if (render_condition_enabled && !v3d_render_condition_check(v3d))
                 return;
 
-        v3d_blitter_save(v3d, false, render_condition_enabled);
+        v3d_blitter_save(v3d, render_condition_enabled ?
+                         V3D_CLEAR_SURFACE_COND : V3D_CLEAR_SURFACE);
         util_blitter_clear_depth_stencil(v3d->blitter, ps, buffers, depth,
                                          stencil, x, y, w, h);
 }

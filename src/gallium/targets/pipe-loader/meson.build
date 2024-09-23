@@ -10,7 +10,7 @@ pipe_loader_incs = [
   inc_gallium_winsys, inc_gallium_aux,
 ]
 
-if (with_gallium_va or with_gallium_vdpau or with_gallium_omx != 'disabled')
+if (with_gallium_va or with_gallium_vdpau)
   pipe_loader_link_with += libgalliumvlwinsys
 endif
 
@@ -36,7 +36,7 @@ pipe_loaders = [
   [with_gallium_freedreno, 'msm', driver_freedreno, []],
   [with_gallium_kmsro, 'kmsro', _kmsro_targets, [libpipe_loader_dynamic]],
   [with_gallium_svga, 'vmwgfx', driver_svga, []],
-  [with_gallium_softpipe, 'swrast', driver_swrast, [libwsw, libws_null, libswdri, libswkmsdri]],
+  [with_gallium_swrast, 'swrast', driver_swrast, [libwsw, libws_null, libswdri, libswkmsdri]],
 ]
 
 foreach x : pipe_loaders

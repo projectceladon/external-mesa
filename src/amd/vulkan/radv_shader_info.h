@@ -106,9 +106,9 @@ struct radv_shader_info {
    uint32_t user_data_0;
    bool inputs_linked;
    bool outputs_linked;
-   bool has_epilog;                        /* Only for TCS or PS */
    bool merged_shader_compiled_separately; /* GFX9+ */
    bool force_indirect_desc_sets;
+   uint64_t gs_inputs_read; /* Mask of GS inputs read (only used by linked ES) */
 
    struct {
       uint8_t output_usage_mask[VARYING_SLOT_VAR31 + 1];
@@ -127,6 +127,7 @@ struct radv_shader_info {
       bool dynamic_inputs;
       bool dynamic_num_verts_per_prim;
       uint32_t num_outputs; /* For NGG streamout only */
+      uint64_t hs_inputs_read; /* Mask of HS inputs read (only used by linked LS) */
    } vs;
    struct {
       uint8_t output_usage_mask[VARYING_SLOT_VAR31 + 1];
@@ -175,7 +176,7 @@ struct radv_shader_info {
       uint8_t input_clips_culls_mask;
       uint32_t input_mask;
       uint32_t input_per_primitive_mask;
-      uint32_t flat_shaded_mask;
+      uint32_t float32_shaded_mask;
       uint32_t explicit_shaded_mask;
       uint32_t explicit_strict_shaded_mask;
       uint32_t float16_shaded_mask;
@@ -213,6 +214,8 @@ struct radv_shader_info {
       bool load_provoking_vtx;
       bool load_rasterization_prim;
       bool force_sample_iter_shading_rate;
+      bool uses_fbfetch_output;
+      bool has_epilog;
    } ps;
    struct {
       bool uses_grid_size;
@@ -254,6 +257,11 @@ struct radv_shader_info {
 
    /* Precomputed register values. */
    struct {
+      uint32_t pgm_lo;
+      uint32_t pgm_rsrc1;
+      uint32_t pgm_rsrc2;
+      uint32_t pgm_rsrc3;
+
       struct {
          uint32_t spi_shader_late_alloc_vs;
          uint32_t spi_shader_pgm_rsrc3_vs;
@@ -317,7 +325,7 @@ void radv_nir_shader_info_pass(struct radv_device *device, const struct nir_shad
                                const struct radv_shader_layout *layout, const struct radv_shader_stage_key *stage_key,
                                const struct radv_graphics_state_key *gfx_state,
                                const enum radv_pipeline_type pipeline_type, bool consider_force_vrs,
-                               bool is_indirect_bindable, struct radv_shader_info *info);
+                               struct radv_shader_info *info);
 
 void gfx10_get_ngg_info(const struct radv_device *device, struct radv_shader_info *es_info,
                         struct radv_shader_info *gs_info, struct gfx10_ngg_info *out);

@@ -10,7 +10,7 @@
 namespace aco {
 
 RegisterDemand
-get_live_changes(aco_ptr<Instruction>& instr)
+get_live_changes(Instruction* instr)
 {
    RegisterDemand changes;
    for (const Definition& def : instr->definitions) {
@@ -29,18 +29,7 @@ get_live_changes(aco_ptr<Instruction>& instr)
 }
 
 RegisterDemand
-get_additional_operand_demand(Instruction* instr)
-{
-   RegisterDemand additional_demand;
-   int op_idx = get_op_fixed_to_def(instr);
-   if (op_idx != -1 && !instr->operands[op_idx].isKill())
-      additional_demand += instr->definitions[0].getTemp();
-
-   return additional_demand;
-}
-
-RegisterDemand
-get_temp_registers(aco_ptr<Instruction>& instr)
+get_temp_registers(Instruction* instr)
 {
    RegisterDemand demand_before;
    RegisterDemand demand_after;
@@ -53,14 +42,15 @@ get_temp_registers(aco_ptr<Instruction>& instr)
    }
 
    for (Operand op : instr->operands) {
-      if (op.isFirstKill()) {
+      if (op.isFirstKill() || op.isCopyKill()) {
          demand_before += op.getTemp();
          if (op.isLateKill())
             demand_after += op.getTemp();
+      } else if (op.isClobbered() && !op.isKill()) {
+         demand_before += op.getTemp();
       }
    }
 
-   demand_before += get_additional_operand_demand(instr.get());
    demand_after.update(demand_before);
    return demand_after;
 }
@@ -70,7 +60,8 @@ namespace {
 struct live_ctx {
    monotonic_buffer_resource m;
    Program* program;
-   int worklist;
+   int32_t worklist;
+   uint32_t handled_once;
 };
 
 bool
@@ -88,12 +79,81 @@ instr_needs_vcc(Instruction* instr)
    return false;
 }
 
+IDSet
+compute_live_out(live_ctx& ctx, Block* block)
+{
+   IDSet live(ctx.m);
+
+   if (block->logical_succs.empty()) {
+      /* Linear blocks:
+       * Directly insert the successor if it is a linear block as well.
+       */
+      for (unsigned succ : block->linear_succs) {
+         if (ctx.program->blocks[succ].logical_preds.empty()) {
+            live.insert(ctx.program->live.live_in[succ]);
+         } else {
+            for (unsigned t : ctx.program->live.live_in[succ]) {
+               if (ctx.program->temp_rc[t].is_linear())
+                  live.insert(t);
+            }
+         }
+      }
+   } else {
+      /* Logical blocks:
+       * Linear successors are either linear blocks or logical targets.
+       */
+      live = IDSet(ctx.program->live.live_in[block->linear_succs[0]], ctx.m);
+      if (block->linear_succs.size() == 2)
+         live.insert(ctx.program->live.live_in[block->linear_succs[1]]);
+
+      /* At most one logical target needs a separate insertion. */
+      if (block->logical_succs.back() != block->linear_succs.back()) {
+         for (unsigned t : ctx.program->live.live_in[block->logical_succs.back()]) {
+            if (!ctx.program->temp_rc[t].is_linear())
+               live.insert(t);
+         }
+      } else {
+         assert(block->logical_succs[0] == block->linear_succs[0]);
+      }
+   }
+
+   /* Handle phi operands */
+   if (block->linear_succs.size() == 1 && block->linear_succs[0] >= ctx.handled_once) {
+      Block& succ = ctx.program->blocks[block->linear_succs[0]];
+      auto it = std::find(succ.linear_preds.begin(), succ.linear_preds.end(), block->index);
+      unsigned op_idx = std::distance(succ.linear_preds.begin(), it);
+      for (aco_ptr<Instruction>& phi : succ.instructions) {
+         if (!is_phi(phi))
+            break;
+         if (phi->opcode == aco_opcode::p_phi || phi->definitions[0].isKill())
+            continue;
+         if (phi->operands[op_idx].isTemp())
+            live.insert(phi->operands[op_idx].tempId());
+      }
+   }
+   if (block->logical_succs.size() == 1 && block->logical_succs[0] >= ctx.handled_once) {
+      Block& succ = ctx.program->blocks[block->logical_succs[0]];
+      auto it = std::find(succ.logical_preds.begin(), succ.logical_preds.end(), block->index);
+      unsigned op_idx = std::distance(succ.logical_preds.begin(), it);
+      for (aco_ptr<Instruction>& phi : succ.instructions) {
+         if (!is_phi(phi))
+            break;
+         if (phi->opcode == aco_opcode::p_linear_phi || phi->definitions[0].isKill())
+            continue;
+         if (phi->operands[op_idx].isTemp())
+            live.insert(phi->operands[op_idx].tempId());
+      }
+   }
+
+   return live;
+}
+
 void
 process_live_temps_per_block(live_ctx& ctx, Block* block)
 {
    RegisterDemand new_demand;
    block->register_demand = RegisterDemand();
-   IDSet live(ctx.program->live.live_out[block->index], ctx.m);
+   IDSet live = compute_live_out(ctx, block);
 
    /* initialize register demand */
    for (unsigned t : live)
@@ -109,8 +169,13 @@ process_live_temps_per_block(live_ctx& ctx, Block* block)
       ctx.program->needs_vcc |= instr_needs_vcc(insn);
       insn->register_demand = RegisterDemand(new_demand.vgpr, new_demand.sgpr);
 
+      bool has_vgpr_def = false;
+
       /* KILL */
       for (Definition& definition : insn->definitions) {
+         has_vgpr_def |= definition.regClass().type() == RegType::vgpr &&
+                         !definition.regClass().is_linear_vgpr();
+
          if (!definition.isTemp()) {
             continue;
          }
@@ -129,37 +194,110 @@ process_live_temps_per_block(live_ctx& ctx, Block* block)
          }
       }
 
+      if (ctx.program->gfx_level >= GFX10 && insn->isVALU() &&
+          insn->definitions.back().regClass() == s2) {
+         /* RDNA2 ISA doc, 6.2.4. Wave64 Destination Restrictions:
+          * The first pass of a wave64 VALU instruction may not overwrite a scalar value used by
+          * the second half.
+          */
+         bool carry_in = insn->opcode == aco_opcode::v_addc_co_u32 ||
+                         insn->opcode == aco_opcode::v_subb_co_u32 ||
+                         insn->opcode == aco_opcode::v_subbrev_co_u32;
+         for (unsigned op_idx = 0; op_idx < (carry_in ? 2 : insn->operands.size()); op_idx++) {
+            if (insn->operands[op_idx].isOfType(RegType::sgpr))
+               insn->operands[op_idx].setLateKill(true);
+         }
+      } else if (insn->opcode == aco_opcode::p_bpermute_readlane ||
+                 insn->opcode == aco_opcode::p_bpermute_permlane ||
+                 insn->opcode == aco_opcode::p_bpermute_shared_vgpr ||
+                 insn->opcode == aco_opcode::p_dual_src_export_gfx11 ||
+                 insn->opcode == aco_opcode::v_mqsad_u32_u8) {
+         for (Operand& op : insn->operands)
+            op.setLateKill(true);
+      } else if (insn->opcode == aco_opcode::p_interp_gfx11 && insn->operands.size() == 7) {
+         insn->operands[5].setLateKill(true); /* we re-use the destination reg in the middle */
+      } else if (insn->opcode == aco_opcode::v_interp_p1_f32 && ctx.program->dev.has_16bank_lds) {
+         insn->operands[0].setLateKill(true);
+      } else if (insn->opcode == aco_opcode::p_init_scratch) {
+         insn->operands.back().setLateKill(true);
+      } else if (instr_info.classes[(int)insn->opcode] == instr_class::wmma) {
+         insn->operands[0].setLateKill(true);
+         insn->operands[1].setLateKill(true);
+      }
+
+      /* Check if a definition clobbers some operand */
+      int op_idx = get_op_fixed_to_def(insn);
+      if (op_idx != -1)
+         insn->operands[op_idx].setClobbered(true);
+
       /* we need to do this in a separate loop because the next one can
        * setKill() for several operands at once and we don't want to
        * overwrite that in a later iteration */
-      for (Operand& op : insn->operands)
+      for (Operand& op : insn->operands) {
          op.setKill(false);
+         /* Linear vgprs must be late kill: this is to ensure linear VGPR operands and
+          * normal VGPR definitions don't try to use the same register, which is problematic
+          * because of assignment restrictions.
+          */
+         if (op.hasRegClass() && op.regClass().is_linear_vgpr() && !op.isUndefined() &&
+             has_vgpr_def)
+            op.setLateKill(true);
+      }
 
       /* GEN */
+      RegisterDemand operand_demand;
       for (unsigned i = 0; i < insn->operands.size(); ++i) {
          Operand& operand = insn->operands[i];
          if (!operand.isTemp())
             continue;
-         if (operand.isFixed() && operand.physReg() == vcc)
-            ctx.program->needs_vcc = true;
+
          const Temp temp = operand.getTemp();
-         const bool inserted = live.insert(temp.id()).second;
-         if (inserted) {
+         if (operand.isFixed() && ctx.program->progress < CompilationProgress::after_ra) {
+            assert(!operand.isLateKill());
+            ctx.program->needs_vcc |= operand.physReg() == vcc;
+
+            /* Check if this operand gets overwritten by a precolored definition. */
+            if (std::any_of(insn->definitions.begin(), insn->definitions.end(),
+                            [=](Definition def)
+                            {
+                               return def.isFixed() &&
+                                      def.physReg() + def.size() > operand.physReg() &&
+                                      operand.physReg() + operand.size() > def.physReg();
+                            }))
+               operand.setClobbered(true);
+
+            /* Check if this temp is fixed to a different register as well.
+             * This assumes that operands of one instruction are not precolored twice to
+             * the same register. In this case, register pressure might be overestimated.
+             */
+            for (unsigned j = i + 1; !operand.isCopyKill() && j < insn->operands.size(); ++j) {
+               if (insn->operands[j].isTemp() && insn->operands[j].getTemp() == temp &&
+                   insn->operands[j].isFixed()) {
+                  operand_demand += temp;
+                  insn->operands[j].setCopyKill(true);
+               }
+            }
+         }
+
+         if (operand.isKill())
+            continue;
+
+         if (live.insert(temp.id()).second) {
             operand.setFirstKill(true);
             for (unsigned j = i + 1; j < insn->operands.size(); ++j) {
-               if (insn->operands[j].isTemp() && insn->operands[j].tempId() == operand.tempId()) {
-                  insn->operands[j].setFirstKill(false);
+               if (insn->operands[j].isTemp() && insn->operands[j].getTemp() == temp)
                   insn->operands[j].setKill(true);
-               }
             }
             if (operand.isLateKill())
                insn->register_demand += temp;
             new_demand += temp;
+         } else if (operand.isClobbered()) {
+            operand_demand += temp;
          }
       }
 
-      RegisterDemand before_instr = new_demand + get_additional_operand_demand(insn);
-      insn->register_demand.update(before_instr);
+      operand_demand += new_demand;
+      insn->register_demand.update(operand_demand);
       block->register_demand.update(insn->register_demand);
    }
 
@@ -176,48 +314,16 @@ process_live_temps_per_block(live_ctx& ctx, Block* block)
       Definition& definition = insn->definitions[0];
       if (definition.isFixed() && definition.physReg() == vcc)
          ctx.program->needs_vcc = true;
-      const Temp temp = definition.getTemp();
-      const size_t n = live.erase(temp.id());
-
-      if (n) {
-         definition.setKill(false);
-      } else {
-         definition.setKill(true);
-      }
-   }
-
-   /* now, we need to merge the live-ins into the live-out sets */
-   bool fast_merge =
-      block->logical_preds.size() == 0 || block->logical_preds == block->linear_preds;
-
-#ifndef NDEBUG
-   if ((block->linear_preds.empty() && !live.empty()) ||
-       (block->logical_preds.empty() && new_demand.vgpr > 0))
-      fast_merge = false; /* we might have errors */
-#endif
-
-   if (fast_merge) {
-      for (unsigned pred_idx : block->linear_preds) {
-         if (ctx.program->live.live_out[pred_idx].insert(live))
-            ctx.worklist = std::max<int>(ctx.worklist, pred_idx);
-      }
-   } else {
-      for (unsigned t : live) {
-         RegClass rc = ctx.program->temp_rc[t];
-         Block::edge_vec& preds = rc.is_linear() ? block->linear_preds : block->logical_preds;
-
-#ifndef NDEBUG
-         if (preds.empty())
-            aco_err(ctx.program, "Temporary never defined or are defined after use: %%%d in BB%d",
-                    t, block->index);
-#endif
-
-         for (unsigned pred_idx : preds) {
-            auto it = ctx.program->live.live_out[pred_idx].insert(t);
-            if (it.second)
-               ctx.worklist = std::max<int>(ctx.worklist, pred_idx);
+      const size_t n = live.erase(definition.tempId());
+      if (n && (definition.isKill() || ctx.handled_once > block->index)) {
+         Block::edge_vec& preds =
+            insn->opcode == aco_opcode::p_phi ? block->logical_preds : block->linear_preds;
+         for (unsigned i = 0; i < preds.size(); i++) {
+            if (insn->operands[i].isTemp())
+               ctx.worklist = std::max<int>(ctx.worklist, preds[i]);
          }
       }
+      definition.setKill(!n);
    }
 
    /* handle phi operands */
@@ -227,22 +333,25 @@ process_live_temps_per_block(live_ctx& ctx, Block* block)
       /* Ignore dead phis. */
       if (insn->definitions[0].isKill())
          continue;
-      /* directly insert into the predecessors live-out set */
-      Block::edge_vec& preds =
-         insn->opcode == aco_opcode::p_phi ? block->logical_preds : block->linear_preds;
-      for (unsigned i = 0; i < preds.size(); ++i) {
-         Operand& operand = insn->operands[i];
+      for (Operand& operand : insn->operands) {
          if (!operand.isTemp())
             continue;
          if (operand.isFixed() && operand.physReg() == vcc)
             ctx.program->needs_vcc = true;
-         /* check if we changed an already processed block */
-         const bool inserted = ctx.program->live.live_out[preds[i]].insert(operand.tempId()).second;
-         if (inserted)
-            ctx.worklist = std::max<int>(ctx.worklist, preds[i]);
 
          /* set if the operand is killed by this (or another) phi instruction */
          operand.setKill(!live.count(operand.tempId()));
+      }
+   }
+
+   if (ctx.program->live.live_in[block->index].insert(live)) {
+      if (block->linear_preds.size()) {
+         assert(block->logical_preds.empty() ||
+                block->logical_preds.back() <= block->linear_preds.back());
+         ctx.worklist = std::max<int>(ctx.worklist, block->linear_preds.back());
+      } else {
+         ASSERTED bool is_valid = validate_ir(ctx.program);
+         assert(!is_valid);
       }
    }
 
@@ -250,6 +359,7 @@ process_live_temps_per_block(live_ctx& ctx, Block* block)
    block->live_in_demand.sgpr += 2; /* Add 2 SGPRs for potential long-jumps. */
    block->register_demand.update(block->live_in_demand);
    ctx.program->max_reg_demand.update(block->register_demand);
+   ctx.handled_once = std::min(ctx.handled_once, block->index);
 
    assert(!block->linear_preds.empty() || (new_demand == RegisterDemand() && live.empty()));
 }
@@ -416,15 +526,16 @@ update_vgpr_sgpr_demand(Program* program, const RegisterDemand new_demand)
 void
 live_var_analysis(Program* program)
 {
-   program->live.live_out.clear();
+   program->live.live_in.clear();
    program->live.memory.release();
-   program->live.live_out.resize(program->blocks.size(), IDSet(program->live.memory));
+   program->live.live_in.resize(program->blocks.size(), IDSet(program->live.memory));
    program->max_reg_demand = RegisterDemand();
    program->needs_vcc = program->gfx_level >= GFX10;
 
    live_ctx ctx;
    ctx.program = program;
    ctx.worklist = program->blocks.size() - 1;
+   ctx.handled_once = program->blocks.size();
 
    /* this implementation assumes that the block idx corresponds to the block's position in
     * program->blocks vector */

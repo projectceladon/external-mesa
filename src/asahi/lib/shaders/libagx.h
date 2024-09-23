@@ -11,11 +11,13 @@
 #include <stdint.h>
 #include "util/macros.h"
 #define GLOBAL(type_)            uint64_t
+#define CONSTANT(type_)          uint64_t
 #define AGX_STATIC_ASSERT(_COND) static_assert(_COND, #_COND)
 #else
 #pragma OPENCL EXTENSION cl_khr_fp16 : enable
-#define PACKED        __attribute__((packed, aligned(4)))
-#define GLOBAL(type_) global type_ *
+#define PACKED          __attribute__((packed, aligned(4)))
+#define GLOBAL(type_)   global type_ *
+#define CONSTANT(type_) constant type_ *
 
 typedef ulong uint64_t;
 typedef uint uint32_t;
@@ -38,6 +40,16 @@ uint32_t nir_load_helper_arg_lo_agx(void);
 uint32_t nir_load_helper_arg_hi_agx(void);
 uint32_t nir_fence_helper_exit_agx(void);
 
+uint4 nir_bindless_image_load_array(uint2 handle, int4 coord);
+void nir_bindless_image_store_array(uint2 handle, int4 coord, uint4 datum);
+uint4 nir_bindless_image_load_ms_array(uint2 handle, int4 coord, uint sample);
+void nir_bindless_image_store_ms_array(uint2 handle, int4 coord, uint sample,
+                                       uint4 datum);
+
+uint libagx_load_index_buffer_internal(uintptr_t index_buffer,
+                                       uint32_t index_buffer_range_el, uint id,
+                                       uint index_size);
+
 /* I have no idea why CL doesn't have this */
 uint ballot(bool cond);
 
@@ -52,6 +64,14 @@ align(uint x, uint y)
 {
    return (x + y - 1) & ~(y - 1);
 }
+
+static inline uint32_t
+libagx_logbase2_ceil(uint32_t n)
+{
+   return (n <= 1) ? 0 : 32 - clz(n - 1);
+}
+
+#define offsetof(x, y) __builtin_offsetof(x, y)
 
 #endif
 

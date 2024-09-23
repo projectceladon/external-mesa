@@ -11,6 +11,7 @@
 #include "radeon_uvd.h"
 #include "si_public.h"
 #include "sid.h"
+#include "ac_shader_util.h"
 #include "ac_shadowed_regs.h"
 #include "compiler/nir/nir.h"
 #include "util/disk_cache.h"
@@ -87,6 +88,7 @@ static const struct debug_named_value radeonsi_debug_options[] = {
 
    /* Multimedia options: */
    { "noefc", DBG(NO_EFC), "Disable hardware based encoder colour format conversion."},
+   {"lowlatencyenc", DBG(LOW_LATENCY_ENCODE), "Enable low latency encoding."},
 
    /* 3D engine options: */
    {"nongg", DBG(NO_NGG), "Disable NGG and use the legacy pipeline."},
@@ -120,12 +122,14 @@ static const struct debug_named_value radeonsi_debug_options[] = {
 
 static const struct debug_named_value test_options[] = {
    /* Tests: */
+   {"clearbuffer", DBG(TEST_CLEAR_BUFFER), "Test correctness of the clear_buffer compute shader"},
+   {"copybuffer", DBG(TEST_COPY_BUFFER), "Test correctness of the copy_buffer compute shader"},
    {"imagecopy", DBG(TEST_IMAGE_COPY), "Invoke resource_copy_region tests with images and exit."},
    {"cbresolve", DBG(TEST_CB_RESOLVE), "Invoke MSAA resolve tests and exit."},
    {"computeblit", DBG(TEST_COMPUTE_BLIT), "Invoke blits tests and exit."},
    {"testvmfaultcp", DBG(TEST_VMFAULT_CP), "Invoke a CP VM fault test and exit."},
    {"testvmfaultshader", DBG(TEST_VMFAULT_SHADER), "Invoke a shader VM fault test and exit."},
-   {"testdmaperf", DBG(TEST_DMA_PERF), "Test DMA performance"},
+   {"dmaperf", DBG(TEST_DMA_PERF), "Test DMA performance"},
    {"testmemperf", DBG(TEST_MEM_PERF), "Test map + memcpy perf using the winsys."},
    {"blitperf", DBG(TEST_BLIT_PERF), "Test gfx and compute clear/copy/blit/resolve performance"},
 
@@ -265,16 +269,10 @@ static void si_destroy_context(struct pipe_context *context)
       sctx->b.delete_vs_state(&sctx->b, sctx->vs_blit_color_layered);
    if (sctx->vs_blit_texcoord)
       sctx->b.delete_vs_state(&sctx->b, sctx->vs_blit_texcoord);
-   if (sctx->cs_clear_buffer)
-      sctx->b.delete_compute_state(&sctx->b, sctx->cs_clear_buffer);
    if (sctx->cs_clear_buffer_rmw)
       sctx->b.delete_compute_state(&sctx->b, sctx->cs_clear_buffer_rmw);
-   if (sctx->cs_copy_buffer)
-      sctx->b.delete_compute_state(&sctx->b, sctx->cs_copy_buffer);
    if (sctx->cs_ubyte_to_ushort)
       sctx->b.delete_compute_state(&sctx->b, sctx->cs_ubyte_to_ushort);
-   if (sctx->cs_clear_12bytes_buffer)
-      sctx->b.delete_compute_state(&sctx->b, sctx->cs_clear_12bytes_buffer);
    for (unsigned i = 0; i < ARRAY_SIZE(sctx->cs_dcc_retile); i++) {
       if (sctx->cs_dcc_retile[i])
          sctx->b.delete_compute_state(&sctx->b, sctx->cs_dcc_retile[i]);
@@ -365,6 +363,13 @@ static void si_destroy_context(struct pipe_context *context)
 
    if (!(sctx->context_flags & SI_CONTEXT_FLAG_AUX))
       p_atomic_dec(&context->screen->num_contexts);
+
+   if (sctx->cs_dma_shaders) {
+      hash_table_u64_foreach(sctx->cs_dma_shaders, entry) {
+         context->delete_compute_state(context, entry.data);
+      }
+      _mesa_hash_table_u64_destroy(sctx->cs_dma_shaders);
+   }
 
    if (sctx->cs_blit_shaders) {
       hash_table_u64_foreach(sctx->cs_blit_shaders, entry) {
@@ -628,12 +633,6 @@ static struct pipe_context *si_create_context(struct pipe_screen *screen, unsign
    sctx->ngg = sscreen->use_ngg;
    si_shader_change_notify(sctx);
 
-   /* Initialize context functions used by graphics and compute. */
-   if (sctx->gfx_level >= GFX10)
-      sctx->emit_cache_flush = gfx10_emit_cache_flush;
-   else
-      sctx->emit_cache_flush = gfx6_emit_cache_flush;
-
    sctx->b.emit_string_marker = si_emit_string_marker;
    sctx->b.set_debug_callback = si_set_debug_callback;
    sctx->b.set_log_context = si_set_log_context;
@@ -643,6 +642,7 @@ static struct pipe_context *si_create_context(struct pipe_screen *screen, unsign
    sctx->b.set_frontend_noop = si_set_frontend_noop;
 
    si_init_all_descriptors(sctx);
+   si_init_barrier_functions(sctx);
    si_init_buffer_functions(sctx);
    si_init_clear_functions(sctx);
    si_init_blit_functions(sctx);
@@ -824,9 +824,9 @@ static struct pipe_context *si_create_context(struct pipe_screen *screen, unsign
        * for some reason when the compute codepath is used.
        */
       uint32_t clear_value = 0;
-      si_clear_buffer(sctx, sctx->null_const_buf.buffer, 0, sctx->null_const_buf.buffer->width0,
-                      &clear_value, 4, SI_OP_SYNC_AFTER, SI_COHERENCY_SHADER,
-                      SI_CP_DMA_CLEAR_METHOD);
+      si_cp_dma_clear_buffer(sctx, &sctx->gfx_cs, sctx->null_const_buf.buffer, 0,
+                             sctx->null_const_buf.buffer->width0, clear_value);
+      si_barrier_after_simple_buffer_op(sctx, 0, sctx->null_const_buf.buffer, NULL);
    }
 
    if (!(flags & SI_CONTEXT_FLAG_AUX)) {
@@ -872,6 +872,10 @@ static struct pipe_context *si_create_context(struct pipe_screen *screen, unsign
    sctx->initial_gfx_cs_size = sctx->gfx_cs.current.cdw;
    sctx->last_timestamp_cmd = NULL;
 
+   sctx->cs_dma_shaders = _mesa_hash_table_u64_create(NULL);
+   if (!sctx->cs_dma_shaders)
+      goto fail;
+
    sctx->cs_blit_shaders = _mesa_hash_table_u64_create(NULL);
    if (!sctx->cs_blit_shaders)
       goto fail;
@@ -879,6 +883,11 @@ static struct pipe_context *si_create_context(struct pipe_screen *screen, unsign
    sctx->ps_resolve_shaders = _mesa_hash_table_u64_create(NULL);
    if (!sctx->ps_resolve_shaders)
       goto fail;
+
+   /* Initialize compute_tmpring_size. */
+   ac_get_scratch_tmpring_size(&sctx->screen->info, 0,
+                               &sctx->max_seen_compute_scratch_bytes_per_wave,
+                               &sctx->compute_tmpring_size);
 
    return &sctx->b;
 fail:
@@ -961,7 +970,7 @@ static struct pipe_context *si_pipe_create_context(struct pipe_screen *screen, v
 /*
  * pipe_screen
  */
-static void si_destroy_screen(struct pipe_screen *pscreen)
+void si_destroy_screen(struct pipe_screen *pscreen)
 {
    struct si_screen *sscreen = (struct si_screen *)pscreen;
    struct si_shader_part *parts[] = {sscreen->ps_prologs, sscreen->ps_epilogs};
@@ -1052,7 +1061,6 @@ static void si_destroy_screen(struct pipe_screen *pscreen)
 
    sscreen->ws->destroy(sscreen->ws);
    FREE(sscreen->nir_options);
-   FREE(sscreen->nir_lower_subgroups_options);
    FREE(sscreen);
 }
 
@@ -1075,8 +1083,7 @@ static void si_test_vmfault(struct si_screen *sscreen, uint64_t test_flags)
    si_resource(buf)->gpu_address = 0; /* cause a VM fault */
 
    if (test_flags & DBG(TEST_VMFAULT_CP)) {
-      si_cp_dma_copy_buffer(sctx, buf, buf, 0, 4, 4, SI_OP_SYNC_BEFORE_AFTER,
-                            SI_COHERENCY_NONE, L2_BYPASS);
+      si_cp_dma_copy_buffer(sctx, buf, buf, 0, 4, 4);
       ctx->flush(ctx, NULL, 0);
       puts("VM fault test: CP - done.");
    }
@@ -1221,7 +1228,6 @@ static struct pipe_screen *radeonsi_screen_create_impl(struct radeon_winsys *ws,
    sscreen->b.finalize_nir = si_finalize_nir;
 
    sscreen->nir_options = CALLOC_STRUCT(nir_shader_compiler_options);
-   sscreen->nir_lower_subgroups_options = CALLOC_STRUCT(nir_lower_subgroups_options);
 
    si_init_screen_get_functions(sscreen);
    si_init_screen_buffer_functions(sscreen);
@@ -1258,7 +1264,6 @@ static struct pipe_screen *radeonsi_screen_create_impl(struct radeon_winsys *ws,
    si_init_gs_info(sscreen);
    if (!si_init_shader_cache(sscreen)) {
       FREE(sscreen->nir_options);
-      FREE(sscreen->nir_lower_subgroups_options);
       FREE(sscreen);
       return NULL;
    }
@@ -1315,7 +1320,6 @@ static struct pipe_screen *radeonsi_screen_create_impl(struct radeon_winsys *ws,
                         UTIL_QUEUE_INIT_SET_FULL_THREAD_AFFINITY, NULL)) {
       si_destroy_shader_cache(sscreen);
       FREE(sscreen->nir_options);
-      FREE(sscreen->nir_lower_subgroups_options);
       FREE(sscreen);
       glsl_type_singleton_decref();
       return NULL;
@@ -1327,7 +1331,6 @@ static struct pipe_screen *radeonsi_screen_create_impl(struct radeon_winsys *ws,
                         UTIL_QUEUE_INIT_SET_FULL_THREAD_AFFINITY, NULL)) {
       si_destroy_shader_cache(sscreen);
       FREE(sscreen->nir_options);
-      FREE(sscreen->nir_lower_subgroups_options);
       FREE(sscreen);
       glsl_type_singleton_decref();
       return NULL;
@@ -1486,15 +1489,20 @@ static struct pipe_screen *radeonsi_screen_create_impl(struct radeon_winsys *ws,
       }
    }
 
+   if (test_flags & DBG(TEST_CLEAR_BUFFER))
+      si_test_clear_buffer(sscreen);
+
+   if (test_flags & DBG(TEST_COPY_BUFFER))
+      si_test_copy_buffer(sscreen);
+
    if (test_flags & DBG(TEST_IMAGE_COPY))
       si_test_image_copy_region(sscreen);
 
    if (test_flags & (DBG(TEST_CB_RESOLVE) | DBG(TEST_COMPUTE_BLIT)))
       si_test_blit(sscreen, test_flags);
 
-   if (test_flags & DBG(TEST_DMA_PERF)) {
+   if (test_flags & DBG(TEST_DMA_PERF))
       si_test_dma_perf(sscreen);
-   }
 
    if (test_flags & DBG(TEST_MEM_PERF))
       si_test_mem_perf(sscreen);

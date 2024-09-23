@@ -27,6 +27,7 @@
 nir_shader *
 tu_spirv_to_nir(struct tu_device *dev,
                 void *mem_ctx,
+                VkPipelineCreateFlags2KHR pipeline_flags,
                 const VkPipelineShaderStageCreateInfo *stage_info,
                 gl_shader_stage stage)
 {
@@ -59,8 +60,9 @@ tu_spirv_to_nir(struct tu_device *dev,
 
    nir_shader *nir;
    VkResult result =
-      vk_pipeline_shader_stage_to_nir(&dev->vk, stage_info, &spirv_options,
-                                      nir_options, mem_ctx, &nir);
+      vk_pipeline_shader_stage_to_nir(&dev->vk, pipeline_flags, stage_info,
+                                      &spirv_options, nir_options,
+                                      mem_ctx, &nir);
    if (result != VK_SUCCESS)
       return NULL;
 
@@ -133,10 +135,8 @@ lower_load_push_constant(struct tu_device *dev,
    }
 
    nir_def *load =
-      nir_load_uniform(b, instr->num_components,
-            instr->def.bit_size,
-            nir_ushr_imm(b, instr->src[0].ssa, 2),
-            .base = base);
+      nir_load_const_ir3(b, instr->num_components, instr->def.bit_size,
+                         nir_ushr_imm(b, instr->src[0].ssa, 2), .base = base);
 
    nir_def_replace(&instr->def, load);
 }
@@ -187,9 +187,9 @@ lower_vulkan_resource_index(struct tu_device *dev, nir_builder *b,
             dynamic_offset_start =
                ir3_load_driver_ubo(b, 1, &shader->const_state.dynamic_offsets_ubo, set);
          } else {
-            dynamic_offset_start = 
-               nir_load_uniform(b, 1, 32, nir_imm_int(b, 0),
-                                .base = shader->const_state.dynamic_offset_loc + set);
+            dynamic_offset_start = nir_load_const_ir3(
+               b, 1, 32, nir_imm_int(b, 0),
+               .base = shader->const_state.dynamic_offset_loc + set);
          }
          base = nir_iadd(b, base, dynamic_offset_start);
       } else {
@@ -556,27 +556,14 @@ lower_tex_ycbcr(const struct tu_pipeline_layout *layout,
    uint8_t bits = vk_format_get_component_bits(ycbcr_sampler->format,
                                                UTIL_FORMAT_COLORSPACE_RGB,
                                                PIPE_SWIZZLE_X);
-
-   switch (ycbcr_sampler->format) {
-   case VK_FORMAT_G8B8G8R8_422_UNORM:
-   case VK_FORMAT_B8G8R8G8_422_UNORM:
-   case VK_FORMAT_G8_B8R8_2PLANE_420_UNORM:
-   case VK_FORMAT_G8_B8_R8_3PLANE_420_UNORM:
-      /* util_format_get_component_bits doesn't return what we want */
-      bits = 8;
-      break;
-   default:
-      break;
-   }
-
    uint32_t bpcs[3] = {bits, bits, bits}; /* TODO: use right bpc for each channel ? */
    nir_def *result = nir_convert_ycbcr_to_rgb(builder,
-                                                  ycbcr_sampler->ycbcr_model,
-                                                  ycbcr_sampler->ycbcr_range,
-                                                  &tex->def,
-                                                  bpcs);
+                                              ycbcr_sampler->ycbcr_model,
+                                              ycbcr_sampler->ycbcr_range,
+                                              &tex->def,
+                                              bpcs);
    nir_def_rewrite_uses_after(&tex->def, result,
-                                  result->parent_instr);
+                              result->parent_instr);
 
    builder->cursor = nir_before_instr(&tex->instr);
 }
@@ -701,7 +688,8 @@ lower_inline_ubo(nir_builder *b, nir_intrinsic_instr *intrin, void *cb_data)
                                          &params->shader->const_state.inline_uniforms_ubo,
                                          base);
       } else {
-         base_addr = nir_load_uniform(b, 2, 32, nir_imm_int(b, 0), .base = base);
+         base_addr =
+            nir_load_const_ir3(b, 2, 32, nir_imm_int(b, 0), .base = base);
       }
       val = nir_load_global_ir3(b, intrin->num_components,
                                 intrin->def.bit_size,
@@ -715,9 +703,9 @@ lower_inline_ubo(nir_builder *b, nir_intrinsic_instr *intrin, void *cb_data)
                                 .range_base = 0,
                                 .range = range);
    } else {
-      val = nir_load_uniform(b, intrin->num_components,
-                             intrin->def.bit_size,
-                             nir_ishr_imm(b, offset, 2), .base = base);
+      val =
+         nir_load_const_ir3(b, intrin->num_components, intrin->def.bit_size,
+                            nir_ishr_imm(b, offset, 2), .base = base);
    }
 
    nir_def_replace(&intrin->def, val);
@@ -1444,17 +1432,15 @@ tu6_emit_cs_config(struct tu_cs *cs,
                   A6XX_SP_CS_CNTL_1_THREADSIZE(thrsz));
       }
    } else {
-      enum a7xx_cs_yalign yalign = (v->local_size[1] % 8 == 0)   ? CS_YALIGN_8
-                                   : (v->local_size[1] % 4 == 0) ? CS_YALIGN_4
-                                   : (v->local_size[1] % 2 == 0) ? CS_YALIGN_2
-                                                                 : CS_YALIGN_1;
+      unsigned tile_height = (v->local_size[1] % 8 == 0)   ? 3
+                             : (v->local_size[1] % 4 == 0) ? 5
+                             : (v->local_size[1] % 2 == 0) ? 9
+                                                           : 17;
       tu_cs_emit_regs(
-         cs, A7XX_HLSQ_CS_CNTL_1(
+         cs, HLSQ_CS_CNTL_1(CHIP,
                    .linearlocalidregid = regid(63, 0), .threadsize = thrsz_cs,
-                   /* A7XX TODO: blob either sets all of these unknowns
-                    * together or doesn't set them at all.
-                    */
-                   .unk11 = true, .unk22 = true, .yalign = yalign, ));
+                   .workgrouprastorderzfirsten = true, 
+                   .wgtilewidth = 4, .wgtileheight = tile_height));
 
       tu_cs_emit_regs(cs, HLSQ_FS_CNTL_0(CHIP, .threadsize = THREAD64));
 
@@ -1465,11 +1451,13 @@ tu6_emit_cs_config(struct tu_cs *cs,
                         A6XX_SP_CS_CNTL_0_LOCALIDREGID(local_invocation_id));
 
       tu_cs_emit_regs(cs,
-                      A7XX_SP_CS_CNTL_1(
+                      SP_CS_CNTL_1(CHIP,
                         .linearlocalidregid = regid(63, 0),
                         .threadsize = thrsz_cs,
-                        /* A7XX TODO: enable UNK15 when we don't use subgroup ops. */
-                        .unk15 = false, ));
+                        .workitemrastorder =
+                           v->cs.force_linear_dispatch ?
+                           WORKITEMRASTORDER_LINEAR :
+                           WORKITEMRASTORDER_TILED, ));
 
       tu_cs_emit_regs(
          cs, A7XX_HLSQ_CS_LOCAL_SIZE(.localsizex = v->local_size[0] - 1,
@@ -2050,7 +2038,7 @@ tu_setup_pvtmem(struct tu_device *dev,
       uint32_t total_size =
          dev->physical_device->info->num_sp_cores * pvtmem_bo->per_sp_size;
 
-      VkResult result = tu_bo_init_new(dev, &pvtmem_bo->bo, total_size,
+      VkResult result = tu_bo_init_new(dev, NULL, &pvtmem_bo->bo, total_size,
                                        TU_BO_ALLOC_INTERNAL_RESOURCE, "pvtmem");
       if (result != VK_SUCCESS) {
          mtx_unlock(&pvtmem_bo->mtx);
@@ -2423,8 +2411,10 @@ tu_shader_create(struct tu_device *dev,
               nir_address_format_64bit_global);
 
    if (nir->info.stage == MESA_SHADER_COMPUTE) {
-      NIR_PASS_V(nir, nir_lower_vars_to_explicit_types,
-                 nir_var_mem_shared, shared_type_info);
+      if (!nir->info.shared_memory_explicit_layout) {
+         NIR_PASS_V(nir, nir_lower_vars_to_explicit_types,
+                    nir_var_mem_shared, shared_type_info);
+      }
       NIR_PASS_V(nir, nir_lower_explicit_io,
                  nir_var_mem_shared,
                  nir_address_format_32bit_offset);
@@ -2649,6 +2639,7 @@ tu6_get_tessmode(const struct nir_shader *shader)
 
 VkResult
 tu_compile_shaders(struct tu_device *device,
+                   VkPipelineCreateFlags2KHR pipeline_flags,
                    const VkPipelineShaderStageCreateInfo **stage_infos,
                    nir_shader **nir,
                    const struct tu_shader_key *keys,
@@ -2672,7 +2663,8 @@ tu_compile_shaders(struct tu_device *device,
 
       int64_t stage_start = os_time_get_nano();
 
-      nir[stage] = tu_spirv_to_nir(device, mem_ctx, stage_info, stage);
+      nir[stage] = tu_spirv_to_nir(device, mem_ctx, pipeline_flags,
+                                   stage_info, stage);
       if (!nir[stage]) {
          result = VK_ERROR_OUT_OF_HOST_MEMORY;
          goto fail;

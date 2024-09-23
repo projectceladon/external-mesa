@@ -329,7 +329,6 @@ if draw_with_llvm
     'gallivm/lp_bld_gather.c',
     'gallivm/lp_bld_gather.h',
     'gallivm/lp_bld.h',
-    'gallivm/lp_bld_init.c',
     'gallivm/lp_bld_init_common.c',
     'gallivm/lp_bld_init.h',
     'gallivm/lp_bld_intr.c',
@@ -384,6 +383,11 @@ if draw_with_llvm
     'nir/nir_to_tgsi_info.c',
     'nir/nir_to_tgsi_info.h',
   )
+  if llvm_with_orcjit
+    files_libgallium += files('gallivm/lp_bld_init_orc.cpp',)
+  else
+    files_libgallium += files('gallivm/lp_bld_init.c',)
+  endif
 endif
 
 files_libgalliumvl = files(
@@ -433,15 +437,18 @@ if host_machine.system() == 'windows'
 else
   files_libgalliumvlwinsys += files('vl/vl_winsys_drm.c')
 endif
-if with_dri2 and with_platform_x11
+if with_platform_x11
   files_libgalliumvlwinsys += files('vl/vl_winsys_dri.c')
-  if with_dri3
+  if with_dri_platform == 'drm'
     vlwinsys_deps += [
       dep_xcb_sync, dep_xcb_present, dep_xshmfence, dep_xcb_xfixes,
       dep_xcb_dri3,
     ]
     files_libgalliumvlwinsys += files('vl/vl_winsys_dri3.c')
   endif
+endif
+if with_platform_x11 and with_gallium_zink
+  files_libgalliumvlwinsys += files('vl/vl_winsys_kopper.c')
 endif
 
 if with_glx == 'xlib'
@@ -527,7 +534,7 @@ if with_tests
       'util/u_surface_test.cpp',
       include_directories : [inc_include, inc_src, inc_mapi, inc_mesa, inc_gallium, inc_gallium_aux],
       link_with: libgallium,
-      dependencies : [idep_gtest],
+      dependencies : [idep_gtest, idep_mesautil],
     ),
     suite: 'gallium',
     protocol : 'gtest',
@@ -558,8 +565,7 @@ libgalliumvl = static_library(
 
 # some drivers export their screen creation function globally, so all frontends have to contain the
 # full libgalliumvl. So we'll handle this here globally for everybody.
-if (with_gallium_va or with_gallium_vdpau or with_gallium_omx != 'disabled' or
-   with_dri or with_gallium_radeonsi)
+if (with_gallium_va or with_gallium_vdpau or with_dri or with_gallium_radeonsi)
   libgalliumvl_stub = libgalliumvl
 else
   libgalliumvl_stub = _libgalliumvl_stub
@@ -571,5 +577,6 @@ libgalliumvlwinsys = static_library(
   files_libgalliumvlwinsys,
   include_directories : [inc_gallium, inc_include, inc_loader, inc_src],
   dependencies : [dep_libdrm, vlwinsys_deps, idep_mesautil],
+  link_with : [libloader_x11],
   build_by_default : false,
 )

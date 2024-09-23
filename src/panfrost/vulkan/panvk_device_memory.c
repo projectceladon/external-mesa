@@ -20,6 +20,8 @@ panvk_AllocateMemory(VkDevice _device,
                      VkDeviceMemory *pMem)
 {
    VK_FROM_HANDLE(panvk_device, device, _device);
+   struct panvk_instance *instance =
+      to_panvk_instance(device->vk.physical->instance);
    struct panvk_device_memory *mem;
    bool can_be_exported = false;
    VkResult result;
@@ -87,6 +89,16 @@ panvk_AllocateMemory(VkDevice _device,
       },
    };
 
+   if (!(device->kmod.vm->flags & PAN_KMOD_VM_FLAG_AUTO_VA)) {
+      op.va.start =
+         util_vma_heap_alloc(&device->as.heap, op.va.size,
+                             op.va.size > 0x200000 ? 0x200000 : 0x1000);
+      if (!op.va.start) {
+         result = vk_error(device, VK_ERROR_OUT_OF_DEVICE_MEMORY);
+         goto err_put_bo;
+      }
+   }
+
    int ret =
       pan_kmod_vm_bind(device->kmod.vm, PAN_KMOD_VM_OP_MODE_IMMEDIATE, &op, 1);
    if (ret) {
@@ -110,8 +122,15 @@ panvk_AllocateMemory(VkDevice _device,
    }
 
    if (device->debug.decode_ctx) {
-      pandecode_inject_mmap(device->debug.decode_ctx, mem->addr.dev, NULL,
-                            pan_kmod_bo_size(mem->bo), NULL);
+      if (instance->debug_flags & PANVK_DEBUG_DUMP) {
+         mem->debug.host_mapping =
+            pan_kmod_bo_mmap(mem->bo, 0, pan_kmod_bo_size(mem->bo),
+                             PROT_READ | PROT_WRITE, MAP_SHARED, NULL);
+      }
+
+      pandecode_inject_mmap(device->debug.decode_ctx, mem->addr.dev,
+                            mem->debug.host_mapping, pan_kmod_bo_size(mem->bo),
+                            NULL);
    }
 
    *pMem = panvk_device_memory_to_handle(mem);
@@ -139,6 +158,9 @@ panvk_FreeMemory(VkDevice _device, VkDeviceMemory _mem,
    if (device->debug.decode_ctx) {
       pandecode_inject_free(device->debug.decode_ctx, mem->addr.dev,
                             pan_kmod_bo_size(mem->bo));
+
+      if (mem->debug.host_mapping)
+         os_munmap(mem->debug.host_mapping, pan_kmod_bo_size(mem->bo));
    }
 
    struct pan_kmod_vm_op op = {
@@ -152,6 +174,9 @@ panvk_FreeMemory(VkDevice _device, VkDeviceMemory _mem,
    ASSERTED int ret =
       pan_kmod_vm_bind(device->kmod.vm, PAN_KMOD_VM_OP_MODE_IMMEDIATE, &op, 1);
    assert(!ret);
+
+   if (!(device->kmod.vm->flags & PAN_KMOD_VM_FLAG_AUTO_VA))
+      util_vma_heap_free(&device->as.heap, op.va.start, op.va.size);
 
    pan_kmod_bo_put(mem->bo);
    vk_device_memory_destroy(&device->vk, pAllocator, &mem->vk);

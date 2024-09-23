@@ -227,37 +227,6 @@ void *si_create_ubyte_to_ushort_compute_shader(struct si_context *sctx)
    return si_create_shader_state(sctx, b.shader);
 }
 
-/* Create a compute shader implementing clear_buffer or copy_buffer. */
-void *si_create_dma_compute_shader(struct si_context *sctx, unsigned num_dwords_per_thread,
-                                   bool is_clear)
-{
-   assert(num_dwords_per_thread && num_dwords_per_thread <= 4);
-
-   nir_builder b = nir_builder_init_simple_shader(MESA_SHADER_COMPUTE, sctx->screen->nir_options,
-                                                  "create_dma_compute");
-   b.shader->info.workgroup_size[0] = 64;
-   b.shader->info.workgroup_size[1] = 1;
-   b.shader->info.workgroup_size[2] = 1;
-   b.shader->info.num_ssbos = is_clear ? 1 : 2;
-   b.shader->info.cs.user_data_components_amd = is_clear ? num_dwords_per_thread : 0;
-
-   nir_def *thread_id = ac_get_global_ids(&b, 1, 32);
-   /* Convert the global thread ID into bytes. */
-   nir_def *offset = nir_imul_imm(&b, thread_id, 4 * num_dwords_per_thread);
-   nir_def *value;
-
-   if (is_clear) {
-      value = nir_trim_vector(&b, nir_load_user_data_amd(&b), num_dwords_per_thread);
-   } else {
-      value = nir_load_ssbo(&b, num_dwords_per_thread, 32, nir_imm_int(&b, 0), offset,
-                            .access = ACCESS_RESTRICT);
-   }
-
-   nir_store_ssbo(&b, value, nir_imm_int(&b, !is_clear), offset, .access = ACCESS_RESTRICT);
-
-   return si_create_shader_state(sctx, b.shader);
-}
-
 /* Load samples from the image, and copy them to the same image. This looks like
  * a no-op, but it's not. Loads use FMASK, while stores don't, so samples are
  * reordered to match expanded FMASK.

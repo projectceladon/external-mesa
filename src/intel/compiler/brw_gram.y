@@ -26,7 +26,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <strings.h>
-#include "brw_asm.h"
+#include "brw_asm_internal.h"
 
 #undef yyerror
 #ifdef YYBYACC
@@ -291,8 +291,10 @@ i965_asm_set_instruction_options(struct brw_codegen *p,
 		brw_inst_set_no_dd_clear(p->devinfo, brw_last_inst,
 					 options.no_dd_clear);
 	} else {
+		enum opcode opcode = brw_inst_opcode(p->isa, brw_last_inst);
 		brw_inst_set_swsb(p->devinfo, brw_last_inst,
-		                  tgl_swsb_encode(p->devinfo, options.depinfo));
+		                  tgl_swsb_encode(p->devinfo, options.depinfo,
+						  opcode));
 	}
 	brw_inst_set_debug_control(p->devinfo, brw_last_inst,
 			           options.debug_control);
@@ -668,7 +670,7 @@ unaryinstruction:
 						    $4.flag_subreg_nr);
 		}
 
-		if ($7.file != BRW_IMMEDIATE_VALUE) {
+		if ($7.file != IMM) {
 			brw_inst_set_src0_vstride(p->devinfo, brw_last_inst,
 						  $7.vstride);
 		}
@@ -879,7 +881,7 @@ sendinstruction:
 		brw_set_src0(p, brw_last_inst, $5);
 		brw_inst_set_bits(brw_last_inst, 127, 96, $6);
 		brw_inst_set_src1_file_type(p->devinfo, brw_last_inst,
-				            BRW_IMMEDIATE_VALUE,
+				            IMM,
 					    BRW_TYPE_UD);
 		brw_inst_set_sfid(p->devinfo, brw_last_inst, $7);
 		brw_inst_set_eot(p->devinfo, brw_last_inst, $9.end_of_thread);
@@ -910,14 +912,14 @@ sendinstruction:
 		brw_set_src0(p, brw_last_inst, $5);
 		brw_set_src1(p, brw_last_inst, $6);
 
-		if ($7.file == BRW_IMMEDIATE_VALUE) {
+		if ($7.file == IMM) {
 			brw_inst_set_send_sel_reg32_desc(p->devinfo, brw_last_inst, 0);
 			brw_inst_set_send_desc(p->devinfo, brw_last_inst, $7.ud);
 		} else {
 			brw_inst_set_send_sel_reg32_desc(p->devinfo, brw_last_inst, 1);
 		}
 
-		if ($8.file == BRW_IMMEDIATE_VALUE) {
+		if ($8.file == IMM) {
 			brw_inst_set_send_sel_reg32_ex_desc(p->devinfo, brw_last_inst, 0);
 			brw_inst_set_sends_ex_desc(p->devinfo, brw_last_inst, $8.ud);
 		} else {
@@ -1156,7 +1158,7 @@ syncinstruction:
 			error(&@2, "sync instruction is supported only on gfx12+\n");
 		}
 
-		if ($5.file == BRW_IMMEDIATE_VALUE &&
+		if ($5.file == IMM &&
 		    $3 != TGL_SYNC_ALLRD &&
 		    $3 != TGL_SYNC_ALLWR) {
 			error(&@2, "Only allrd and allwr support immediate argument\n");
@@ -1501,7 +1503,7 @@ directgenreg:
 	GENREG subregnum
 	{
 		memset(&$$, '\0', sizeof($$));
-		$$.file = BRW_GENERAL_REGISTER_FILE;
+		$$.file = FIXED_GRF;
 		$$.nr = $1 * reg_unit(p->devinfo);
 		$$.subnr = $2;
 	}
@@ -1511,7 +1513,7 @@ indirectgenreg:
 	GENREGFILE LSQUARE addrparam RSQUARE
 	{
 		memset(&$$, '\0', sizeof($$));
-		$$.file = BRW_GENERAL_REGISTER_FILE;
+		$$.file = FIXED_GRF;
 		$$.subnr = $3.subnr;
 		$$.indirect_offset = $3.indirect_offset;
 	}
@@ -1526,7 +1528,7 @@ addrreg:
 			error(&@2, "Address sub register number %d"
 				   "out of range\n", $2);
 
-		$$.file = BRW_ARCHITECTURE_REGISTER_FILE;
+		$$.file = ARF;
 		$$.nr = BRW_ARF_ADDRESS;
 		$$.subnr = $2;
 	}
@@ -1542,7 +1544,7 @@ accreg:
 				   " out of range\n", $1);
 
 		memset(&$$, '\0', sizeof($$));
-		$$.file = BRW_ARCHITECTURE_REGISTER_FILE;
+		$$.file = ARF;
 		$$.nr = BRW_ARF_ACCUMULATOR;
 		$$.subnr = $2;
 	}
@@ -1562,7 +1564,7 @@ flagreg:
 			error(&@2, "Flag subregister number %d"
 				   " out of range\n", $2);
 
-		$$.file = BRW_ARCHITECTURE_REGISTER_FILE;
+		$$.file = ARF;
 		$$.nr = BRW_ARF_FLAG | $1;
 		$$.subnr = $2;
 	}
@@ -1575,7 +1577,7 @@ maskreg:
 			error(&@1, "Mask register number %d"
 				   " out of range\n", $1);
 
-		$$.file = BRW_ARCHITECTURE_REGISTER_FILE;
+		$$.file = ARF;
 		$$.nr = BRW_ARF_MASK;
 		$$.subnr = $2;
 	}
@@ -1589,7 +1591,7 @@ notifyreg:
 			error(&@2, "Notification sub register number %d"
 				   " out of range\n", $2);
 
-		$$.file = BRW_ARCHITECTURE_REGISTER_FILE;
+		$$.file = ARF;
 		$$.nr = BRW_ARF_NOTIFICATION_COUNT;
 		$$.subnr = $2;
 	}
@@ -1606,7 +1608,7 @@ statereg:
 			error(&@2, "State sub register number %d"
 				   " out of range\n", $2);
 
-		$$.file = BRW_ARCHITECTURE_REGISTER_FILE;
+		$$.file = ARF;
 		$$.nr = BRW_ARF_STATE;
 		$$.subnr = $2;
 	}
@@ -1619,7 +1621,7 @@ controlreg:
 			error(&@2, "control sub register number %d"
 				   " out of range\n", $2);
 
-		$$.file = BRW_ARCHITECTURE_REGISTER_FILE;
+		$$.file = ARF;
 		$$.nr = BRW_ARF_CONTROL;
 		$$.subnr = $2;
 	}
@@ -1640,7 +1642,7 @@ threadcontrolreg:
 			error(&@2, "Thread control sub register number %d"
 				   " out of range\n", $2);
 
-		$$.file = BRW_ARCHITECTURE_REGISTER_FILE;
+		$$.file = ARF;
 		$$.nr = BRW_ARF_TDR;
 		$$.subnr = $2;
 	}
@@ -1659,7 +1661,7 @@ performancereg:
 			error(&@2, "Performance sub register number %d"
 				   " out of range\n", $2);
 
-		$$.file = BRW_ARCHITECTURE_REGISTER_FILE;
+		$$.file = ARF;
 		$$.nr = BRW_ARF_TIMESTAMP;
 		$$.subnr = $2;
 	}
@@ -1672,7 +1674,7 @@ channelenablereg:
 			error(&@1, "Channel enable register number %d"
 				   " out of range\n", $1);
 
-		$$.file = BRW_ARCHITECTURE_REGISTER_FILE;
+		$$.file = ARF;
 		$$.nr = BRW_ARF_MASK;
 		$$.subnr = $2;
 	}

@@ -559,6 +559,18 @@
                   "Report the non-MSAA-only texture size limit")
 
 /**
+ * \brief wgl specific configuration options
+ */
+
+#define DRI_CONF_WGL_FRAME_LATENCY(def) \
+   DRI_CONF_OPT_I(wgl_frame_latency, def, 1, 16, \
+                  "Override default maximum frame latency")
+
+#define DRI_CONF_WGL_SWAP_INTERVAL(def) \
+   DRI_CONF_OPT_I(wgl_swap_interval, def, 1, 4, \
+                  "Override default swap interval")
+
+/**
  * \brief virgl specific configuration options
  */
 
@@ -601,6 +613,10 @@
 #define DRI_CONF_TU_ALLOW_OOB_INDIRECT_UBO_LOADS(def) \
    DRI_CONF_OPT_B(tu_allow_oob_indirect_ubo_loads, def, \
                   "Some D3D11 games rely on out-of-bounds indirect UBO loads to return real values from underlying bound descriptor, this prevents us from lowering indirectly accessed UBOs to consts")
+
+#define DRI_CONF_TU_DISABLE_D24S8_BORDER_COLOR_WORKAROUND(def) \
+   DRI_CONF_OPT_B(tu_disable_d24s8_border_color_workaround, def, \
+                  "Use UBWC for D24S8 images with VK_IMAGE_USAGE_SAMPLED_BIT when customBorderColorWithoutFormat is enabled")
 
 /**
  * \brief venus specific configuration options
@@ -668,6 +684,10 @@
 #define DRI_CONF_RADV_DISABLE_SINKING_LOAD_INPUT_FS(def) \
    DRI_CONF_OPT_B(radv_disable_sinking_load_input_fs, def, \
                   "Disable sinking load inputs for fragment shaders")
+
+#define DRI_CONF_RADV_DISABLE_DEPTH_STORAGE(def) \
+  DRI_CONF_OPT_B(radv_disable_depth_storage, def, \
+                 "Hides support for storage access to depth formats")
 
 #define DRI_CONF_RADV_DGC(def) \
    DRI_CONF_OPT_B(radv_dgc, def, \
@@ -739,6 +759,10 @@
    DRI_CONF_OPT_I(anv_assume_full_subgroups, def, 0, 32, \
                   "Allow assuming full subgroups requirement even when it's not specified explicitly and set the given size")
 
+#define DRI_CONF_ANV_ASSUME_FULL_SUBGROUPS_WITH_BARRIER(def) \
+   DRI_CONF_OPT_B(anv_assume_full_subgroups_with_barrier, def, \
+                  "Assume full subgroups requirement for compute shaders that use control barriers")
+
 #define DRI_CONF_ANV_SAMPLE_MASK_OUT_OPENGL_BEHAVIOUR(def) \
    DRI_CONF_OPT_B(anv_sample_mask_out_opengl_behaviour, def, \
                   "Ignore sample mask out when having single sampled target")
@@ -783,6 +807,10 @@
 #define DRI_CONF_ANV_DISABLE_FCV(def) \
    DRI_CONF_OPT_B(anv_disable_fcv, def, \
                   "Disable FCV optimization")
+
+#define DRI_CONF_ANV_DISABLE_XE2_CCS(def) \
+   DRI_CONF_OPT_B(anv_disable_xe2_ccs, def, \
+                  "Disable CCS optimization on Xe2")
 
 #define DRI_CONF_ANV_EXTERNAL_MEMORY_IMPLICIT_SYNC(def) \
    DRI_CONF_OPT_B(anv_external_memory_implicit_sync, def, "Implicit sync on external BOs")

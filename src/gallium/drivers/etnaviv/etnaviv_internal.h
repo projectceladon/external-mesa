@@ -63,22 +63,14 @@
 
 /* GPU chip 3D specs */
 struct etna_specs {
-   /* HALTI (gross architecture) level. -1 for pre-HALTI. */
-   int halti : 8;
    /* supports SUPERTILE (64x64) tiling? */
    unsigned can_supertile : 1;
    /* needs z=(z+w)/2, for older GCxxx */
    unsigned vs_need_z_div : 1;
-   /* supports trigonometric instructions */
-   unsigned has_sin_cos_sqrt : 1;
-   /* has SIGN/FLOOR/CEIL instructions */
-   unsigned has_sign_floor_ceil : 1;
    /* can use VS_RANGE, PS_RANGE registers*/
    unsigned has_shader_range_registers : 1;
    /* has the new sin/cos/log functions */
    unsigned has_new_transcendentals : 1;
-   /* has the new dp2/dpX_norm instructions, among others */
-   unsigned has_halti2_instructions : 1;
    /* has no limit on the number of constant sources per instruction */
    unsigned has_no_oneconst_limit : 1;
    /* has V4_COMPRESSION */
@@ -93,8 +85,6 @@ struct etna_specs {
    unsigned tex_astc : 1;
    /* has BLT engine instead of RS */
    unsigned use_blt : 1;
-   /* can use any kind of wrapping mode on npot textures */
-   unsigned npot_tex_any_wrap : 1;
    /* supports seamless cube map */
    unsigned seamless_cube_map : 1;
    /* number of bits per TS tile */
@@ -107,16 +97,8 @@ struct etna_specs {
    unsigned fragment_sampler_count;
    /* number of vertex sampler units */
    unsigned vertex_sampler_count;
-   /* size of vertex shader output buffer */
-   unsigned vertex_output_buffer_size;
    /* maximum number of vertex element configurations */
    unsigned vertex_max_elements;
-   /* size of a cached vertex (?) */
-   unsigned vertex_cache_size;
-   /* number of shader cores */
-   unsigned shader_core_count;
-   /* number of vertex streams */
-   unsigned stream_count;
    /* vertex shader memory address*/
    uint32_t vs_offset;
    /* pixel shader memory address*/
@@ -127,10 +109,10 @@ struct etna_specs {
    uint32_t ps_uniforms_offset;
    /* vertex/fragment shader max instructions */
    uint32_t max_instructions;
+   /* maximum number of VS outputs */
+   unsigned max_vs_outputs;
    /* maximum number of varyings */
    unsigned max_varyings;
-   /* maximum number of registers */
-   unsigned max_registers;
    /* maximum vertex uniforms */
    unsigned max_vs_uniforms;
    /* maximum pixel uniforms */
@@ -141,26 +123,8 @@ struct etna_specs {
    unsigned max_rendertarget_size;
    /* available pixel pipes */
    unsigned pixel_pipes;
-   /* number of constants */
-   unsigned num_constants;
-   /* number of NN cores */
-   unsigned nn_core_count;
    /* architecture version of NN cores */
    unsigned nn_core_version;
-   /* number of MAD units per NN core */
-   unsigned nn_mad_per_core;
-   /* number of TP cores */
-   unsigned tp_core_count;
-   /* Size of on-chip SRAM */
-   unsigned on_chip_sram_size;
-   /* Size of SRAM behind AXI */
-   unsigned axi_sram_size;
-   /* Number of bits for zero run-length compression */
-   unsigned nn_zrl_bits;
-   /* Input buffer size, determines tile size */
-   unsigned nn_input_buffer_depth;
-   /* Accumulation buffer size, determines tile size */
-   unsigned nn_accum_buffer_depth;
 };
 
 /* Compiled Gallium state. All the different compiled state atoms are woven
@@ -256,7 +220,7 @@ struct compiled_shader_state {
    uint32_t VS_OUTPUT_COUNT_PSIZE; /* number of outputs of point size per vertex enabled */
    uint32_t VS_INPUT_COUNT;
    uint32_t VS_TEMP_REGISTER_CONTROL;
-   uint32_t VS_OUTPUT[4];
+   uint32_t VS_OUTPUT[8];
    uint32_t VS_INPUT[4];
    uint32_t VS_LOAD_BALANCING;
    uint32_t VS_START_PC;

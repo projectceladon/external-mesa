@@ -90,6 +90,9 @@ struct spirv_to_nir_options {
    /* Whether or not printf is supported */
    bool printf;
 
+   /* Whether or not the driver wants consume debug information (Debugging purposes). */
+   bool debug_info;
+
    const struct spirv_capabilities *capabilities;
 
    /* Address format for various kinds of pointers. */
@@ -162,6 +165,8 @@ nir_shader *spirv_to_nir(const uint32_t *words, size_t word_count,
 bool
 spirv_library_to_nir_builder(FILE *fp, const uint32_t *words, size_t word_count,
                              const struct spirv_to_nir_options *options);
+
+void spirv_print_asm(FILE *fp, const uint32_t *words, size_t word_count);
 
 #ifdef __cplusplus
 }

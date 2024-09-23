@@ -5,14 +5,16 @@
 
 #pragma once
 
+#include <stdint.h>
 #include <xf86drm.h>
+#include "util/ralloc.h"
 #include "util/simple_mtx.h"
 #include "util/sparse_array.h"
 #include "util/timespec.h"
 #include "util/vma.h"
 #include "agx_bo.h"
-#include "agx_formats.h"
 #include "decode.h"
+#include "layout.h"
 #include "unstable_asahi_drm.h"
 
 // TODO: this is a lie right now
@@ -39,8 +41,9 @@ enum agx_dbg {
    AGX_DBG_NOSHADOW = BITFIELD_BIT(16),
    /* bit 17 unused */
    AGX_DBG_SCRATCH = BITFIELD_BIT(18),
-   AGX_DBG_COMPBLIT = BITFIELD_BIT(19),
+   /* bit 19 unused */
    AGX_DBG_FEEDBACK = BITFIELD_BIT(20),
+   AGX_DBG_1QUEUE = BITFIELD_BIT(21),
 };
 
 /* How many power-of-two levels in the BO cache do we want? 2^14 minimum chosen
@@ -62,8 +65,9 @@ typedef struct {
    struct agx_bo *(*bo_alloc)(struct agx_device *dev, size_t size, size_t align,
                               enum agx_bo_flags flags);
    int (*bo_bind)(struct agx_device *dev, struct agx_bo *bo, uint64_t addr,
-                  uint32_t flags);
-   void (*bo_mmap)(struct agx_bo *bo);
+                  size_t size_B, uint64_t offset_B, uint32_t flags,
+                  bool unbind);
+   void (*bo_mmap)(struct agx_device *dev, struct agx_bo *bo);
    ssize_t (*get_params)(struct agx_device *dev, void *buf, size_t size);
    int (*submit)(struct agx_device *dev, struct drm_asahi_submit *submit,
                  uint32_t vbo_res_id);
@@ -90,6 +94,9 @@ struct agx_device {
 
    /* VM handle */
    uint32_t vm_id;
+
+   /* Global queue handle */
+   uint32_t queue_id;
 
    /* VMA heaps */
    simple_mtx_t vma_lock;
@@ -129,6 +136,21 @@ struct agx_device {
    struct agxdecode_ctx *agxdecode;
 };
 
+static inline bool
+agx_has_soft_fault(struct agx_device *dev)
+{
+   return dev->params.feat_compat & DRM_ASAHI_FEAT_SOFT_FAULTS;
+}
+
+static uint32_t
+agx_usc_addr(struct agx_device *dev, uint64_t addr)
+{
+   assert(addr >= dev->shader_base);
+   assert((addr - dev->shader_base) <= UINT32_MAX);
+
+   return addr - dev->shader_base;
+}
+
 bool agx_open_device(void *memctx, struct agx_device *dev);
 
 void agx_close_device(struct agx_device *dev);
@@ -160,3 +182,8 @@ agx_gpu_time_to_ns(struct agx_device *dev, uint64_t gpu_time)
 
 void agx_get_device_uuid(const struct agx_device *dev, void *uuid);
 void agx_get_driver_uuid(void *uuid);
+
+struct agx_va *agx_va_alloc(struct agx_device *dev, uint32_t size_B,
+                            uint32_t align_B, enum agx_va_flags flags,
+                            uint64_t fixed_va);
+void agx_va_free(struct agx_device *dev, struct agx_va *va);

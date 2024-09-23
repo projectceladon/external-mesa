@@ -354,7 +354,19 @@ INSTANTIATE_TEST_SUITE_P(LoadStoreVariants, DisasmTest,
       disasm_state{ {0x01001032, 0x15400c14, 0x00000050, 0x00000000}, "load.denorm.ls2   t0._y__, u0.yyyy, t0.xxxx, void\n"},
       disasm_state{ {0x01001032, 0x15400d14, 0x00000040, 0x00000000}, "load.denorm.local.ls2 t0._y__, t0.yyyy, t0.xxxx, void\n"},
       disasm_state{ {0x00800033, 0x00000c14, 0x00000050, 0x00154008}, "store.denorm.ls2  mem.x___, u0.xxxx, t0.xxxx, t0.yyyy\n"},
-      disasm_state{ {0x00861033, 0x15400d04, 0x100efe40, 0x7085860f}, "store.denorm.local mem.x___, t0.yyyy, 4092, 99.000000\t; dontcare bits in store: 00000000000000000000000000061000\n", FLAG_FAILING_ASM}
+      disasm_state{ {0x00861033, 0x15400d04, 0x100efe40, 0x7085860f}, "store.denorm.local mem.x___, t0.yyyy, 4092, 99.000000\t; dontcare bits in store: 00000000000000000000000000061000\n", FLAG_FAILING_ASM},
+      disasm_state{ {0x07800033, 0x00200c34, 0x80000050, 0x00390018}, "store.denorm.u32.ls6 mem, u0.xxxx, t0.xxxx, t1.xyzw\n"}
+   )
+);
+// clang-format on
+
+// clang-format off
+INSTANTIATE_TEST_SUITE_P(ConvVariants, DisasmTest,
+   testing::Values(
+      // seen on GC7000
+      disasm_state{ {0x01001032, 0x15400800, 0x100100c0, 0x00000007}, "conv.pack         t0._y__, t0.yyyy, 1, void\n"},
+      disasm_state{ {0x01001032, 0x15600800, 0x10010040, 0x00000007}, "conv.f16.pack     t0._y__, t0.yyyy, 0, void\n"},
+      disasm_state{ {0x01001832, 0x15400800, 0x100100c0, 0x00000007}, "conv.sat.pack     t0._y__, t0.yyyy, 1, void\n"}
    )
 );
 // clang-format on

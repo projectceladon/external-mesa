@@ -2,7 +2,7 @@
 
 libvulkan_lvp = shared_library(
   'vulkan_lvp',
-  [ 'target.c' ],
+  [ 'lavapipe_target.c' ],
   vs_module_defs : vulkan_api_def,
   include_directories : [ inc_src, inc_util, inc_include, inc_gallium, inc_gallium_aux, inc_gallium_winsys, inc_gallium_drivers ],
   link_whole : [ liblavapipe_st ],
@@ -13,7 +13,7 @@ libvulkan_lvp = shared_library(
   # The linker still expects a definition for weak symbols at build time, just not at runtime.
   # We have to forcibly ignore undefined symbols, which unfortunately applies to all symbols.
   override_options : ['b_lundef=@0@'.format(host_machine.system() == 'darwin' ? 'false' : get_option('b_lundef').to_string())],
-  dependencies : driver_swrast,
+  dependencies : [driver_llvmpipe, idep_mesautil],
   name_prefix : host_machine.system() == 'windows' ? '' : [],
   install : true,
 )

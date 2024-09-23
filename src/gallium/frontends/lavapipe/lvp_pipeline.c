@@ -289,7 +289,10 @@ lvp_create_pipeline_nir(nir_shader *nir)
 }
 
 static VkResult
-compile_spirv(struct lvp_device *pdevice, const VkPipelineShaderStageCreateInfo *sinfo, nir_shader **nir)
+compile_spirv(struct lvp_device *pdevice,
+              VkPipelineCreateFlags2KHR pipeline_flags,
+              const VkPipelineShaderStageCreateInfo *sinfo,
+              nir_shader **nir)
 {
    gl_shader_stage stage = vk_to_mesa_shader_stage(sinfo->stage);
    assert(stage <= LVP_SHADER_STAGES && stage != MESA_SHADER_NONE);
@@ -313,7 +316,7 @@ compile_spirv(struct lvp_device *pdevice, const VkPipelineShaderStageCreateInfo 
 #endif
    };
 
-   result = vk_pipeline_shader_stage_to_nir(&pdevice->vk, sinfo,
+   result = vk_pipeline_shader_stage_to_nir(&pdevice->vk, pipeline_flags, sinfo,
                                             &spirv_options, pdevice->physical_device->drv_options[stage],
                                             NULL, nir);
    return result;
@@ -472,7 +475,7 @@ VkResult
 lvp_spirv_to_nir(struct lvp_pipeline *pipeline, const VkPipelineShaderStageCreateInfo *sinfo,
                  nir_shader **out_nir)
 {
-   VkResult result = compile_spirv(pipeline->device, sinfo, out_nir);
+   VkResult result = compile_spirv(pipeline->device, pipeline->flags, sinfo, out_nir);
    if (result == VK_SUCCESS)
       lvp_shader_lower(pipeline->device, pipeline, *out_nir, pipeline->layout);
 
@@ -768,6 +771,7 @@ lvp_graphics_pipeline_init(struct lvp_pipeline *pipeline,
                            VkPipelineCreateFlagBits2KHR flags)
 {
    pipeline->type = LVP_PIPELINE_GRAPHICS;
+   pipeline->flags = flags;
 
    VkResult result;
 
@@ -1054,8 +1058,10 @@ static VkResult
 lvp_compute_pipeline_init(struct lvp_pipeline *pipeline,
                           struct lvp_device *device,
                           struct lvp_pipeline_cache *cache,
-                          const VkComputePipelineCreateInfo *pCreateInfo)
+                          const VkComputePipelineCreateInfo *pCreateInfo,
+                          VkPipelineCreateFlagBits2KHR flags)
 {
+   pipeline->flags = flags;
    pipeline->device = device;
    pipeline->layout = lvp_pipeline_layout_from_handle(pCreateInfo->layout);
    vk_pipeline_layout_ref(&pipeline->layout->vk);
@@ -1097,7 +1103,7 @@ lvp_compute_pipeline_create(
    vk_object_base_init(&device->vk, &pipeline->base,
                        VK_OBJECT_TYPE_PIPELINE);
    uint64_t t0 = os_time_get_nano();
-   result = lvp_compute_pipeline_init(pipeline, device, cache, pCreateInfo);
+   result = lvp_compute_pipeline_init(pipeline, device, cache, pCreateInfo, flags);
    if (result != VK_SUCCESS) {
       vk_free(&device->vk.alloc, pipeline);
       return result;
@@ -1198,7 +1204,7 @@ create_shader_object(struct lvp_device *device, const VkShaderCreateInfoEXT *pCr
          pCreateInfo->pName,
          pCreateInfo->pSpecializationInfo,
       };
-      VkResult result = compile_spirv(device, &sinfo, &nir);
+      VkResult result = compile_spirv(device, 0, &sinfo, &nir);
       if (result != VK_SUCCESS)
          goto fail;
       nir->info.separate_shader = true;
@@ -1357,6 +1363,7 @@ lvp_exec_graph_pipeline_create(VkDevice _device, VkPipelineCache _cache,
    uint64_t t0 = os_time_get_nano();
 
    pipeline->type = LVP_PIPELINE_EXEC_GRAPH;
+   pipeline->flags = vk_graph_pipeline_create_flags(create_info);
    pipeline->layout = lvp_pipeline_layout_from_handle(create_info->layout);
 
    pipeline->exec_graph.scratch_size = 0;

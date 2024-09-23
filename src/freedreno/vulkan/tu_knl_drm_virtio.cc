@@ -491,6 +491,7 @@ virtio_allocate_userspace_iova_locked(struct tu_device *dev,
 
 static VkResult
 tu_bo_init(struct tu_device *dev,
+           struct vk_object_base *base,
            struct tu_bo *bo,
            uint32_t gem_handle,
            uint64_t size,
@@ -540,6 +541,7 @@ tu_bo_init(struct tu_device *dev,
       .name = name,
       .refcnt = 1,
       .bo_list_idx = idx,
+      .base = base,
    };
 
    mtx_unlock(&dev->bo_mutex);
@@ -582,12 +584,13 @@ tu_bo_set_kernel_name(struct tu_device *dev, struct tu_bo *bo, const char *name)
 
 static VkResult
 virtio_bo_init(struct tu_device *dev,
-            struct tu_bo **out_bo,
-            uint64_t size,
-            uint64_t client_iova,
-            VkMemoryPropertyFlags mem_property,
-            enum tu_bo_alloc_flags flags,
-            const char *name)
+               struct vk_object_base *base,
+               struct tu_bo **out_bo,
+               uint64_t size,
+               uint64_t client_iova,
+               VkMemoryPropertyFlags mem_property,
+               enum tu_bo_alloc_flags flags,
+               const char *name)
 {
    struct tu_virtio_device *vdev = dev->vdev;
    struct msm_ccmd_gem_new_req req = {
@@ -651,7 +654,7 @@ virtio_bo_init(struct tu_device *dev,
 
    bo->res_id = res_id;
 
-   result = tu_bo_init(dev, bo, handle, size, req.iova, flags, name);
+   result = tu_bo_init(dev, base, bo, handle, size, req.iova, flags, name);
    if (result != VK_SUCCESS) {
       memset(bo, 0, sizeof(*bo));
       goto fail;
@@ -672,7 +675,7 @@ virtio_bo_init(struct tu_device *dev,
        *
        * MSM already does this automatically for uncached (MSM_BO_WC) memory.
        */
-      tu_sync_cache_bo(dev, bo, 0, VK_WHOLE_SIZE, TU_MEM_SYNC_CACHE_TO_GPU);
+      tu_bo_sync_cache(dev, bo, 0, VK_WHOLE_SIZE, TU_MEM_SYNC_CACHE_TO_GPU);
    }
 
    return VK_SUCCESS;
@@ -748,7 +751,7 @@ virtio_bo_init_dmabuf(struct tu_device *dev,
    }
 
    result =
-      tu_bo_init(dev, bo, handle, size, iova, TU_BO_ALLOC_NO_FLAGS, "dmabuf");
+      tu_bo_init(dev, NULL, bo, handle, size, iova, TU_BO_ALLOC_NO_FLAGS, "dmabuf");
    if (result != VK_SUCCESS) {
       util_vma_heap_free(&dev->vma, iova, size);
       memset(bo, 0, sizeof(*bo));
@@ -986,8 +989,8 @@ setup_fence_cmds(struct tu_device *dev)
    struct tu_virtio_device *vdev = dev->vdev;
    VkResult result;
 
-   result = tu_bo_init_new(dev, &vdev->fence_cmds_mem, sizeof(*vdev->fence_cmds),
-                           (enum tu_bo_alloc_flags)
+   result = tu_bo_init_new(dev, NULL, &vdev->fence_cmds_mem,
+                           sizeof(*vdev->fence_cmds), (enum tu_bo_alloc_flags)
                               (TU_BO_ALLOC_ALLOW_DUMP | TU_BO_ALLOC_GPU_READ_ONLY),
                            "fence_cmds");
    if (result != VK_SUCCESS)
@@ -1005,8 +1008,16 @@ setup_fence_cmds(struct tu_device *dev)
 
       memset(c, 0, sizeof(*c));
 
-      c->pkt[0] = pm4_pkt7_hdr((uint8_t)CP_EVENT_WRITE, 4);
-      c->pkt[1] = CP_EVENT_WRITE_0_EVENT(CACHE_FLUSH_TS);
+      if (fd_dev_gen(&dev->physical_device->dev_id) >= A7XX) {
+         c->pkt[0] = pm4_pkt7_hdr((uint8_t)CP_EVENT_WRITE7, 4);
+         c->pkt[1] = CP_EVENT_WRITE7_0(.event = CACHE_FLUSH_TS,
+                           .write_src = EV_WRITE_USER_32B,
+                           .write_dst = EV_DST_RAM,
+                           .write_enabled = true).value;
+      } else {
+         c->pkt[0] = pm4_pkt7_hdr((uint8_t)CP_EVENT_WRITE, 4);
+         c->pkt[1] = CP_EVENT_WRITE_0_EVENT(CACHE_FLUSH_TS);
+      }
       c->pkt[2] = fence_iova;
       c->pkt[3] = fence_iova >> 32;
    }

@@ -10,11 +10,13 @@
 #include "tu_image.h"
 
 #include "fdl/fd6_format_table.h"
+#include "common/freedreno_lrz.h"
 
 #include "util/u_debug.h"
 #include "util/format/u_format.h"
 #include "vulkan/vulkan_android.h"
 #include "vk_android.h"
+#include "vk_debug_utils.h"
 #include "vk_util.h"
 #include "drm-uapi/drm_fourcc.h"
 #include "vulkan/vulkan_core.h"
@@ -32,13 +34,13 @@ uint32_t
 tu6_plane_count(VkFormat format)
 {
    switch (format) {
-   default:
-      return 1;
-   case VK_FORMAT_G8_B8R8_2PLANE_420_UNORM:
    case VK_FORMAT_D32_SFLOAT_S8_UINT:
+      /* We do not support interleaved depth/stencil. Instead, we decompose to
+       * a depth plane and a stencil plane.
+       */
       return 2;
-   case VK_FORMAT_G8_B8_R8_3PLANE_420_UNORM:
-      return 3;
+   default:
+      return vk_format_get_plane_count(format);
    }
 }
 
@@ -53,7 +55,7 @@ tu6_plane_format(VkFormat format, uint32_t plane)
    case VK_FORMAT_D32_SFLOAT_S8_UINT:
       return plane ? PIPE_FORMAT_S8_UINT : PIPE_FORMAT_Z32_FLOAT;
    default:
-      return tu_vk_format_to_pipe_format(format);
+      return vk_format_to_pipe_format(format);
    }
 }
 
@@ -121,12 +123,18 @@ tu_is_r8g8_compatible(enum pipe_format format)
           !util_format_is_depth_or_stencil(format);
 }
 
+uint64_t
+tu_layer_address(const struct fdl6_view *iview, uint32_t layer)
+{
+   return iview->base_addr + iview->layer_size * layer;
+}
+
 void
 tu_cs_image_ref(struct tu_cs *cs, const struct fdl6_view *iview, uint32_t layer)
 {
    tu_cs_emit(cs, A6XX_RB_MRT_PITCH(0, iview->pitch).value);
    tu_cs_emit(cs, iview->layer_size >> 6);
-   tu_cs_emit_qw(cs, iview->base_addr + iview->layer_size * layer);
+   tu_cs_emit_qw(cs, tu_layer_address(iview, layer));
 }
 
 void
@@ -203,7 +211,7 @@ tu_image_view_init(struct tu_device *device,
    if (aspect_mask != VK_IMAGE_ASPECT_COLOR_BIT)
       format = tu6_plane_format(vk_format, tu6_plane_index(vk_format, aspect_mask));
    else
-      format = tu_vk_format_to_pipe_format(vk_format);
+      format = vk_format_to_pipe_format(vk_format);
 
    if (image->vk.format == VK_FORMAT_G8_B8R8_2PLANE_420_UNORM &&
        aspect_mask == VK_IMAGE_ASPECT_PLANE_0_BIT) {
@@ -237,6 +245,7 @@ tu_image_view_init(struct tu_device *device,
    args.level_count = vk_image_subresource_level_count(&image->vk, range);
    args.min_lod_clamp = iview->vk.min_lod;
    args.format = tu_format_for_aspect(format, aspect_mask);
+   args.ubwc_fc_mutable = image->ubwc_fc_mutable;
    vk_component_mapping_to_pipe_swizzle(pCreateInfo->components, args.swiz);
    if (conversion) {
       unsigned char conversion_swiz[4], create_swiz[4];
@@ -340,7 +349,7 @@ ubwc_possible(struct tu_device *device,
 
    if (!info->a6xx.has_8bpp_ubwc &&
        vk_format_get_blocksizebits(format) == 8 &&
-       tu6_plane_count(format) == 1)
+       vk_format_get_plane_count(format) == 1)
       return false;
 
    if (type == VK_IMAGE_TYPE_3D) {
@@ -421,7 +430,7 @@ format_list_reinterprets_r8g8_r16(enum pipe_format format, const VkImageFormatLi
    bool has_non_r8g8 = false;
    for (uint32_t i = 0; i < fmt_list->viewFormatCount; i++) {
       enum pipe_format format =
-         tu_vk_format_to_pipe_format(fmt_list->pViewFormats[i]);
+         vk_format_to_pipe_format(fmt_list->pViewFormats[i]);
       if (tu_is_r8g8(format))
          has_r8g8 = true;
       else
@@ -441,7 +450,7 @@ format_list_has_swaps(const VkImageFormatListCreateInfo *fmt_list)
 
    for (uint32_t i = 0; i < fmt_list->viewFormatCount; i++) {
       enum pipe_format format =
-         tu_vk_format_to_pipe_format(fmt_list->pViewFormats[i]);
+         vk_format_to_pipe_format(fmt_list->pViewFormats[i]);
 
       if (tu6_format_texture(format, TILE6_LINEAR).swap)
          return true;
@@ -455,9 +464,7 @@ tu_image_update_layout(struct tu_device *device, struct tu_image *image,
                        uint64_t modifier, const VkSubresourceLayout *plane_layouts)
 {
    enum a6xx_tile_mode tile_mode = TILE6_3;
-#if DETECT_OS_LINUX || DETECT_OS_BSD
    image->vk.drm_format_mod = modifier;
-#endif
 
    if (modifier == DRM_FORMAT_MOD_LINEAR) {
       image->force_linear_tile = true;
@@ -469,7 +476,7 @@ tu_image_update_layout(struct tu_device *device, struct tu_image *image,
    }
 
    /* Whether a view of the image with an R8G8 format could be made. */
-   bool has_r8g8 = tu_is_r8g8(tu_vk_format_to_pipe_format(image->vk.format));
+   bool has_r8g8 = tu_is_r8g8(vk_format_to_pipe_format(image->vk.format));
 
    /* With AHB, we could be asked to create an image with VK_IMAGE_TILING_LINEAR
     * but gralloc doesn't know this.  So if we are explicitly told that it is
@@ -492,25 +499,12 @@ tu_image_update_layout(struct tu_device *device, struct tu_image *image,
    for (uint32_t i = 0; i < tu6_plane_count(image->vk.format); i++) {
       struct fdl_layout *layout = &image->layout[i];
       enum pipe_format format = tu6_plane_format(image->vk.format, i);
-      uint32_t width0 = image->vk.extent.width;
-      uint32_t height0 = image->vk.extent.height;
+      uint32_t width0 = vk_format_get_plane_width(image->vk.format, i, image->vk.extent.width);
+      uint32_t height0 = vk_format_get_plane_height(image->vk.format, i, image->vk.extent.height);
 
-      if (i > 0) {
-         switch (image->vk.format) {
-         case VK_FORMAT_G8_B8R8_2PLANE_420_UNORM:
-         case VK_FORMAT_G8_B8_R8_3PLANE_420_UNORM:
-            /* half width/height on chroma planes */
-            width0 = (width0 + 1) >> 1;
-            height0 = (height0 + 1) >> 1;
-            break;
-         case VK_FORMAT_D32_SFLOAT_S8_UINT:
-            /* no UBWC for separate stencil */
-            image->ubwc_enabled = false;
-            break;
-         default:
-            break;
-         }
-      }
+      if (i == 1 && image->vk.format == VK_FORMAT_D32_SFLOAT_S8_UINT)
+         /* no UBWC for separate stencil */
+         image->ubwc_enabled = false;
 
       struct fdl_explicit_layout plane_layout;
 
@@ -595,12 +589,12 @@ tu_image_update_layout(struct tu_device *device, struct tu_image *image,
       /* Fast-clear buffer cannot be larger than 512 bytes on A6XX and 1024 bytes on A7XX (HW limitation) */
       image->has_lrz_fc =
          device->physical_device->info->a6xx.enable_lrz_fast_clear &&
-         lrz_fc_size <= tu_lrzfc_layout<CHIP>::FC_SIZE &&
+         lrz_fc_size <= fd_lrzfc_layout<CHIP>::FC_SIZE &&
          !TU_DEBUG(NOLRZFC);
 
       if (image->has_lrz_fc || device->physical_device->info->a6xx.has_lrz_dir_tracking) {
          image->lrz_fc_offset = image->total_size + lrz_size;
-         lrz_size += sizeof(tu_lrzfc_layout<CHIP>);
+         lrz_size += sizeof(fd_lrzfc_layout<CHIP>);
       }
 
       image->total_size += lrz_size;
@@ -647,6 +641,7 @@ tu_image_init(struct tu_device *device, struct tu_image *image,
                       device->use_z24uint_s8uint))
       image->ubwc_enabled = false;
 
+   bool fmt_list_has_swaps = false;
    /* Mutable images can be reinterpreted as any other compatible format.
     * This is a problem with UBWC (compression for different formats is different),
     * but also tiling ("swap" affects how tiled formats are stored in memory)
@@ -663,9 +658,11 @@ tu_image_init(struct tu_device *device, struct tu_image *image,
        !vk_format_is_depth_or_stencil(image->vk.format)) {
       const VkImageFormatListCreateInfo *fmt_list =
          vk_find_struct_const(pCreateInfo->pNext, IMAGE_FORMAT_LIST_CREATE_INFO);
+      fmt_list_has_swaps = format_list_has_swaps(fmt_list);
       if (!tu6_mutable_format_list_ubwc_compatible(device->physical_device->info,
                                                    fmt_list)) {
-         if (image->ubwc_enabled) {
+         bool mutable_ubwc_fc = device->physical_device->info->a7xx.ubwc_all_formats_compatible;
+         if (image->ubwc_enabled && !mutable_ubwc_fc) {
             if (fmt_list && fmt_list->viewFormatCount == 2) {
                perf_debug(
                   device,
@@ -687,10 +684,17 @@ tu_image_init(struct tu_device *device, struct tu_image *image,
             image->ubwc_enabled = false;
          }
 
-         if (format_list_reinterprets_r8g8_r16(tu_vk_format_to_pipe_format(image->vk.format), fmt_list) ||
-            format_list_has_swaps(fmt_list)) {
+         bool r8g8_r16 = format_list_reinterprets_r8g8_r16(vk_format_to_pipe_format(image->vk.format), fmt_list);
+
+         /* A750+ TODO: Correctly handle swaps when copying mutable images.
+          * We should be able to support UBWC for mutable images with swaps.
+          */
+         if ((r8g8_r16 && !mutable_ubwc_fc) || fmt_list_has_swaps) {
+            image->ubwc_enabled = false;
             image->force_linear_tile = true;
          }
+
+         image->ubwc_fc_mutable = image->ubwc_enabled && mutable_ubwc_fc;
       }
    }
 
@@ -823,6 +827,7 @@ tu_DestroyImage(VkDevice _device,
 {
    VK_FROM_HANDLE(tu_device, device, _device);
    VK_FROM_HANDLE(tu_image, image, _image);
+   struct tu_instance *instance = device->physical_device->instance;
 
    if (!image)
       return;
@@ -833,6 +838,11 @@ tu_DestroyImage(VkDevice _device,
    tu_perfetto_log_destroy_image(device, image);
 #endif
 
+   if (image->iova)
+      vk_address_binding_report(&instance->vk, &image->vk.base,
+                                image->iova, image->total_size,
+                                VK_DEVICE_ADDRESS_BINDING_TYPE_UNBIND_EXT);
+
    vk_image_destroy(&device->vk, pAllocator, &image->vk);
 }
 
@@ -842,6 +852,7 @@ tu_BindImageMemory2(VkDevice _device,
                     const VkBindImageMemoryInfo *pBindInfos)
 {
    VK_FROM_HANDLE(tu_device, device, _device);
+   struct tu_instance *instance = device->physical_device->instance;
 
    for (uint32_t i = 0; i < bindInfoCount; ++i) {
       VK_FROM_HANDLE(tu_image, image, pBindInfos[i].image);
@@ -860,6 +871,13 @@ tu_BindImageMemory2(VkDevice _device,
          image->bo = wsi_img->bo;
          image->map = NULL;
          image->iova = wsi_img->iova;
+
+         TU_RMV(image_bind, device, image);
+
+         vk_address_binding_report(&instance->vk, &image->vk.base,
+                                   image->iova, image->total_size,
+                                   VK_DEVICE_ADDRESS_BINDING_TYPE_BIND_EXT);
+
          continue;
       }
 #endif
@@ -918,6 +936,10 @@ tu_BindImageMemory2(VkDevice _device,
       }
 
       TU_RMV(image_bind, device, image);
+
+      vk_address_binding_report(&instance->vk, &image->vk.base,
+                                image->iova, image->total_size,
+                                VK_DEVICE_ADDRESS_BINDING_TYPE_BIND_EXT);
    }
 
    return VK_SUCCESS;

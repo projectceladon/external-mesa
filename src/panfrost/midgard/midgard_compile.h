@@ -57,6 +57,8 @@ static const nir_shader_compiler_options midgard_nir_options = {
    .lower_find_lsb = true,
    .lower_ifind_msb = true,
    .lower_fdph = true,
+   .lower_fisnormal = true,
+   .lower_hadd = true,
    .lower_uadd_carry = true,
    .lower_usub_borrow = true,
 
@@ -104,6 +106,7 @@ static const nir_shader_compiler_options midgard_nir_options = {
    .force_indirect_unrolling =
       (nir_var_shader_in | nir_var_shader_out | nir_var_function_temp),
    .force_indirect_unrolling_sampler = true,
+   .has_ddx_intrinsics = true,
 };
 
 #endif

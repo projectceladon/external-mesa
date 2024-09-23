@@ -234,6 +234,8 @@ zink_resource_destroy(struct pipe_screen *pscreen,
 {
    struct zink_screen *screen = zink_screen(pscreen);
    struct zink_resource *res = zink_resource(pres);
+   /* prevent double-free when unrefing internal surfaces */
+   res->base.b.reference.count = 999;
    if (pres->target == PIPE_BUFFER) {
       util_range_destroy(&res->valid_buffer_range);
       util_idalloc_mt_free(&screen->buffer_ids, res->base.buffer_id_unique);
@@ -241,6 +243,7 @@ zink_resource_destroy(struct pipe_screen *pscreen,
       simple_mtx_destroy(&res->bufferview_mtx);
       ralloc_free(res->bufferview_cache.table);
    } else {
+      pipe_surface_reference(&res->surface, NULL);
       assert(!_mesa_hash_table_num_entries(&res->surface_cache));
       simple_mtx_destroy(&res->surface_mtx);
       ralloc_free(res->surface_cache.table);
@@ -2395,10 +2398,12 @@ overwrite:
          zink_resource_usage_wait(ctx, res, ZINK_RESOURCE_ACCESS_RW);
       } else
          zink_resource_usage_wait(ctx, res, ZINK_RESOURCE_ACCESS_WRITE);
-      res->obj->access = 0;
-      res->obj->access_stage = 0;
-      res->obj->last_write = 0;
-      zink_resource_copies_reset(res);
+      if (!res->real_buffer_range) {
+         res->obj->access = 0;
+         res->obj->access_stage = 0;
+         res->obj->last_write = 0;
+         zink_resource_copies_reset(res);
+      }
    }
 
    if (!ptr) {
@@ -2434,8 +2439,14 @@ overwrite:
       }
    }
    trans->base.b.usage = usage;
-   if (usage & PIPE_MAP_WRITE)
+   if (usage & PIPE_MAP_WRITE) {
       util_range_add(&res->base.b, &res->valid_buffer_range, box->x, box->x + box->width);
+
+      struct zink_resource *orig_res = zink_resource(trans->base.b.resource);
+      util_range_add(&orig_res->base.b, &orig_res->valid_buffer_range, box->x, box->x + box->width);
+      if (orig_res->real_buffer_range)
+         util_range_add(&orig_res->base.b, orig_res->real_buffer_range, box->x, box->x + box->width);
+   }
 
 success:
    /* ensure the copy context gets unlocked */

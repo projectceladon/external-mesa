@@ -1,24 +1,6 @@
 /*
- * Copyright (C) 2014 Rob Clark <robclark@freedesktop.org>
- *
- * Permission is hereby granted, free of charge, to any person obtaining a
- * copy of this software and associated documentation files (the "Software"),
- * to deal in the Software without restriction, including without limitation
- * the rights to use, copy, modify, merge, publish, distribute, sublicense,
- * and/or sell copies of the Software, and to permit persons to whom the
- * Software is furnished to do so, subject to the following conditions:
- *
- * The above copyright notice and this permission notice (including the next
- * paragraph) shall be included in all copies or substantial portions of the
- * Software.
- *
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
- * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
- * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL
- * THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
- * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
- * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
- * SOFTWARE.
+ * Copyright © 2014 Rob Clark <robclark@freedesktop.org>
+ * SPDX-License-Identifier: MIT
  *
  * Authors:
  *    Rob Clark <robclark@freedesktop.org>
@@ -203,6 +185,12 @@ struct ir3_const_state {
    struct ir3_driver_ubo consts_ubo;
    struct ir3_driver_ubo driver_params_ubo;
    struct ir3_driver_ubo primitive_map_ubo, primitive_param_ubo;
+
+   /* Optional const allocations (preamble, UBO, etc.) may shift the required
+    * consts more than they expect. The free space for optional allocations
+    * should respect required_consts_aligment_vec4.
+    */
+   uint32_t required_consts_aligment_vec4;
 
    int32_t constant_data_dynamic_offsets;
 
@@ -837,6 +825,7 @@ struct ir3_shader_variant {
       struct {
          unsigned req_input_mem;
          unsigned req_local_mem;
+         bool force_linear_dispatch;
       } cs;
    };
 
@@ -909,6 +898,7 @@ struct ir3_shader {
       struct {
          unsigned req_input_mem;    /* in dwords */
          unsigned req_local_mem;
+         bool force_linear_dispatch;
       } cs;
       /* For vertex shaders: */
       struct {
@@ -937,11 +927,18 @@ struct ir3_shader {
  * emit, for both binning and draw pass (a6xx+), the binning pass re-uses it's
  * corresponding draw pass shaders const_state.
  */
-static inline struct ir3_const_state *
+static inline const struct ir3_const_state *
 ir3_const_state(const struct ir3_shader_variant *v)
 {
    if (v->binning_pass)
       return v->nonbinning->const_state;
+   return v->const_state;
+}
+
+static inline struct ir3_const_state *
+ir3_const_state_mut(const struct ir3_shader_variant *v)
+{
+   assert(!v->binning_pass);
    return v->const_state;
 }
 
@@ -985,6 +982,9 @@ ir3_max_const(const struct ir3_shader_variant *v)
 {
    return _ir3_max_const(v, v->key.safe_constlen);
 }
+
+uint16_t ir3_const_find_imm(struct ir3_shader_variant *v, uint32_t imm);
+uint16_t ir3_const_add_imm(struct ir3_shader_variant *v, uint32_t imm);
 
 /* Return true if a variant may need to be recompiled due to exceeding the
  * maximum "safe" constlen.

@@ -256,7 +256,7 @@ init_common_queue_state(struct anv_queue *queue, struct anv_batch *batch)
          device->physical->va.dynamic_state_pool.addr,
       };
       sba.DynamicStateBufferSize = (device->physical->va.dynamic_state_pool.size +
-                                    device->physical->va.sampler_state_pool.size) / 4096;
+                                    device->physical->va.dynamic_visible_pool.size) / 4096;
       sba.DynamicStateMOCS = mocs;
       sba.DynamicStateBaseAddressModifyEnable = true;
       sba.DynamicStateBufferSizeModifyEnable = true;
@@ -311,6 +311,18 @@ init_common_queue_state(struct anv_queue *queue, struct anv_batch *batch)
       sba.L1CacheControl = L1CC_WB;
 #endif
    }
+
+   /* Disable the POOL_ALLOC mechanism in HW. We found that this state can get
+    * corrupted (likely due to leaking from another context), the default
+    * value should be disabled. It doesn't cost anything to set it once at
+    * device initialization.
+    */
+#if GFX_VER >= 11 && GFX_VERx10 < 125
+   anv_batch_emit(batch, GENX(3DSTATE_BINDING_TABLE_POOL_ALLOC), btpa) {
+      btpa.MOCS = mocs;
+      btpa.BindingTablePoolEnable = false;
+   }
+#endif
 
    struct mi_builder b;
    mi_builder_init(&b, device->info, batch);
@@ -667,9 +679,6 @@ init_render_queue_state(struct anv_queue *queue, bool is_companion_rcs_batch)
       return result;
    }
 
-   if (!device->trtt.queue)
-      device->trtt.queue = queue;
-
    if (is_companion_rcs_batch)
       queue->init_companion_submit = submit;
    else
@@ -847,6 +856,7 @@ genX(init_physical_device_state)(ASSERTED struct anv_physical_device *pdevice)
 #endif
 
    pdevice->cmd_emit_timestamp = genX(cmd_emit_timestamp);
+   pdevice->cmd_capture_data = genX(cmd_capture_data);
 
    pdevice->gpgpu_pipeline_value = GPGPU;
 
@@ -904,17 +914,10 @@ genX(init_device_state)(struct anv_device *device)
       }
       if (res != VK_SUCCESS)
          return res;
-   }
 
-   if (device->vk.enabled_extensions.EXT_descriptor_buffer &&
-       device->slice_hash.alloc_size) {
-      device->slice_hash_db =
-         anv_state_pool_alloc(&device->dynamic_state_db_pool,
-                              device->slice_hash.alloc_size, 64);
-
-      memcpy(device->slice_hash_db.map,
-             device->slice_hash.map,
-             device->slice_hash.alloc_size);
+      if (!device->trtt.queue &&
+          queue->family->queueFlags & VK_QUEUE_SPARSE_BINDING_BIT)
+         device->trtt.queue = queue;
    }
 
    return res;
@@ -1199,21 +1202,35 @@ VkResult genX(CreateSampler)(
    sampler->n_planes = ycbcr_info ? ycbcr_info->n_planes : 1;
 
    uint32_t border_color_stride = 64;
-   uint32_t border_color_offset, border_color_db_offset = 0;
+   uint32_t border_color_offset;
    void *border_color_ptr;
    if (sampler->vk.border_color <= VK_BORDER_COLOR_INT_OPAQUE_WHITE) {
       border_color_offset = device->border_colors.offset +
                             pCreateInfo->borderColor *
                             border_color_stride;
-      border_color_db_offset = device->border_colors_db.offset +
-                               pCreateInfo->borderColor *
-                               border_color_stride;
       border_color_ptr = device->border_colors.map +
                          pCreateInfo->borderColor * border_color_stride;
    } else {
       assert(vk_border_color_is_custom(sampler->vk.border_color));
-      sampler->custom_border_color =
-         anv_state_reserved_array_pool_alloc(&device->custom_border_colors, false);
+      if (pCreateInfo->flags & VK_SAMPLER_CREATE_DESCRIPTOR_BUFFER_CAPTURE_REPLAY_BIT_EXT) {
+         const VkOpaqueCaptureDescriptorDataCreateInfoEXT *opaque_info =
+            vk_find_struct_const(pCreateInfo->pNext,
+                                 OPAQUE_CAPTURE_DESCRIPTOR_DATA_CREATE_INFO_EXT);
+         if (opaque_info) {
+            uint32_t alloc_idx = *((const uint32_t *)opaque_info->opaqueCaptureDescriptorData);
+            sampler->custom_border_color =
+               anv_state_reserved_array_pool_alloc_index(&device->custom_border_colors, alloc_idx);
+         } else {
+            sampler->custom_border_color =
+               anv_state_reserved_array_pool_alloc(&device->custom_border_colors, true);
+         }
+      } else {
+         sampler->custom_border_color =
+            anv_state_reserved_array_pool_alloc(&device->custom_border_colors, false);
+      }
+      if (sampler->custom_border_color.alloc_size == 0)
+         return vk_error(device, VK_ERROR_OUT_OF_DEVICE_MEMORY);
+
       border_color_offset = sampler->custom_border_color.offset;
       border_color_ptr = sampler->custom_border_color.map;
 
@@ -1237,29 +1254,6 @@ VkResult genX(CreateSampler)(
       }
 
       memcpy(border_color_ptr, color.u32, sizeof(color));
-
-      if (device->vk.enabled_extensions.EXT_descriptor_buffer) {
-         if (pCreateInfo->flags & VK_SAMPLER_CREATE_DESCRIPTOR_BUFFER_CAPTURE_REPLAY_BIT_EXT) {
-            const VkOpaqueCaptureDescriptorDataCreateInfoEXT *opaque_info =
-               vk_find_struct_const(pCreateInfo->pNext,
-                                    OPAQUE_CAPTURE_DESCRIPTOR_DATA_CREATE_INFO_EXT);
-            if (opaque_info) {
-               uint32_t alloc_idx = *((const uint32_t *)opaque_info->opaqueCaptureDescriptorData);
-               sampler->custom_border_color_db =
-                  anv_state_reserved_array_pool_alloc_index(&device->custom_border_colors_db, alloc_idx);
-            } else {
-               sampler->custom_border_color_db =
-                  anv_state_reserved_array_pool_alloc(&device->custom_border_colors_db, true);
-            }
-         } else {
-            sampler->custom_border_color_db =
-               anv_state_reserved_array_pool_alloc(&device->custom_border_colors_db, false);
-         }
-         if (sampler->custom_border_color_db.alloc_size == 0)
-            return vk_error(device, VK_ERROR_OUT_OF_DEVICE_MEMORY);
-         border_color_db_offset = sampler->custom_border_color_db.offset;
-         memcpy(sampler->custom_border_color_db.map, color.u32, sizeof(color));
-      }
    }
 
    const bool seamless_cube =
@@ -1357,11 +1351,6 @@ VkResult genX(CreateSampler)(
        */
       sampler_state.BorderColorPointer = border_color_offset;
       GENX(SAMPLER_STATE_pack)(NULL, sampler->state[p], &sampler_state);
-
-      if (device->vk.enabled_extensions.EXT_descriptor_buffer) {
-         sampler_state.BorderColorPointer = border_color_db_offset;
-         GENX(SAMPLER_STATE_pack)(NULL, sampler->db_state[p], &sampler_state);
-      }
    }
 
    /* If we have bindless, allocate enough samplers.  We allocate 32 bytes
@@ -1397,14 +1386,14 @@ genX(emit_embedded_sampler)(struct anv_device *device,
    memcpy(&sampler->key, &binding->key, sizeof(binding->key));
 
    sampler->border_color_state =
-      anv_state_pool_alloc(&device->dynamic_state_db_pool,
+      anv_state_pool_alloc(&device->dynamic_state_pool,
                            sizeof(struct gfx8_border_color), 64);
    memcpy(sampler->border_color_state.map,
           binding->key.color,
           sizeof(binding->key.color));
 
    sampler->sampler_state =
-      anv_state_pool_alloc(&device->dynamic_state_db_pool,
+      anv_state_pool_alloc(&device->dynamic_state_pool,
                            ANV_SAMPLER_STATE_SIZE, 32);
 
    struct GENX(SAMPLER_STATE) sampler_state = {
@@ -1467,50 +1456,82 @@ genX(apply_task_urb_workaround)(struct anv_cmd_buffer *cmd_buffer)
 }
 
 VkResult
-genX(init_trtt_context_state)(struct anv_device *device,
-                              struct anv_async_submit *submit)
+genX(init_trtt_context_state)(struct anv_async_submit *submit)
 {
 #if GFX_VER >= 12
+   struct anv_queue *queue = submit->queue;
+   struct anv_device *device = queue->device;
    struct anv_trtt *trtt = &device->trtt;
    struct anv_batch *batch = &submit->batch;
 
-   anv_batch_write_reg(batch, GENX(GFX_TRTT_INVAL), trtt_inval) {
+   assert((trtt->l3_addr & 0xFFF) == 0);
+   uint32_t l3_addr_low = (trtt->l3_addr & 0xFFFFF000) >> 12;
+   uint32_t l3_addr_high = (trtt->l3_addr >> 32) & 0xFFFF;
+
+   anv_batch_write_reg(batch, GENX(GFX_TRTT_INVAL), trtt_inval)
       trtt_inval.InvalidTileDetectionValue = ANV_TRTT_L1_INVALID_TILE_VAL;
-   }
-   anv_batch_write_reg(batch, GENX(GFX_TRTT_NULL), trtt_null) {
+   anv_batch_write_reg(batch, GENX(GFX_TRTT_NULL), trtt_null)
       trtt_null.NullTileDetectionValue = ANV_TRTT_L1_NULL_TILE_VAL;
-   }
+   anv_batch_write_reg(batch, GENX(GFX_TRTT_L3_BASE_LOW), trtt_base_low)
+      trtt_base_low.TRVAL3PointerLowerAddress = l3_addr_low;
+   anv_batch_write_reg(batch, GENX(GFX_TRTT_L3_BASE_HIGH), trtt_base_high)
+      trtt_base_high.TRVAL3PointerUpperAddress = l3_addr_high;
+
+   anv_batch_write_reg(batch, GENX(BLT_TRTT_INVAL), trtt_inval)
+      trtt_inval.InvalidTileDetectionValue = ANV_TRTT_L1_INVALID_TILE_VAL;
+   anv_batch_write_reg(batch, GENX(BLT_TRTT_NULL), trtt_null)
+      trtt_null.NullTileDetectionValue = ANV_TRTT_L1_NULL_TILE_VAL;
+   anv_batch_write_reg(batch, GENX(BLT_TRTT_L3_BASE_LOW), trtt_base_low)
+      trtt_base_low.TRVAL3PointerLowerAddress = l3_addr_low;
+   anv_batch_write_reg(batch, GENX(BLT_TRTT_L3_BASE_HIGH), trtt_base_high)
+      trtt_base_high.TRVAL3PointerUpperAddress = l3_addr_high;
+
+   anv_batch_write_reg(batch, GENX(COMP_CTX0_TRTT_INVAL), trtt_inval)
+      trtt_inval.InvalidTileDetectionValue = ANV_TRTT_L1_INVALID_TILE_VAL;
+   anv_batch_write_reg(batch, GENX(COMP_CTX0_TRTT_NULL), trtt_null)
+      trtt_null.NullTileDetectionValue = ANV_TRTT_L1_NULL_TILE_VAL;
+   anv_batch_write_reg(batch, GENX(COMP_CTX0_TRTT_L3_BASE_LOW), trtt_base_low)
+      trtt_base_low.TRVAL3PointerLowerAddress = l3_addr_low;
+   anv_batch_write_reg(batch, GENX(COMP_CTX0_TRTT_L3_BASE_HIGH), trtt_base_high)
+      trtt_base_high.TRVAL3PointerUpperAddress = l3_addr_high;
+
 #if GFX_VER >= 20
-   anv_batch_write_reg(batch, GENX(GFX_TRTT_VA_RANGE), trtt_va_range) {
-      trtt_va_range.TRVABase = device->physical->va.trtt.addr >> 44;
-   }
+   uint32_t trva_base = device->physical->va.trtt.addr >> 44;
+   anv_batch_write_reg(batch, GENX(GFX_TRTT_VA_RANGE), trtt_va_range)
+      trtt_va_range.TRVABase = trva_base;
+   anv_batch_write_reg(batch, GENX(BLT_TRTT_VA_RANGE), trtt_va_range)
+      trtt_va_range.TRVABase = trva_base;
+   anv_batch_write_reg(batch, GENX(COMP_CTX0_TRTT_VA_RANGE), trtt_va_range)
+      trtt_va_range.TRVABase = trva_base;
 #else
    anv_batch_write_reg(batch, GENX(GFX_TRTT_VA_RANGE), trtt_va_range) {
       trtt_va_range.TRVAMaskValue = 0xF;
       trtt_va_range.TRVADataValue = 0xF;
    }
+   anv_batch_write_reg(batch, GENX(BLT_TRTT_VA_RANGE), trtt_va_range) {
+      trtt_va_range.TRVAMaskValue = 0xF;
+      trtt_va_range.TRVADataValue = 0xF;
+   }
+   anv_batch_write_reg(batch, GENX(COMP_CTX0_TRTT_VA_RANGE), trtt_va_range) {
+      trtt_va_range.TRVAMaskValue = 0xF;
+      trtt_va_range.TRVADataValue = 0xF;
+   }
 #endif
 
-   uint64_t l3_addr = trtt->l3_addr;
-   assert((l3_addr & 0xFFF) == 0);
-   anv_batch_write_reg(batch, GENX(GFX_TRTT_L3_BASE_LOW), trtt_base_low) {
-      trtt_base_low.TRVAL3PointerLowerAddress =
-         (l3_addr & 0xFFFFF000) >> 12;
-   }
-   anv_batch_write_reg(batch, GENX(GFX_TRTT_L3_BASE_HIGH),
-         trtt_base_high) {
-      trtt_base_high.TRVAL3PointerUpperAddress =
-         (l3_addr >> 32) & 0xFFFF;
-   }
    /* Enabling TR-TT needs to be done after setting up the other registers.
-   */
-   anv_batch_write_reg(batch, GENX(GFX_TRTT_CR), trtt_cr) {
+    */
+   anv_batch_write_reg(batch, GENX(GFX_TRTT_CR), trtt_cr)
       trtt_cr.TRTTEnable = true;
-   }
+   anv_batch_write_reg(batch, GENX(BLT_TRTT_CR), trtt_cr)
+      trtt_cr.TRTTEnable = true;
+   anv_batch_write_reg(batch, GENX(COMP_CTX0_TRTT_CR), trtt_cr)
+      trtt_cr.TRTTEnable = true;
 
-   genx_batch_emit_pipe_control(batch, device->info, _3D,
-                                ANV_PIPE_CS_STALL_BIT |
-                                ANV_PIPE_TLB_INVALIDATE_BIT);
+   if (queue->family->engine_class != INTEL_ENGINE_CLASS_COPY) {
+      genx_batch_emit_pipe_control(batch, device->info, _3D,
+                                   ANV_PIPE_CS_STALL_BIT |
+                                   ANV_PIPE_TLB_INVALIDATE_BIT);
+   }
 #endif
    return VK_SUCCESS;
 }

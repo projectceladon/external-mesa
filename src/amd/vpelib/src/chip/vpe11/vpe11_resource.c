@@ -32,9 +32,11 @@
 #include "vpe10_dpp.h"
 #include "vpe10_mpc.h"
 #include "vpe10_opp.h"
-#include "vpe_command.h"
+#include "vpe11_command.h"
 #include "vpe10_cm_common.h"
 #include "vpe10_background.h"
+#include "vpe10_plane_desc_writer.h"
+#include "vpe11_vpe_desc_writer.h"
 #include "vpe10/inc/asic/bringup_vpe_6_1_0_offset.h"
 #include "vpe10/inc/asic/bringup_vpe_6_1_0_sh_mask.h"
 #include "vpe10/inc/asic/bringup_vpe_6_1_0_default.h"
@@ -114,16 +116,19 @@ static struct vpe_caps caps = {
                     .p010            = 1, /**< planar 4:2:0 10-bit */
                     .p016            = 0, /**< planar 4:2:0 16-bit */
                     .ayuv            = 0, /**< packed 4:4:4 */
-                    .yuy2            = 0  /**< packed 4:2:2 */
+                    .yuy2 = 0
                 },
-            .output_pixel_format_support = {.argb_packed_32b = 1,
-                .nv12                                        = 0,
-                .fp16                                        = 1,
-                .p010                                        = 0,
-                .p016                                        = 0,
-                .ayuv                                        = 0,
-                .yuy2                                        = 0},
-            .max_upscale_factor          = 64000,
+            .output_pixel_format_support =
+                {
+                    .argb_packed_32b = 1,
+                    .nv12            = 0,
+                    .fp16            = 1,
+                    .p010            = 0, /**< planar 4:2:0 10-bit */
+                    .p016            = 0, /**< planar 4:2:0 16-bit */
+                    .ayuv            = 0, /**< packed 4:4:4 */
+                    .yuy2 = 0
+                },
+            .max_upscale_factor = 64000,
 
             // 6:1 downscaling ratio: 1000/6 = 166.666
             .max_downscale_factor = 167,
@@ -134,7 +139,11 @@ static struct vpe_caps caps = {
         },
 };
 
-static struct vpe_cap_funcs cap_funcs = {.get_dcc_compression_cap = vpe10_get_dcc_compression_cap};
+static struct vpe_cap_funcs cap_funcs =
+{
+    .get_dcc_compression_output_cap = vpe10_get_dcc_compression_output_cap,
+    .get_dcc_compression_input_cap  = vpe10_get_dcc_compression_input_cap
+};
 
 enum vpe_status vpe11_construct_resource(struct vpe_priv *vpe_priv, struct resource *res)
 {
@@ -162,6 +171,9 @@ enum vpe_status vpe11_construct_resource(struct vpe_priv *vpe_priv, struct resou
         goto err;
 
     vpe11_construct_cmd_builder(vpe_priv, &res->cmd_builder);
+    vpe10_construct_plane_desc_writer(&vpe_priv->plane_desc_writer);
+    vpe11_construct_vpe_desc_writer(&vpe_priv->vpe_desc_writer);
+
     vpe_priv->num_pipe = 1;
 
     res->internal_hdr_normalization = 1;
@@ -179,6 +191,7 @@ enum vpe_status vpe11_construct_resource(struct vpe_priv *vpe_priv, struct resou
     res->program_frontend                  = vpe10_program_frontend;
     res->program_backend                   = vpe10_program_backend;
     res->get_bufs_req                      = vpe10_get_bufs_req;
+    res->check_bg_color_support            = vpe10_check_bg_color_support;
 
     return VPE_STATUS_OK;
 err:
