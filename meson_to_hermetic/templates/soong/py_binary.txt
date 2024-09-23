@@ -1,0 +1,18 @@
+{# Copyright © 2024 Google Inc.
+   SPDX-License-Identifier: MIT
+#}
+python_binary_host {
+  name: "{{ name }}",
+  main: "{{ main }}",
+  srcs: [
+  {% for src in srcs %}
+    "{{ src }}",
+  {% endfor %}
+  ],
+  libs: ["mako"],
+  version: {
+    py3: {
+      embedded_launcher: false,
+    },
+  },
+}

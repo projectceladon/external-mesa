@@ -1,0 +1,10 @@
+{# Copyright © 2024 Google Inc.
+   SPDX-License-Identifier: MIT
+ #}
+# package library
+cc_library(
+    name = "{{ name }}",
+    deps = [ "{{ target_name }}" ],
+    includes = [ "." ],
+    visiblity = [ "//visibility:public" ],
+)
