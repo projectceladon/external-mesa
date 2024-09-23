@@ -1,0 +1,17 @@
+{# Copyright © 2024 Google Inc.
+   SPDX-License-Identifier: MIT
+#}
+py_binary(
+  name = "{{ name }}",
+  main = "{{ main }}",
+  srcs = [
+  {% for src in srcs %}
+    "{{ src }}",
+  {% endfor %}
+  ],
+  imports = [
+  {% for import in imports %}
+    "{{ import }}",
+  {% endfor %}
+  ],
+)

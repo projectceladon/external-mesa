@@ -1,0 +1,58 @@
+{# Copyright © 2024 Google Inc.
+   SPDX-License-Identifier: MIT
+#}
+cc_static_library {
+    name: "{{ name }}",
+    srcs: [
+    {% for src in srcs %}
+        "{{ src }}",
+    {% endfor %}
+    ],
+    generated_headers: [
+    {% for generated in generated_headers %}
+        "{{ generated }}",
+    {% endfor %}
+    ],
+    generated_sources: [
+    {% for generated in generated_sources %}
+        "{{ generated }}",
+    {% endfor %}
+    ],
+    c_std: "{{ c_std_val }}",
+    cpp_std: "{{ cpp_std_val }}",
+    conlyflags: [
+    {% for arg in cflags %}
+        "{{ arg }}",
+    {% endfor %}
+    ],
+    cppflags: [
+    {% for arg in cppflags %}
+        "{{ arg }}",
+    {% endfor %}
+    ],
+    local_include_dirs: [
+    {% for inc in include_directories %}
+        "{{ inc }}",
+    {% endfor %}
+    ],
+    static_libs: [
+    {% for lib in static_libs %}
+        "{{ lib }}",
+    {% endfor %}
+    ],
+    whole_static_libs: [
+    {% for lib in whole_static_libs %}
+        "{{ lib }}",
+    {% endfor %}
+    ],
+    shared_libs: [
+    {% for lib in shared_libs %}
+        "{{ lib }}",
+    {% endfor %}
+    ],
+    header_libs: [
+    {% for lib in header_libs %}
+        "{{ lib }}",
+    {% endfor %}
+    ],
+}

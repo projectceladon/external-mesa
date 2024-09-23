@@ -1,0 +1,13 @@
+{# Copyright © 2024 Google Inc.
+   SPDX-License-Identifier: MIT
+#}
+# header library
+cc_library(
+    name = "{{ name }}",
+    hdrs = []
+    {% for dir in dir_set %}
+        + glob(["{{ dir }}"])
+    {% endfor %}
+    ,
+    visibility = [ "//visibility:public" ],
+)
