@@ -187,9 +187,7 @@ cc_defaults {
     ],
     arch: {
         arm: {
-            neon: {
-                cflags: ["-DNO_FORMAT_ASM"],
-            },
+            cflags: ["-DNO_FORMAT_ASM"],
         },
         arm64: {
             cflags: ["-DNO_FORMAT_ASM"],
