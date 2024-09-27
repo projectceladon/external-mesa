@@ -1,0 +1,86 @@
+{# Copyright © 2024 Google Inc.
+   SPDX-License-Identifier: MIT
+#}
+cc_library_static {
+    name: "mesa_platform_virtgpu",
+    defaults: [
+        "mesa_gfxstream_guest_cc_defaults",
+    ],
+    {# Assume all these directories are ran from root project
+       I.E. external/mesa3d
+    #}
+    srcs: [
+        "src/gfxstream/guest/platform/include/VirtGpu.cpp",
+    ],
+    header_libs: [
+        "mesa_common_headers",
+    ],
+    static_libs: [
+        "mesa_util",
+    ],
+    shared_libs: [
+        "libdrm",
+    ],
+    export_include_dirs: [
+        "include",
+    ],
+    export_shared_lib_headers: [
+        "libdrm",
+    ],
+    cflags: [
+        "-Wno-missing-field-initializers",
+        "-fvisibility=default",
+        "-fstrict-aliasing",
+    ],
+    local_include_dirs: [
+        "include",
+    ],
+    target: {
+        android: {
+            srcs: [
+                "src/gfxstream/guest/platform/linux/LinuxVirtGpuBlob.cpp",
+                "src/gfxstream/guest/platform/linux/LinuxVirtGpuBlobMapping.cpp",
+                "src/gfxstream/guest/platform/linux/LinuxVirtGpuDevice.cpp",
+                "src/gfxstream/guest/platform/linux/LinuxSync.cpp",
+                "src/gfxstream/guest/platform/kumquat/VirtGpuKumquatStub.cpp",
+            ],
+            shared_libs: [
+                "libsync",
+            ],
+        },
+        host: {
+            header_libs: [
+                "virtgpu_kumquat_ffi_headers",
+            ],
+            srcs: [
+                "src/gfxstream/guest/platform/linux/LinuxVirtGpuBlob.cpp",
+                "src/gfxstream/guest/platform/linux/LinuxVirtGpuBlobMapping.cpp",
+                "src/gfxstream/guest/platform/linux/LinuxVirtGpuDevice.cpp",
+                "src/gfxstream/guest/platform/linux/LinuxSync.cpp",
+                "src/gfxstream/guest/platform/kumquat/VirtGpuKumquatBlob.cpp",
+                "src/gfxstream/guest/platform/kumquat/VirtGpuKumquatBlobMapping.cpp",
+                "src/gfxstream/guest/platform/kumquat/VirtGpuKumquatDevice.cpp",
+                "src/gfxstream/guest/platform/kumquat/VirtGpuKumquatSync.cpp",
+            ],
+            shared_libs: [
+                "libvirtgpu_kumquat_ffi",
+            ],
+        },
+    },
+}
+
+cc_defaults {
+    name: "mesa_platform_virtgpu_defaults",
+    static_libs: [
+        "mesa_platform_virtgpu",
+        "mesa_util",
+        "mesa_util_c11",
+    ],
+    target: {
+        host: {
+            shared_libs: [
+                "libvirtgpu_kumquat_ffi",
+            ],
+        },
+    },
+}

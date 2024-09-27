@@ -1,0 +1,18 @@
+{# Copyright © 2024 Google Inc.
+   SPDX-License-Identifier: MIT
+#}
+cc_library_headers {
+    name: "mesa_gfxstream_guest_iostream",
+    defaults: [
+        "mesa_gfxstream_guest_cc_defaults",
+    ],
+    shared_libs: [
+        "liblog",
+    ],
+    export_shared_lib_headers: [
+        "liblog",
+    ],
+    export_include_dirs: [
+        "include",
+    ],
+}

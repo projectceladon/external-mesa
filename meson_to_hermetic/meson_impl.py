@@ -661,7 +661,7 @@ def dependency(*names, required=True, version=''):
                 version=version,
                 found=True,
             )
-
+        # TODO(bpnguyen): Move these hardcoded dependencies to a global config
         if (
             name == 'backtrace'
             or name == 'curses'
@@ -679,6 +679,7 @@ def dependency(*names, required=True, version=''):
             or name == 'lua54'
             or name == 'valgrind'
             or name == 'wayland-scanner'
+            or name == 'SPIRV-Tools'
         ):
             return Dependency(name, version, found=False)
 
