@@ -123,6 +123,9 @@ class BazelGenerator(impl.Compiler):
         print(f"links '{name}': {result}")
         return result
 
+    def generate(self, translator):
+        raise NotImplementedError('Not implemented')
+
 
 class BazelPkgConfigModule(impl.PkgConfigModule):
     def generate(
@@ -471,10 +474,13 @@ def _emit_builtin_target_fuchsia(
     link_whole=[],
     library_type=LibraryType.Library,
 ):
+    sl = StaticLibrary()
     impl.fprint('cc_library(')
     target_name_so = target_name
     target_name = target_name if static else '_' + target_name
     impl.fprint('  name = "%s",' % target_name)
+    sl.name = target_name
+    sl.library_type = library_type
 
     srcs = set()
     generated_sources = set()
@@ -543,6 +549,7 @@ def _emit_builtin_target_fuchsia(
         if src.endswith('.c'):
             has_c_files = True
         impl.fprint('    "%s",' % src)
+        sl.srcs.append(src)
     impl.fprint('  ],')
 
     # For Bazel to find headers in the "current area", we have to include
@@ -567,31 +574,38 @@ def _emit_builtin_target_fuchsia(
     impl.fprint('  hdrs = [')
     for hdr in set(generated_header_files):
         impl.fprint('    "%s",' % hdr)
+        sl.generated_headers.append(hdr)
     impl.fprint('   ]')
     for hdr in local_include_dirs:
         impl.fprint('    + glob(["%s"])' % os.path.normpath(os.path.join(hdr, '*.h')))
-
+        sl.local_include_dirs.append(os.path.normpath(os.path.join(hdr, '*.h')))
     impl.fprint('  ,')
 
     impl.fprint('  copts = [')
     # Needed for subdir sources
     impl.fprint('    "-I %s",' % impl.get_relative_dir())
     impl.fprint('    "-I $(GENDIR)/%s",' % impl.get_relative_dir())
+    sl.copts.append('    "-I %s",' % impl.get_relative_dir())
+    sl.copts.append('    "-I $(GENDIR)/%s",' % impl.get_relative_dir())
     for inc in include_directories:
         for dir in inc.dirs:
             impl.fprint('    "-I %s",' % dir)
             impl.fprint('    "-I $(GENDIR)/%s",' % dir)
+            sl.copts.append('    "-I %s",' % dir)
+            sl.copts.append('    "-I $(GENDIR)/%s",' % dir)
 
     if has_c_files:
         for arg in cflags:
             # Double escape double quotations
             arg = re.sub(r'"', '\\\\\\"', arg)
             impl.fprint("    '%s'," % arg)
+            sl.copts.append(arg)
     else:
         for arg in cppflags:
             # Double escape double quotations
             arg = re.sub(r'"', '\\\\\\"', arg)
             impl.fprint("    '%s'," % arg)
+            sl.copts.append(arg)
 
     impl.fprint('  ],')
 
@@ -611,19 +625,29 @@ def _emit_builtin_target_fuchsia(
     impl.fprint('  deps = [')
     for bdep in bazel_deps:
         impl.fprint('    "%s",' % bdep)
+        sl.deps.append(bdep)
     impl.fprint('  ],')
 
     impl.fprint('  target_compatible_with = [ "@platforms//os:fuchsia" ],')
+    sl.target_compatible_with.append("@platforms//os:fuchsia")
     impl.fprint('  visibility = [ "//visibility:public" ],')
+    sl.visibility.append("//visibility:public")
     impl.fprint(')')
 
+    meson_translator.meson_state.static_libraries.append(sl)
+
     if not static:
+        shared_sl = StaticLibrary()
+        shared_sl.library_type = LibraryType.LibraryShared
+        shared_sl.name = target_name_so
+        shared_sl.deps.append(target_name)
         impl.fprint('cc_shared_library(')
         impl.fprint('  name = "%s",' % target_name_so)
         impl.fprint('  deps = [')
         impl.fprint('    "%s",' % target_name)
         impl.fprint('  ],')
         impl.fprint(')')
+        meson_translator.meson_state.static_libraries.append(shared_sl)
 
 
 # TODO(bpnguyen): Implement some bazel/soong parser that would merge
@@ -1423,22 +1447,30 @@ def custom_target(
                 impl.get_relative_gen_dir(output)
             )
 
+        ct = CustomTarget()
         impl.fprint('genrule(')
         impl.fprint('  name = "%s",' % custom_target_.target_name())
+        ct.name = custom_target_.target_name()
         impl.fprint('  srcs = [')
         for src in set(relative_inputs):
             impl.fprint('    "%s",' % src)
+            ct.srcs.append(src)
         for dep in depends:
             assert type(dep) is impl.CustomTarget
             impl.fprint('    ":%s",' % dep.target_name())
+            ct.srcs.append(dep.target_name())
         impl.fprint('  ],')
         impl.fprint('  outs = [')
         for out in set(relative_outputs):
             impl.fprint('    "%s",' % out)
+            ct.out.append(out)
         impl.fprint('  ],')
         if python_script_target_name != '':
             impl.fprint('  tools = [ "%s" ],' % python_script_target_name)
+            ct.tools.append(python_script_target_name)
         impl.fprint('  cmd = "%s"' % command_line)
+        ct.cmd = command_line
         impl.fprint(')')
+        meson_translator.meson_state.custom_targets.append(ct)
 
     return custom_target_
