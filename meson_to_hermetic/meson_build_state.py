@@ -37,6 +37,7 @@ class StaticLibrary(IncludeDirectories):
         self.generated_headers: list[str] = []
         self.generated_sources: list[str] = []
         # In Bazel, these c options are copts
+        self.copts: list[str] = []
         self.cstd: str = ''
         self.cpp_std: str = ''
         self.conlyflags: list[str] = []
