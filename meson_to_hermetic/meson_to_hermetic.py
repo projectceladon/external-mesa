@@ -1159,7 +1159,7 @@ def custom_target(
                 if src.endswith('.py'):
                     impl.fprint('    "%s",' % src)
             impl.fprint('  ],')
-            impl.fprint('  libs: ["mako"],')
+            impl.fprint('  libs: ["mako", "pyyaml"],')
             # For the PYTHONPATH to work in our genrules command, we need the python interpreter,
             # not a compiled binary, so disable embedded_launcher.
             impl.fprint('  version: {')
