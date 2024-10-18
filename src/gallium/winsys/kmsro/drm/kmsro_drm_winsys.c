@@ -123,7 +123,7 @@ struct pipe_screen *kmsro_drm_screen_create(int kms_fd,
 #endif
    } else if (strcmp(render_dev_name, "i915") == 0) {
 #if defined(GALLIUM_IRIS)
-      ro->create_for_resource = renderonly_create_kms_dumb_buffer_for_resource,
+      ro->create_for_resource = renderonly_create_gpu_import_for_resource,
       screen = iris_screen_create_renderonly(ro->gpu_fd, ro, config);
 #endif
    }
