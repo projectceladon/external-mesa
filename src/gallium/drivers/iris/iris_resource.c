@@ -1131,43 +1131,6 @@ iris_resource_create_for_buffer(struct pipe_screen *pscreen,
 }
 
 static struct pipe_resource *
-iris_resource_create_renderonly(struct pipe_screen *pscreen,
-                                const struct pipe_resource *templ)
-{
-   struct iris_screen *screen = (struct iris_screen *)pscreen;
-   struct pipe_resource scanout_templat = *templ;
-   struct renderonly_scanout *scanout;
-   struct winsys_handle handle;
-   struct pipe_resource *pres;
-
-   if (templ->bind & (PIPE_BIND_RENDER_TARGET |
-                      PIPE_BIND_DEPTH_STENCIL)) {
-      scanout_templat.width0 = align(templ->width0, 16);
-      scanout_templat.height0 = align(templ->height0, 16);
-   }
-
-   scanout = renderonly_scanout_for_resource(&scanout_templat,
-                                             screen->ro, &handle);
-   if (!scanout)
-      return NULL;
-
-   assert(handle.type == WINSYS_HANDLE_TYPE_FD);
-   pres = pscreen->resource_from_handle(pscreen, templ, &handle,
-                                        PIPE_HANDLE_USAGE_FRAMEBUFFER_WRITE);
-
-   close(handle.handle);
-   if (!pres) {
-      renderonly_scanout_destroy(scanout, screen->ro);
-      return NULL;
-   }
-
-   struct iris_resource *res = (struct iris_resource *)pres;
-   res->scanout = scanout;
-
-   return pres;
-}
-
-static struct pipe_resource *
 iris_resource_create_for_image(struct pipe_screen *pscreen,
                                const struct pipe_resource *templ,
                                const uint64_t *modifiers,
@@ -1176,16 +1139,6 @@ iris_resource_create_for_image(struct pipe_screen *pscreen,
 {
    struct iris_screen *screen = (struct iris_screen *)pscreen;
    const struct intel_device_info *devinfo = screen->devinfo;
-   struct pipe_resource *pres;
-
-   if (screen->ro &&
-       (templ->bind & (PIPE_BIND_DISPLAY_TARGET |
-                       PIPE_BIND_SCANOUT | PIPE_BIND_SHARED))) {
-      pres = iris_resource_create_renderonly(pscreen, templ);
-      if (pres)
-        return pres;
-   }
-
    struct iris_resource *res = iris_alloc_resource(pscreen, templ);
    if (!res)
       return NULL;
@@ -1276,6 +1229,12 @@ iris_resource_create_for_image(struct pipe_screen *pscreen,
    if (templ->bind & PIPE_BIND_SHARED) {
       iris_bo_mark_exported(res->bo);
       res->base.is_shared = true;
+   }
+
+   if (screen->ro &&
+       (templ->bind & (PIPE_BIND_DISPLAY_TARGET |
+                       PIPE_BIND_SCANOUT | PIPE_BIND_SHARED))) {
+      res->scanout = renderonly_scanout_for_resource(&res->base.b, screen->ro, NULL);
    }
 
    return &res->base.b;
@@ -1446,6 +1405,17 @@ iris_resource_from_handle(struct pipe_screen *pscreen,
 
    res->offset = whandle->offset;
    res->surf.row_pitch_B = whandle->stride;
+
+   if (screen->ro) {
+      /* Make sure that renderonly has a handle to our buffer in the
+       * display's fd, so that a later renderonly_get_handle()
+       * returns correct handles or GEM names.
+       */
+      res->scanout =
+              renderonly_create_gpu_import_for_resource(&res->base.b,
+                                                        screen->ro,
+                                                        NULL);
+   }
 
    if (whandle->plane == 0) {
       /* All planes are present. Fill out the main plane resource(s). */
