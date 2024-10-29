@@ -52,5 +52,6 @@ load_dependencies()
 
 {{ meson_build }}
 ### Close the build definition file
+meson_translator.generator.generate(meson_translator)
 close_output_file()
 {# Newline Placeholder #}

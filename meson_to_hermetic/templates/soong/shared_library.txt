@@ -1,7 +1,7 @@
 {# Copyright © 2024 Google Inc.
    SPDX-License-Identifier: MIT
 #}
-cc_library_static {
+cc_library_shared {
     name: "{{ name }}",
     host_supported: {{ host_supported }},
     srcs: [

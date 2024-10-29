@@ -1,0 +1,9 @@
+{# Copyright © 2024 Google Inc.
+   SPDX-License-Identifier: MIT
+
+   Contains all the default templates merged together.
+#}
+{% include 'defaults/mesa_common_headers.txt' %}
+{% include 'defaults/mesa_gfxstream_guest_cc.txt' %}
+{% include 'defaults/mesa_gfxstream_guest_iostream.txt' %}
+{% include 'defaults/mesa_platform_virtgpu.txt' %}

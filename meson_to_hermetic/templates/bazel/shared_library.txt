@@ -1,0 +1,7 @@
+cc_shared_library(
+  name = {{ name }},
+  deps = [
+    {# TODO(bpnguyen): Fix hardcoding of _vulkan_freedreno #}
+    "_vulkan_freedreno",
+  ]
+)
