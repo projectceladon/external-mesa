@@ -27,33 +27,33 @@ cc_library_shared {
     {% endfor %}
     ],
     cppflags: [
-    {% for arg in cppflags %}
+    {%- for arg in cppflags %}
         "{{ arg }}",
-    {% endfor %}
+    {%- endfor %}
     ],
     local_include_dirs: [
-    {% for inc in include_directories %}
+    {%- for inc in include_directories %}
         "{{ inc }}",
-    {% endfor %}
+    {%- endfor %}
     ],
     static_libs: [
-    {% for lib in static_libs %}
+    {%- for lib in static_libs %}
         "{{ lib }}",
-    {% endfor %}
+    {%- endfor %}
     ],
     whole_static_libs: [
-    {% for lib in whole_static_libs %}
+    {%- for lib in whole_static_libs %}
         "{{ lib }}",
-    {% endfor %}
+    {%- endfor %}
     ],
     shared_libs: [
-    {% for lib in shared_libs %}
+    {%- for lib in shared_libs %}
         "{{ lib }}",
-    {% endfor %}
+    {%- endfor %}
     ],
     header_libs: [
-    {% for lib in header_libs %}
+    {%- for lib in header_libs %}
         "{{ lib }}",
-    {% endfor %}
+    {%- endfor %}
     ],
 }

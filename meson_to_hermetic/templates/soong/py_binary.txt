@@ -5,9 +5,9 @@ python_binary_host {
   name: "{{ name }}",
   main: "{{ main }}",
   srcs: [
-  {% for src in srcs %}
+  {%- for src in srcs %}
     "{{ src }}",
-  {% endfor %}
+  {%- endfor %}
   ],
   libs: ["mako"],
   version: {

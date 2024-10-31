@@ -5,55 +5,55 @@ cc_library_static {
     name: "{{ name }}",
     host_supported: {{ host_supported }},
     srcs: [
-    {% for src in srcs %}
+    {%- for src in srcs %}
         "{{ src }}",
-    {% endfor %}
+    {%- endfor %}
     ],
     generated_headers: [
-    {% for generated in generated_headers %}
+    {%- for generated in generated_headers %}
         "{{ generated }}",
-    {% endfor %}
+    {%- endfor %}
     ],
     generated_sources: [
-    {% for generated in generated_sources %}
+    {%- for generated in generated_sources %}
         "{{ generated }}",
-    {% endfor %}
+    {%- endfor %}
     ],
     c_std: "{{ c_std_val }}",
     cpp_std: "{{ cpp_std_val }}",
     conlyflags: [
-    {% for arg in cflags %}
+    {%- for arg in cflags %}
         "{{ arg }}",
-    {% endfor %}
+    {%- endfor %}
     ],
     cppflags: [
-    {% for arg in cppflags %}
+    {%- for arg in cppflags %}
         "{{ arg }}",
-    {% endfor %}
+    {%- endfor %}
     ],
     local_include_dirs: [
-    {% for inc in include_directories %}
+    {%- for inc in include_directories %}
         "{{ inc }}",
-    {% endfor %}
+    {%- endfor %}
     ],
     static_libs: [
-    {% for lib in static_libs %}
+    {%- for lib in static_libs %}
         "{{ lib }}",
-    {% endfor %}
+    {%- endfor %}
     ],
     whole_static_libs: [
-    {% for lib in whole_static_libs %}
+    {%- for lib in whole_static_libs %}
         "{{ lib }}",
-    {% endfor %}
+    {%- endfor %}
     ],
     shared_libs: [
-    {% for lib in shared_libs %}
+    {%- for lib in shared_libs %}
         "{{ lib }}",
-    {% endfor %}
+    {%- endfor %}
     ],
     header_libs: [
-    {% for lib in header_libs %}
+    {%- for lib in header_libs %}
         "{{ lib }}",
-    {% endfor %}
+    {%- endfor %}
     ],
 }

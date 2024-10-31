@@ -52,6 +52,13 @@ class StaticLibrary(IncludeDirectories):
         self.shared_libs: list[str] = []
         self.header_libs: list[str] = []
 
+    @property
+    def hdrs(self):
+        return self.generated_headers + self.generated_sources
+
+    def __str__(self):
+        return f"@StaticLibrary: name: {self.name}, LibraryType: {self.library_type}"
+
 
 class CustomTarget:
     """

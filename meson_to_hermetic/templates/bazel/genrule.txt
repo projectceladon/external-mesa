@@ -1,22 +1,22 @@
 {# Copyright © 2024 Google Inc.
    SPDX-License-Identifier: MIT
 #}
-genrule (
+genrule(
   name = "{{ name }}",
   srcs = [
-    {% for src in srcs %}
-      "{{ src }}",
-    {% endfor %}
+  {%- for src in srcs %}
+    "{{ src }}",
+  {%- endfor %}
   ],
   outs = [
-    {% for out in outs %}
-      "{{ out }}",
-    {% endfor %}
+  {%- for out in outs %}
+    "{{ out }}",
+  {%- endfor %}
   ],
   tools = [
-    {% for tool in tools %}
-      "{{ tool }}",
-    {% endfor %}
+  {%- for tool in tools %}
+    "{{ tool }}",
+  {%- endfor %}
   ],
   cmd = "{{ cmd }}"
 )

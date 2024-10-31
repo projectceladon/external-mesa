@@ -4,19 +4,19 @@
 genrule {
   name: "{{ name }}",
   srcs: [
-    {% for src in srcs %}
-      "{{ src }}",
-    {% endfor %}
+  {%- for src in srcs %}
+    "{{ src }}",
+  {%- endfor %}
   ],
   out: [
-    {% for out in outs %}
-      "{{ out }}",
-    {% endfor %}
+  {%- for out in outs %}
+    "{{ out }}",
+  {%- endfor %}
   ],
   tools: [
-    {% for tool in tools %}
-      "{{ tool }}",
-    {% endfor %}
+  {%- for tool in tools %}
+    "{{ tool }}",
+  {%- endfor %}
   ],
   {% if export %}
    export_include_dirs: [

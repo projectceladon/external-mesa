@@ -5,13 +5,13 @@ py_binary(
   name = "{{ name }}",
   main = "{{ main }}",
   srcs = [
-  {% for src in srcs %}
+  {%- for src in srcs %}
     "{{ src }}",
-  {% endfor %}
+  {%- endfor %}
   ],
   imports = [
-  {% for import in imports %}
+  {%- for import in imports %}
     "{{ import }}",
-  {% endfor %}
+  {%- endfor %}
   ],
 )
