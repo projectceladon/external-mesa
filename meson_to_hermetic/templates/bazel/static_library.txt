@@ -1,13 +1,36 @@
 {# Copyright © 2024 Google Inc.
    SPDX-License-Identifier: MIT
 #}
-# header library
 cc_library(
     name = "{{ name }}",
-    hdrs = []
-    {% for dir in dir_set %}
-        + glob(["{{ dir }}"])
-    {% endfor %}
+    srcs = [
+    {%- for src in srcs %}
+        "{{ src }}",
+    {%- endfor %}
+    ],
+    hdrs = [
+    {% for hdr in hdrs -%}
+        "{{ hdr }}",
+    {%- endfor %}
+    ]
+    {%- for include_dir in include_directories %}
+        + glob(["{{ include_dir }}"])
+    {%- endfor %}
     ,
+    copts = [
+    {%- for copt in copts %}
+        "{{ copt }}",
+    {%- endfor %}
+    ],
+    deps = [
+    {%- for dep in deps %}
+        "{{ dep }}",
+    {%- endfor %}
+    ],
+    target_compatible_with = [
+    {%- for target_compat in target_compatible_with %}
+        "{{ target_compat }}",
+    {%- endfor %}
+    ],
     visibility = [ "//visibility:public" ],
 )

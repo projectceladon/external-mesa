@@ -1,7 +1,11 @@
+{# Copyright © 2024 Google Inc.
+   SPDX-License-Identifier: MIT
+#}
 cc_shared_library(
-  name = {{ name }},
+  name = "{{ name }}",
   deps = [
-    {# TODO(bpnguyen): Fix hardcoding of _vulkan_freedreno #}
-    "_vulkan_freedreno",
+  {%- for dep in deps %}
+    "{{ dep }}",
+  {%- endfor %}
   ]
 )

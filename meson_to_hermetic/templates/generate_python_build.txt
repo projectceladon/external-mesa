@@ -42,10 +42,6 @@ meson = impl.Meson(meson_translator.generator)
 host_machine = impl.Machine(meson_translator.host_machine, meson_translator.config.cpu, meson_translator.config.cpu_family)
 build_machine = impl.Machine(meson_translator.build_machine, meson_translator.config.cpu, meson_translator.config.cpu_family)
 
-### Open the build definition file
-open_output_file()
-
-
 ### Load dependencies
 load_dependencies()
 
@@ -53,5 +49,4 @@ load_dependencies()
 {{ meson_build }}
 ### Close the build definition file
 meson_translator.generator.generate(meson_translator)
-close_output_file()
 {# Newline Placeholder #}
