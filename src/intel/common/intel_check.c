@@ -1,3 +1,4 @@
+#include <cutils/log.h>
 #include <pthread.h>
 #include <unistd.h>
 #include <stdio.h>
@@ -7,6 +8,7 @@
 #include <sys/types.h>
 #include <sys/syscall.h>
 #include <stdbool.h>
+#include <string.h>
 #include <cutils/properties.h>
 #include "util/macros.h"
 #include "util/log.h"
@@ -30,7 +32,7 @@ get_pid_name(pid_t pid, char *task_name)
    FILE* fp = fopen(process_path, "r");
    if(NULL != fp){
       if( fgets(name_buf, BUF_SIZE-1, fp)== NULL ){
-          fclose(fp);
+          mesa_loge("get pid name fail\n");
       }
       fclose(fp);
       sscanf(name_buf, "%*s %s", task_name);
@@ -42,12 +44,19 @@ use_dgpu_render(char *target)
 {
    char dGPU_prop[BUF_SIZE];
    char vendor_buf[PROPERTY_VALUE_MAX];
-   sprintf(dGPU_prop, "persist.vendor.intel.dGPU.%s", target);
+   sprintf(dGPU_prop, "persist.vendor.intel.dGPUwSys.%s", target);
    if (property_get(dGPU_prop, vendor_buf, NULL) > 0) {
       if (vendor_buf[0] == '1') {
          return true;
       }
    }
+   sprintf(dGPU_prop, "persist.vendor.intel.dGPUwLocal%s",target);
+   if (property_get(dGPU_prop, vendor_buf, NULL) > 0) {
+      if (vendor_buf[0] == '1') {
+         return true;
+      }
+   }
+
    return false;
 }
 
@@ -82,7 +91,8 @@ bool intel_is_dgpu_render(void)
    char process_name[BUF_SIZE];
 
    get_pid_name(process_id, process_name);
-   return (use_dgpu_render(process_name) || is_target_process(process_name));
+   char *app_name = strrchr(process_name, '.');
+   return (use_dgpu_render(process_name) || is_target_process(process_name) || use_dgpu_render(app_name));
 }
 
 bool intel_lower_ctx_priority(void)
