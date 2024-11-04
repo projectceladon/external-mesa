@@ -229,6 +229,7 @@ CHIPSET(0x4907, sg1, "SG1", "Intel(R) Graphics")
 CHIPSET(0x4908, dg1, "DG1", "Intel(R) Iris(R) Xe Graphics")
 CHIPSET(0x4909, dg1, "DG1", "Intel(R) Graphics")
 
+CHIPSET(0x56af, dg2_g10, "DG2", "Intel(R) Arc(tm) A760 Graphics")
 CHIPSET(0x4f80, dg2_g10, "DG2", "Intel(R) Graphics")
 CHIPSET(0x4f81, dg2_g10, "DG2", "Intel(R) Graphics")
 CHIPSET(0x4f82, dg2_g10, "DG2", "Intel(R) Graphics")
