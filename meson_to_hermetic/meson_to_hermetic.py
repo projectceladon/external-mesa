@@ -19,7 +19,7 @@ jinja_env = Environment(
 
 # A map that holds the build-system to build file
 # Keep the keys lower-case for non-case sensitivity
-OUTPUT_FILES = {'soong': r'Android.bp', 'bazel': r'BUILD.bazel'}
+OUTPUT_FILES = {'soong': r'Android_res.bp', 'bazel': r'BUILD.bazel'}
 
 
 def generate_build_file(translator, build_type: str):
@@ -37,7 +37,6 @@ def generate_build_file(translator, build_type: str):
                 static_libs_template = jinja_env.get_template(
                     path + 'shared_library.txt'
                 )
-                print(static_lib)
             cc_lib = static_libs_template.render(
                 name=static_lib.name,
                 host_supported='false',  # TODO(bpnguyen): Fix hardcoded host_supported
@@ -281,9 +280,6 @@ class MesonTranslator:
 
     @property
     def config(self) -> ProjectConfig:
-        """
-        :return:
-        """
         return self._configs[self._state]
 
     @property
@@ -309,12 +305,35 @@ class MesonTranslator:
         with open(self._config_file, 'rb') as f:
             data = tomllib.load(f)
             self._build = data.get('build')
+            base_config = data.get('base_project_config')
+
             configs = data.get('project_config')
             for config in configs:
+                proj_config = ProjectConfig.create_project_config(self._build, **config)
                 self._configs.append(
-                    ProjectConfig.create_project_config(self._build, **config)
+                    proj_config
                 )
                 self._meson_project_states.append(MesonProjectState())
+
+            new_configs = []
+            # Handle Inheritance
+            for config in self._configs:
+                # Parent config, that contains shared attributes
+                base_proj_config = ProjectConfig.create_project_config(self._build, **base_config)
+                if not config.inherits_from:
+                    new_configs.append(config)
+                    continue
+                if config.inherits_from == 'base_project_config':
+                    new_configs.append(
+                        base_proj_config.extend(config).deepcopy()
+                    )
+                else:
+                    for proj_config in self._configs:
+                        if config.inherits_from == proj_config.name:
+                            new_configs.append(
+                                proj_config.extend(config).deepcopy()
+                            )
+            self._configs = new_configs
 
 
 # Declares an empty attribute data class

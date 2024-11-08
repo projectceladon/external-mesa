@@ -2,36 +2,36 @@
 # SPDX-License-Identifier: Apache-2.0
 build = 'Soong'
 
-[[project_config]]
-name = 'android_aarch64_drivers'
+# Base project config which contain shared attributes which
+# all other projects must contain / override
+[base_project_config]
+name = 'base_project_config'
+inherits_from = ''
 
-[project_config.host_machine]
-cpu_family = 'aarch64'
-cpu = 'aarch64'
-host_machine = 'android'
-build_machine = 'linux'
+[base_project_config.host_machine]
+cpu_family = ''
+cpu = ''
+host_machine = ''
+build_machine = ''
 
-[project_config.meson_options]
-platforms = 'android'
-android-libbacktrace = 'disabled'
+[base_project_config.meson_options]
+platforms = ''
 gallium-drivers = ''
-vulkan-drivers = 'freedreno'
-freedreno-kmds = 'kgsl'
-platform-sdk-version = 33
+vulkan-drivers = ''
 
-[project_config.header_not_supported]
+[base_project_config.header_not_supported]
 headers = []
 
-[project_config.symbol_not_supported]
+[base_project_config.symbol_not_supported]
 symbols = []
 
-[project_config.function_not_supported]
+[base_project_config.function_not_supported]
 functions = []
 
-[project_config.link_not_supported]
+[base_project_config.link_not_supported]
 links = []
 
-[project_config.ext_dependencies]
+[base_project_config.ext_dependencies]
 # DependencyTargetType
 #   SHARED_LIBRARY = 1
 #   STATIC_LIBRARY = 2
@@ -63,22 +63,23 @@ sync = [
     { target_name = 'libutils', target_type = 1 }
 ]
 
-# Define new project configs
-[[project_config]]
-name = 'glibc_x86_64_build'
-
-[project_config.meson_options]
-platforms = 'none'
-gallium-drivers = 'swrast'
-vulkan-drivers = ''
-glx = 'disabled'
-shared-glapi = 'disabled'
+[[project_config]] # Turnip + gfxstream
+name = 'android_aarch64_drivers'
+inherits_from = 'base_project_config'
 
 [project_config.host_machine]
-cpu_family = 'x86_64'
-cpu = 'x86_64'
-host_machine = 'linux'
+cpu_family = 'aarch64'
+cpu = 'aarch64'
+host_machine = 'android'
 build_machine = 'linux'
+
+[project_config.meson_options]
+platforms = 'android'
+android-libbacktrace = 'disabled'
+gallium-drivers = ''
+vulkan-drivers = 'freedreno,gfxstream-experimental'
+freedreno-kmds = 'kgsl'
+platform-sdk-version = 33
 
 [project_config.header_not_supported]
 headers = []
@@ -98,6 +99,40 @@ links = []
 #   STATIC_LIBRARY = 2
 #   HEADER_LIBRARY = 3
 # See meson_impl.py
-zlib = [
-    { target_name = 'libz', target_type = 2 }
-]
+
+# Define new project configs
+[[project_config]]
+name = 'glibc_x86_64_build'
+inherits_from = 'base_project_config'
+
+[project_config.meson_options]
+platforms = 'none'
+gallium-drivers = ''
+vulkan-drivers = 'gfxstream-experimental,swrast'
+glx = 'disabled'
+shared-glapi = 'disabled'
+
+[project_config.header_not_supported]
+headers = []
+
+[project_config.symbol_not_supported]
+symbols = []
+
+[project_config.function_not_supported]
+functions = []
+
+[project_config.link_not_supported]
+links = []
+
+[project_config.host_machine]
+cpu_family = 'x86_64'
+cpu = 'x86_64'
+host_machine = 'linux'
+build_machine = 'linux'
+
+[project_config.ext_dependencies]
+# DependencyTargetType
+#   SHARED_LIBRARY = 1
+#   STATIC_LIBRARY = 2
+#   HEADER_LIBRARY = 3
+# See meson_impl.py

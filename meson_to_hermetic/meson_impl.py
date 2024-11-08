@@ -635,6 +635,14 @@ def load_dependencies(config):
     with open(config, 'rb') as f:
         data = tomllib.load(f)
         project_configs = data.get('project_config')
+        base_config = data.get('base_project_config')
+        # global dependencies
+        for dep_name, targets in base_config.get('ext_dependencies').items():
+            dep_targets = {
+                t.get('target_name'): t.get('target_type') for t in targets
+            }
+            external_dep[dep_name] = dep_targets
+        # project specific dependencies
         for project_config in project_configs:
             dependencies = project_config.get('ext_dependencies')
             for dep_name, targets in dependencies.items():

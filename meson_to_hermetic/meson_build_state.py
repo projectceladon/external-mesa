@@ -57,7 +57,7 @@ class StaticLibrary(IncludeDirectories):
         return self.generated_headers + self.generated_sources
 
     def __str__(self):
-        return f"@StaticLibrary: name: {self.name}, LibraryType: {self.library_type}"
+        return f'@StaticLibrary: name: {self.name}, LibraryType: {self.library_type}'
 
 
 class CustomTarget:
@@ -107,10 +107,10 @@ class ProjectConfig:
     in python objects. There are multiple project_config within each .toml
     file
     """
-
     def __init__(self):
         self._build: str = ''  # Global across all configs
         self._name: str = ''  # name of this config
+        self._inherits_from = ''
         # project_config.host_machine
         self._cpu_family: str = ''
         self._cpu: str = ''
@@ -141,8 +141,9 @@ class ProjectConfig:
     @staticmethod
     def create_project_config(build, **kwargs):
         project_config = ProjectConfig()
-        project_config._build = kwargs.get(build)  # Global across all configs
+        project_config._build = build  # Global across all configs
         project_config._name = kwargs.get('name')  # name of this config
+        project_config._inherits_from = kwargs.get('inherits_from')
         project_config._cpu_family = kwargs.get('host_machine').get('cpu_family')
         project_config._cpu = kwargs.get('host_machine').get('cpu')
         project_config._host_machine = kwargs.get('host_machine').get('host_machine')
@@ -163,6 +164,47 @@ class ProjectConfig:
         project_config._ext_dependencies = kwargs.get('ext_dependencies')
         return project_config
 
+    def extend(self, proj_config):
+        """
+        Appends to the current instance of ProjectConfig with another
+        This also overrides attributes like self._name to the given param
+        :param proj_config: ProjectConfig
+        :return: ProjectConfig
+        """
+        self._build = proj_config.build
+        self._name = proj_config.name
+        self._inherits_from = proj_config.inherits_from
+        self._cpu_family = proj_config.cpu_family
+        self._cpu = proj_config.cpu
+        self._host_machine = proj_config.host_machine
+        self._build_machine = proj_config.build_machine
+
+        self._meson_options.update(proj_config.meson_options)
+        self._headers_not_supported.extend(proj_config.headers_not_supported)
+        self._symbols_not_supported.extend(proj_config.symbols_not_supported)
+        self._functions_not_supported.extend(proj_config.functions_not_supported)
+        self._links_not_supported.extend(proj_config.links_not_supported)
+        self._ext_dependencies.update(proj_config.ext_dependencies)
+        return self
+
+    def deepcopy(self):
+        proj = ProjectConfig()
+        proj._build = self._build
+        proj._name = self._name
+        proj._inherits_from = self._inherits_from
+        proj._cpu_family = self._cpu_family
+        proj._cpu = self._cpu
+        proj._host_machine = self._host_machine
+        proj._build_machine = self._build_machine
+
+        proj._meson_options.update(self._meson_options)
+        proj._headers_not_supported.extend(self._headers_not_supported)
+        proj._symbols_not_supported.extend(self._symbols_not_supported)
+        proj._functions_not_supported.extend(self._functions_not_supported)
+        proj._links_not_supported.extend(self._links_not_supported)
+        proj._ext_dependencies.update(self._ext_dependencies)
+        return proj
+
     @property
     def build(self):
         return self._build
@@ -170,6 +212,10 @@ class ProjectConfig:
     @property
     def name(self):
         return self._name
+
+    @property
+    def inherits_from(self):
+        return self._inherits_from
 
     @property
     def cpu(self):
@@ -210,6 +256,23 @@ class ProjectConfig:
     @property
     def ext_dependencies(self):
         return self._ext_dependencies
+
+    def __str__(self):
+        return f"""
+        @ProjectConfig: {self._name}
+        inherits_from: {self._inherits_from}
+        build: {self._build}
+        cpu_family: {self._cpu_family}
+        cpu: {self._cpu}
+        host_machine: {self._host_machine}
+        build_machine: {self._build_machine}
+        meson_options: {self._meson_options}
+        headers_not_supported: {self._headers_not_supported}
+        symbols_not_supported: {self._symbols_not_supported}
+        functions_not_supported: {self._functions_not_supported}
+        links_not_supported: {self._links_not_supported}
+        ext_dependencies: {self._ext_dependencies}
+        """
 
 
 class MesonProjectState:
