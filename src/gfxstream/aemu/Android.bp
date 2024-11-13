@@ -19,32 +19,24 @@ package {
     default_applicable_licenses: ["external_mesa3d_license"],
 }
 
-cc_library_static {
-    name: "mesa_gfxstream_connection_manager",
-    defaults: [
-        "mesa_gfxstream_guest_cc_defaults",
-        "mesa_platform_virtgpu_defaults",
+cc_library_headers {
+    name: "mesa_gfxstream_aemu_headers",
+    vendor: true,
+    host_supported: true,
+    export_include_dirs: [
+        "include",
     ],
+}
+
+cc_library_static {
+    name: "mesa_gfxstream_aemu",
+    vendor: true,
+    host_supported: true,
     header_libs: [
-        "mesa_gfxstream_guest_iostream",
-        "mesa_common_headers",
         "mesa_gfxstream_aemu_headers",
     ],
-    static_libs: [
-        "mesa_util",
-        "mesa_goldfish_address_space",
-        "libqemupipe.ranchu",
-    ],
-    shared_libs: [
-        "libdrm",
-    ],
     srcs: [
-        "GfxStreamConnectionManager.cpp",
-        "GfxStreamConnection.cpp",
-        "QemuPipeStream.cpp",
-        "VirtioGpuPipeStream.cpp",
-    ],
-    export_include_dirs: [
-        ".",
+        "ring_buffer.cpp",
+        "Stream.cpp",
     ],
 }

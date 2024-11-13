@@ -42,7 +42,7 @@ cc_library_shared {
         "mesa_common_headers",
         "libnativewindow_headers",
         "mesa_vulkan_enc_headers",
-        "aemu_common_headers",
+        "mesa_gfxstream_aemu_headers",
     ],
     static_libs: [
         "mesa_compiler",
@@ -57,7 +57,7 @@ cc_library_shared {
         "libringbuffer",
         "libqemupipe.ranchu",
         "libarect",
-        "gfxstream_base",
+        "mesa_gfxstream_aemu",
         "mesa_gfxstream_guest_android",
         "mesa_gfxstream_connection_manager",
         "libgfxstream_rcEnc_static",

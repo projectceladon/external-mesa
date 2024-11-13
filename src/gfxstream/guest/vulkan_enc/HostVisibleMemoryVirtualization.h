@@ -7,8 +7,8 @@
 #include <vulkan/vulkan.h>
 
 #include "VirtGpu.h"
-#include "aemu/base/SubAllocator.h"
 #include "goldfish_address_space.h"
+#include "util/u_mm.h"
 
 constexpr uint64_t kMegaByte = 1048576;
 
@@ -24,10 +24,7 @@ constexpr uint64_t kHostVisibleHeapSize = 512 * kMegaByte;     // 512 mb
 namespace gfxstream {
 namespace vk {
 
-bool isHostVisible(const VkPhysicalDeviceMemoryProperties* memoryProps, uint32_t index);
-
 using GoldfishAddressSpaceBlockPtr = std::shared_ptr<GoldfishAddressSpaceBlock>;
-using SubAllocatorPtr = std::unique_ptr<android::base::SubAllocator>;
 
 class CoherentMemory {
    public:
@@ -51,11 +48,13 @@ class CoherentMemory {
     void operator=(CoherentMemory const&);
 
     uint64_t mSize;
-    VirtGpuResourceMappingPtr mBlobMapping = nullptr;
-    GoldfishAddressSpaceBlockPtr mBlock = nullptr;
+    VirtGpuResourceMappingPtr mBlobMapping;
+    GoldfishAddressSpaceBlockPtr mBlock;
     VkDevice mDevice;
     VkDeviceMemory mMemory;
-    SubAllocatorPtr mAllocator;
+
+    uint8_t* mBaseAddr = nullptr;
+    struct mem_block* mHeap = nullptr;
 };
 
 using CoherentMemoryPtr = std::shared_ptr<CoherentMemory>;
