@@ -42,64 +42,6 @@ genrule {
         "--beta false",
 }
 
-genrule {
-    name: "mesa_gfxstream_codegen_guest_impl",
-    srcs: [
-        ":mesa_vulkan_gfxstream_xml",
-        ":mesa_vulkan_xml",
-    ],
-    out: [
-        "goldfish_vk_counting_guest.cpp",
-        "goldfish_vk_deepcopy_guest.cpp",
-        "goldfish_vk_extension_structs_guest.cpp",
-        "goldfish_vk_marshaling_guest.cpp",
-        "goldfish_vk_reserved_marshaling_guest.cpp",
-        "goldfish_vk_transform_guest.cpp",
-        "VkEncoder.cpp",
-        "func_table.cpp",
-    ],
-    tools: ["genvk_gfxstream"],
-    cmd: "GFXSTREAM_NO_CLANG_FMT=1 CEREAL_VARIANT=guest GFXSTREAM_GUEST_ENCODER_DIR=$(genDir) " +
-        "python3 $(location genvk_gfxstream) -registry $(location :mesa_vulkan_xml) " +
-        "-registryGfxstream $(location :mesa_vulkan_gfxstream_xml) cereal -o $(genDir)/tmp",
-}
-
-genrule {
-    name: "mesa_vulkan_gfxstream_header",
-    srcs: [
-        ":mesa_vulkan_gfxstream_xml",
-    ],
-    out: [
-        "vulkan_gfxstream.h",
-    ],
-    tools: ["genvk_gfxstream"],
-    cmd: "GFXSTREAM_NO_CLANG_FMT=1 CEREAL_VARIANT=guest" +
-        "python3 $(location genvk_gfxstream) -registry $(location :mesa_vulkan_gfxstream_xml) vulkan_gfxstream.h " +
-        "-o $(genDir)",
-}
-
-genrule {
-    name: "mesa_gfxstream_codegen_guest_headers",
-    srcs: [
-        ":mesa_vulkan_gfxstream_xml",
-        ":mesa_vulkan_xml",
-    ],
-    out: [
-        "VkEncoder.h",
-        "goldfish_vk_counting_guest.h",
-        "goldfish_vk_deepcopy_guest.h",
-        "goldfish_vk_marshaling_guest.h",
-        "goldfish_vk_extension_structs_guest.h",
-        "goldfish_vk_reserved_marshaling_guest.h",
-        "goldfish_vk_transform_guest.h",
-        "vulkan_gfxstream_structure_type.h",
-    ],
-    tools: ["genvk_gfxstream"],
-    cmd: "GFXSTREAM_NO_CLANG_FMT=1 CEREAL_VARIANT=guest GFXSTREAM_GUEST_ENCODER_DIR=$(genDir) " +
-        "python3 $(location genvk_gfxstream) -registry $(location :mesa_vulkan_xml) " +
-        "-registryGfxstream $(location :mesa_vulkan_gfxstream_xml) cereal -o $(genDir)/tmp",
-}
-
 cc_library_static {
     name: "mesa_gfxstream_vulkan_entrypoints",
     host_supported: true,
@@ -152,5 +94,13 @@ filegroup {
         "VulkanStreamGuest.cpp",
         "gfxstream_vk_private.cpp",
         "GfxStreamVulkanConnection.cpp",
+        "goldfish_vk_counting_guest.cpp",
+        "goldfish_vk_deepcopy_guest.cpp",
+        "goldfish_vk_extension_structs_guest.cpp",
+        "goldfish_vk_marshaling_guest.cpp",
+        "goldfish_vk_reserved_marshaling_guest.cpp",
+        "goldfish_vk_transform_guest.cpp",
+        "VkEncoder.cpp",
+        "func_table.cpp",
     ],
 }
