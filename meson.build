@@ -310,6 +310,9 @@ else
   with_intel_clc = false
 endif
 
+# Disable intel-clc as the prebuilt shaders is used in android
+with_intel_clc = false
+
 with_intel_vk_rt = get_option('intel-rt') \
   .disable_auto_if(not with_intel_vk) \
   .disable_if(host_machine.cpu_family() != 'x86_64', error_message : 'Intel Ray Tracing is only supported on x86_64') \
