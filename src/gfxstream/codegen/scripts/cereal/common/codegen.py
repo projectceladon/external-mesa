@@ -800,10 +800,8 @@ class CodeGen(object):
                 accessType.getForNonConstAccess(), useParamName=False)
 
         ptrCast = "(uintptr_t)" if needPtrCast else ""
-        if variant == "guest":
-            streamNamespace = "gfxstream::aemu"
-        else:
-            streamNamespace = "android::base"
+
+        streamNamespace = "gfxstream::aemu"
 
         if direction == "read":
             self.stmt("memcpy((%s*)&%s, %s, %s)" %
