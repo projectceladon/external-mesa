@@ -59,6 +59,14 @@ option(
 )
 
 option(
+  'dri-search-path',
+  type : 'string',
+  value : '',
+  description : 'Locations to search for dri drivers, passed as colon ' +
+                'separated list. Default: dri-drivers-path.'
+)
+
+option(
   'unversion-libgallium',
   type : 'boolean',
   value : false,
