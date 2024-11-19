@@ -31,6 +31,11 @@ cc_library_shared {
         "vk_physical_device_features_header",
         "vk_physical_device_properties_header",
         "spirv_info_header",
+        "mesa_gfxstream_codegen_guest_headers",
+        "mesa_vulkan_gfxstream_header",
+    ],
+    generated_sources: [
+        "mesa_gfxstream_codegen_guest_impl",
     ],
     header_libs: [
         "mesa_compiler_headers",
