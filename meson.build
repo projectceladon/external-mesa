@@ -318,6 +318,9 @@ with_intel_vk_rt = get_option('intel-rt') \
   .disable_if(host_machine.cpu_family() != 'x86_64', error_message : 'Intel Ray Tracing is only supported on x86_64') \
   .allowed()
 
+# Disable ray tracing as the prebuilt shaders from linux is used in android
+with_intel_vk_rt = false
+
 with_any_intel = [
   with_gallium_crocus,
   with_gallium_i915,
