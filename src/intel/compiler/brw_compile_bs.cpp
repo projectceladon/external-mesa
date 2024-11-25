@@ -14,6 +14,7 @@
 #include "dev/intel_debug.h"
 #include "dev/intel_wa.h"
 
+#include <algorithm>
 #include <memory>
 
 static uint64_t
