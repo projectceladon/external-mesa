@@ -5001,7 +5001,7 @@ GLAPI void APIENTRY glMaxShaderCompilerThreadsKHR (GLuint count);
 #endif /* GL_KHR_shader_subgroup */
 
 #ifndef GL_KHR_texture_compression_astc_hdr
-#define GL_KHR_texture_compression_astc_hdr 1
+#define GL_KHR_texture_compression_astc_hdr 0
 #define GL_COMPRESSED_RGBA_ASTC_4x4_KHR   0x93B0
 #define GL_COMPRESSED_RGBA_ASTC_5x4_KHR   0x93B1
 #define GL_COMPRESSED_RGBA_ASTC_5x5_KHR   0x93B2
@@ -5033,11 +5033,11 @@ GLAPI void APIENTRY glMaxShaderCompilerThreadsKHR (GLuint count);
 #endif /* GL_KHR_texture_compression_astc_hdr */
 
 #ifndef GL_KHR_texture_compression_astc_ldr
-#define GL_KHR_texture_compression_astc_ldr 1
+#define GL_KHR_texture_compression_astc_ldr 0
 #endif /* GL_KHR_texture_compression_astc_ldr */
 
 #ifndef GL_KHR_texture_compression_astc_sliced_3d
-#define GL_KHR_texture_compression_astc_sliced_3d 1
+#define GL_KHR_texture_compression_astc_sliced_3d 0
 #endif /* GL_KHR_texture_compression_astc_sliced_3d */
 
 #ifndef GL_OES_byte_coordinates

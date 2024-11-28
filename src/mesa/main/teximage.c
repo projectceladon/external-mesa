@@ -1593,9 +1593,7 @@ _mesa_target_can_be_compressed(const struct gl_context *ctx, GLenum target,
             (_mesa_is_gles3(ctx) || ctx->Extensions.ARB_ES3_compatibility);
          break;
       case MESA_FORMAT_LAYOUT_ASTC:
-         target_can_be_compresed =
-            ctx->Extensions.KHR_texture_compression_astc_hdr ||
-            ctx->Extensions.KHR_texture_compression_astc_sliced_3d;
+         target_can_be_compresed = GL_FALSE;
 
          /* Throw an INVALID_OPERATION error if the target is TEXTURE_3D and
           * neither of the above extensions are supported. See comment in
@@ -5553,9 +5551,7 @@ compressed_subtexture_target_check(struct gl_context *ctx, GLenum target,
                (_mesa_is_gles3(ctx) || ctx->Extensions.ARB_ES3_compatibility);
             break;
          case MESA_FORMAT_LAYOUT_ASTC:
-            targetOK =
-               ctx->Extensions.KHR_texture_compression_astc_hdr ||
-               ctx->Extensions.KHR_texture_compression_astc_sliced_3d;
+            targetOK = GL_FALSE;
             break;
          default:
             /* invalid format */
