@@ -246,9 +246,6 @@ struct gl_extensions
    GLboolean KHR_blend_equation_advanced;
    GLboolean KHR_blend_equation_advanced_coherent;
    GLboolean KHR_robustness;
-   GLboolean KHR_texture_compression_astc_hdr;
-   GLboolean KHR_texture_compression_astc_ldr;
-   GLboolean KHR_texture_compression_astc_sliced_3d;
    GLboolean MESA_framebuffer_flip_y;
    GLboolean MESA_texture_const_bandwidth;
    GLboolean MESA_pack_invert;
@@ -291,7 +288,6 @@ struct gl_extensions
    GLboolean OES_texture_half_float_linear;
    GLboolean OES_compressed_ETC1_RGB8_texture;
    GLboolean OES_geometry_shader;
-   GLboolean OES_texture_compression_astc;
    GLboolean extension_sentinel;
    /** The extension string */
    const GLubyte *String;

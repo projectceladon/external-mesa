@@ -374,9 +374,6 @@ EXT(KHR_no_error                            , dummy_true                        
 EXT(KHR_parallel_shader_compile             , dummy_true                             , GLL, GLC,  x , ES2, 2017)
 EXT(KHR_robust_buffer_access_behavior       , ARB_robust_buffer_access_behavior      , GLL, GLC,  x , ES2, 2014)
 EXT(KHR_robustness                          , KHR_robustness                         , GLL, GLC,  x , ES2, 2012)
-EXT(KHR_texture_compression_astc_hdr        , KHR_texture_compression_astc_hdr       , GLL, GLC,  x , ES2, 2012)
-EXT(KHR_texture_compression_astc_ldr        , KHR_texture_compression_astc_ldr       , GLL, GLC,  x , ES2, 2012)
-EXT(KHR_texture_compression_astc_sliced_3d  , KHR_texture_compression_astc_sliced_3d , GLL, GLC,  x , ES2, 2015)
 
 EXT(MESA_bgra                               , dummy_true                             ,  x ,  x ,  x , ES2, 2021)
 EXT(MESA_framebuffer_flip_y                 , MESA_framebuffer_flip_y                ,  43,  43,  x ,  30, 2018)
@@ -481,7 +478,6 @@ EXT(OES_tessellation_shader                 , ARB_tessellation_shader           
 EXT(OES_texture_3D                          , OES_texture_3D                         ,  x ,  x ,  x , ES2, 2005)
 EXT(OES_texture_border_clamp                , dummy_true                             ,  x ,  x ,  x , ES2, 2014)
 EXT(OES_texture_buffer                      , OES_texture_buffer                     ,  x ,  x ,  x ,  31, 2014)
-EXT(OES_texture_compression_astc            , OES_texture_compression_astc           ,  x ,  x , ES1, ES2, 2015)
 EXT(OES_texture_cube_map                    , dummy_true                             ,  x ,  x , ES1,  x , 2007)
 EXT(OES_texture_cube_map_array              , OES_texture_cube_map_array             ,  x ,  x ,  x ,  31, 2014)
 EXT(OES_texture_env_crossbar                , dummy_true                             ,  x ,  x , ES1,  x , 2005)

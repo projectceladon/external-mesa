@@ -539,7 +539,6 @@ compute_version_es2(const struct gl_extensions *extensions,
                          extensions->EXT_draw_buffers2 &&
                          extensions->KHR_blend_equation_advanced &&
                          extensions->KHR_robustness &&
-                         extensions->KHR_texture_compression_astc_ldr &&
                          extensions->OES_copy_image &&
                          extensions->ARB_draw_buffers_blend &&
                          extensions->ARB_draw_elements_base_vertex &&

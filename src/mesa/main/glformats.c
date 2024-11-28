@@ -1356,10 +1356,6 @@ _mesa_is_compressed_format(const struct gl_context *ctx, GLenum format)
    case MESA_FORMAT_LAYOUT_BPTC:
       return _mesa_has_ARB_texture_compression_bptc(ctx) ||
              _mesa_has_EXT_texture_compression_bptc(ctx);
-   case MESA_FORMAT_LAYOUT_ASTC:
-      return _mesa_has_KHR_texture_compression_astc_ldr(ctx);
-   case MESA_FORMAT_LAYOUT_ATC:
-      return _mesa_has_AMD_compressed_ATC_texture(ctx);
    default:
       return GL_FALSE;
    }
@@ -2348,12 +2344,6 @@ _mesa_base_tex_format(const struct gl_context *ctx, GLint internalFormat)
       if (base_compressed)
             return base_compressed;
    }
-
-   if ((_mesa_has_KHR_texture_compression_astc_ldr(ctx) &&
-        is_astc_2d_format(internalFormat)) ||
-       (_mesa_has_OES_texture_compression_astc(ctx) &&
-        is_astc_3d_format(internalFormat)))
-        return GL_RGBA;
 
    if (_mesa_has_MESA_ycbcr_texture(ctx)) {
       if (internalFormat == GL_YCBCR_MESA)
@@ -3967,7 +3957,7 @@ _mesa_tex_format_from_format_and_type(const struct gl_context *ctx,
 
    if (_mesa_format_is_mesa_array_format(format))
       format = _mesa_format_from_array_format(format);
-      
+
    if (format == MESA_FORMAT_NONE || !ctx->TextureFormatSupported[format])
       return MESA_FORMAT_NONE;
 

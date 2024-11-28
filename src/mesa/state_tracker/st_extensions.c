@@ -1011,43 +1011,6 @@ void st_init_extensions(struct pipe_screen *screen,
         { PIPE_FORMAT_FXT1_RGB,
           PIPE_FORMAT_FXT1_RGBA } },
 
-      { { o(KHR_texture_compression_astc_ldr),
-          o(KHR_texture_compression_astc_sliced_3d) },
-        { PIPE_FORMAT_ASTC_4x4,
-          PIPE_FORMAT_ASTC_5x4,
-          PIPE_FORMAT_ASTC_5x5,
-          PIPE_FORMAT_ASTC_6x5,
-          PIPE_FORMAT_ASTC_6x6,
-          PIPE_FORMAT_ASTC_8x5,
-          PIPE_FORMAT_ASTC_8x6,
-          PIPE_FORMAT_ASTC_8x8,
-          PIPE_FORMAT_ASTC_10x5,
-          PIPE_FORMAT_ASTC_10x6,
-          PIPE_FORMAT_ASTC_10x8,
-          PIPE_FORMAT_ASTC_10x10,
-          PIPE_FORMAT_ASTC_12x10,
-          PIPE_FORMAT_ASTC_12x12,
-          PIPE_FORMAT_ASTC_4x4_SRGB,
-          PIPE_FORMAT_ASTC_5x4_SRGB,
-          PIPE_FORMAT_ASTC_5x5_SRGB,
-          PIPE_FORMAT_ASTC_6x5_SRGB,
-          PIPE_FORMAT_ASTC_6x6_SRGB,
-          PIPE_FORMAT_ASTC_8x5_SRGB,
-          PIPE_FORMAT_ASTC_8x6_SRGB,
-          PIPE_FORMAT_ASTC_8x8_SRGB,
-          PIPE_FORMAT_ASTC_10x5_SRGB,
-          PIPE_FORMAT_ASTC_10x6_SRGB,
-          PIPE_FORMAT_ASTC_10x8_SRGB,
-          PIPE_FORMAT_ASTC_10x10_SRGB,
-          PIPE_FORMAT_ASTC_12x10_SRGB,
-          PIPE_FORMAT_ASTC_12x12_SRGB } },
-
-      /* ASTC software fallback support. */
-      { { o(KHR_texture_compression_astc_ldr),
-          o(KHR_texture_compression_astc_sliced_3d) },
-        { PIPE_FORMAT_R8G8B8A8_UNORM,
-          PIPE_FORMAT_R8G8B8A8_SRGB } },
-
       { { o(EXT_texture_shared_exponent) },
         { PIPE_FORMAT_R9G9B9E5_FLOAT } },
 
@@ -1742,7 +1705,6 @@ void st_init_extensions(struct pipe_screen *screen,
 
    extensions->ANDROID_extension_pack_es31a =
       consts->Program[MESA_SHADER_FRAGMENT].MaxImageUniforms &&
-      extensions->KHR_texture_compression_astc_ldr &&
       extensions->KHR_blend_equation_advanced &&
       extensions->OES_sample_variables &&
       extensions->ARB_texture_stencil8 &&
