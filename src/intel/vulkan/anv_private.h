@@ -2782,6 +2782,18 @@ struct anv_storage_image_descriptor {
     */
    uint32_t image_depth;
 
+   /** Image address */
+   uint64_t image_address;
+   /** Image tiling mode
+    *
+    * 0 for linear, ~0 otherwise.
+    */
+   uint32_t tile_mode;
+   /** Image row pitch in bytes */
+   uint32_t row_pitch_B;
+   /** Image Q pitch (rows between array slices) */
+   uint32_t qpitch;
+
    /** Image format (enum isl_format) */
    uint32_t format;
 };
