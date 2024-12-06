@@ -195,6 +195,10 @@ struct brw_nir_lower_storage_image_opts {
    bool lower_loads_without_formats;
 };
 
+bool brw_nir_lower_texel_address(nir_shader *shader,
+   const struct intel_device_info *devinfo,
+   enum isl_tiling tiling);
+
 bool brw_nir_lower_storage_image(nir_shader *nir,
                                  const struct brw_compiler *compiler,
                                  const struct brw_nir_lower_storage_image_opts *opts);
