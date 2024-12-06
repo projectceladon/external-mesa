@@ -905,6 +905,16 @@ print_ubo_load(nir_builder *b,
 }
 #endif
 
+static bool
+accept_64bit_atomic_cb(const nir_intrinsic_instr *intrin, const void *data)
+{
+   return (intrin->intrinsic == nir_intrinsic_image_atomic ||
+           intrin->intrinsic == nir_intrinsic_image_atomic_swap ||
+           intrin->intrinsic == nir_intrinsic_image_deref_atomic ||
+           intrin->intrinsic == nir_intrinsic_image_deref_atomic_swap) &&
+          intrin->def.bit_size == 64;
+}
+
 static void
 anv_pipeline_lower_nir(struct anv_pipeline *pipeline,
                        void *mem_ctx,
@@ -962,14 +972,21 @@ anv_pipeline_lower_nir(struct anv_pipeline *pipeline,
 
    nir_shader_gather_info(nir, nir_shader_get_entrypoint(nir));
 
+   /* Ensure robustness, do this before brw_nir_lower_storage_image so tha
+   * added image size intrinsics for bounds checkings are properly lowered
+   * for cube images.
+   */
+   NIR_PASS(_, nir, nir_lower_robust_access,
+            accept_64bit_atomic_cb, NULL);
+
    NIR_PASS(_, nir, brw_nir_lower_storage_image, compiler,
             &(struct brw_nir_lower_storage_image_opts) {
                .devinfo = compiler->devinfo,
                /* Anv only supports Gfx9+ which has better defined typed read
-                * behavior. It allows us to only have to care about lowering
-                * loads.
+                * behavior.
                 */
                .lower_loads = true,
+               .lower_stores_64bit = true,
                .lower_stores = false,
                /* Software emulation for shaderStorageImageReadWithoutFormat
                 * on Gfx11/12.0.
@@ -977,6 +994,13 @@ anv_pipeline_lower_nir(struct anv_pipeline *pipeline,
                .lower_loads_without_formats =
                   pdevice->emulate_read_without_format,
             });
+
+   /* Switch from image to global */
+   NIR_PASS(_, nir, nir_lower_image_atomics_to_global,
+            accept_64bit_atomic_cb, NULL);
+   /* Detile for global */
+   NIR_PASS(_, nir, brw_nir_lower_texel_address, compiler->devinfo,
+            pdevice->isl_dev.shader_tiling);
 
    NIR_PASS(_, nir, nir_lower_explicit_io, nir_var_mem_global,
             nir_address_format_64bit_global);
