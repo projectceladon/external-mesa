@@ -11,7 +11,7 @@
 
 #include "pps_datasource.h"
 
-int pps_main(int argc, const char **argv)
+extern "C" int pps_main(int argc, const char **argv)
 {
    using namespace pps;
 
@@ -34,4 +34,23 @@ int pps_main(int argc, const char **argv)
    }
 
    return EXIT_SUCCESS;
+}
+
+extern "C" void start()
+{
+   using namespace pps;
+
+   // Connects to the system tracing service
+   perfetto::TracingInitArgs args;
+   args.backends = perfetto::kSystemBackend;
+   perfetto::Tracing::Initialize(args);
+
+   GpuDataSource::register_data_source(Driver::default_driver_name());
+
+   while (true) {
+      GpuDataSource::wait_started();
+      GpuDataSource::Trace(GpuDataSource::trace_callback);
+   }
+
+   return;
 }
