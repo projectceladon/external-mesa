@@ -38,10 +38,9 @@ LOCAL_CFLAGS += -D__ANDROID__
 include $(BUILD_STATIC_LIBRARY)
 
 include $(CLEAR_VARS)
-LOCAL_SHARED_LIBRARIES := libpps-producer
 LOCAL_SRC_FILES := perfetto/pps-producer.cc
 LOCAL_VENDOR_MODULE := true
-LOCAL_MODULE := pps-producer
+LOCAL_MODULE := gpudataproducer
 LOCAL_CPP_EXTENSION := .cc
 LOCAL_MODULE_TAGS := optional
 include $(BUILD_EXECUTABLE)
@@ -209,8 +208,8 @@ ifneq ($(strip $(BOARD_MESA3D_GALLIUM_DRIVERS)),)
 # This module also trigger DRI symlinks creation process
 $(eval $(call mesa3d-lib,libgallium_dri,,MESA3D_GALLIUM_BIN))
 
-# Module 'libpps-producer', produces '/vendor/lib{64}/libpps-producer.so'
-$(eval $(call mesa3d-lib,libpps-producer,,MESA3D_LIBPPS_PRODUCER))
+# Module 'libgpudataproducer', produces '/vendor/lib{64}/libgpudataproducer.so'
+$(eval $(call mesa3d-lib,libgpudataproducer,,MESA3D_LIBPPS_PRODUCER))
 
 # Module 'libEGL_mesa', produces '/vendor/lib{64}/egl/libEGL_mesa.so'
 $(eval $(call mesa3d-lib,libEGL_mesa,egl,MESA3D_LIBEGL_BIN))
