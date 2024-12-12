@@ -51,6 +51,8 @@ void GpuDataSource::OnSetup(const SetupArgs &args)
          }
 
          this->driver = driver;
+         // use first available driver, to avoid be covered by following failed driver.
+         break;
       }
    }
    if (driver == nullptr) {
@@ -324,7 +326,12 @@ void GpuDataSource::register_data_source(const std::string &_driver_name)
 {
    driver_name = _driver_name;
    static perfetto::DataSourceDescriptor dsd;
+#ifdef ANDROID
+   /* AGI requires this name */
+   dsd.set_name("gpu.counters");
+#else
    dsd.set_name("gpu.counters." + driver_name);
+#endif
 
    Driver * driver = nullptr;
    auto drm_devices = DrmDevice::create_all();
@@ -336,6 +343,8 @@ void GpuDataSource::register_data_source(const std::string &_driver_name)
       if ((driver != nullptr) && !driver->init_perfcnt()) {
          driver = nullptr;
       }
+      // use first available driver, to avoid be covered by following failed driver.
+      break;
    }
 
    if (driver != nullptr) {
