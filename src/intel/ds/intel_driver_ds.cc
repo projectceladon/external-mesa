@@ -566,7 +566,12 @@ intel_driver_ds_init_once(void)
 #ifdef HAVE_PERFETTO
    util_perfetto_init();
    perfetto::DataSourceDescriptor dsd;
+#ifdef ANDROID
+   /* AGI requires this name */
+   dsd.set_name("gpu.renderstages");
+#else
    dsd.set_name("gpu.renderstages.intel");
+#endif
    IntelRenderpassDataSource::Register(dsd);
 #endif
 }
