@@ -191,6 +191,7 @@ struct brw_nir_lower_storage_image_opts {
 
    bool lower_loads;
    bool lower_stores;
+   bool lower_stores_64bit;
    bool lower_loads_without_formats;
 };
 
