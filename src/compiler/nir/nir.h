@@ -6529,7 +6529,9 @@ bool nir_lower_image(nir_shader *nir,
                      const nir_lower_image_options *options);
 
 bool
-nir_lower_image_atomics_to_global(nir_shader *s);
+nir_lower_image_atomics_to_global(nir_shader *s,
+                                  nir_intrin_filter_cb filter,
+                                  const void *data);
 
 bool nir_lower_readonly_images_to_tex(nir_shader *shader, bool per_variable);
 
