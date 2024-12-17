@@ -52,21 +52,17 @@ use_dgpu_render(char *target)
 }
 
 static bool
-is_target_process(const char *target)
+is_target_process(char *target)
 {
-   static const char *str_char[] = { "k.lite:refinery", "k.lite:transfer", NULL };
-   const char **ptr = str_char;
+   char *str_char[] = { "k.lite:refinery", "k.lite:transfer", NULL };
+   char **ptr = str_char;
 
-   // Prefer dGPU for compositing in surfaceflinger since dGPU covers more
-   // scenarios than iGPU.
-   if (!strcmp(target, "surfaceflinger"))
-      return true;
-
-   for (ptr = str_char; *ptr != NULL; ptr++) {
-      if (!strcmp(target, *ptr)) {
+   for (ptr=str_char; *ptr!=NULL; ptr++)
+   {
+      if(!strcmp(target, *ptr)) {
          char vendor_buf[PROPERTY_VALUE_MAX];
          if (property_get("persist.vendor.intel.dGPU.ABenchMark.lite",
-                          vendor_buf, NULL) > 0) {
+             vendor_buf, NULL) > 0) {
             if (vendor_buf[0] == '1') {
                return true;
             }
@@ -76,8 +72,7 @@ is_target_process(const char *target)
    return false;
 }
 
-bool intel_is_dgpu_render(void)
-{
+bool intel_is_dgpu_render(void) {
    pid_t process_id = getpid();
    char process_name[BUF_SIZE];
 
