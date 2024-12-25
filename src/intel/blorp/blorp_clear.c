@@ -616,6 +616,14 @@ blorp_clear(struct blorp_batch *batch,
        format == ISL_FORMAT_R10G10B10_FLOAT_A2_UNORM)
       use_simd16_replicated_data = false;
 
+   /* For RGB565D0S0MS0,some pixels will be cleared incorrectly,
+    * when using the REP16 instruction on the DG2 platform to accelerate slow clear.
+    * Ref link: https://hsdes.intel.com/appstore/article-one/article/14017880152.
+    */
+   if (batch->blorp->isl_dev->info->verx10 == 125 &&
+       format == ISL_FORMAT_B5G6R5_UNORM)
+      use_simd16_replicated_data = false;
+
    if (compute)
       use_simd16_replicated_data = false;
 
