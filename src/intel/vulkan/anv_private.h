@@ -1315,6 +1315,7 @@ struct anv_instance {
     bool                                        compression_control_enabled;
     bool                                        anv_fake_nonlocal_memory;
     bool                                        anv_upper_bound_descriptor_pool_sampler;
+    bool                                        force_cs_simd32;
     bool                                        custom_border_colors_without_format;
 
     /* HW workarounds */
