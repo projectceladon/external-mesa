@@ -1,3 +1,4 @@
+#include <cutils/log.h>
 #include <pthread.h>
 #include <unistd.h>
 #include <stdio.h>
@@ -7,6 +8,7 @@
 #include <sys/types.h>
 #include <sys/syscall.h>
 #include <stdbool.h>
+#include <string.h>
 #include <cutils/properties.h>
 #include "util/macros.h"
 #include "util/log.h"
@@ -26,15 +28,19 @@ get_pid_name(pid_t pid, char *task_name)
    char process_path[BUF_SIZE];
    char name_buf[BUF_SIZE];
 
-   sprintf(process_path, "/proc/%d/status", pid);
+   snprintf(process_path, sizeof(process_path), "/proc/%d/status", pid);
    FILE* fp = fopen(process_path, "r");
-   if(NULL != fp){
-      if( fgets(name_buf, BUF_SIZE-1, fp)== NULL ){
-          fclose(fp);
-      }
-      fclose(fp);
-      sscanf(name_buf, "%*s %s", task_name);
+   if (fp == NULL) {
+      mesa_loge("failed to open %s\n", process_path);
+      return;
    }
+   if( fgets(name_buf, BUF_SIZE-1, fp)== NULL ){
+      mesa_loge("get pid name fail\n");
+      fclose(fp);
+      return;
+   }
+   fclose(fp);
+   sscanf(name_buf, "%*s %s", task_name);
 }
 
 static bool
@@ -42,19 +48,28 @@ use_dgpu_render(char *target)
 {
    char dGPU_prop[BUF_SIZE];
    char vendor_buf[PROPERTY_VALUE_MAX];
-   sprintf(dGPU_prop, "persist.vendor.intel.dGPU.%s", target);
+   snprintf(dGPU_prop, sizeof(dGPU_prop), "persist.vendor.intel.dGPUwSys.%s", target);
    if (property_get(dGPU_prop, vendor_buf, NULL) > 0) {
       if (vendor_buf[0] == '1') {
          return true;
       }
    }
+   char dGPU_prop1[BUF_SIZE];
+   char vendor_buf1[PROPERTY_VALUE_MAX];
+   snprintf(dGPU_prop1, sizeof(dGPU_prop1), "persist.vendor.intel.dGPUwLocal%s", target);
+   if (property_get(dGPU_prop1, vendor_buf1, NULL) > 0) {
+      if (vendor_buf1[0] == '1') {
+         return true;
+      }
+   }
+
    return false;
 }
 
 static bool
 is_target_process(const char *target)
 {
-   static const char *str_char[] = { "k.lite:refinery", "k.lite:transfer", NULL };
+   static const char *str_char[] = { "k.auto:transfer", "android.vending", "k.auto:refinery", ".fisheye", "mark.auto:video", NULL };
    const char **ptr = str_char;
 
    // Prefer dGPU for compositing in surfaceflinger since dGPU covers more
@@ -65,9 +80,12 @@ is_target_process(const char *target)
    for (ptr = str_char; *ptr != NULL; ptr++) {
       if (!strcmp(target, *ptr)) {
          char vendor_buf[PROPERTY_VALUE_MAX];
-         if (property_get("persist.vendor.intel.dGPU.ABenchMark.lite",
-                          vendor_buf, NULL) > 0) {
-            if (vendor_buf[0] == '1') {
+         char vendor_buf1[PROPERTY_VALUE_MAX];
+         if ((property_get("persist.vendor.intel.dGPUwSys.benchmark.auto",
+                          vendor_buf, NULL) > 0) ||
+	     (property_get("persist.vendor.intel.dGPUwLocal.auto",
+                          vendor_buf1, NULL) > 0)) {
+            if ((vendor_buf[0] == '1') || (vendor_buf1[0] == '1')) {
                return true;
             }
          }
@@ -79,21 +97,22 @@ is_target_process(const char *target)
 bool intel_is_dgpu_render(void)
 {
    pid_t process_id = getpid();
-   char process_name[BUF_SIZE];
+   char process_name[BUF_SIZE] = {0};
 
    get_pid_name(process_id, process_name);
-   return (use_dgpu_render(process_name) || is_target_process(process_name));
+   char *app_name = strrchr(process_name, '.');
+   return (use_dgpu_render(process_name) || is_target_process(process_name) || use_dgpu_render(app_name));
 }
 
 bool intel_lower_ctx_priority(void)
 {
    pid_t process_id = getpid();
-   char process_name[BUF_SIZE];
+   char process_name[BUF_SIZE] = {0};
    get_pid_name(process_id, process_name);
 
    char lower_pri[BUF_SIZE];
    char vendor_buf[PROPERTY_VALUE_MAX];
-   sprintf(lower_pri, "persist.vendor.intel.lowPir.%s",process_name);
+   snprintf(lower_pri, sizeof(lower_pri), "persist.vendor.intel.lowPir.%s", process_name);
    if (property_get(lower_pri, vendor_buf, NULL) > 0) {
       if (vendor_buf[0] == '1') {
          return true;
