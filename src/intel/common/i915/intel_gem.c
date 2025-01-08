@@ -210,8 +210,10 @@ i915_gem_read_render_timestamp(int fd, uint64_t *value)
 
    /* GPU timestamp register can't be accessed from VF, invalid value 0xffffffffffffffff
     * is returned in this case, so return false.
+    * Also return false if reg_read.val is 0.
+    * The situation where reg_read.val is 0 will occur on DG2.
     */
-   return ret == 0 && *value != 0xffffffffffffffff;
+   return ret == 0 && *value != 0xffffffffffffffff && *value != 0;
 }
 
 bool
