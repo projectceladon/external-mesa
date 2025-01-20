@@ -8256,8 +8256,6 @@
 
 <xi:include href="ARB_texture_storage.xml" xmlns:xi="http://www.w3.org/2001/XInclude"/>
 
-<xi:include href="KHR_texture_compression_astc.xml" xmlns:xi="http://www.w3.org/2001/XInclude"/>
-
 <xi:include href="KHR_debug.xml" xmlns:xi="http://www.w3.org/2001/XInclude"/>
 
 <!-- ARB extension #120 -->
@@ -8379,8 +8377,6 @@
 </category>
 
 <!-- ARB extensions 163 -->
-
-<xi:include href="OES_texture_compression_astc.xml" xmlns:xi="http://www.w3.org/2001/XInclude"/>
 
 <xi:include href="ARB_direct_state_access.xml" xmlns:xi="http://www.w3.org/2001/XInclude"/>
 

@@ -195,7 +195,7 @@ GL_APICALL void GL_APIENTRY glGetnUniformuivKHR (GLuint program, GLint location,
 #endif /* GL_KHR_shader_subgroup */
 
 #ifndef GL_KHR_texture_compression_astc_hdr
-#define GL_KHR_texture_compression_astc_hdr 1
+#define GL_KHR_texture_compression_astc_hdr 0
 #define GL_COMPRESSED_RGBA_ASTC_4x4_KHR   0x93B0
 #define GL_COMPRESSED_RGBA_ASTC_5x4_KHR   0x93B1
 #define GL_COMPRESSED_RGBA_ASTC_5x5_KHR   0x93B2
@@ -227,11 +227,11 @@ GL_APICALL void GL_APIENTRY glGetnUniformuivKHR (GLuint program, GLint location,
 #endif /* GL_KHR_texture_compression_astc_hdr */
 
 #ifndef GL_KHR_texture_compression_astc_ldr
-#define GL_KHR_texture_compression_astc_ldr 1
+#define GL_KHR_texture_compression_astc_ldr 0
 #endif /* GL_KHR_texture_compression_astc_ldr */
 
 #ifndef GL_KHR_texture_compression_astc_sliced_3d
-#define GL_KHR_texture_compression_astc_sliced_3d 1
+#define GL_KHR_texture_compression_astc_sliced_3d 0
 #endif /* GL_KHR_texture_compression_astc_sliced_3d */
 
 #ifndef GL_OES_EGL_image
@@ -643,7 +643,7 @@ GL_APICALL void GL_APIENTRY glTexBufferRangeOES (GLenum target, GLenum internalf
 #endif /* GL_OES_texture_buffer */
 
 #ifndef GL_OES_texture_compression_astc
-#define GL_OES_texture_compression_astc 1
+#define GL_OES_texture_compression_astc 0
 #define GL_COMPRESSED_RGBA_ASTC_3x3x3_OES 0x93C0
 #define GL_COMPRESSED_RGBA_ASTC_4x3x3_OES 0x93C1
 #define GL_COMPRESSED_RGBA_ASTC_4x4x3_OES 0x93C2
@@ -2156,7 +2156,7 @@ GL_APICALL void GL_APIENTRY glTexBufferRangeEXT (GLenum target, GLenum internalf
 #endif /* GL_EXT_texture_buffer */
 
 #ifndef GL_EXT_texture_compression_astc_decode_mode
-#define GL_EXT_texture_compression_astc_decode_mode 1
+#define GL_EXT_texture_compression_astc_decode_mode 0
 #define GL_TEXTURE_ASTC_DECODE_PRECISION_EXT 0x8F69
 #endif /* GL_EXT_texture_compression_astc_decode_mode */
 

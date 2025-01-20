@@ -278,22 +278,6 @@ _mesa_texture_view_lookup_view_class(const struct gl_context *ctx, GLenum intern
              == internalformat)
             return gles_etc2_compatible_internal_formats[i].view_class;
       }
-
-      if (ctx->Extensions.KHR_texture_compression_astc_ldr) {
-         for (i = 0; i < ARRAY_SIZE(gles_astc_compatible_internal_formats); i++) {
-            if (gles_astc_compatible_internal_formats[i].internal_format
-                == internalformat)
-               return gles_astc_compatible_internal_formats[i].view_class;
-         }
-      }
-
-      if (ctx->Extensions.OES_texture_compression_astc) {
-         for (i = 0; i < ARRAY_SIZE(gles_astc_3d_compatible_internal_formats); i++) {
-            if (gles_astc_3d_compatible_internal_formats[i].internal_format
-                == internalformat)
-               return gles_astc_3d_compatible_internal_formats[i].view_class;
-         }
-      }
    }
    return GL_FALSE;
 }
