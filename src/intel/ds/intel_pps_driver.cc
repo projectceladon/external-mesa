@@ -19,6 +19,7 @@
 #include "drm-uapi/i915_drm.h"
 
 #include "common/intel_gem.h"
+#include <cutils/properties.h>
 #include "dev/intel_device_info.h"
 #include "perf/intel_perf.h"
 #include "perf/intel_perf_query.h"
@@ -85,7 +86,14 @@ bool IntelDriver::init_perfcnt()
 
    perf = std::make_unique<IntelPerf>(drm_device.fd);
 
-   const char *metric_set_name = getenv("INTEL_PERFETTO_METRIC_SET");
+   const char *metric_set_name = NULL;
+#ifdef ANDROID
+   char metric_set_buf[PROPERTY_VALUE_MAX] = "";
+   if (property_get("persist.vendor.intel.perfetto.metric_set", metric_set_buf, NULL) > 0)
+      metric_set_name = metric_set_buf;
+#else
+   metric_set_name = getenv("INTEL_PERFETTO_METRIC_SET");
+#endif
 
    struct intel_perf_query_info *default_query = nullptr;
    selected_query = nullptr;
