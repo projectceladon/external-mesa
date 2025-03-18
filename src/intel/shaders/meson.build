@@ -36,6 +36,7 @@ intel_shaders_gens = [ [ 80,   8],
                        [200,  20],
                        [300,  30] ]
 intel_shaders = []
+if false
 foreach gen : intel_shaders_gens
   intel_shaders_spv = custom_target(
     input : intel_shader_files,
@@ -70,6 +71,7 @@ foreach gen : intel_shaders_gens
     command : [prog_vtn_bindgen, intel_shaders_spv, '@OUTPUT@'],
   )
 endforeach
+endif
 
 idep_intel_shaders = declare_dependency(
   sources : intel_shaders,
