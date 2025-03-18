@@ -21,6 +21,7 @@
 #include <dlfcn.h>
 #include <gralloctypes/Gralloc4.h>
 #include <hidl/HidlSupport.h>
+#include <system/window.h>
 #include <ui/FatVector.h>
 #include <vndksupport/linker.h>
 
@@ -317,6 +318,34 @@ out:
    return error;
 }
 
+static __inline__ Dataspace
+_legacy_dataspace_to_v0(Dataspace ds)
+{
+   switch((android_dataspace_t)ds) {
+      case HAL_DATASPACE_SRGB:
+         ds = Dataspace::SRGB;
+         break;
+      case HAL_DATASPACE_BT709:
+         ds = Dataspace::BT709;
+         break;
+      case HAL_DATASPACE_SRGB_LINEAR:
+         ds = Dataspace::SRGB_LINEAR;
+         break;
+      case HAL_DATASPACE_BT601_525:
+         ds = Dataspace::BT601_525;
+         break;
+      case HAL_DATASPACE_BT601_625:
+         ds = Dataspace::BT601_625;
+         break;
+      case HAL_DATASPACE_JFIF:
+         ds = Dataspace::JFIF;
+         break;
+      default:
+         break;
+   }
+   return ds;
+}
+
 static int
 mapper_get_buffer_color_info(struct u_gralloc *gralloc,
                               struct u_gralloc_buffer_handle *hnd,
@@ -374,6 +403,14 @@ mapper_get_buffer_color_info(struct u_gralloc *gralloc,
                                                                         importedHandle);
       if (value.has_value()) {
          Dataspace dataspace = static_cast<Dataspace>(*value);
+
+         // The dataspace value passed down might be a legacy value,
+         // which does not comply with the pattern:
+         // (Standard << 16) |(Transfer << 22) | (Range << 27)
+         // Just convert the legacy value to v0 value,
+         // according to standard “hardware/interfaces/graphics/common/1.0/types.hal”.
+         if ((int)dataspace & 0xffff)
+            dataspace = _legacy_dataspace_to_v0(dataspace);
 
          Dataspace standard =
             (Dataspace)((int)dataspace & (uint32_t)Dataspace::STANDARD_MASK);
