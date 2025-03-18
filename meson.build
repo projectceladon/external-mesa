@@ -845,6 +845,7 @@ else
              with_gallium_rusticl
 endif
 
+with_clc = false
 dep_clc = null_dep
 if with_gallium_clover or with_clc
   dep_clc = dependency('libclc')

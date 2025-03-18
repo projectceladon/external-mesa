@@ -77,7 +77,7 @@ spirv2nir = executable(
   install : with_tools.contains('nir'),
 )
 
-if get_option('mesa-clc') != 'system' and (with_gallium_asahi or \
+if false and get_option('mesa-clc') != 'system' and (with_gallium_asahi or \
                                            with_asahi_vk or \
                                            with_intel_vk or \
                                            with_gallium_iris or \
