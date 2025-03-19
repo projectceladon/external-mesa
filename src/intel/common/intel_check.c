@@ -23,6 +23,31 @@
 #endif
 
 
+#define MAX_LINE_LENGTH 1024
+#define EXTERNAL_DGPU_RENDER_CMDLINE_LIST_PATH "/data/dgpu-render-list.txt"
+
+static int get_full_command(pid_t pid, char *task_name, int task_name_size) {
+   char path[64];
+   snprintf(path, sizeof(path), "/proc/%d/cmdline", pid);
+   int ret = 0;
+
+   FILE *file = fopen(path, "r");
+   if (!file) {
+      ALOGE("Failed to open file %s\n", path);
+      return -1;
+   }
+
+   size_t n = fread(task_name, 1, task_name_size - 1, file);
+   if (n > 0) {
+      task_name[n] = '\0';
+   } else {
+      ALOGE("cannot read command for process %d\n", pid);
+      ret = -1;
+   }
+   fclose(file);
+   return ret;
+}
+
 static int
 get_pid_name(pid_t pid, char *task_name, int size)
 {
@@ -71,6 +96,88 @@ use_dgpu_render(char *target)
       }
    }
 
+   return false;
+}
+
+// Function to read a file and return an array of strings
+static char **
+read_file_lines(const char *filename, int *num_lines) {
+   FILE *file = fopen(filename, "r");
+   if (!file) {
+      *num_lines = 0;
+      return NULL;
+   }
+
+   char **lines = NULL;
+   char buffer[MAX_LINE_LENGTH];
+   *num_lines = 0;
+
+   while (fgets(buffer, MAX_LINE_LENGTH, file)) {
+      // Remove trailing newline
+      size_t len = strlen(buffer);
+      if (len > 0 && buffer[len - 1] == '\n') {
+         buffer[len - 1] = '\0';
+      }
+
+      // Allocate memory for a new line
+      char *line = strdup(buffer);
+      if (!line) {
+         fclose(file);
+         return NULL;
+      }
+
+      // Expand the array and add the new line
+      char **temp = realloc(lines, (*num_lines + 1) * sizeof(char *));
+      if (!temp) {
+         free(line);
+         fclose(file);
+         return NULL;
+      }
+      lines = temp;
+      lines[*num_lines] = line;
+      (*num_lines)++;
+   }
+
+   fclose(file);
+   return lines;
+}
+
+static void
+free_lines(char **lines, int num_lines) {
+   for (int i = 0; i < num_lines; i++) {
+      free(lines[i]);
+   }
+   free(lines);
+}
+
+static const char *builtin_dgpu_render_cmdline_list[] = {
+   "com.chery.ivi.vds.engine3d:service",
+   "com.chery.ivi.vds.engine3dcube:service",
+   "com.desaysv.ivi.launcher",
+};
+
+static bool
+is_cmdline_in_dgpu_render_list(const char *cmdline)
+{
+   char **external_dgpu_render_cmdline_list = NULL;
+   int num_lines;
+
+   for (int i = 0; i < ARRAY_SIZE(builtin_dgpu_render_cmdline_list); ++i) {
+      if (strstr(cmdline, builtin_dgpu_render_cmdline_list[i])) {
+         mesa_logi("Use dGPU rendering for process %s\n", cmdline);
+         return true;
+      }
+   }
+   external_dgpu_render_cmdline_list =
+      read_file_lines(EXTERNAL_DGPU_RENDER_CMDLINE_LIST_PATH, &num_lines);
+
+   for (int i = 0; i < num_lines; ++i) {
+      if (strstr(cmdline, external_dgpu_render_cmdline_list[i])) {
+         mesa_logi("Use dGPU rendering for process %s\n", cmdline);
+         return true;
+      }
+   }
+   free_lines(external_dgpu_render_cmdline_list, num_lines);
    return false;
 }
 
@@ -124,7 +231,14 @@ bool intel_is_dgpu_render(void)
    char *app_name = strrchr(process_name, '.');
    if (app_name == NULL)
       app_name = process_name;
-   return (use_dgpu_render(app_name) || is_target_process(process_name));
+   if (use_dgpu_render(app_name) || is_target_process(process_name)) {
+      return true;
+   }
+
+   if (get_full_command(process_id, process_name, sizeof(process_name)) < 0) {
+      return false;
+   }
+   return is_cmdline_in_dgpu_render_list(process_name);
 }
 
 bool intel_lower_ctx_priority(void)
