@@ -22,25 +22,33 @@
 #define PROPERTY_VALUE_MAX 92
 #endif
 
-static void
-get_pid_name(pid_t pid, char *task_name)
+
+static int
+get_pid_name(pid_t pid, char *task_name, int size)
 {
    char process_path[BUF_SIZE];
    char name_buf[BUF_SIZE];
+   int ret = 0;
 
    snprintf(process_path, sizeof(process_path), "/proc/%d/status", pid);
    FILE* fp = fopen(process_path, "r");
    if (fp == NULL) {
       mesa_loge("failed to open %s\n", process_path);
-      return;
+      return -1;
    }
-   if( fgets(name_buf, BUF_SIZE-1, fp)== NULL ){
+
+   if (fgets(name_buf, size - 1, fp)) {
+      if (sscanf(name_buf, "%*s %s", task_name) != 1) {
+         mesa_loge("failed to parse program name %s\n", name_buf);
+         ret = -1;
+      }
+   } else {
       mesa_loge("get pid name fail\n");
       fclose(fp);
-      return;
+      ret = -1;
    }
    fclose(fp);
-   sscanf(name_buf, "%*s %s", task_name);
+   return ret;
 }
 
 static bool
@@ -69,7 +77,14 @@ use_dgpu_render(char *target)
 static bool
 is_target_process(const char *target)
 {
-   static const char *str_char[] = { "k.auto:transfer", "android.vending", "k.auto:refinery", ".fisheye", "mark.auto:video", NULL };
+   static const char *str_char[] = {
+      "k.auto:transfer",
+      "android.vending",
+      "k.auto:refinery",
+      ".fisheye",
+      "mark.auto:video",
+      NULL
+   };
    const char **ptr = str_char;
 
    // Prefer dGPU for compositing in surfaceflinger since dGPU covers more
@@ -103,7 +118,9 @@ bool intel_is_dgpu_render(void)
    pid_t process_id = getpid();
    char process_name[BUF_SIZE] = {0};
 
-   get_pid_name(process_id, process_name);
+   if (get_pid_name(process_id, process_name, sizeof(process_name)) < 0) {
+      return false;
+   }
    char *app_name = strrchr(process_name, '.');
    if (app_name == NULL)
       app_name = process_name;
@@ -114,7 +131,9 @@ bool intel_lower_ctx_priority(void)
 {
    pid_t process_id = getpid();
    char process_name[BUF_SIZE] = {0};
-   get_pid_name(process_id, process_name);
+   if (get_pid_name(process_id, process_name, sizeof(process_name)) < 0) {
+      return false;
+   }
    char *app_name = strrchr(process_name, '.');
    if (app_name == NULL)
       app_name = process_name;
