@@ -69,32 +69,24 @@ use_dgpu_render(char *target)
 static bool
 is_target_process(const char *target)
 {
-   static const char *str_char[] = { "k.auto:transfer", "android.vending", "k.auto:refinery", ".fisheye", "mark.auto:video", NULL };
-   const char **ptr = str_char;
-
    // Prefer dGPU for compositing in surfaceflinger since dGPU covers more
    // scenarios than iGPU.
    if (!strcmp(target, "surfaceflinger"))
       return true;
 
-   for (ptr = str_char; *ptr != NULL; ptr++) {
-      if (!strcmp(target, *ptr)) {
-         char vendor_buf[PROPERTY_VALUE_MAX];
-         char vendor_buf1[PROPERTY_VALUE_MAX];
-         if (property_get("persist.vendor.intel.dGPUwSys.auto",
-                          vendor_buf, NULL) > 0) {
-            if (vendor_buf[0] == '1') {
-               return true;
-            }
-         }
-         if (property_get("persist.vendor.intel.dGPUwLocal.auto",
-                          vendor_buf1, NULL) > 0) {
-            if (vendor_buf1[0] == '1') {
-               return true;
-            }
-         }
+   FILE *file = fopen("/vendor/etc/dgpu-renderwlocal.cfg", "r");
+   if (!file) {
+      return false;
+   }
+   char line[16];
+   while (fscanf(file, "%15[^\n]\n", line) != EOF) {
+      if (!strcmp(target, line)) {
+         fclose(file);
+         return true;
       }
    }
+
+   fclose(file);
    return false;
 }
 
