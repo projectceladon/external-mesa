@@ -158,7 +158,7 @@ static const struct surface_format_info format_info[] = {
    SF(  Y,   x,   x,   x,   Y,   x,   Y,   x,   x,  70, 125, 110,    x,  R10G10B10A2_UINT)
    SF(  Y,   Y,   x,   x,   x,   x,   Y,   x,   x,   x,   x,   x,    x,  R10G10B10_SNORM_A2_UNORM)
    SF(  Y,   Y,   x,   x,   Y,   Y,   Y,   x,  60,  70, 110,  90,    x,  R8G8B8A8_UNORM)
-   SF(  Y,   Y,   x,   x,   Y,   Y,   x,   x,  60, 120,   x, 110,    x,  R8G8B8A8_UNORM_SRGB)
+   SF(  Y,   Y,   x,   x,   Y,   Y,   x,   x,  60,   x,   x, 110,    x,  R8G8B8A8_UNORM_SRGB)
    SF(  Y,   Y,   x,   x,   Y,  60,   Y,   x,   x,  70, 110,  90,    x,  R8G8B8A8_SNORM)
    SF(  Y,   x,   x,   x,   Y,   x,   Y,   x,   x,  70,  90,  90,    x,  R8G8B8A8_SINT)
    SF(  Y,   x,   x,   x,   Y,   x,   Y,   x,   x,  70,  75,  90,    x,  R8G8B8A8_UINT)
@@ -235,7 +235,7 @@ static const struct surface_format_info format_info[] = {
    SF(  x,   x,   x,   x,   x,   x,   Y,   x,   x,   x,   x,   x,    x,  R16_USCALED)
    SF( 50,  50,   x,   x,   x,   x,   x,   x,   x,   x,   x,   x,    x,  P8A8_UNORM_PALETTE0)
    SF( 50,  50,   x,   x,   x,   x,   x,   x,   x,   x,   x,   x,    x,  P8A8_UNORM_PALETTE1)
-   SF(120, 120,   x,   x, 120, 120,   x,   x,   x, 120,   x, 120,    x,  A1B5G5R5_UNORM)
+   SF(120, 120,   x,   x, 120, 120,   x,   x,   x,   x,   x, 120,    x,  A1B5G5R5_UNORM)
    /* According to the PRM, A4B4G4R4_UNORM isn't supported until Sky Lake
     * but empirical testing indicates that at least sampling works just fine
     * on Broadwell.
