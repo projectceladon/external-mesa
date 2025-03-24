@@ -375,8 +375,6 @@ mapper_get_buffer_color_info(struct u_gralloc *gralloc,
       out->sample_range = __DRI_YUV_NARROW_RANGE;
       out->horizontal_siting = __DRI_YUV_CHROMA_SITING_0;
       out->vertical_siting = __DRI_YUV_CHROMA_SITING_0;
-
-      return 0;
    }
 
    auto importedHandle = import_buffer(gralloc, hnd->handle);
