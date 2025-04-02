@@ -964,6 +964,7 @@ anv_pipeline_lower_nir(struct anv_pipeline *pipeline,
 
    NIR_PASS(_, nir, brw_nir_lower_storage_image, compiler,
             &(struct brw_nir_lower_storage_image_opts) {
+               .devinfo = compiler->devinfo,
                /* Anv only supports Gfx9+ which has better defined typed read
                 * behavior. It allows us to only have to care about lowering
                 * loads.
