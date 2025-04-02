@@ -401,6 +401,7 @@ brw_nir_lower_storage_image_instr(nir_builder *b,
       return false;
 
    const struct brw_nir_lower_storage_image_state *state = cb_data;
+   const struct brw_nir_lower_storage_image_opts *opts = &state->opts;
 
    nir_intrinsic_instr *intrin = nir_instr_as_intrinsic(instr);
    switch (intrin->intrinsic) {
