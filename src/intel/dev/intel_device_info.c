@@ -1686,7 +1686,7 @@ bool
 intel_get_device_info_from_pci_id(int pci_id,
                                   struct intel_device_info *devinfo)
 {
-   return intel_get_device_info_from_pci_id_common(pci_id, false, devinfo);
+   return intel_get_device_info_from_pci_id_common(pci_id, true, devinfo);
 }
 
 bool
@@ -1895,7 +1895,7 @@ intel_get_device_info_from_fd(int fd, struct intel_device_info *devinfo, int min
       return false;
    }
    if (!intel_device_info_init_common(drmdev->deviceinfo.pci->device_id,
-                                      false, devinfo)) {
+                                      true, devinfo)) {
       drmFreeDevice(&drmdev);
       return false;
    }
