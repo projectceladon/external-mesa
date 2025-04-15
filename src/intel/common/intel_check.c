@@ -26,15 +26,19 @@ get_pid_name(pid_t pid, char *task_name)
    char process_path[BUF_SIZE];
    char name_buf[BUF_SIZE];
 
-   sprintf(process_path, "/proc/%d/status", pid);
+   snprintf(process_path, sizeof(process_path), "/proc/%d/status", pid);
    FILE* fp = fopen(process_path, "r");
-   if(NULL != fp){
-      if( fgets(name_buf, BUF_SIZE-1, fp)== NULL ){
-          fclose(fp);
-      }
-      fclose(fp);
-      sscanf(name_buf, "%*s %s", task_name);
+   if (fp == NULL) {
+      mesa_loge("failed to open %s\n", process_path);
+      return;
    }
+   if( fgets(name_buf, BUF_SIZE-1, fp)== NULL ){
+      mesa_loge("get pid name fail\n");
+      fclose(fp);
+      return;
+   }
+   fclose(fp);
+   sscanf(name_buf, "%*s %s", task_name);
 }
 
 static bool
@@ -42,7 +46,7 @@ use_dgpu_render(char *target)
 {
    char dGPU_prop[BUF_SIZE];
    char vendor_buf[PROPERTY_VALUE_MAX];
-   sprintf(dGPU_prop, "persist.vendor.intel.dGPU%s", target);
+   snprintf(dGPU_prop, sizeof(dGPU_prop), "persist.vendor.intel.dGPUwLocal%s", target);
    if (property_get(dGPU_prop, vendor_buf, NULL) > 0) {
       if (vendor_buf[0] == '1') {
          return true;
@@ -54,38 +58,36 @@ use_dgpu_render(char *target)
 static bool
 is_target_process(const char *target)
 {
-   static const char *str_char[] = { "k.lite:refinery", "k.lite:transfer", NULL };
-   const char **ptr = str_char;
-
    // Prefer dGPU for compositing in surfaceflinger since dGPU covers more
    // scenarios than iGPU.
    if (!strcmp(target, "surfaceflinger"))
       return true;
 
-   for (ptr = str_char; *ptr != NULL; ptr++) {
-      if (!strcmp(target, *ptr)) {
-         char vendor_buf[PROPERTY_VALUE_MAX];
-         if (property_get("persist.vendor.intel.dGPU.ABenchMark.lite",
-                          vendor_buf, NULL) > 0) {
-            if (vendor_buf[0] == '1') {
-               return true;
-            }
-         }
+   FILE *file = fopen("/vendor/etc/dgpu-renderwlocal.cfg", "r");
+   if (!file) {
+      return false;
+   }
+   char line[16];
+   while (fscanf(file, "%15[^\n]\n", line) != EOF) {
+      if (!strcmp(target, line)) {
+         fclose(file);
+         return true;
       }
    }
+
+   fclose(file);
    return false;
 }
 
 bool intel_is_dgpu_render(void)
 {
    pid_t process_id = getpid();
-   char process_name[BUF_SIZE];
+   char process_name[BUF_SIZE] = {0};
 
    get_pid_name(process_id, process_name);
    char *app_name = strrchr(process_name, '.');
    if (app_name == NULL)
       app_name = process_name;
-
    return (use_dgpu_render(app_name) || is_target_process(process_name));
 }
 
