@@ -5941,10 +5941,9 @@ std::string StripChars(const std::string& str,
                        const std::string& chars,
                        char replacement) {
   std::string res(str);
-  const char* start = res.c_str();
   const char* remove = chars.c_str();
-  for (const char* c = strpbrk(start, remove); c; c = strpbrk(c + 1, remove))
-    res[static_cast<uintptr_t>(c - start)] = replacement;
+  for (size_t pos = res.find_first_of(remove); pos != std::string::npos; pos = res.find_first_of(remove, pos + 1))
+    res[pos] = replacement;
   return res;
 }
 
@@ -8806,8 +8805,17 @@ void __attribute__((noreturn)) ChildProcess(ChildProcessArgs* args) {
       close(args->stdin_pipe_rd);
       break;
     case Subprocess::InputMode::kDevNull:
-      if (dup2(open("/dev/null", O_RDONLY), STDIN_FILENO) == -1)
-        die("Failed to dup2(STDOUT)");
+      int fd = open("/dev/null", O_RDONLY);
+      if (fd == -1) {
+          die("Failed to open /dev/null");
+      }
+
+      if (dup2(fd, STDIN_FILENO) == -1) {
+          close(fd);
+          die("Failed to dup2(STDIN)");
+      }
+
+      close(fd);
       break;
   }
 
@@ -8815,8 +8823,17 @@ void __attribute__((noreturn)) ChildProcess(ChildProcessArgs* args) {
     case Subprocess::OutputMode::kInherit:
       break;
     case Subprocess::OutputMode::kDevNull: {
-      if (dup2(open("/dev/null", O_RDWR), STDOUT_FILENO) == -1)
-        die("Failed to dup2(STDOUT)");
+      int fd = open("/dev/null", O_RDWR);
+      if (fd == -1) {
+          die("Failed to open /dev/null");
+      }
+
+      if (dup2(fd, STDOUT_FILENO) == -1) {
+          close(fd);
+          die("Failed to dup2(STDOUT)");
+      }
+
+      close(fd);
       break;
     }
     case Subprocess::OutputMode::kBuffer:
@@ -8833,8 +8850,17 @@ void __attribute__((noreturn)) ChildProcess(ChildProcessArgs* args) {
     case Subprocess::OutputMode::kInherit:
       break;
     case Subprocess::OutputMode::kDevNull: {
-      if (dup2(open("/dev/null", O_RDWR), STDERR_FILENO) == -1)
-        die("Failed to dup2(STDERR)");
+      int fd = open("/dev/null", O_RDWR);
+      if (fd == -1) {
+          die("Failed to open /dev/null");
+      }
+
+      if (dup2(fd, STDERR_FILENO) == -1) {
+          close(fd);
+          die("Failed to dup2(STDERR)");
+      }
+
+      close(fd);
       break;
     }
     case Subprocess::OutputMode::kBuffer:
@@ -9123,7 +9149,7 @@ void Subprocess::TryPushStdin() {
 void Subprocess::TryReadStdoutAndErr() {
   if (!s_->stdouterr_pipe.rd)
     return;
-  char buf[4096];
+  char buf[4096] = {};
   int64_t rsize =
       PERFETTO_EINTR(read(*s_->stdouterr_pipe.rd, buf, sizeof(buf)));
   if (rsize < 0 && errno == EAGAIN)
@@ -46264,8 +46290,8 @@ void TracingMuxerImpl::Shutdown() {
   PERFETTO_CHECK(!muxer->task_runner_->RunsTasksOnCurrentThread());
   muxer->DestroyStoppedTraceWritersForCurrentThread();
 
-  std::unique_ptr<base::TaskRunner> owned_task_runner(
-      muxer->task_runner_.get());
+  std::unique_ptr<base::TaskRunner> owned_task_runner =
+      std::move(muxer->task_runner_);
   base::WaitableEvent shutdown_done;
   owned_task_runner->PostTask([muxer, &shutdown_done] {
     // Check that no consumer session is currently active on any backend.
@@ -51698,6 +51724,7 @@ void TraceBuffer::CopyChunkUntrusted(ProducerID producer_id_trusted,
   record.writer_id = writer_id;
   record.num_fragments = num_fragments;
   record.flags = chunk_flags;
+  record.unused_flag = 0;
   ChunkMeta::Key key(record);
 
   // Check whether we have already copied the same chunk previously. This may
@@ -51951,6 +51978,7 @@ void TraceBuffer::AddPaddingRecord(size_t size) {
   PERFETTO_DCHECK(size >= sizeof(ChunkRecord) && size <= ChunkRecord::kMaxSize);
   ChunkRecord record(size);
   record.is_padding = 1;
+  record.unused_flag = 0;
   TRACE_BUFFER_DLOG("AddPaddingRecord @ [%lu - %lu] %zu", wptr_ - begin(),
                     uintptr_t(wptr_ - begin()) + size, size);
   WriteChunkRecord(wptr_, record, nullptr, size - sizeof(ChunkRecord));
@@ -52028,6 +52056,7 @@ TraceBuffer::SequenceIterator TraceBuffer::GetReadIterForSequence(
   iter.seq_begin = seq_begin;
   if (seq_begin == index_.end()) {
     iter.cur = iter.seq_end = index_.end();
+    iter.wrapping_id = 0;
     return iter;
   }
 
@@ -72184,12 +72213,13 @@ void HostImpl::OnNewIncomingConnection(
   PERFETTO_DCHECK_THREAD(thread_checker_);
   std::unique_ptr<ClientConnection> client(new ClientConnection());
   ClientID client_id = ++last_client_id_;
-  clients_by_socket_[new_conn.get()] = client.get();
   client->id = client_id;
   client->sock = std::move(new_conn);
   // Watchdog is 30 seconds, so set the socket timeout to 10 seconds.
   client->sock->SetTxTimeout(10000);
+  // Move client into clients_ first, then use the raw pointer for clients_by_socket_
   clients_[client_id] = std::move(client);
+  clients_by_socket_[clients_[client_id]->sock.get()] = clients_[client_id].get();
 }
 
 void HostImpl::OnDataAvailable(base::UnixSocket* sock) {
