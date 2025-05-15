@@ -27,15 +27,19 @@ get_pid_name(pid_t pid, char *task_name)
    char process_path[BUF_SIZE];
    char name_buf[BUF_SIZE];
 
-   sprintf(process_path, "/proc/%d/status", pid);
+   snprintf(process_path, sizeof(process_path), "/proc/%d/status", pid);
    FILE* fp = fopen(process_path, "r");
-   if(NULL != fp){
-      if( fgets(name_buf, BUF_SIZE-1, fp)== NULL ){
-          fclose(fp);
-      }
-      fclose(fp);
-      sscanf(name_buf, "%*s %s", task_name);
+   if (fp == NULL) {
+      mesa_loge("failed to open %s\n", process_path);
+      return;
    }
+   if( fgets(name_buf, BUF_SIZE-1, fp)== NULL ){
+      mesa_loge("get pid name fail\n");
+      fclose(fp);
+      return;
+   }
+   fclose(fp);
+   sscanf(name_buf, "%*s %s", task_name);
 }
 
 static bool
@@ -43,7 +47,7 @@ use_dgpu_render(char *target)
 {
    char dGPU_prop[BUF_SIZE];
    char vendor_buf[PROPERTY_VALUE_MAX];
-   sprintf(dGPU_prop, "persist.vendor.intel.dGPU%s", target);
+   snprintf(dGPU_prop, sizeof(dGPU_prop), "persist.vendor.intel.dGPUwLocal%s", target);
    if (property_get(dGPU_prop, vendor_buf, NULL) > 0) {
       if (vendor_buf[0] == '1') {
          return true;
@@ -78,7 +82,7 @@ is_target_process(const char *target)
 bool intel_is_dgpu_render(void)
 {
    pid_t process_id = getpid();
-   char process_name[BUF_SIZE];
+   char process_name[BUF_SIZE] = {0};
 
    get_pid_name(process_id, process_name);
    char *app_name = strrchr(process_name, '.');
