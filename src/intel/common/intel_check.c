@@ -58,13 +58,12 @@ use_dgpu_render(char *target)
 static bool
 is_target_process(const char *target)
 {
-   // Prefer dGPU for compositing in surfaceflinger since dGPU covers more
-   // scenarios than iGPU.
-   if (!strcmp(target, "surfaceflinger"))
-      return true;
-
    FILE *file = fopen("/vendor/etc/dgpu-renderwlocal.cfg", "r");
    if (!file) {
+      // Prefer dGPU for compositing in surfaceflinger since dGPU covers more
+      // scenarios than iGPU.
+      if (!strcmp(target, "surfaceflinger"))
+         return true;
       return false;
    }
    char line[16];
