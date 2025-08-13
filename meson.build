@@ -808,6 +808,8 @@ with_driver_using_cl = [
   with_nouveau_vk,
 ].contains(true)
 
+with_driver_using_cl = false
+
 if get_option('mesa-clc') == 'system'
   prog_mesa_clc = find_program('mesa_clc', native : true)
   prog_vtn_bindgen2 = find_program('vtn_bindgen2', native : true)
