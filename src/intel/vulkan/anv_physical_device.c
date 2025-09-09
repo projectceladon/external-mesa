@@ -576,7 +576,7 @@ get_features(const struct anv_physical_device *pdevice,
       .accelerationStructureCaptureReplay = false, /* TODO */
       .accelerationStructureIndirectBuild = false, /* TODO */
       .accelerationStructureHostCommands = false,
-      .descriptorBindingAccelerationStructureUpdateAfterBind = rt_enabled,
+      .descriptorBindingAccelerationStructureUpdateAfterBind = false,
 
       /* VK_EXT_border_color_swizzle */
       .borderColorSwizzle = true,
