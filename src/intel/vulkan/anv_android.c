@@ -33,6 +33,7 @@
 #include <vndk/hardware_buffer.h>
 /* See i915_private_android_types.h in minigbm. */
 #define HAL_PIXEL_FORMAT_NV12_Y_TILED_INTEL 0x100
+#define HAL_PIXEL_FORMAT_P010_INTEL 0x110
 
 inline VkFormat
 vk_format_from_android(unsigned android_format, unsigned android_usage)
@@ -41,6 +42,8 @@ vk_format_from_android(unsigned android_format, unsigned android_usage)
    case AHARDWAREBUFFER_FORMAT_Y8Cb8Cr8_420:
    case HAL_PIXEL_FORMAT_NV12_Y_TILED_INTEL:
       return VK_FORMAT_G8_B8R8_2PLANE_420_UNORM;
+   case HAL_PIXEL_FORMAT_P010_INTEL:
+      return VK_FORMAT_G10X6_B10X6R10X6_2PLANE_420_UNORM_3PACK16;
    case AHARDWAREBUFFER_FORMAT_YV12:
       return VK_FORMAT_G8_B8_R8_3PLANE_420_UNORM;
    case AHARDWAREBUFFER_FORMAT_YCbCr_P010:
@@ -65,6 +68,8 @@ anv_ahb_format_for_vk_format(VkFormat vk_format)
 #else
       return HAL_PIXEL_FORMAT_NV12_Y_TILED_INTEL;
 #endif
+   case VK_FORMAT_G10X6_B10X6R10X6_2PLANE_420_UNORM_3PACK16:
+      return HAL_PIXEL_FORMAT_P010_INTEL;
    default:
       return vk_image_format_to_ahb_format(vk_format);
    }
